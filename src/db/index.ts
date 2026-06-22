@@ -131,6 +131,10 @@ export function getTrips(limit = 50): Trip[] {
   return db.getAllSync<Trip>('SELECT * FROM trips ORDER BY created_at DESC LIMIT ?', limit);
 }
 
+export function getLastTrip(): Trip | null {
+  return db.getFirstSync<Trip>('SELECT * FROM trips ORDER BY created_at DESC LIMIT 1');
+}
+
 export function saveRecord(r: Omit<Record, 'id' | 'created_at'>) {
   db.runSync(
     `INSERT INTO records (record_type, platform, amount, miles, deduction, category,

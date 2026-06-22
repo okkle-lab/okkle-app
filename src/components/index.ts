@@ -3,3 +3,4 @@ export { Chip } from './Chip';
 export { MetricCard } from './MetricCard';
 export { PrimaryButton } from './PrimaryButton';
 export { SectionHeader } from './SectionHeader';
+export { SlideToConfirm } from './SlideToConfirm';

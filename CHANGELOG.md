@@ -1,0 +1,24 @@
+# Changelog
+
+All notable changes to the Okkle app are recorded here. Most recent first.
+
+## 2026-06-22
+
+### Trip flow & one-finger usability
+- Redesigned the trip tab into a smooth three-phase flow: **setup → live → quick earnings**.
+- Start screen now remembers your last platform and vehicle, so starting a trip is a single tap.
+- Added an oversized **Start trip** button and a large **Pause** toggle — easy to hit one-handed on a mounted phone.
+- Added a **slide-to-end** control (like Lime/Uber) so cyclists and motorbike riders can't end a trip by accident, even with gloves.
+- The screen now **stays awake** automatically while a trip is running.
+- After ending, earnings entry is optional with a clear **Skip** — reflecting that couriers are paid weekly, not per trip.
+
+### Theme & consistency
+- Warmer, Airbnb-style palette (cream backgrounds, terracotta accent, warm text).
+- Introduced a shared type scale so font sizes are consistent across every screen.
+- Made platform, vehicle and region chips larger and easier to tap.
+
+### Tax
+- Added region-based income tax rates (Scotland vs rest of UK) with optional GPS region detection during onboarding.
+
+### Foundations
+- Initial build: GPS trip tracking, manual logging (mileage / earnings / expenses), dashboard, records list, CSV & summary export, on-device SQLite storage.
