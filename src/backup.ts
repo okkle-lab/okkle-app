@@ -9,7 +9,7 @@ export async function backupNow(): Promise<void> {
   const data = dumpData();
   const date = new Date().toISOString().slice(0, 10);
   const dir = (FileSystem as any).cacheDirectory ?? (FileSystem as any).documentDirectory;
-  const uri = `${dir}okkle-backup-${date}.json`;
+  const uri = `${dir}Okkle_Backup_${date}.json`;
   await (FileSystem as any).writeAsStringAsync(uri, JSON.stringify(data, null, 2));
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: 'application/json', dialogTitle: 'Save your Okkle backup' });

@@ -1,6 +1,6 @@
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
+import { shareFileAs } from './exportFile';
 import {
   getUser, getTrips, getRecords, getTaxYearSummary, getTaxYearMiles,
   getTaxYearExpenses, kvGet, kvGetNum, taxYearStart,
@@ -226,7 +226,6 @@ export async function buildAccountantPackHtml(): Promise<string> {
 export async function shareAccountantPack(): Promise<void> {
   const html = await buildAccountantPackHtml();
   const { uri } = await Print.printToFileAsync({ html });
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Accountant Pack' });
-  }
+  // Re-share under a clear, dated filename instead of the random print name.
+  await shareFileAs(uri, 'Accountant-Pack', 'pdf');
 }

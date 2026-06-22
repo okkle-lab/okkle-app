@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TextInput, Share, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TextInput, Pressable } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
@@ -15,6 +15,7 @@ import {
   compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE,
 } from '../../src/db/taxcalc';
 import { shareAccountantPack } from '../../src/accountantPack';
+import { shareTextExport } from '../../src/exportFile';
 
 export default function TaxScreen() {
   const router = useRouter();
@@ -89,7 +90,7 @@ export default function TaxScreen() {
       ``,
       `— Estimates only, not tax advice. Confirm with your accountant.`,
     ].filter(Boolean);
-    Share.share({ message: lines.join('\n'), title: `Okkle SA summary ${taxYearLabel()}` });
+    shareTextExport('SelfAssessment-Summary', 'txt', lines.join('\n'));
   }
 
   function shareMileageLog() {
@@ -97,7 +98,7 @@ export default function TaxScreen() {
     const header = 'Date,Vehicle,Platform (purpose),Miles,Rate note,Deduction (GBP)';
     const rows = trips.slice().sort((a, b) => a.started_at.localeCompare(b.started_at)).map(t =>
       `${t.started_at.slice(0, 10)},${vehicleLabel(t.vehicle)},${t.platform} delivery,${t.miles.toFixed(1)},HMRC simplified,${t.deduction.toFixed(2)}`);
-    Share.share({ message: [header, ...rows].join('\n'), title: `Okkle mileage log ${taxYearLabel()}.csv` });
+    shareTextExport('HMRC-Mileage-Log', 'csv', [header, ...rows].join('\n'));
   }
 
   function shareCsv() {
@@ -105,7 +106,7 @@ export default function TaxScreen() {
     const header = 'date,type,platform,vehicle,miles,deduction,earnings,amount,notes';
     const tr = trips.map(t => `${t.started_at.slice(0,10)},trip,${t.platform},${t.vehicle},${t.miles.toFixed(2)},${t.deduction.toFixed(2)},${t.earnings ?? ''},,`);
     const rr = records.map(r => `${r.created_at.slice(0,10)},${r.record_type},${r.platform ?? ''},,,${r.deduction ?? ''},,${r.amount ?? ''},${r.notes ?? ''}`);
-    Share.share({ message: [header, ...tr, ...rr].join('\n'), title: `Okkle data ${taxYearLabel()}.csv` });
+    shareTextExport('All-Data', 'csv', [header, ...tr, ...rr].join('\n'));
   }
 
   // FreeAgent bank-statement import format: Date (DD/MM/YYYY), Amount, Description.
@@ -126,7 +127,7 @@ export default function TaxScreen() {
     lines.sort((a, b) => a.date.localeCompare(b.date));
     const header = 'Date,Amount,Description';
     const rows = lines.map(l => `${uk(l.date)},${l.amount.toFixed(2)},${csvSafe(l.desc)}`);
-    Share.share({ message: [header, ...rows].join('\n'), title: `Okkle FreeAgent import ${taxYearLabel()}.csv` });
+    shareTextExport('FreeAgent-Import', 'csv', [header, ...rows].join('\n'));
   }
 
   return (
