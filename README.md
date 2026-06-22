@@ -60,6 +60,10 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - **Per-platform breakdown** for the selected period with a winner badge, so multi-platform couriers can see which app paid best that day/week/month/year.
 - Week runs **Monday–Sunday** to match Uber Eats / Deliveroo / Just Eat weekly pay cycles. Year = UK tax year (6 Apr–5 Apr).
 
+### Insights — where & when you earn most
+- Trips capture an on-device GPS breadcrumb and a reverse-geocoded **area name**.
+- **Hotspots heatmap** drawn on-device (works in Expo Go; real Google Maps can drop in on a dev build), a ranked **top earning / busiest areas** list, and a **best-hours** chart — all in a dedicated Insights screen.
+
 ### Business insights
 - Net pay per hour, gross pay per hour, earnings per mile, net margin (% kept after tax), hours tracked.
 - Platform ranking by £/hour (not just total earnings).

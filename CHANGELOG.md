@@ -2,6 +2,16 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (location heatmap + subscreens)
+
+### Where you earn most
+- Trips now capture an on-device GPS breadcrumb and are tagged with a friendly **area name** (reverse-geocoded at save time).
+- New **Insights** screen: a **hotspots heatmap** (your busiest areas, drawn on-device — works in Expo Go, no map account needed), a ranked **top earning / busiest areas** list, and your **best hours**.
+
+### Calmer Tax tab
+- Moved all exports into a dedicated **Export & share** screen (Accountant Pack, FreeAgent, mileage log, CSV).
+- The Tax tab now ends with a tidy **Explore** card linking to Insights and Export; Home gained a **"Where you earn most"** entry.
+
 ## 2026-06-23 (review pass: medals, home order, tax honesty)
 
 ### Fancier medals
