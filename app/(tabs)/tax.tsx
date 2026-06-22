@@ -12,6 +12,7 @@ import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel } from '../../src/db/tax';
 import {
   compareMethods, taxPosition, class2Note, PERSONAL_ALLOWANCE,
 } from '../../src/db/taxcalc';
+import { shareAccountantPack } from '../../src/accountantPack';
 
 export default function TaxScreen() {
   const router = useRouter();
@@ -50,6 +51,14 @@ export default function TaxScreen() {
   const pos = taxPosition(year.earnings, totalExpenses, region, parseFloat(otherIncome) || 0);
 
   const grossPerMile = bizMiles > 0 ? year.earnings / bizMiles : 0;
+  const [packBusy, setPackBusy] = React.useState(false);
+
+  async function makePack() {
+    setPackBusy(true);
+    try { await shareAccountantPack(); }
+    catch { /* user cancelled or sharing unavailable */ }
+    setPackBusy(false);
+  }
 
   // --- exports --------------------------------------------------------------
   function shareSA() {
@@ -188,8 +197,17 @@ export default function TaxScreen() {
       </Card>
 
       {/* Export */}
-      <SectionHeader title="Export for your accountant" />
-      <Card style={{ gap: spacing.md }}>
+      <SectionHeader title="Send to your accountant" />
+      <Pressable onPress={makePack} disabled={packBusy} style={({ pressed }) => [s.packBtn, pressed && { opacity: 0.9 }]}>
+        <Feather name="file-text" size={22} color="#fff" />
+        <View style={{ flex: 1 }}>
+          <Text style={s.packTitle}>{packBusy ? 'Preparing…' : 'Accountant Pack (PDF)'}</Text>
+          <Text style={s.packSub}>SA summary, mileage log, expenses & receipts in one file</Text>
+        </View>
+        <Feather name="share" size={18} color="#fff" />
+      </Pressable>
+
+      <Card style={{ gap: spacing.md, marginTop: spacing.md }}>
         <Pressable onPress={shareSA} style={s.exportBtn}>
           <Feather name="file-text" size={18} color={colors.textPrimary} />
           <Text style={s.exportText}>Self Assessment summary</Text>
@@ -251,6 +269,9 @@ const s = StyleSheet.create({
   checkItem: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   checkText: { ...type.caption, color: colors.textSecondary, flex: 1, lineHeight: 20 },
 
+  packBtn: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, padding: spacing.lg },
+  packTitle: { color: '#fff', fontSize: 16, fontWeight: font.bold },
+  packSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
   exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
   exportText: { ...type.bodyMedium, fontSize: 15, flex: 1 },
 

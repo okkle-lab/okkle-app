@@ -4,6 +4,10 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Accountant Pack (PDF)
+- One-tap **Accountant Pack**: a single, styled PDF with the cover/assumptions, Self Assessment summary (SA103 figures), income by platform, full HMRC mileage log, expense breakdown, an "items flagged for review" section (likely vehicle running costs), and embedded receipt images.
+- Generated on-device with expo-print and shared via the native share sheet (email, AirDrop, Messages) — nothing leaves the phone except what the user sends.
+
 ### Clearer method comparison & more accurate tax
 - Split the confusing all-in-one method card into a clean summary on the Tax tab plus a dedicated **"Compare methods"** tool (its own focused screen) — progressive disclosure, one job per screen.
 - Default everyone to the simplified method; actual-costs is now an opt-in check.
