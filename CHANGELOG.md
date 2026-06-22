@@ -2,6 +2,18 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (fun notifications, warmer UI, GPS basis)
+
+### Notifications with personality
+- Weekly reminders now use rotating, playful copy instead of one robotic line.
+- New **daily streak-keeper** nudge (Duolingo-style) — a cheeky 7:30pm reminder ("Your streak misses you 🥺") that helps you keep your activity streak alive. Varies each time so it never gets stale.
+
+### Warmer UI
+- Added small mint **icons to section headers** across Home, Tax, Records and Trip, so the screens feel friendlier and less clinical.
+
+### GPS mileage basis
+- The mileage-log export and Accountant Pack now state that distances are **GPS-measured** — a contemporaneous record HMRC accepts — so the basis is explicit to your accountant or in any HMRC enquiry.
+
 ## 2026-06-23 (gamification + clear export filenames)
 
 ### Gamification

@@ -81,6 +81,7 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 All exports save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26_<date>.<ext>` — e.g. `Okkle_HMRC-Mileage-Log_TaxYear-2025-26_2026-06-23.csv`, `Okkle_Accountant-Pack_TaxYear-2025-26_2026-06-23.pdf`.
 
 ### Notifications
+- **Playful, Duolingo-style copy** — rotating weekly reminders plus a daily streak-keeper nudge ("Your streak misses you 🥺") to keep your activity streak alive.
 - Weekly/monthly logging reminders (configurable day).
 - Yearly tax deadline reminders: Self Assessment registration, 31 Jan filing + payment, 31 Jul payment on account, all four MTD quarterly deadlines.
 
