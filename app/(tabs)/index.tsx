@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal } 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp } from '../../src/components';
+import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal } from '../../src/components';
 import {
   getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getTaxYearExpenses, getEarningsByTimeOfDay,
@@ -78,10 +78,8 @@ export default function HomeScreen() {
     <Modal visible={newAch !== null} transparent animationType="fade" onRequestClose={() => setNewAch(null)}>
       <Pressable style={s.modalBg} onPress={() => setNewAch(null)}>
         <View style={s.modalCard}>
-          <View style={s.achBurst}>
-            <Feather name={(newAch?.icon ?? 'award') as any} size={34} color="#fff" />
-          </View>
-          <Text style={s.achKicker}>Achievement unlocked</Text>
+          {newAch && <Medal emoji={newAch.emoji} tier={newAch.tier} unlocked size={104} />}
+          <Text style={s.achKicker}>Medal unlocked</Text>
           <Text style={s.modalTitle}>{newAch?.label}</Text>
           <Text style={s.modalBody}>{newAch?.desc}</Text>
           <Pressable onPress={() => setNewAch(null)} style={s.modalBtn}><Text style={s.modalBtnText}>Nice!</Text></Pressable>
@@ -98,6 +96,11 @@ export default function HomeScreen() {
           <VehicleIcon vehicle={user?.vehicle ?? 'car'} size={22} color={colors.textSecondary} />
           <Text style={s.hello}>{user?.name || 'Hi'}</Text>
         </View>
+        {/* Streak chip — the daily-return hook, kept glanceable up top */}
+        <Pressable onPress={() => router.push('/medals')} hitSlop={8} style={[s.streakChip, streak > 0 ? s.streakChipOn : s.streakChipOff]}>
+          <Text style={{ fontSize: 14 }}>{streak > 0 ? '🔥' : '✨'}</Text>
+          <Text style={[s.streakChipText, streak === 0 && { color: colors.textSecondary }]}>{streak > 0 ? streak : 'Start'}</Text>
+        </Pressable>
         <Pressable onPress={() => router.push('/settings')} hitSlop={12} style={s.gear}>
           <Icon name="settings" size={22} color={colors.textSecondary} />
         </Pressable>
@@ -213,9 +216,7 @@ export default function HomeScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg, marginHorizontal: -4 }} contentContainerStyle={{ paddingHorizontal: 4, gap: 14 }}>
                 {achievementPreview.map(a => (
                   <View key={a.key} style={s.badge}>
-                    <View style={[s.badgeCircle, a.unlocked ? s.badgeOn : s.badgeOff]}>
-                      <Feather name={a.icon as any} size={20} color={a.unlocked ? '#fff' : colors.textTertiary} />
-                    </View>
+                    <Medal emoji={a.emoji} tier={a.tier} unlocked={a.unlocked} size={54} />
                     <Text style={[s.badgeLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
                     {!a.unlocked && a.progress > 0 && (
                       <View style={s.badgeTrack}><View style={[s.badgeFill, { width: `${Math.round(a.progress * 100)}%` }]} /></View>
@@ -325,6 +326,10 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   hello: { ...type.heading, fontSize: 18 },
   gear: { padding: 4 },
+  streakChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full, marginRight: 6 },
+  streakChipOn: { backgroundColor: colors.amberLight },
+  streakChipOff: { backgroundColor: colors.bgSoft },
+  streakChipText: { ...tabular, fontSize: 14, fontWeight: font.bold, color: colors.amber },
 
   hero: {
     backgroundColor: colors.brandDeep, borderRadius: radius.xl,

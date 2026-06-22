@@ -3,20 +3,8 @@ import { View, Text, ScrollView, StyleSheet, Pressable, Modal } from 'react-nati
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { getAchievements, getStreak, type Achievement, type AchievementTier } from '../src/db';
-
-const TIER_COLOR: { [k in AchievementTier]: string } = {
-  bronze: '#B87333',
-  silver: '#9AA3AE',
-  gold: '#E0961F',
-  special: colors.brand,
-};
-const TIER_LIGHT: { [k in AchievementTier]: string } = {
-  bronze: '#F3E7DC',
-  silver: '#ECEEF1',
-  gold: '#FBEFD6',
-  special: colors.brandLight,
-};
+import { Medal } from '../src/components';
+import { getAchievements, getStreak, type Achievement } from '../src/db';
 
 export default function MedalsScreen() {
   const router = useRouter();
@@ -64,17 +52,7 @@ export default function MedalsScreen() {
             <View style={s.grid}>
               {byCat[cat].map(a => (
                 <Pressable key={a.key} style={s.cell} onPress={() => setSelected(a)}>
-                  <View style={[
-                    s.medal,
-                    a.unlocked
-                      ? { backgroundColor: TIER_LIGHT[a.tier], borderColor: TIER_COLOR[a.tier] }
-                      : { backgroundColor: colors.bgSoft, borderColor: colors.border },
-                  ]}>
-                    <Feather name={a.icon as any} size={26} color={a.unlocked ? TIER_COLOR[a.tier] : colors.textTertiary} />
-                    {!a.unlocked && (
-                      <View style={s.lockDot}><Feather name="lock" size={10} color={colors.textTertiary} /></View>
-                    )}
-                  </View>
+                  <Medal emoji={a.emoji} tier={a.tier} unlocked={a.unlocked} size={62} />
                   <Text style={[s.medalLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
                   {!a.unlocked && a.progress > 0 && a.progress < 1 && (
                     <Text style={s.medalPct}>{Math.round(a.progress * 100)}%</Text>
@@ -91,14 +69,7 @@ export default function MedalsScreen() {
       <Modal visible={selected !== null} transparent animationType="fade" onRequestClose={() => setSelected(null)}>
         <Pressable style={s.modalBg} onPress={() => setSelected(null)}>
           <View style={s.modalCard}>
-            <View style={[
-              s.modalMedal,
-              selected?.unlocked
-                ? { backgroundColor: TIER_COLOR[selected.tier] }
-                : { backgroundColor: colors.bgSoft, borderWidth: 2, borderColor: colors.border },
-            ]}>
-              <Feather name={(selected?.icon ?? 'award') as any} size={40} color={selected?.unlocked ? '#fff' : colors.textTertiary} />
-            </View>
+            {selected && <Medal emoji={selected.emoji} tier={selected.tier} unlocked={selected.unlocked} size={108} />}
             <Text style={s.modalTier}>{selected?.unlocked ? `${selected?.tier} medal` : 'Locked'}</Text>
             <Text style={s.modalTitle}>{selected?.label}</Text>
             <Text style={s.modalDesc}>{selected?.desc}</Text>

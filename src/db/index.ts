@@ -632,7 +632,7 @@ export function getLifetimeStats(): LifetimeStats {
 
 export type AchievementTier = 'bronze' | 'silver' | 'gold' | 'special';
 export type Achievement = {
-  key: string; label: string; desc: string; icon: string;
+  key: string; label: string; desc: string; icon: string; emoji: string;
   category: string; tier: AchievementTier;
   unlocked: boolean; progress: number; // 0..1
   target?: number; value?: number;
@@ -655,54 +655,54 @@ export function getAchievements(): Achievement[] {
   const distinctPlatforms = db.getFirstSync<{ n: number }>(`SELECT COUNT(DISTINCT platform) AS n FROM trips`)?.n ?? 0;
 
   const mk = (
-    key: string, label: string, desc: string, icon: string,
+    key: string, label: string, desc: string, icon: string, emoji: string,
     category: string, tier: AchievementTier, value: number, target: number,
   ): Achievement => ({
-    key, label, desc, icon, category, tier, value, target,
+    key, label, desc, icon, emoji, category, tier, value, target,
     unlocked: value >= target,
     progress: Math.max(0, Math.min(1, value / target)),
   });
   const flag = (
-    key: string, label: string, desc: string, icon: string,
+    key: string, label: string, desc: string, icon: string, emoji: string,
     category: string, tier: AchievementTier, done: boolean,
   ): Achievement => ({
-    key, label, desc, icon, category, tier, unlocked: done, progress: done ? 1 : 0,
+    key, label, desc, icon, emoji, category, tier, unlocked: done, progress: done ? 1 : 0,
   });
 
   return [
     // Trips
-    mk('first_trip', 'First trip', 'Track your first GPS trip', 'navigation', 'Trips', 'bronze', s.trips, 1),
-    mk('trips_10', 'Getting rolling', '10 trips tracked', 'navigation', 'Trips', 'bronze', s.trips, 10),
-    mk('trips_50', 'Seasoned rider', '50 trips tracked', 'navigation', 'Trips', 'silver', s.trips, 50),
-    mk('trips_100', 'Centurion', '100 trips tracked', 'navigation', 'Trips', 'silver', s.trips, 100),
-    mk('trips_250', 'Road warrior', '250 trips tracked', 'navigation', 'Trips', 'gold', s.trips, 250),
+    mk('first_trip', 'First trip', 'Track your first GPS trip', 'navigation', '🚀', 'Trips', 'bronze', s.trips, 1),
+    mk('trips_10', 'Getting rolling', '10 trips tracked', 'navigation', '🛵', 'Trips', 'bronze', s.trips, 10),
+    mk('trips_50', 'Seasoned rider', '50 trips tracked', 'navigation', '🏍️', 'Trips', 'silver', s.trips, 50),
+    mk('trips_100', 'Centurion', '100 trips tracked', 'navigation', '💯', 'Trips', 'silver', s.trips, 100),
+    mk('trips_250', 'Road warrior', '250 trips tracked', 'navigation', '🏆', 'Trips', 'gold', s.trips, 250),
     // Miles
-    mk('miles_100', 'First century', '100 business miles', 'map', 'Miles', 'bronze', s.miles, 100),
-    mk('miles_500', 'Half-grand', '500 business miles', 'map', 'Miles', 'silver', s.miles, 500),
-    mk('miles_1000', 'Long hauler', '1,000 business miles', 'map', 'Miles', 'silver', s.miles, 1000),
-    mk('miles_5000', 'Marathoner', '5,000 business miles', 'map', 'Miles', 'gold', s.miles, 5000),
-    mk('miles_10000', 'Ten-K club', '10,000 business miles', 'map', 'Miles', 'gold', s.miles, 10000),
+    mk('miles_100', 'First century', '100 business miles', 'map', '📍', 'Miles', 'bronze', s.miles, 100),
+    mk('miles_500', 'Half-grand', '500 business miles', 'map', '🛣️', 'Miles', 'silver', s.miles, 500),
+    mk('miles_1000', 'Long hauler', '1,000 business miles', 'map', '🗺️', 'Miles', 'silver', s.miles, 1000),
+    mk('miles_5000', 'Marathoner', '5,000 business miles', 'map', '🌍', 'Miles', 'gold', s.miles, 5000),
+    mk('miles_10000', 'Ten-K club', '10,000 business miles', 'map', '🌟', 'Miles', 'gold', s.miles, 10000),
     // Tax saved
-    mk('saved_100', 'First £100 saved', '£100 saved in tax', 'shield', 'Tax saved', 'bronze', s.taxSaved, 100),
-    mk('saved_500', 'Smart saver', '£500 saved in tax', 'shield', 'Tax saved', 'silver', s.taxSaved, 500),
-    mk('saved_1000', 'Grand saver', '£1,000 saved in tax', 'shield', 'Tax saved', 'gold', s.taxSaved, 1000),
-    mk('saved_2500', 'Tax ninja', '£2,500 saved in tax', 'shield', 'Tax saved', 'gold', s.taxSaved, 2500),
+    mk('saved_100', 'First £100 saved', '£100 saved in tax', 'shield', '💷', 'Tax saved', 'bronze', s.taxSaved, 100),
+    mk('saved_500', 'Smart saver', '£500 saved in tax', 'shield', '💰', 'Tax saved', 'silver', s.taxSaved, 500),
+    mk('saved_1000', 'Grand saver', '£1,000 saved in tax', 'shield', '🤑', 'Tax saved', 'gold', s.taxSaved, 1000),
+    mk('saved_2500', 'Tax ninja', '£2,500 saved in tax', 'shield', '🥷', 'Tax saved', 'gold', s.taxSaved, 2500),
     // Earnings
-    mk('earned_1000', 'Earner', '£1,000 earnings logged', 'dollar-sign', 'Earnings', 'bronze', s.earnings, 1000),
-    mk('earned_5000', 'High roller', '£5,000 earnings logged', 'dollar-sign', 'Earnings', 'silver', s.earnings, 5000),
-    mk('earned_10000', 'Five figures', '£10,000 earnings logged', 'dollar-sign', 'Earnings', 'gold', s.earnings, 10000),
+    mk('earned_1000', 'Earner', '£1,000 earnings logged', 'dollar-sign', '💵', 'Earnings', 'bronze', s.earnings, 1000),
+    mk('earned_5000', 'High roller', '£5,000 earnings logged', 'dollar-sign', '💸', 'Earnings', 'silver', s.earnings, 5000),
+    mk('earned_10000', 'Five figures', '£10,000 earnings logged', 'dollar-sign', '🏦', 'Earnings', 'gold', s.earnings, 10000),
     // Streaks
-    mk('streak_3', 'Warming up', '3-day activity streak', 'zap', 'Streaks', 'bronze', streak, 3),
-    mk('streak_7', 'One week strong', '7-day activity streak', 'zap', 'Streaks', 'silver', streak, 7),
-    mk('streak_30', 'Unstoppable', '30-day activity streak', 'zap', 'Streaks', 'gold', streak, 30),
-    mk('streak_100', 'Centurion streak', '100-day activity streak', 'zap', 'Streaks', 'gold', streak, 100),
+    mk('streak_3', 'Warming up', '3-day activity streak', 'zap', '🔥', 'Streaks', 'bronze', streak, 3),
+    mk('streak_7', 'One week strong', '7-day activity streak', 'zap', '🔥', 'Streaks', 'silver', streak, 7),
+    mk('streak_30', 'Unstoppable', '30-day activity streak', 'zap', '⚡', 'Streaks', 'gold', streak, 30),
+    mk('streak_100', 'Centurion streak', '100-day activity streak', 'zap', '👑', 'Streaks', 'gold', streak, 100),
     // Habits & special
-    flag('night_owl', 'Night owl', 'Complete a trip after 10pm', 'moon', 'Special', 'special', nightTrips > 0),
-    flag('early_bird', 'Early bird', 'Complete a trip before 8am', 'sunrise', 'Special', 'special', dawnTrips > 0),
-    flag('first_expense', 'Bookkeeper', 'Log your first expense', 'file-text', 'Special', 'bronze', expenseCount > 0),
-    flag('receipt_keeper', 'Receipt keeper', 'Attach a photo to an expense', 'camera', 'Special', 'silver', receiptCount > 0),
-    flag('multi_app', 'Multi-tasker', 'Work across 3+ platforms', 'grid', 'Special', 'silver', distinctPlatforms >= 3),
-    flag('first_pack', 'Audit-ready', 'Export your first Accountant Pack', 'award', 'Special', 'gold', packDone),
+    flag('night_owl', 'Night owl', 'Complete a trip after 10pm', 'moon', '🦉', 'Special', 'special', nightTrips > 0),
+    flag('early_bird', 'Early bird', 'Complete a trip before 8am', 'sunrise', '🌅', 'Special', 'special', dawnTrips > 0),
+    flag('first_expense', 'Bookkeeper', 'Log your first expense', 'file-text', '🧾', 'Special', 'bronze', expenseCount > 0),
+    flag('receipt_keeper', 'Receipt keeper', 'Attach a photo to an expense', 'camera', '📸', 'Special', 'silver', receiptCount > 0),
+    flag('multi_app', 'Multi-tasker', 'Work across 3+ platforms', 'grid', '🎯', 'Special', 'silver', distinctPlatforms >= 3),
+    flag('first_pack', 'Audit-ready', 'Export your first Accountant Pack', 'award', '🏅', 'Special', 'gold', packDone),
   ];
 }
 

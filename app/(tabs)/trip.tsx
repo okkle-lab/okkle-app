@@ -6,10 +6,11 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing } from '../../src/components';
+import { useRouter } from 'expo-router';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, Medal } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, type DailyStats } from '../../src/db';
+import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, getStreak, getAchievements, type DailyStats, type Achievement } from '../../src/db';
 
 type Phase = 'setup' | 'live' | 'summary' | 'logpay';
 
@@ -24,6 +25,7 @@ function DayCell({ value, label }: { value: string; label: string }) {
 }
 
 export default function TripScreen() {
+  const router = useRouter();
   const user = getUser();
   const last = getLastTrip();
   // Remember the last platform/vehicle so starting is a single tap.
@@ -34,11 +36,18 @@ export default function TripScreen() {
   const [earnings, setEarnings] = useState('');
   const [todayBase, setTodayBase] = useState(0);
   const [today, setToday] = useState<DailyStats>({ miles: 0, deduction: 0, earnings: 0, trips: 0, hours: 0 });
+  const [streak, setStreak] = useState(0);
+  const [nextMedal, setNextMedal] = useState<Achievement | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payPlatform, setPayPlatform] = useState('');
   const { trip, start, pause, resume, end } = useTrip();
 
-  useEffect(() => { setToday(getDailyStats()); }, [phase]);
+  useEffect(() => {
+    setToday(getDailyStats());
+    setStreak(getStreak());
+    const locked = getAchievements().filter(a => !a.unlocked).sort((a, b) => b.progress - a.progress);
+    setNextMedal(locked[0] ?? null);
+  }, [phase]);
 
   // Keep the screen awake only while a trip is running (phone is mounted).
   useEffect(() => {
@@ -268,10 +277,38 @@ export default function TripScreen() {
 
   // ---- Phase 1: setup --------------------------------------------------------
   const todayHasData = today.trips > 0 || today.earnings > 0;
+  const goalProgress = Math.min(1, today.miles / DAILY_GOAL_MILES);
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <Text style={s.heading}>Start a trip</Text>
       <Text style={s.sub}>Tap start and ride — GPS measures your distance for you.</Text>
+
+      {/* Gamified goal card — daily goal ring + streak + next medal */}
+      <View style={s.goalCard}>
+        <View style={s.goalTop}>
+          <ProgressRing size={62} strokeWidth={7} progress={goalProgress} color={colors.brand}>
+            <Text style={s.goalRingPct}>{Math.round(goalProgress * 100)}%</Text>
+          </ProgressRing>
+          <View style={{ flex: 1 }}>
+            <Text style={s.goalTitle}>Today's goal</Text>
+            <Text style={s.goalSub}>{today.miles.toFixed(1)} of {DAILY_GOAL_MILES} mi</Text>
+          </View>
+          <View style={[s.streakPill, streak > 0 ? s.streakPillOn : s.streakPillOff]}>
+            <Text style={{ fontSize: 14 }}>{streak > 0 ? '🔥' : '✨'}</Text>
+            <Text style={[s.streakPillText, streak === 0 && { color: colors.textSecondary }]}>{streak > 0 ? `${streak}` : 'Start'}</Text>
+          </View>
+        </View>
+        {nextMedal && (
+          <Pressable onPress={() => router.push('/medals')} style={s.nextMedal}>
+            <Medal emoji={nextMedal.emoji} tier={nextMedal.tier} unlocked={false} size={40} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.nextMedalLabel}>Next medal · {nextMedal.label}</Text>
+              <View style={s.nextMedalTrack}><View style={[s.nextMedalFill, { width: `${Math.round(nextMedal.progress * 100)}%` }]} /></View>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+          </Pressable>
+        )}
+      </View>
 
       {/* Today's running summary — visible after at least one trip today */}
       {todayHasData && (
@@ -327,6 +364,20 @@ const s = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
   chip: { marginBottom: 0 },
   gpsNote: { ...type.caption, color: colors.textTertiary, textAlign: 'center', marginTop: 14, lineHeight: 20 },
+
+  goalCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, marginBottom: spacing.lg },
+  goalTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  goalRingPct: { ...tabular, fontSize: 15, fontWeight: font.bold, color: colors.brandDeep },
+  goalTitle: { ...type.bodyMedium, fontSize: 16 },
+  goalSub: { ...type.caption, ...tabular, marginTop: 2 },
+  streakPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.full },
+  streakPillOn: { backgroundColor: colors.amberLight },
+  streakPillOff: { backgroundColor: colors.bgSoft },
+  streakPillText: { ...tabular, fontSize: 14, fontWeight: font.bold, color: colors.amber },
+  nextMedal: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  nextMedalLabel: { ...type.caption, color: colors.textPrimary, fontWeight: font.medium, marginBottom: 5 },
+  nextMedalTrack: { height: 5, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
+  nextMedalFill: { height: '100%', backgroundColor: colors.brandMid, borderRadius: radius.full },
 
   dayBar: {
     flexDirection: 'row', backgroundColor: colors.bgCard, borderRadius: radius.lg,
