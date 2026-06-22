@@ -139,13 +139,13 @@ export default function TaxScreen() {
       <SectionHeader icon="navigation" title="Mileage method" />
       <Card style={{ gap: spacing.md }}>
         <View style={s.methodRow}>
-          <View>
+          <View style={{ flex: 1, paddingRight: spacing.md }}>
             <Text style={s.methodName}>
               {usingActual && method.recommended === 'actual' ? 'Actual costs' : 'Simplified (flat rate)'}
             </Text>
-            <Text style={s.methodSub}>{fmtMiles(bizMiles)} business miles this year</Text>
+            <Text style={s.methodSub} numberOfLines={1}>{fmtMiles(bizMiles)} business miles this year</Text>
           </View>
-          <Text style={s.methodValue}>{fmtGbp(chosenDeduction)}</Text>
+          <Text style={s.methodValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{fmtGbp(chosenDeduction)}</Text>
         </View>
         <Pressable onPress={() => router.push('/compare')} style={s.compareCta}>
           <Feather name="trending-up" size={16} color={colors.brandDeep} />
@@ -347,7 +347,7 @@ const s = StyleSheet.create({
   methodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   methodName: { ...type.bodyMedium, fontSize: 16 },
   methodSub: { ...type.caption, marginTop: 2 },
-  methodValue: { ...tabular, fontSize: 22, fontWeight: font.bold, color: colors.brandDeep, letterSpacing: -0.5 },
+  methodValue: { ...tabular, fontSize: 22, fontWeight: font.bold, color: colors.brandDeep, letterSpacing: -0.5, flexShrink: 1, maxWidth: '55%', textAlign: 'right' },
   compareCta: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md },
   compareCtaText: { ...type.caption, color: colors.brandDeep, flex: 1, fontWeight: font.medium },
   inputLabel: { ...type.caption, color: colors.textSecondary, marginBottom: 8 },

@@ -68,6 +68,10 @@ export default function HomeScreen() {
   const isCarOrVan = (user?.vehicle ?? 'car') === 'car' || (user?.vehicle ?? 'car') === 'van';
   const thresholdPct = Math.min(100, (yearMiles / THRESHOLD) * 100);
   const milesLeft = Math.max(0, THRESHOLD - yearMiles);
+  // Home preview: show unlocked first, then those closest to unlocking.
+  const achievementPreview = [...achievements]
+    .sort((a, b) => (Number(b.unlocked) - Number(a.unlocked)) || (b.progress - a.progress))
+    .slice(0, 12);
 
   return (
     <>
@@ -187,32 +191,40 @@ export default function HomeScreen() {
       {/* Gamification — streak + achievement badges */}
       {achievements.length > 0 && (
         <View style={{ marginTop: spacing.xl }}>
-          <SectionHeader icon="zap" title="Your progress" />
-          <Card>
-            <View style={s.streakRow}>
-              <View style={[s.streakIcon, streak > 0 ? { backgroundColor: colors.amberLight } : { backgroundColor: colors.bgSoft }]}>
-                <Feather name="zap" size={18} color={streak > 0 ? colors.amber : colors.textTertiary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.streakValue}>{streak > 0 ? `${streak}-day streak` : 'No streak yet'}</Text>
-                <Text style={s.streakSub}>{streak > 0 ? 'Keep logging daily to grow it' : 'Track a trip today to start one'}</Text>
-              </View>
-              <Text style={s.achCount}>{achievements.filter(a => a.unlocked).length}/{achievements.length}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg, marginHorizontal: -4 }} contentContainerStyle={{ paddingHorizontal: 4, gap: 14 }}>
-              {achievements.map(a => (
-                <View key={a.key} style={s.badge}>
-                  <View style={[s.badgeCircle, a.unlocked ? s.badgeOn : s.badgeOff]}>
-                    <Feather name={a.icon as any} size={20} color={a.unlocked ? '#fff' : colors.textTertiary} />
-                  </View>
-                  <Text style={[s.badgeLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
-                  {!a.unlocked && a.progress > 0 && (
-                    <View style={s.badgeTrack}><View style={[s.badgeFill, { width: `${Math.round(a.progress * 100)}%` }]} /></View>
-                  )}
+          <View style={s.progressHead}>
+            <SectionHeader icon="zap" title="Your progress" />
+            <Pressable onPress={() => router.push('/medals')} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+              <Text style={s.seeAll}>See all medals</Text>
+              <Feather name="chevron-right" size={15} color={colors.brandDeep} />
+            </Pressable>
+          </View>
+          <Pressable onPress={() => router.push('/medals')}>
+            <Card>
+              <View style={s.streakRow}>
+                <View style={[s.streakIcon, streak > 0 ? { backgroundColor: colors.amberLight } : { backgroundColor: colors.bgSoft }]}>
+                  <Feather name="zap" size={18} color={streak > 0 ? colors.amber : colors.textTertiary} />
                 </View>
-              ))}
-            </ScrollView>
-          </Card>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.streakValue}>{streak > 0 ? `${streak}-day streak` : 'No streak yet'}</Text>
+                  <Text style={s.streakSub}>{streak > 0 ? 'Keep logging daily to grow it' : 'Track a trip today to start one'}</Text>
+                </View>
+                <Text style={s.achCount}>{achievements.filter(a => a.unlocked).length}/{achievements.length}</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg, marginHorizontal: -4 }} contentContainerStyle={{ paddingHorizontal: 4, gap: 14 }}>
+                {achievementPreview.map(a => (
+                  <View key={a.key} style={s.badge}>
+                    <View style={[s.badgeCircle, a.unlocked ? s.badgeOn : s.badgeOff]}>
+                      <Feather name={a.icon as any} size={20} color={a.unlocked ? '#fff' : colors.textTertiary} />
+                    </View>
+                    <Text style={[s.badgeLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
+                    {!a.unlocked && a.progress > 0 && (
+                      <View style={s.badgeTrack}><View style={[s.badgeFill, { width: `${Math.round(a.progress * 100)}%` }]} /></View>
+                    )}
+                  </View>
+                ))}
+              </ScrollView>
+            </Card>
+          </Pressable>
         </View>
       )}
 
@@ -383,6 +395,8 @@ const s = StyleSheet.create({
   achBurst: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   achKicker: { ...type.label, color: colors.brandDeep, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 12, marginBottom: 4 },
 
+  progressHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  seeAll: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
   streakRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   streakIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   streakValue: { ...type.bodyMedium, fontSize: 16 },

@@ -71,7 +71,11 @@ export function fmtGbpRound(amount: number): string {
 }
 
 export function fmtMiles(miles: number): string {
-  return miles.toFixed(1) + ' mi';
+  // Thousands separators; drop the decimal once we're into the thousands.
+  const body = miles >= 1000
+    ? Math.round(miles).toLocaleString('en-GB')
+    : miles.toFixed(1);
+  return body + ' mi';
 }
 
 // --- Consistent rate / time / percent formatting across every screen --------
