@@ -2,6 +2,15 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (FreeAgent export, audit-grade pack, day-bar fix)
+
+### Accounting & audit
+- **FreeAgent CSV export** — export earnings and expenses in FreeAgent's bank-statement import format (Date / Amount / Description), ready to upload. The free-tier hook ahead of paid auto-sync.
+- **Audit-grade Accountant Pack** — reviewed as an external auditor would: explicit accounting period and client reference on the cover, a "Basis of preparation" section with record-count completeness totals, SA103S box-number mapping (boxes 9 / 20 / 31), footing totals on every table, consistent GBP formatting, UK dates, and clean page breaks.
+
+### Formatting
+- **Day-bar fix** — today's strip on the Trip screen now shows whole pounds and auto-shrinks so large figures (e.g. £6,464) no longer wrap and look broken.
+
 ## 2026-06-23 (number & alignment polish)
 
 ### Cleaner numbers and layout

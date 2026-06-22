@@ -182,6 +182,8 @@ Bundle identifier: `uk.okkle.app`
 
 ## Planned / future
 
+- **Accounting auto-sync (FreeAgent / Xero / QuickBooks)** — CSV export to FreeAgent ships today (no backend). Live API push is a paid Phase-2 feature needing a backend (OAuth2 + per-provider developer registration). FreeAgent is the priority (best courier fit).
+- **AI receipt scanning & categorization** — planned as a **subscription** (~£3.49/mo) because each scan has a recurring inference cost; needs a Claude API proxy server.
 - **HMRC MTD API submission** — quarterly data is computed and ready; the submission pipe needs a backend server (OAuth2, fraud-prevention headers, client secret proxy).
 - **Open Banking** (TrueLayer / Plaid) — auto-import courier deposits from bank feed (requires subscription backend).
 - **AI receipt OCR** — Claude vision for receipt scanning (requires API key proxy server).
