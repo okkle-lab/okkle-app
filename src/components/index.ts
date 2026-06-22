@@ -8,3 +8,4 @@ export { Icon, VehicleIcon } from './Icon';
 export { VehicleChip } from './VehicleChip';
 export { ProgressRing } from './ProgressRing';
 export { IconBadge } from './IconBadge';
+export { CountUp } from './CountUp';

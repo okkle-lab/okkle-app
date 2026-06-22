@@ -4,6 +4,12 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Business insights & delight
+- **Analyst-grade insights** on the Tax tab: effective net pay per hour, gross pay per hour, earnings per mile, net margin (% kept after tax), and hours tracked — your courier work as a P&L.
+- **"Which platform pays best?"** — ranks platforms by £/hour (not just £/mile), so you can see Deliveroo vs Uber Eats on what actually matters.
+- **Animated tax-saved counter** on the home hero — the headline number now counts up when you open the app.
+- **Receipt viewing** — open any expense in Records to see its attached receipt photo.
+
 ### Tax deadline reminders & visual polish
 - Added **tax-deadline reminders**: yearly notifications ahead of registering for Self Assessment, the 31 Jan filing & payment, the 31 Jul payment on account, and all four MTD quarterly deadlines. Toggle in Settings.
 - **Visual polish** to bring depth and warmth back: soft elevation on cards, and colour returns via tinted icon badges (metric cards, export rows, backup/restore). Flat stays for controls; surfaces now have hierarchy.

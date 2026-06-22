@@ -262,31 +262,48 @@ export function getTaxYearSummary(): TaxYearSummary {
   return { miles, deduction, taxSaved, earnings, taxRate };
 }
 
-export type PlatformStat = { platform: string; miles: number; earnings: number; perMile: number };
+export type PlatformStat = {
+  platform: string; miles: number; earnings: number; hours: number;
+  perMile: number; perHour: number;
+};
 
-// Earnings-per-mile by platform — the headline analytic competitors lack.
+function tripHours(t: Trip): number {
+  const ms = new Date(t.ended_at).getTime() - new Date(t.started_at).getTime();
+  return ms > 0 ? ms / 3600000 : 0;
+}
+
+// Earnings per mile AND per hour by platform — the headline analytics.
 export function getPlatformStats(): PlatformStat[] {
-  const agg: { [p: string]: { miles: number; earnings: number } } = {};
-  const bump = (p: string, miles: number, earnings: number) => {
+  const agg: { [p: string]: { miles: number; earnings: number; hours: number } } = {};
+  const bump = (p: string, miles: number, earnings: number, hours: number) => {
     const key = p || 'Other';
-    if (!agg[key]) agg[key] = { miles: 0, earnings: 0 };
+    if (!agg[key]) agg[key] = { miles: 0, earnings: 0, hours: 0 };
     agg[key].miles += miles;
     agg[key].earnings += earnings;
+    agg[key].hours += hours;
   };
   for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
-    bump(t.platform, t.miles, t.earnings ?? 0);
+    bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
   }
   for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type IN ('income','mileage')`)) {
     bump(r.platform ?? 'Other', r.record_type === 'mileage' ? (r.miles ?? 0) : 0,
-      r.record_type === 'income' ? (r.amount ?? 0) : 0);
+      r.record_type === 'income' ? (r.amount ?? 0) : 0, 0);
   }
   return Object.entries(agg)
     .map(([platform, v]) => ({
-      platform, miles: v.miles, earnings: v.earnings,
+      platform, miles: v.miles, earnings: v.earnings, hours: v.hours,
       perMile: v.miles > 0 ? v.earnings / v.miles : 0,
+      perHour: v.hours > 0 ? v.earnings / v.hours : 0,
     }))
     .filter(s => s.miles > 0 || s.earnings > 0)
     .sort((a, b) => b.perMile - a.perMile);
+}
+
+// Total hours tracked this tax year (from trip durations).
+export function getHoursWorked(): number {
+  const start = taxYearStart();
+  const trips = db.getAllSync<Trip>('SELECT * FROM trips WHERE date(started_at) >= ?', start);
+  return trips.reduce((s, t) => s + tripHours(t), 0);
 }
 
 // Today's total miles (saved trips) — feeds the daily goal ring.

@@ -6,7 +6,8 @@ import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Card, SectionHeader, PrimaryButton, IconBadge } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTrips, getRecords,
-  getUser, getQuarterlySummaries, kvGet, kvGetNum, kvSet, type QuarterSummary,
+  getUser, getQuarterlySummaries, getHoursWorked, getPlatformStats,
+  kvGet, kvGetNum, kvSet, type QuarterSummary, type PlatformStat,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel } from '../../src/db/tax';
 import {
@@ -22,6 +23,8 @@ export default function TaxScreen() {
   const [methodInputs, setMethodInputs] = React.useState({ personalMiles: 0, runningCosts: 0, vehicleValue: 0, caBasis: 'low' });
   const [otherIncome, setOtherIncome] = React.useState(String(kvGetNum('other_income') || ''));
   const [quarters, setQuarters] = React.useState<QuarterSummary[]>([]);
+  const [hours, setHours] = React.useState(0);
+  const [platforms, setPlatforms] = React.useState<PlatformStat[]>([]);
   const user = getUser();
 
   function reload() {
@@ -29,6 +32,8 @@ export default function TaxScreen() {
     setBizMiles(getTaxYearMiles());
     setOtherExpenses(getTaxYearExpenses());
     setQuarters(getQuarterlySummaries());
+    setHours(getHoursWorked());
+    setPlatforms(getPlatformStats());
     setMethodInputs({
       personalMiles: kvGetNum('personal_miles'),
       runningCosts: kvGetNum('running_costs'),
@@ -175,13 +180,40 @@ export default function TaxScreen() {
         )}
       </Card>
 
-      {/* Insights */}
-      <SectionHeader title="Insights" />
+      {/* Insights — your business as a P&L */}
+      <SectionHeader title="Business insights" />
       <Card>
-        <Row label="Gross earnings per mile" value={`£${grossPerMile.toFixed(2)}`} />
+        <Row label="Effective net pay / hour" value={hours > 0 ? `£${((pos.profit - pos.totalDue) / hours).toFixed(2)}` : '—'} bold accent />
+        <Row label="Gross pay / hour" value={hours > 0 ? `£${(year.earnings / hours).toFixed(2)}` : '—'} />
+        <Row label="Gross earnings / mile" value={`£${grossPerMile.toFixed(2)}`} />
+        <Row label="Net margin (kept after tax)" value={year.earnings > 0 ? `${(((pos.profit - pos.totalDue) / year.earnings) * 100).toFixed(0)}%` : '—'} />
+        <Row label="Hours tracked this year" value={`${hours.toFixed(0)}h`} />
         <Row label="Personal allowance left" value={fmtGbp(Math.max(0, PERSONAL_ALLOWANCE - pos.profit))} />
-        <Row label="Profit after tax" value={fmtGbp(pos.profit - pos.totalDue)} bold />
+        {hours === 0 && (
+          <Text style={s.smallNote}>Track trips and add earnings to unlock your hourly rate and margin.</Text>
+        )}
       </Card>
+
+      {/* Platform ROI by hour */}
+      {platforms.some(p => p.perHour > 0) && (
+        <>
+          <SectionHeader title="Which platform pays best?" />
+          <Card style={{ padding: 0, overflow: 'hidden' }}>
+            {platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour).map((p, i, arr) => (
+              <View key={p.platform} style={[s.qRow, i < arr.length - 1 && s.qBorder]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.qLabel}>{p.platform}</Text>
+                  <Text style={s.qDates}>£{p.perMile.toFixed(2)}/mi · {p.hours.toFixed(0)}h</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} /> : null}
+                  <Text style={[s.qProfit, i === 0 && { color: colors.green }]}>£{p.perHour.toFixed(2)}/h</Text>
+                </View>
+              </View>
+            ))}
+          </Card>
+        </>
+      )}
 
       {/* MTD quarterly updates */}
       <SectionHeader title="Making Tax Digital — quarterly updates" />

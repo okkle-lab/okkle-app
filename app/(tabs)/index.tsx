@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable } from 'r
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { MetricCard, Card, SectionHeader, Icon, VehicleIcon } from '../../src/components';
+import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp } from '../../src/components';
 import {
   getWeeklySummary, getTrips, getUser, getTaxYearMiles, getPlatformStats,
   getTaxYearSummary, type PlatformStat,
@@ -62,7 +62,7 @@ export default function HomeScreen() {
           <Feather name="trending-up" size={15} color="#fff" />
           <Text style={s.heroLabel}>Tax saved this year</Text>
         </View>
-        <Text style={s.heroValue}>{fmtGbp(year.taxSaved)}</Text>
+        <CountUp value={year.taxSaved} prefix="£" style={s.heroValue} />
         <Text style={s.heroSub}>
           from {fmtMiles(year.miles)} · {fmtGbp(year.deduction)} mileage deduction
         </Text>

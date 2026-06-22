@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert,
+  View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert, Image,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -133,6 +133,13 @@ export default function EditEntry() {
           </>
         )}
 
+        {record?.receipt_uri ? (
+          <>
+            <SectionHeader title="Receipt" />
+            <Image source={{ uri: record.receipt_uri }} style={s.receipt} resizeMode="contain" />
+          </>
+        ) : null}
+
         <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.xl }} />
         <Pressable onPress={confirmDelete} style={s.deleteBtn}>
           <Text style={s.deleteText}>Delete entry</Text>
@@ -156,6 +163,7 @@ const s = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   preview: { ...type.caption, color: colors.brandDeep, marginBottom: spacing.lg },
+  receipt: { width: '100%', height: 240, borderRadius: radius.md, backgroundColor: colors.bgSoft, marginBottom: spacing.lg },
   deleteBtn: { marginTop: spacing.lg, alignItems: 'center', paddingVertical: spacing.md },
   deleteText: { ...type.label, color: colors.red },
 });
