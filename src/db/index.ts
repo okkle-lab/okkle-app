@@ -207,6 +207,116 @@ export function getWeeklySummary(): WeeklySummary {
   return { earnings, miles, deduction, takeHome, taxRate };
 }
 
+// ---- Unified period summaries (Today · Week · Month · Year) ----------------
+
+function taxYearLabelFor(ref: Date): string {
+  const y = ref.getMonth() >= 3 ? ref.getFullYear() : ref.getFullYear() - 1;
+  return `${y}/${String(y + 1).slice(2)}`;
+}
+
+export type Period = 'today' | 'week' | 'month' | 'year';
+
+export type PeriodSummary = {
+  period: Period;
+  label: string;        // e.g. "June 2026", "This week", "Today"
+  rangeStart: string;   // ISO date (yyyy-mm-dd), inclusive
+  rangeEnd: string;     // ISO date, inclusive
+  earnings: number;
+  miles: number;
+  deduction: number;
+  expenses: number;
+  trips: number;
+  hours: number;
+  takeHome: number;
+  taxRate: number;
+};
+
+// Resolve a period to an inclusive [start, end] ISO-date range + a human label.
+export function periodRange(period: Period, ref = new Date()): { start: string; end: string; label: string } {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  if (period === 'today') {
+    return { start: iso(ref), end: iso(ref), label: 'Today' };
+  }
+  if (period === 'week') {
+    // Pay weeks for Uber/Deliveroo/Just Eat run Monday–Sunday.
+    const day = ref.getDay(); // 0=Sun..6=Sat
+    const mondayOffset = day === 0 ? 6 : day - 1;
+    const start = new Date(ref); start.setDate(ref.getDate() - mondayOffset);
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    return { start: iso(start), end: iso(end), label: 'This week' };
+  }
+  if (period === 'month') {
+    const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+    const label = ref.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    return { start: iso(start), end: iso(end), label };
+  }
+  // year = UK tax year (6 Apr – 5 Apr)
+  const start = taxYearStart(ref);
+  const sy = parseInt(start.slice(0, 4), 10);
+  return { start, end: `${sy + 1}-04-05`, label: `Tax year ${taxYearLabelFor(ref)}` };
+}
+
+export function getPeriodSummary(period: Period, ref = new Date()): PeriodSummary {
+  const user = getUser();
+  const taxRate = user?.tax_rate ?? 0.20;
+  const { start, end, label } = periodRange(period, ref);
+
+  const tripRows = db.getAllSync<{ miles: number; deduction: number; earnings: number | null; started_at: string; ended_at: string }>(
+    `SELECT miles, deduction, earnings, started_at, ended_at FROM trips WHERE date(started_at) BETWEEN ? AND ?`, start, end,
+  );
+  const incomeRows = db.getAllSync<{ amount: number }>(
+    `SELECT amount FROM records WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, start, end,
+  );
+  const mileRows = db.getAllSync<{ miles: number; deduction: number }>(
+    `SELECT miles, deduction FROM records WHERE record_type='mileage' AND date(created_at) BETWEEN ? AND ?`, start, end,
+  );
+  const expRow = db.getFirstSync<{ exp: number }>(
+    `SELECT COALESCE(SUM(amount),0) AS exp FROM records WHERE record_type='expense' AND date(created_at) BETWEEN ? AND ?`, start, end,
+  );
+
+  const miles = tripRows.reduce((s, r) => s + r.miles, 0) + mileRows.reduce((s, r) => s + r.miles, 0);
+  const deduction = tripRows.reduce((s, r) => s + r.deduction, 0) + mileRows.reduce((s, r) => s + (r.deduction ?? 0), 0);
+  const earnings = tripRows.reduce((s, r) => s + (r.earnings ?? 0), 0) + incomeRows.reduce((s, r) => s + (r.amount ?? 0), 0);
+  const expenses = expRow?.exp ?? 0;
+  const hours = tripRows.reduce((s, r) => {
+    const ms = new Date(r.ended_at).getTime() - new Date(r.started_at).getTime();
+    return s + (ms > 0 ? ms / 3600000 : 0);
+  }, 0);
+  const takeHome = earnings - Math.max(0, earnings - deduction - expenses) * taxRate;
+
+  return {
+    period, label, rangeStart: start, rangeEnd: end,
+    earnings, miles, deduction, expenses, trips: tripRows.length, hours, takeHome, taxRate,
+  };
+}
+
+// Per-platform breakdown for a given period — answers "which platform won this month?"
+export function getPlatformStatsForPeriod(period: Period, ref = new Date()): PlatformStat[] {
+  const { start, end } = periodRange(period, ref);
+  const agg: { [p: string]: { miles: number; earnings: number; hours: number } } = {};
+  const bump = (p: string, miles: number, earnings: number, hours: number) => {
+    const key = p || 'Other';
+    if (!agg[key]) agg[key] = { miles: 0, earnings: 0, hours: 0 };
+    agg[key].miles += miles; agg[key].earnings += earnings; agg[key].hours += hours;
+  };
+  for (const t of db.getAllSync<Trip>('SELECT * FROM trips WHERE date(started_at) BETWEEN ? AND ?', start, end)) {
+    bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
+  }
+  for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type IN ('income','mileage') AND date(created_at) BETWEEN ? AND ?`, start, end)) {
+    bump(r.platform ?? 'Other', r.record_type === 'mileage' ? (r.miles ?? 0) : 0,
+      r.record_type === 'income' ? (r.amount ?? 0) : 0, 0);
+  }
+  return Object.entries(agg)
+    .map(([platform, v]) => ({
+      platform, miles: v.miles, earnings: v.earnings, hours: v.hours,
+      perMile: v.miles > 0 ? v.earnings / v.miles : 0,
+      perHour: v.hours > 0 ? v.earnings / v.hours : 0,
+    }))
+    .filter(s => s.miles > 0 || s.earnings > 0)
+    .sort((a, b) => b.earnings - a.earnings);
+}
+
 // UK tax year starts 6 April.
 export function taxYearStart(ref = new Date()): string {
   const y = (ref.getMonth() > 3 || (ref.getMonth() === 3 && ref.getDate() >= 6))

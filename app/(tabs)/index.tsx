@@ -5,9 +5,10 @@ import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp } from '../../src/components';
 import {
-  getWeeklySummary, getTrips, getUser, getTaxYearMiles, getPlatformStats,
+  getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getTaxYearExpenses, getEarningsByTimeOfDay,
-  kvGetNum, kvSet, type PlatformStat, type TimeBucket,
+  getPeriodSummary, getPlatformStatsForPeriod,
+  kvGetNum, kvSet, type PlatformStat, type TimeBucket, type Period, type PeriodSummary,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel } from '../../src/db/tax';
 import { taxPosition } from '../../src/db/taxcalc';
@@ -18,28 +19,32 @@ const THRESHOLD = 10000;
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [summary, setSummary] = React.useState({ earnings: 0, miles: 0, deduction: 0, takeHome: 0, taxRate: 0.2 });
+  const [period, setPeriod] = React.useState<Period>('week');
+  const [periodData, setPeriodData] = React.useState<PeriodSummary | null>(null);
+  const [periodPlatforms, setPeriodPlatforms] = React.useState<PlatformStat[]>([]);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [trips, setTrips] = React.useState<ReturnType<typeof getTrips>>([]);
   const [user, setUser] = React.useState(getUser());
   const [yearMiles, setYearMiles] = React.useState(0);
-  const [platformStats, setPlatformStats] = React.useState<PlatformStat[]>([]);
   const [setAside, setSetAside] = React.useState(0);
   const [milestone, setMilestone] = React.useState<number | null>(null);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
 
+  function loadPeriod(p: Period) {
+    setPeriodData(getPeriodSummary(p));
+    setPeriodPlatforms(getPlatformStatsForPeriod(p));
+  }
+
   function load() {
-    const w = getWeeklySummary();
     const y = getTaxYearSummary();
     const u = getUser();
-    setSummary(w);
     setYear(y);
     setTrips(getTrips(5));
     setUser(u);
     setYearMiles(getTaxYearMiles());
-    setPlatformStats(getPlatformStats());
     setBuckets(getEarningsByTimeOfDay());
+    loadPeriod(period);
 
     // "Set aside for tax" estimate.
     const pos = taxPosition(y.earnings, y.deduction + getTaxYearExpenses(), u?.region ?? 'ruk', kvGetNum('other_income'));
@@ -51,14 +56,15 @@ export default function HomeScreen() {
     if (reached > seen) { setMilestone(reached); kvSet('milestone_seen', reached); }
   }
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  useFocusEffect(useCallback(() => { load(); }, [period]));
+
+  function selectPeriod(p: Period) { setPeriod(p); loadPeriod(p); }
 
   function onRefresh() { setRefreshing(true); load(); setRefreshing(false); }
 
   const isCarOrVan = (user?.vehicle ?? 'car') === 'car' || (user?.vehicle ?? 'car') === 'van';
   const thresholdPct = Math.min(100, (yearMiles / THRESHOLD) * 100);
   const milesLeft = Math.max(0, THRESHOLD - yearMiles);
-  const earnerStats = platformStats.filter(p => p.perMile > 0);
 
   return (
     <>
@@ -126,15 +132,51 @@ export default function HomeScreen() {
         <Feather name="arrow-right" size={22} color="#fff" />
       </Pressable>
 
-      <Text style={s.weekLabel}>This week</Text>
+      {/* Period switcher — Today · Week · Month · Year */}
+      <View style={s.segment}>
+        {([['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']] as [Period, string][]).map(([p, label]) => (
+          <Pressable key={p} onPress={() => selectPeriod(p)} style={[s.segItem, period === p && s.segItemActive]}>
+            <Text style={[s.segText, period === p && s.segTextActive]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={s.periodLabel}>{periodData?.label ?? ''}</Text>
       <View style={s.metricsRow}>
-        <MetricCard icon="home" label="Take-home" value={fmtGbp(summary.takeHome)} accent style={{ marginRight: 8 }} />
-        <MetricCard icon="map" label="Miles" value={fmtMiles(summary.miles)} sub={fmtGbp(summary.deduction)} />
+        <MetricCard icon="home" label="Take-home" value={fmtGbp(periodData?.takeHome ?? 0)} accent style={{ marginRight: 8 }} />
+        <MetricCard icon="map" label="Miles" value={fmtMiles(periodData?.miles ?? 0)} sub={fmtGbp(periodData?.deduction ?? 0)} />
       </View>
       <View style={[s.metricsRow, { marginTop: 10 }]}>
-        <MetricCard icon="dollar-sign" label="Earnings" value={fmtGbp(summary.earnings)} style={{ marginRight: 8 }} />
-        <MetricCard icon="percent" label="Tax benefit" value={`~${fmtGbp(summary.deduction * summary.taxRate)}`} />
+        <MetricCard icon="dollar-sign" label="Earnings" value={fmtGbp(periodData?.earnings ?? 0)} style={{ marginRight: 8 }} />
+        <MetricCard
+          icon="clock"
+          label={period === 'today' ? 'Trips' : 'Hours'}
+          value={period === 'today' ? String(periodData?.trips ?? 0) : `${(periodData?.hours ?? 0).toFixed(1)}h`}
+          sub={(periodData?.hours ?? 0) > 0 ? `£${((periodData?.earnings ?? 0) / (periodData?.hours || 1)).toFixed(1)}/h` : undefined}
+        />
       </View>
+
+      {/* Per-platform breakdown for the selected period — multi-platform couriers */}
+      {periodPlatforms.length > 0 && (
+        <View style={{ marginTop: spacing.lg }}>
+          <SectionHeader title={`By platform · ${periodData?.label ?? ''}`} />
+          <Card style={{ padding: 0, overflow: 'hidden' }}>
+            {periodPlatforms.map((p, i, arr) => (
+              <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.rowTitle}>{p.platform}</Text>
+                  <Text style={s.rowSub}>
+                    {fmtMiles(p.miles)}{p.perMile > 0 ? ` · £${p.perMile.toFixed(2)}/mi` : ''}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
+                  {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} /> : null}
+                  <Text style={[s.rowAmount, { color: colors.textPrimary }, i === 0 && { color: colors.green }]}>{fmtGbp(p.earnings)}</Text>
+                </View>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
 
       {isCarOrVan && yearMiles > 0 && (
         <View style={{ marginTop: spacing.xl }}>
@@ -155,26 +197,6 @@ export default function HomeScreen() {
                   : 'Past 10,000 miles — extra car/van miles at 25p'}
               </Text>
             </View>
-          </Card>
-        </View>
-      )}
-
-      {earnerStats.length > 0 && (
-        <View style={{ marginTop: spacing.xl }}>
-          <SectionHeader title="Earnings per mile" />
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            {earnerStats.map((p, i) => (
-              <View key={p.platform} style={[s.row, i < earnerStats.length - 1 && s.rowBorder]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rowTitle}>{p.platform}</Text>
-                  <Text style={s.rowSub}>{fmtMiles(p.miles)} · {fmtGbp(p.earnings)}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
-                  {i === 0 && earnerStats.length > 1 ? <Feather name="award" size={15} color={colors.green} /> : null}
-                  <Text style={[s.rowAmount, i === 0 && { color: colors.green }]}>£{p.perMile.toFixed(2)}/mi</Text>
-                </View>
-              </View>
-            ))}
           </Card>
         </View>
       )}
@@ -275,7 +297,12 @@ const s = StyleSheet.create({
   quickStartTitle: { color: '#fff', fontSize: 18, fontWeight: font.bold },
   quickStartSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 1 },
 
-  weekLabel: { ...type.label, color: colors.textSecondary, marginBottom: spacing.sm, fontWeight: font.semibold },
+  segment: { flexDirection: 'row', backgroundColor: colors.bgSoft, borderRadius: radius.lg, padding: 4, marginBottom: spacing.sm },
+  segItem: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: radius.md },
+  segItemActive: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
+  segTextActive: { color: colors.textPrimary, fontWeight: font.semibold },
+  periodLabel: { ...type.label, color: colors.textSecondary, marginBottom: spacing.sm, fontWeight: font.semibold },
   metricsRow: { flexDirection: 'row' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   thresholdMiles: { ...type.bodyMedium, fontSize: 15 },
