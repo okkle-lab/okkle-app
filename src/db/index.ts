@@ -299,6 +299,35 @@ export function getPlatformStats(): PlatformStat[] {
     .sort((a, b) => b.perMile - a.perMile);
 }
 
+export type TimeBucket = { label: string; earnings: number; hours: number; trips: number; perHour: number };
+
+// Earnings by time of day — "best hours to work" heatmap.
+const TIME_BUCKETS: { label: string; from: number; to: number }[] = [
+  { label: 'Morning', from: 6, to: 11 },
+  { label: 'Lunch', from: 11, to: 14 },
+  { label: 'Afternoon', from: 14, to: 17 },
+  { label: 'Dinner', from: 17, to: 21 },
+  { label: 'Late', from: 21, to: 30 }, // wraps past midnight (handled below)
+];
+
+export function getEarningsByTimeOfDay(): TimeBucket[] {
+  const acc = TIME_BUCKETS.map(b => ({ ...b, earnings: 0, hours: 0, trips: 0 }));
+  for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
+    const h = new Date(t.started_at).getHours();
+    const hourNorm = h < 6 ? h + 24 : h; // group 0-5am into the Late bucket (21-30)
+    const idx = acc.findIndex(b => hourNorm >= b.from && hourNorm < b.to);
+    if (idx >= 0) {
+      acc[idx].earnings += t.earnings ?? 0;
+      acc[idx].hours += tripHours(t);
+      acc[idx].trips += 1;
+    }
+  }
+  return acc.map(b => ({
+    label: b.label, earnings: b.earnings, hours: b.hours, trips: b.trips,
+    perHour: b.hours > 0 ? b.earnings / b.hours : 0,
+  }));
+}
+
 // Total hours tracked this tax year (from trip durations).
 export function getHoursWorked(): number {
   const start = taxYearStart();

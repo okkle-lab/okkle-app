@@ -49,6 +49,17 @@ export default function TripScreen() {
     setPhase('summary');
   }
 
+  function handleDiscard() {
+    Alert.alert(
+      'Discard this trip?',
+      "The miles tracked so far won't be saved.",
+      [
+        { text: 'Keep tracking', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => { end(); setFinished(null); setEarnings(''); setPhase('setup'); } },
+      ],
+    );
+  }
+
   function handleSave() {
     if (!finished) return;
     saveTrip({
@@ -77,6 +88,9 @@ export default function TripScreen() {
           <View style={[s.liveDot, isPaused && { backgroundColor: colors.amber }]} />
           <Text style={s.liveStatus}>{isPaused ? 'Paused' : trip.platform}</Text>
         </View>
+        <Pressable onPress={handleDiscard} hitSlop={12} style={s.discardX}>
+          <Feather name="x" size={24} color="rgba(255,255,255,0.7)" />
+        </Pressable>
 
         {/* Daily goal activity ring — ambient and glanceable */}
         <View style={s.ringWrap}>
@@ -167,6 +181,9 @@ export default function TripScreen() {
           <Pressable onPress={handleSave} style={{ marginTop: 14, alignItems: 'center' }}>
             <Text style={s.skip}>Skip — add earnings later</Text>
           </Pressable>
+          <Pressable onPress={() => { setFinished(null); setEarnings(''); setPhase('setup'); }} style={{ marginTop: 18, alignItems: 'center' }}>
+            <Text style={s.discardText}>Discard this trip</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -233,6 +250,7 @@ const s = StyleSheet.create({
 
   // live
   liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 72 },
+  discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
   liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4ade80' },
   liveStatus: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: font.medium },
   ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -274,4 +292,5 @@ const s = StyleSheet.create({
   },
   earningsNote: { ...type.caption, color: colors.textTertiary, marginTop: 8, lineHeight: 19 },
   skip: { ...type.label, color: colors.textSecondary },
+  discardText: { ...type.caption, color: colors.red },
 });

@@ -1,14 +1,18 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp } from '../../src/components';
 import {
   getWeeklySummary, getTrips, getUser, getTaxYearMiles, getPlatformStats,
-  getTaxYearSummary, type PlatformStat,
+  getTaxYearSummary, getTaxYearExpenses, getEarningsByTimeOfDay,
+  kvGetNum, kvSet, type PlatformStat, type TimeBucket,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel } from '../../src/db/tax';
+import { taxPosition } from '../../src/db/taxcalc';
+
+const MILESTONES = [50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000];
 
 const THRESHOLD = 10000;
 
@@ -20,15 +24,31 @@ export default function HomeScreen() {
   const [user, setUser] = React.useState(getUser());
   const [yearMiles, setYearMiles] = React.useState(0);
   const [platformStats, setPlatformStats] = React.useState<PlatformStat[]>([]);
+  const [setAside, setSetAside] = React.useState(0);
+  const [milestone, setMilestone] = React.useState<number | null>(null);
+  const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
 
   function load() {
-    setSummary(getWeeklySummary());
-    setYear(getTaxYearSummary());
+    const w = getWeeklySummary();
+    const y = getTaxYearSummary();
+    const u = getUser();
+    setSummary(w);
+    setYear(y);
     setTrips(getTrips(5));
-    setUser(getUser());
+    setUser(u);
     setYearMiles(getTaxYearMiles());
     setPlatformStats(getPlatformStats());
+    setBuckets(getEarningsByTimeOfDay());
+
+    // "Set aside for tax" estimate.
+    const pos = taxPosition(y.earnings, y.deduction + getTaxYearExpenses(), u?.region ?? 'ruk', kvGetNum('other_income'));
+    setSetAside(pos.totalDue);
+
+    // Milestone celebration when tax saved crosses a new threshold.
+    const reached = [...MILESTONES].reverse().find(m => y.taxSaved >= m) ?? 0;
+    const seen = kvGetNum('milestone_seen');
+    if (reached > seen) { setMilestone(reached); kvSet('milestone_seen', reached); }
   }
 
   useFocusEffect(useCallback(() => { load(); }, []));
@@ -41,6 +61,17 @@ export default function HomeScreen() {
   const earnerStats = platformStats.filter(p => p.perMile > 0);
 
   return (
+    <>
+    <Modal visible={milestone !== null} transparent animationType="fade" onRequestClose={() => setMilestone(null)}>
+      <Pressable style={s.modalBg} onPress={() => setMilestone(null)}>
+        <View style={s.modalCard}>
+          <Text style={s.modalEmoji}>🎉</Text>
+          <Text style={s.modalTitle}>Nice work!</Text>
+          <Text style={s.modalBody}>You've saved over {fmtGbp(milestone ?? 0)} in tax this year through mileage tracking.</Text>
+          <Pressable onPress={() => setMilestone(null)} style={s.modalBtn}><Text style={s.modalBtnText}>Keep it up</Text></Pressable>
+        </View>
+      </Pressable>
+    </Modal>
     <ScrollView
       style={s.screen}
       contentContainerStyle={s.content}
@@ -70,6 +101,18 @@ export default function HomeScreen() {
           <Text style={s.heroChipText}>Tax year {taxYearLabel()}</Text>
         </View>
       </View>
+
+      {/* Set aside for tax — practical money guidance */}
+      <Card style={s.setAside}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={s.piggy}><Feather name="shield" size={18} color={colors.amber} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.setAsideLabel}>Set aside for tax</Text>
+            <Text style={s.setAsideSub}>Estimated bill so far this year</Text>
+          </View>
+          <Text style={s.setAsideValue}>{fmtGbp(setAside)}</Text>
+        </View>
+      </Card>
 
       {/* Quick-start */}
       <Pressable onPress={() => router.push('/(tabs)/trip')} style={({ pressed }) => [s.quickStart, pressed && { opacity: 0.9 }]}>
@@ -161,6 +204,38 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {/* Best hours heatmap */}
+      {buckets.some(b => b.trips > 0) && (
+        <View style={{ marginTop: spacing.xl }}>
+          <SectionHeader title="Best times to work" />
+          <Card>
+            {(() => {
+              const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
+              const anyEarnings = buckets.some(b => b.earnings > 0);
+              return buckets.map(b => {
+                const ref = anyEarnings ? b.perHour : b.trips;
+                const max = anyEarnings ? maxPer : Math.max(...buckets.map(x => x.trips), 1);
+                const pct = max > 0 ? (ref / max) * 100 : 0;
+                return (
+                  <View key={b.label} style={s.heatRow}>
+                    <Text style={s.heatLabel}>{b.label}</Text>
+                    <View style={s.heatTrack}>
+                      <View style={[s.heatFill, { width: `${Math.max(4, pct)}%`, opacity: 0.35 + (pct / 100) * 0.65 }]} />
+                    </View>
+                    <Text style={s.heatVal}>{anyEarnings ? `£${b.perHour.toFixed(0)}/h` : `${b.trips}`}</Text>
+                  </View>
+                );
+              });
+            })()}
+            <Text style={s.heatNote}>
+              {buckets.some(b => b.earnings > 0)
+                ? 'Based on your earnings per hour. Add earnings to trips for sharper insight.'
+                : 'Based on trip count — add earnings to each trip to see £/hour.'}
+            </Text>
+          </Card>
+        </View>
+      )}
+
       <View style={s.disclaimer}>
         <Feather name="shield" size={14} color={colors.textTertiary} />
         <Text style={s.disclaimerText}>
@@ -168,6 +243,7 @@ export default function HomeScreen() {
         </Text>
       </View>
     </ScrollView>
+    </>
   );
 }
 
@@ -218,4 +294,25 @@ const s = StyleSheet.create({
 
   disclaimer: { marginTop: spacing.xl, padding: spacing.lg, backgroundColor: colors.bgSoft, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', gap: 8 },
   disclaimerText: { ...type.small, lineHeight: 18, flex: 1 },
+
+  setAside: { marginBottom: spacing.lg },
+  piggy: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.amberLight, alignItems: 'center', justifyContent: 'center' },
+  setAsideLabel: { ...type.bodyMedium, fontSize: 15 },
+  setAsideSub: { ...type.caption, marginTop: 1 },
+  setAsideValue: { fontSize: 20, fontWeight: font.bold, color: colors.amber },
+
+  heatRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, gap: 10 },
+  heatLabel: { ...type.caption, color: colors.textSecondary, width: 70 },
+  heatTrack: { flex: 1, height: 14, backgroundColor: colors.bgSoft, borderRadius: radius.full, overflow: 'hidden' },
+  heatFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
+  heatVal: { ...type.caption, color: colors.textPrimary, width: 48, textAlign: 'right', fontWeight: font.medium },
+  heatNote: { ...type.small, marginTop: 10, lineHeight: 17 },
+
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  modalCard: { backgroundColor: colors.bgCard, borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', width: '100%', maxWidth: 340 },
+  modalEmoji: { fontSize: 56, marginBottom: spacing.md },
+  modalTitle: { ...type.screenTitle, marginBottom: spacing.sm },
+  modalBody: { ...type.body, color: colors.textSecondary, textAlign: 'center', lineHeight: 23, marginBottom: spacing.xl },
+  modalBtn: { backgroundColor: colors.brand, borderRadius: radius.lg, paddingVertical: 14, paddingHorizontal: spacing.xl, alignSelf: 'stretch', alignItems: 'center' },
+  modalBtnText: { color: '#fff', fontSize: 16, fontWeight: font.semibold },
 });

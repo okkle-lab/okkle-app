@@ -4,6 +4,14 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Milestones, heatmap, set-aside, trip exit & manual compare
+- **Discard a trip**: an × on the live screen and a "Discard this trip" option after ending — you can now bail out without saving (UX fix).
+- **Milestone celebrations**: a cheerful popup when your tax saved crosses £50, £100, £250, £500, £1,000…
+- **Best times to work** heatmap on the dashboard — your strongest hours by £/hour (or trip count until you log earnings).
+- **Set aside for tax** card on the dashboard — your estimated bill so far, so you don't get caught short.
+- **Compare with manual input**: in the method comparison you can now enter business miles and vehicle by hand to test last year's figures, not just your tracked data.
+- **Onboarding polish**: a friendlier welcome screen with what-you-get highlights.
+
 ### Business insights & delight
 - **Analyst-grade insights** on the Tax tab: effective net pay per hour, gross pay per hour, earnings per mile, net margin (% kept after tax), and hours tracked — your courier work as a P&L.
 - **"Which platform pays best?"** — ranks platforms by £/hour (not just £/mile), so you can see Deliveroo vs Uber Eats on what actually matters.

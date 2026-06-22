@@ -7,19 +7,28 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, PrimaryButton } from '../src/components';
+import { Chip } from '../src/components';
 import { getTaxYearSummary, getTaxYearMiles, kvGet, kvGetNum, kvSet } from '../src/db';
 import { compareMethods, caRate, CAPITAL_ALLOWANCE_BASES } from '../src/db/taxcalc';
-import { fmtGbp, fmtMiles } from '../src/db/tax';
+import { fmtGbp, fmtMiles, calcDeduction, VEHICLES } from '../src/db/tax';
 
 export default function Compare() {
   const router = useRouter();
-  const year = getTaxYearSummary();
-  const bizMiles = getTaxYearMiles();
+  const trackedMiles = getTaxYearMiles();
 
+  const [mode, setMode] = useState<'tracked' | 'manual'>('tracked');
+  const [vehicle, setVehicle] = useState('car');
+  const [businessMiles, setBusinessMiles] = useState(String(Math.round(trackedMiles) || ''));
   const [personalMiles, setPersonalMiles] = useState(String(kvGetNum('personal_miles') || ''));
   const [runningCosts, setRunningCosts] = useState(String(kvGetNum('running_costs') || ''));
   const [vehicleValue, setVehicleValue] = useState(String(kvGetNum('vehicle_value') || ''));
   const [caBasis, setCaBasis] = useState(kvGet('ca_basis') || 'low');
+
+  // Business miles + simplified deduction either from tracked data or manual entry.
+  const bizMiles = mode === 'tracked' ? trackedMiles : (parseFloat(businessMiles) || 0);
+  const simplifiedDeduction = mode === 'tracked'
+    ? getTaxYearSummary().deduction
+    : calcDeduction(bizMiles, vehicle);
 
   const hasInputs = (parseFloat(runningCosts) || 0) > 0;
   const method = compareMethods({
@@ -28,7 +37,7 @@ export default function Compare() {
     runningCosts: parseFloat(runningCosts) || 0,
     vehicleValue: parseFloat(vehicleValue) || 0,
     capitalAllowanceRate: caRate(caBasis),
-    simplifiedDeduction: year.deduction,
+    simplifiedDeduction,
   });
 
   function save() {
@@ -52,9 +61,27 @@ export default function Compare() {
           Enter a few numbers to check.
         </Text>
 
-        <Text style={s.label}>Total personal (non-work) miles this year</Text>
+        <Text style={s.label}>Business miles</Text>
+        <View style={[s.basisGrid, { flexDirection: 'row', marginBottom: 8 }]}>
+          <Chip label="Use my tracked data" selected={mode === 'tracked'} onPress={() => setMode('tracked')} />
+          <Chip label="Enter manually" selected={mode === 'manual'} onPress={() => setMode('manual')} />
+        </View>
+        {mode === 'tracked' ? (
+          <Text style={s.hint}>Using your {fmtMiles(trackedMiles)} of tracked business miles.</Text>
+        ) : (
+          <>
+            <TextInput style={s.input} value={businessMiles} onChangeText={setBusinessMiles} keyboardType="decimal-pad" placeholder="e.g. 9000 (try last year's total)" placeholderTextColor={colors.textTertiary} />
+            <Text style={s.label}>Vehicle</Text>
+            <View style={[s.basisGrid, { flexDirection: 'row', flexWrap: 'wrap' }]}>
+              {VEHICLES.map(v => (
+                <Chip key={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+              ))}
+            </View>
+          </>
+        )}
+
+        <Text style={s.label}>Total personal (non-work) miles</Text>
         <TextInput style={s.input} value={personalMiles} onChangeText={setPersonalMiles} keyboardType="decimal-pad" placeholder="e.g. 3000" placeholderTextColor={colors.textTertiary} />
-        <Text style={s.hint}>We already know your {fmtMiles(bizMiles)} of business miles.</Text>
 
         <Text style={s.label}>Annual running costs</Text>
         <TextInput style={s.input} value={runningCosts} onChangeText={setRunningCosts} keyboardType="decimal-pad" placeholder="Fuel, insurance, tax, repairs…" placeholderTextColor={colors.textTertiary} />

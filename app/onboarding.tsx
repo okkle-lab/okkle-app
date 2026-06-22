@@ -76,9 +76,24 @@ export default function Onboarding() {
 
         {step === 0 && (
           <View style={s.stepContent}>
+            <View style={s.welcomeIcon}>
+              <Feather name="navigation" size={32} color="#fff" />
+            </View>
             <Text style={s.logo}>Okkle</Text>
             <Text style={s.hero}>Track your miles,{'\n'}keep more money.</Text>
             <Text style={s.sub}>Friendly mileage tracking built for UK delivery couriers. Free forever, and your data stays on your phone.</Text>
+            <View style={s.welcomeList}>
+              {[
+                { icon: 'map-pin' as const, text: 'Automatic GPS trip tracking' },
+                { icon: 'trending-up' as const, text: 'See your tax savings add up' },
+                { icon: 'file-text' as const, text: 'One-tap pack for your accountant' },
+              ].map(item => (
+                <View key={item.text} style={s.welcomeRow}>
+                  <View style={s.welcomeDot}><Feather name={item.icon} size={15} color={colors.brandDeep} /></View>
+                  <Text style={s.welcomeText}>{item.text}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
@@ -202,6 +217,11 @@ const s = StyleSheet.create({
   dotActive: { backgroundColor: colors.brandMid },
   dotCurrent: { backgroundColor: colors.brand },
   stepContent: { flex: 1, paddingBottom: spacing.xl },
+  welcomeIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xl },
+  welcomeList: { marginTop: spacing.xl, gap: spacing.lg },
+  welcomeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  welcomeDot: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.brandLight, alignItems: 'center', justifyContent: 'center' },
+  welcomeText: { ...type.body, color: colors.textPrimary },
   logo: { fontSize: 32, fontWeight: font.bold, color: colors.brand, letterSpacing: -1, marginBottom: spacing.lg },
   hero: { ...type.hero, lineHeight: 38, marginBottom: spacing.md },
   sub: { ...type.body, color: colors.textSecondary, lineHeight: 24, marginBottom: spacing.xl },
