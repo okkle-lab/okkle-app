@@ -4,6 +4,10 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Backup & restore
+- Added **Backup & restore** in Settings. Back up your entire record (profile, trips, records, settings) to a JSON file saved in your own iCloud/Files, and restore it on a new or wiped phone.
+- Protects against losing records if a phone is lost — HMRC expects records kept 5+ years. Still zero server cost: the file goes to the user's own cloud, not ours.
+
 ### MTD quarterly updates & accurate capital allowances
 - Added the **Making Tax Digital quarterly updates** section to the Tax tab — the four HMRC quarters with their submission deadlines, per-quarter income/expenses/profit, and the current quarter highlighted. Future-proofs for mandatory MTD ITSA.
 - Made **capital allowances HMRC-accurate**: pick your vehicle basis in the compare tool — new electric car (100% first-year allowance), low-emission car ≤50g (18% WDA), other car (6% WDA), or van/motorbike (100% AIA). Flows through to the comparison and Accountant Pack.

@@ -438,6 +438,69 @@ export function resetAllData() {
   db.execSync('DELETE FROM trips; DELETE FROM records; DELETE FROM user; DELETE FROM kv;');
 }
 
+export const BACKUP_VERSION = 1;
+
+export type BackupPayload = {
+  app: 'okkle';
+  version: number;
+  exportedAt: string;
+  user: User | null;
+  trips: Trip[];
+  records: Record[];
+  kv: { key: string; value: string }[];
+};
+
+export function dumpData(): BackupPayload {
+  return {
+    app: 'okkle',
+    version: BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    user: getUser(),
+    trips: db.getAllSync<Trip>('SELECT * FROM trips'),
+    records: db.getAllSync<Record>('SELECT * FROM records'),
+    kv: db.getAllSync<{ key: string; value: string }>('SELECT * FROM kv'),
+  };
+}
+
+export function restoreData(p: BackupPayload) {
+  if (p?.app !== 'okkle' || !Array.isArray(p.trips) || !Array.isArray(p.records)) {
+    throw new Error('Not a valid Okkle backup file');
+  }
+  db.withTransactionSync(() => {
+    db.execSync('DELETE FROM trips; DELETE FROM records; DELETE FROM user; DELETE FROM kv;');
+
+    if (p.user) {
+      saveUser({
+        name: p.user.name, vehicle: p.user.vehicle, tax_rate: p.user.tax_rate,
+        region: p.user.region, platforms: p.user.platforms,
+        reminder_enabled: p.user.reminder_enabled, reminder_day: p.user.reminder_day,
+        log_frequency: p.user.log_frequency, onboarded: p.user.onboarded,
+      });
+    }
+    for (const t of p.trips) {
+      db.runSync(
+        `INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at, route_json, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        t.platform, t.vehicle, t.miles, t.deduction, t.earnings ?? null,
+        t.started_at, t.ended_at, (t as any).route_json ?? null, t.created_at,
+      );
+    }
+    for (const r of p.records) {
+      db.runSync(
+        `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
+          period_start, period_end, receipt_uri, notes, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        r.record_type, r.platform ?? null, r.amount ?? null, r.miles ?? null,
+        r.deduction ?? null, r.category ?? null, r.period_start ?? null,
+        r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.created_at,
+      );
+    }
+    for (const row of (p.kv ?? [])) {
+      db.runSync('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', row.key, row.value);
+    }
+  });
+}
+
 initDb();
 
 export { db };

@@ -10,6 +10,8 @@ import {
 } from '../src/db/tax';
 import { getUser, saveUser, resetAllData } from '../src/db';
 import { syncReminders, WEEKDAYS } from '../src/notifications';
+import { backupNow, restoreFromFile } from '../src/backup';
+import { Feather } from '@expo/vector-icons';
 
 const DAY_LABELS: { [k: string]: string } = {
   sun: 'Sun', mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat',
@@ -46,6 +48,39 @@ export default function Settings() {
     const updated = getUser();
     if (updated) await syncReminders(updated);
     router.back();
+  }
+
+  const [busy, setBusy] = useState(false);
+
+  async function doBackup() {
+    setBusy(true);
+    try { await backupNow(); }
+    catch { Alert.alert('Backup failed', 'Could not create the backup file.'); }
+    setBusy(false);
+  }
+
+  function doRestore() {
+    Alert.alert(
+      'Restore from backup?',
+      'This replaces all current data on this phone with the contents of the backup file.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Choose file', onPress: async () => {
+            setBusy(true);
+            try {
+              const r = await restoreFromFile();
+              if (r) Alert.alert('Restored', `${r.trips} trips and ${r.records} records restored.`, [
+                { text: 'OK', onPress: () => router.replace('/(tabs)') },
+              ]);
+            } catch {
+              Alert.alert('Restore failed', "That file isn't a valid Okkle backup.");
+            }
+            setBusy(false);
+          },
+        },
+      ],
+    );
   }
 
   function confirmReset() {
@@ -164,6 +199,24 @@ export default function Settings() {
         </Text>
       </Card>
 
+      <SectionHeader title="Backup & restore" />
+      <Card style={{ gap: spacing.md }}>
+        <Text style={s.aboutText}>
+          Your data lives only on this phone. Back it up to your own iCloud or Files so you don't lose your records — HMRC expects records kept for at least 5 years.
+        </Text>
+        <Pressable onPress={doBackup} disabled={busy} style={s.actionRow}>
+          <Feather name="upload-cloud" size={18} color={colors.textPrimary} />
+          <Text style={s.actionText}>Back up my data</Text>
+          <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+        </Pressable>
+        <View style={s.divider} />
+        <Pressable onPress={doRestore} disabled={busy} style={s.actionRow}>
+          <Feather name="download-cloud" size={18} color={colors.textPrimary} />
+          <Text style={s.actionText}>Restore from a backup</Text>
+          <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+        </Pressable>
+      </Card>
+
       <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.xl }} />
 
       <Pressable onPress={confirmReset} style={s.resetBtn}>
@@ -190,6 +243,9 @@ const s = StyleSheet.create({
   rowTitle: { ...type.bodyMedium, fontSize: 15 },
   rowSub: { ...type.caption, marginTop: 2 },
   aboutText: { ...type.caption, color: colors.textSecondary, lineHeight: 20 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  actionText: { ...type.bodyMedium, fontSize: 15, flex: 1 },
+  divider: { height: 1, backgroundColor: colors.border },
   resetBtn: { marginTop: spacing.xl, alignItems: 'center', paddingVertical: spacing.md },
   resetText: { ...type.label, color: colors.red },
 });
