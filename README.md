@@ -74,8 +74,9 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 
 ### Gamification
 - **Activity streak** — counts consecutive days you log a trip or entry; holds if you haven't logged yet today.
-- **Achievement badges** — 10 collectible badges across trips, miles, tax saved, streaks and exporting your first Accountant Pack, with progress bars on locked ones and an unlocked/total count.
-- **"Achievement unlocked" celebration** — a popup fires whenever you earn a new badge.
+- **26 medals** across Trips, Miles, Tax saved, Earnings, Streaks and Special habits (night owl, early bird, multi-platform, receipt keeper…), each a bronze / silver / gold / special tier.
+- **Medals screen** — an Apple-Fitness-style grid grouped by category, with an earned/total ring, locked vs unlocked medals, per-medal progress and a tap-through detail card. Reached from the dashboard's "Your progress" card.
+- **"Achievement unlocked" celebration** — a popup fires whenever you earn a new medal.
 
 ### Export filenames
 All exports save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26_<date>.<ext>` — e.g. `Okkle_HMRC-Mileage-Log_TaxYear-2025-26_2026-06-23.csv`, `Okkle_Accountant-Pack_TaxYear-2025-26_2026-06-23.pdf`.

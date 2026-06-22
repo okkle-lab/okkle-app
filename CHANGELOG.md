@@ -2,6 +2,16 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (medals + number overflow fix)
+
+### Medals (Apple-Fitness-style)
+- Expanded from 10 to **26 medals** across Trips, Miles, Tax saved, Earnings, Streaks and Special habits (night owl, early bird, multi-platform, receipt keeper…), each a bronze / silver / gold / special tier.
+- New **Medals screen** — an Apple-Fitness-style grid grouped by category, with an earned/total ring, locked vs unlocked medals, per-medal progress, and a tap-through detail card.
+- The dashboard "Your progress" card now links straight to it ("See all medals") and previews the medals you're closest to earning.
+
+### Number fix
+- Fixed large figures running off-screen: mileage values now use thousands separators (e.g. "6,592,261 mi") and the mileage-method amount shrinks to fit instead of overflowing the card.
+
 ## 2026-06-23 (fun notifications, warmer UI, GPS basis)
 
 ### Notifications with personality
