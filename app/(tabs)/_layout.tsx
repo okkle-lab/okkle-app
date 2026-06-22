@@ -28,7 +28,7 @@ export default function TabLayout() {
       <Tabs.Screen name="trip" options={{ title: 'Trip', tabBarIcon: tabIcon('navigation') }} />
       <Tabs.Screen name="log" options={{ title: 'Log', tabBarIcon: tabIcon('edit-3') }} />
       <Tabs.Screen name="records" options={{ title: 'Records', tabBarIcon: tabIcon('list') }} />
-      <Tabs.Screen name="export" options={{ title: 'Export', tabBarIcon: tabIcon('upload') }} />
+      <Tabs.Screen name="tax" options={{ title: 'Tax', tabBarIcon: tabIcon('pie-chart') }} />
     </Tabs>
   );
 }

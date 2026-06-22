@@ -4,6 +4,17 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Tax tab — method comparison & full Self Assessment estimate
+- New **Tax** tab (replacing the Export tab — keeps the bar at 5).
+- **Killer feature: simplified vs actual-cost comparison** — enter personal miles, running costs and vehicle value, and Okkle shows which method saves more, with a clear winner and the difference. Includes the HMRC method-lock warning (you can't switch back to simplified once you claim actual costs on a vehicle).
+- **Self Assessment summary**: turnover, allowable expenses, net profit.
+- **Income Tax + Class 4 NIC estimate** with progressive bands (England/Wales/NI and Scotland), effective rate, and a Class 2 note.
+- **£1,000 trading allowance** automatically applied when it beats your expenses.
+- **Payments on account** forecast (31 Jan / 31 Jul).
+- **Insights**: gross earnings per mile, personal allowance remaining, profit after tax.
+- **Year-end checklist** with HMRC deadlines and an MTD note.
+- Export (SA summary, mileage log, CSV) moved into the Tax tab.
+
 ### Mint theme, activity ring, edit/delete & multi-vehicle
 - New **mint** colour theme (replacing orange) — fresh and friendly.
 - Replaced the speedometer with an **Apple-fitness-style daily goal ring** on the live trip screen — ambient and safe to glance at while riding.

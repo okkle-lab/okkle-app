@@ -30,6 +30,11 @@ export function initDb() {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS kv (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       record_type TEXT NOT NULL,
@@ -359,8 +364,30 @@ export function deleteRecord(id: number) {
   db.runSync('DELETE FROM records WHERE id = ?', id);
 }
 
+// Key-value store for actual-cost method inputs etc.
+export function kvGet(key: string): string | null {
+  return db.getFirstSync<{ value: string }>('SELECT value FROM kv WHERE key=?', key)?.value ?? null;
+}
+export function kvGetNum(key: string, fallback = 0): number {
+  const v = kvGet(key);
+  return v == null ? fallback : (parseFloat(v) || fallback);
+}
+export function kvSet(key: string, value: string | number) {
+  db.runSync('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', key, String(value));
+}
+
+// Non-vehicle expense total this tax year (counts toward Self Assessment).
+export function getTaxYearExpenses(): number {
+  const start = taxYearStart();
+  const row = db.getFirstSync<{ t: number }>(
+    `SELECT COALESCE(SUM(amount),0) AS t FROM records
+     WHERE record_type='expense' AND date(created_at) >= ?`, start,
+  );
+  return row?.t ?? 0;
+}
+
 export function resetAllData() {
-  db.execSync('DELETE FROM trips; DELETE FROM records; DELETE FROM user;');
+  db.execSync('DELETE FROM trips; DELETE FROM records; DELETE FROM user; DELETE FROM kv;');
 }
 
 initDb();
