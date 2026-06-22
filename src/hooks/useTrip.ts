@@ -53,11 +53,16 @@ export function useTrip() {
       (loc) => {
         if (lastPosRef.current) {
           const d = haversineKm(lastPosRef.current.coords, loc.coords);
-          const addedMiles = d * 0.621371;
-          setTrip(t => {
-            const miles = t.miles + addedMiles;
-            return { ...t, miles, deduction: calcDeduction(miles, t.vehicle) };
-          });
+          const meters = d * 1000;
+          const spd = loc.coords.speed; // m/s; -1 or null when unknown
+          const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
+          if (!stationary) {
+            const addedMiles = d * 0.621371;
+            setTrip(t => {
+              const miles = t.miles + addedMiles;
+              return { ...t, miles, deduction: calcDeduction(miles, t.vehicle) };
+            });
+          }
         }
         lastPosRef.current = loc;
       },
@@ -82,11 +87,16 @@ export function useTrip() {
       (loc) => {
         if (lastPosRef.current) {
           const d = haversineKm(lastPosRef.current.coords, loc.coords);
-          const addedMiles = d * 0.621371;
-          setTrip(t => {
-            const miles = t.miles + addedMiles;
-            return { ...t, miles, deduction: calcDeduction(miles, t.vehicle) };
-          });
+          const meters = d * 1000;
+          const spd = loc.coords.speed; // m/s; -1 or null when unknown
+          const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
+          if (!stationary) {
+            const addedMiles = d * 0.621371;
+            setTrip(t => {
+              const miles = t.miles + addedMiles;
+              return { ...t, miles, deduction: calcDeduction(miles, t.vehicle) };
+            });
+          }
         }
         lastPosRef.current = loc;
       },

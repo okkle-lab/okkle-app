@@ -4,6 +4,16 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Settings, analytics & legitimacy features
+- Added a **Settings** screen (gear on the home header): edit name, vehicle, platforms, tax region/band, and reminder preferences; plus an About section explaining the HMRC rates, and a "delete all my data" option.
+- **Weekly/monthly logging reminders** via local notifications, with a chosen day.
+- **10,000-mile threshold tracker** on the dashboard — shows progress and warns before the car/van rate drops from 45p to 25p.
+- **Earnings-per-mile by platform** — ranks Uber Eats vs Deliveroo vs Just Eat by what each pays per mile driven.
+- **HMRC mileage log export** — a dated, HMRC-formatted log of every trip.
+- **Receipt photo capture** for expenses (camera or library), stored on-device.
+- **Quick-start** "Start a trip" button on the home screen.
+- **Auto-pause / jitter filter** — stationary GPS drift (e.g. waiting at a restaurant) no longer inflates trip distance.
+
 ### Trip flow & one-finger usability
 - Redesigned the trip tab into a smooth three-phase flow: **setup → live → quick earnings**.
 - Start screen now remembers your last platform and vehicle, so starting a trip is a single tap.

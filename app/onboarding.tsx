@@ -7,7 +7,8 @@ import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { colors, font, radius, spacing, type } from '../src/theme';
 import { VEHICLES, PLATFORMS, REGIONS, regionFromArea, regionRate, regionLabel } from '../src/db/tax';
-import { saveUser } from '../src/db';
+import { saveUser, getUser } from '../src/db';
+import { syncReminders } from '../src/notifications';
 import { PrimaryButton, Chip } from '../src/components';
 
 const STEPS = ['Welcome', 'Name', 'Vehicle', 'Platforms', 'Region'];
@@ -22,7 +23,7 @@ export default function Onboarding() {
   const [band, setBand] = useState<'basic' | 'higher'>('basic');
   const [detecting, setDetecting] = useState(false);
 
-  function next() {
+  async function next() {
     if (step < STEPS.length - 1) { setStep(s => s + 1); return; }
     saveUser({
       name,
@@ -32,6 +33,8 @@ export default function Onboarding() {
       tax_rate: regionRate(region, band),
       onboarded: 1,
     });
+    const u = getUser();
+    if (u) { syncReminders(u).catch(() => {}); }
     router.replace('/(tabs)');
   }
 

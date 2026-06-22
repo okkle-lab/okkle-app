@@ -1,11 +1,26 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert,
+  View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert, Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Chip, PrimaryButton, Card, SectionHeader } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser } from '../../src/db';
+
+// Copy a picked image into app storage so it survives even if the cache clears.
+async function persistImage(uri: string): Promise<string> {
+  try {
+    const dir = (FileSystem as any).documentDirectory + 'receipts/';
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+    const dest = `${dir}${Date.now()}.jpg`;
+    await FileSystem.copyAsync({ from: uri, to: dest });
+    return dest;
+  } catch {
+    return uri;
+  }
+}
 
 type Tab = 'mileage' | 'income' | 'expense';
 
@@ -18,7 +33,22 @@ export default function LogScreen() {
   const [platform, setPlatform] = useState(user?.platforms?.split(',')[0] ?? 'Uber Eats');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  async function pickReceipt(useCamera: boolean) {
+    const perm = useCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert('Permission needed', 'Allow access to add a receipt photo.'); return; }
+    const res = useCamera
+      ? await ImagePicker.launchCameraAsync({ quality: 0.6 })
+      : await ImagePicker.launchImageLibraryAsync({ quality: 0.6, mediaTypes: ['images'] });
+    if (!res.canceled && res.assets[0]) {
+      const saved = await persistImage(res.assets[0].uri);
+      setReceiptUri(saved);
+    }
+  }
 
   const deduction = miles ? calcDeduction(parseFloat(miles) || 0, vehicle) : 0;
 
@@ -31,9 +61,9 @@ export default function LogScreen() {
       saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: null, period_end: null, receipt_uri: null, notes: null });
     } else {
       if (!amount || !description) { Alert.alert('Enter amount and description'); return; }
-      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: null, period_end: null, receipt_uri: null, notes: description });
+      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: null, period_end: null, receipt_uri: receiptUri, notes: description });
     }
-    setMiles(''); setAmount(''); setDescription('');
+    setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -136,6 +166,26 @@ export default function LogScreen() {
               onChangeText={setAmount}
             />
           </View>
+          <View>
+            <SectionHeader title="Receipt (optional)" />
+            {receiptUri ? (
+              <View style={s.receiptWrap}>
+                <Image source={{ uri: receiptUri }} style={s.receiptImg} />
+                <Pressable onPress={() => setReceiptUri(null)} style={s.receiptRemove}>
+                  <Text style={s.receiptRemoveText}>Remove</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={s.receiptButtons}>
+                <Pressable onPress={() => pickReceipt(true)} style={s.receiptBtn}>
+                  <Text style={s.receiptBtnText}>📷  Take photo</Text>
+                </Pressable>
+                <Pressable onPress={() => pickReceipt(false)} style={s.receiptBtn}>
+                  <Text style={s.receiptBtnText}>🖼  Choose</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
           <View style={s.notice}>
             <Text style={s.noticeText}>
               Vehicle running costs (fuel, tyres, repairs) are flagged for accountant review when you use simplified mileage — your accountant will advise.
@@ -172,4 +222,17 @@ const s = StyleSheet.create({
   deductionPreview: { fontSize: 14, color: colors.brandDeep, fontWeight: font.medium, marginTop: 8 },
   notice: { backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.md },
   noticeText: { fontSize: 13, color: colors.amber, lineHeight: 19 },
+  receiptButtons: { flexDirection: 'row', gap: spacing.sm },
+  receiptBtn: {
+    flex: 1, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
+    paddingVertical: 14, alignItems: 'center', backgroundColor: colors.bg,
+  },
+  receiptBtnText: { ...type.bodyMedium, fontSize: 14 },
+  receiptWrap: { position: 'relative' },
+  receiptImg: { width: '100%', height: 180, borderRadius: radius.md, backgroundColor: colors.bgSoft },
+  receiptRemove: {
+    position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
+  },
+  receiptRemoveText: { color: '#fff', fontSize: 13, fontWeight: font.medium },
 });

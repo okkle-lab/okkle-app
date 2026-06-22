@@ -37,6 +37,26 @@ export default function ExportScreen() {
     await Share.share({ message: csv, title: `Okkle export ${taxYearLabel()}.csv` });
   }
 
+  // HMRC-style mileage log: dated rows of date, vehicle, miles, purpose, deduction.
+  function buildMileageLog(): string {
+    const header = 'Date,Vehicle,Platform (purpose),Miles,Rate note,Deduction (GBP)';
+    const rows = trips
+      .slice()
+      .sort((a, b) => a.started_at.localeCompare(b.started_at))
+      .map(t =>
+        `${t.started_at.slice(0, 10)},${vehicleLabel(t.vehicle)},${t.platform} delivery,${t.miles.toFixed(1)},HMRC simplified,${t.deduction.toFixed(2)}`
+      );
+    const footer = `,,Total,${totalMiles.toFixed(1)},,${totalDeduction.toFixed(2)}`;
+    return [header, ...rows, footer].join('\n');
+  }
+
+  async function shareMileageLog() {
+    await Share.share({
+      message: buildMileageLog(),
+      title: `Okkle HMRC mileage log ${taxYearLabel()}.csv`,
+    });
+  }
+
   async function shareSummary() {
     const lines = [
       `Okkle — Tax year ${taxYearLabel()} summary`,
@@ -91,6 +111,12 @@ export default function ExportScreen() {
           <Text style={s.exportTitle}>Summary text</Text>
           <Text style={s.exportSub}>Plain text overview — great to paste into an email to your accountant</Text>
           <PrimaryButton label="Share summary" onPress={shareSummary} style={{ marginTop: spacing.sm }} />
+        </View>
+        <View style={s.divider} />
+        <View>
+          <Text style={s.exportTitle}>HMRC mileage log</Text>
+          <Text style={s.exportSub}>Dated log of every trip (date, vehicle, purpose, miles, deduction) — the format HMRC expects</Text>
+          <PrimaryButton label="Share mileage log" onPress={shareMileageLog} variant="ghost" style={{ marginTop: spacing.sm }} />
         </View>
         <View style={s.divider} />
         <View>
