@@ -2,6 +2,17 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (3D medals + gamified Trip tab)
+
+### Real medals
+- Medals are now **3D-style** — a glossy metallic disc with a ribbon and a playful emoji centre (bronze / silver / gold / special finishes), instead of flat line icons.
+
+### Placement
+- Your **streak moved to a header chip** (🔥 7) on the dashboard, so the daily-return hook is glanceable above the fold; the medal collection stays a browse-y card lower down. Both tap through to the Medals screen.
+
+### Gamified Trip tab
+- The trip setup screen now has a **goal card**: a daily-goal ring (today's miles vs target), a streak pill, and a "next medal" progress row that taps through to your medals — so the Trip tab no longer feels bland.
+
 ## 2026-06-23 (medals + number overflow fix)
 
 ### Medals (Apple-Fitness-style)

@@ -74,8 +74,10 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 
 ### Gamification
 - **Activity streak** — counts consecutive days you log a trip or entry; holds if you haven't logged yet today.
-- **26 medals** across Trips, Miles, Tax saved, Earnings, Streaks and Special habits (night owl, early bird, multi-platform, receipt keeper…), each a bronze / silver / gold / special tier.
-- **Medals screen** — an Apple-Fitness-style grid grouped by category, with an earned/total ring, locked vs unlocked medals, per-medal progress and a tap-through detail card. Reached from the dashboard's "Your progress" card.
+- **26 3D-style medals** — a glossy metallic disc with ribbon and a playful emoji centre (bronze / silver / gold / special) — across Trips, Miles, Tax saved, Earnings, Streaks and Special habits (night owl, early bird, multi-platform, receipt keeper…).
+- **Streak header chip** on the dashboard (🔥 N) keeps the daily-return hook above the fold; tap it (or the "Your progress" card) to open the Medals screen.
+- **Medals screen** — an Apple-Fitness-style grid grouped by category, with an earned/total ring, locked vs unlocked medals, per-medal progress and a tap-through detail card.
+- **Gamified Trip tab** — the setup screen shows a daily-goal ring, streak pill and a "next medal" progress row.
 - **"Achievement unlocked" celebration** — a popup fires whenever you earn a new medal.
 
 ### Export filenames
