@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
-import { dumpData, restoreData, type BackupPayload } from './db';
+import { dumpData, restoreData, kvSet, type BackupPayload } from './db';
 
 // Save the whole database to a JSON file and open the share sheet so the user
 // can store it in their own iCloud Drive / Files / email. Nothing goes to us.
@@ -11,6 +11,7 @@ export async function backupNow(): Promise<void> {
   const dir = (FileSystem as any).cacheDirectory ?? (FileSystem as any).documentDirectory;
   const uri = `${dir}Okkle_Backup_${date}.json`;
   await (FileSystem as any).writeAsStringAsync(uri, JSON.stringify(data, null, 2));
+  kvSet('backup_made', 1); // unlocks the "Safe keeper" medal
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, { mimeType: 'application/json', dialogTitle: 'Save your Okkle backup' });
   }

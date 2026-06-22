@@ -638,73 +638,145 @@ export type Achievement = {
   target?: number; value?: number;
 };
 
-function countTrips(where: string): number {
-  return db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n FROM trips WHERE ${where}`)?.n ?? 0;
+type GamiStats = {
+  trips: number; miles: number; taxSaved: number; earnings: number; hours: number;
+  activeDays: number; bestDayMiles: number; longestTrip: number; platforms: number;
+  night: number; dawn: number; weekend: number; expenses: number; receipts: number;
+};
+
+// One pass over trips + records to compute everything the medals need.
+function getGamiStats(): GamiStats {
+  const rate = getUser()?.tax_rate ?? 0.20;
+  const trips = db.getAllSync<Trip>('SELECT * FROM trips');
+  const records = db.getAllSync<Record>('SELECT * FROM records');
+
+  let miles = 0, deduction = 0, earnings = 0, hours = 0, night = 0, dawn = 0, weekend = 0, longestTrip = 0;
+  const days = new Set<string>();
+  const milesByDay: { [d: string]: number } = {};
+  const platforms = new Set<string>();
+
+  for (const t of trips) {
+    miles += t.miles; deduction += t.deduction; earnings += t.earnings ?? 0;
+    longestTrip = Math.max(longestTrip, t.miles);
+    const d = new Date(t.started_at);
+    const ms = new Date(t.ended_at).getTime() - d.getTime();
+    if (ms > 0) hours += ms / 3600000;
+    const hr = d.getHours(), dow = d.getDay();
+    if (hr >= 22 || hr < 5) night++;
+    if (hr >= 5 && hr < 8) dawn++;
+    if (dow === 0 || dow === 6) weekend++;
+    const ds = t.started_at.slice(0, 10);
+    days.add(ds);
+    milesByDay[ds] = (milesByDay[ds] ?? 0) + t.miles;
+    if (t.platform) platforms.add(t.platform);
+  }
+  let expenses = 0, receipts = 0;
+  for (const r of records) {
+    days.add(r.created_at.slice(0, 10));
+    if (r.record_type === 'mileage') { miles += r.miles ?? 0; deduction += r.deduction ?? 0; }
+    if (r.record_type === 'income') { earnings += r.amount ?? 0; if (r.platform) platforms.add(r.platform); }
+    if (r.record_type === 'expense') { expenses++; if (r.receipt_uri) receipts++; }
+  }
+  const bestDayMiles = Object.values(milesByDay).reduce((m, v) => Math.max(m, v), 0);
+
+  return {
+    trips: trips.length, miles, taxSaved: deduction * rate, earnings, hours,
+    activeDays: days.size, bestDayMiles, longestTrip, platforms: platforms.size,
+    night, dawn, weekend, expenses, receipts,
+  };
+}
+
+function tierFor(i: number, n: number): AchievementTier {
+  return i < n / 3 ? 'bronze' : i < (2 * n) / 3 ? 'silver' : 'gold';
 }
 
 export function getAchievements(): Achievement[] {
-  const s = getLifetimeStats();
+  const g = getGamiStats();
   const streak = getStreak();
   const packDone = kvGetNum('pack_exported') > 0;
-  const expenseCount = db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n FROM records WHERE record_type='expense'`)?.n ?? 0;
-  const receiptCount = db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n FROM records WHERE record_type='expense' AND receipt_uri IS NOT NULL`)?.n ?? 0;
-  // started_at is ISO "YYYY-MM-DDTHH:..."; read the hour by position so we don't
-  // depend on SQLite's date parsing. Good enough for fun time-of-day badges.
-  const nightTrips = countTrips(`CAST(substr(started_at, 12, 2) AS INTEGER) >= 22 OR CAST(substr(started_at, 12, 2) AS INTEGER) < 5`);
-  const dawnTrips = countTrips(`CAST(substr(started_at, 12, 2) AS INTEGER) >= 5 AND CAST(substr(started_at, 12, 2) AS INTEGER) < 8`);
-  const distinctPlatforms = db.getFirstSync<{ n: number }>(`SELECT COUNT(DISTINCT platform) AS n FROM trips`)?.n ?? 0;
+  const backupDone = kvGetNum('backup_made') > 0;
 
-  const mk = (
-    key: string, label: string, desc: string, icon: string, emoji: string,
-    category: string, tier: AchievementTier, value: number, target: number,
-  ): Achievement => ({
-    key, label, desc, icon, emoji, category, tier, value, target,
-    unlocked: value >= target,
-    progress: Math.max(0, Math.min(1, value / target)),
-  });
-  const flag = (
-    key: string, label: string, desc: string, icon: string, emoji: string,
-    category: string, tier: AchievementTier, done: boolean,
-  ): Achievement => ({
-    key, label, desc, icon, emoji, category, tier, unlocked: done, progress: done ? 1 : 0,
-  });
+  const out: Achievement[] = [];
+  type Spec = [number, string, string]; // [threshold, label, emoji]
 
-  return [
-    // Trips
-    mk('first_trip', 'First trip', 'Track your first GPS trip', 'navigation', '🚀', 'Trips', 'bronze', s.trips, 1),
-    mk('trips_10', 'Getting rolling', '10 trips tracked', 'navigation', '🛵', 'Trips', 'bronze', s.trips, 10),
-    mk('trips_50', 'Seasoned rider', '50 trips tracked', 'navigation', '🏍️', 'Trips', 'silver', s.trips, 50),
-    mk('trips_100', 'Centurion', '100 trips tracked', 'navigation', '💯', 'Trips', 'silver', s.trips, 100),
-    mk('trips_250', 'Road warrior', '250 trips tracked', 'navigation', '🏆', 'Trips', 'gold', s.trips, 250),
-    // Miles
-    mk('miles_100', 'First century', '100 business miles', 'map', '📍', 'Miles', 'bronze', s.miles, 100),
-    mk('miles_500', 'Half-grand', '500 business miles', 'map', '🛣️', 'Miles', 'silver', s.miles, 500),
-    mk('miles_1000', 'Long hauler', '1,000 business miles', 'map', '🗺️', 'Miles', 'silver', s.miles, 1000),
-    mk('miles_5000', 'Marathoner', '5,000 business miles', 'map', '🌍', 'Miles', 'gold', s.miles, 5000),
-    mk('miles_10000', 'Ten-K club', '10,000 business miles', 'map', '🌟', 'Miles', 'gold', s.miles, 10000),
-    // Tax saved
-    mk('saved_100', 'First £100 saved', '£100 saved in tax', 'shield', '💷', 'Tax saved', 'bronze', s.taxSaved, 100),
-    mk('saved_500', 'Smart saver', '£500 saved in tax', 'shield', '💰', 'Tax saved', 'silver', s.taxSaved, 500),
-    mk('saved_1000', 'Grand saver', '£1,000 saved in tax', 'shield', '🤑', 'Tax saved', 'gold', s.taxSaved, 1000),
-    mk('saved_2500', 'Tax ninja', '£2,500 saved in tax', 'shield', '🥷', 'Tax saved', 'gold', s.taxSaved, 2500),
-    // Earnings
-    mk('earned_1000', 'Earner', '£1,000 earnings logged', 'dollar-sign', '💵', 'Earnings', 'bronze', s.earnings, 1000),
-    mk('earned_5000', 'High roller', '£5,000 earnings logged', 'dollar-sign', '💸', 'Earnings', 'silver', s.earnings, 5000),
-    mk('earned_10000', 'Five figures', '£10,000 earnings logged', 'dollar-sign', '🏦', 'Earnings', 'gold', s.earnings, 10000),
-    // Streaks
-    mk('streak_3', 'Warming up', '3-day activity streak', 'zap', '🔥', 'Streaks', 'bronze', streak, 3),
-    mk('streak_7', 'One week strong', '7-day activity streak', 'zap', '🔥', 'Streaks', 'silver', streak, 7),
-    mk('streak_30', 'Unstoppable', '30-day activity streak', 'zap', '⚡', 'Streaks', 'gold', streak, 30),
-    mk('streak_100', 'Centurion streak', '100-day activity streak', 'zap', '👑', 'Streaks', 'gold', streak, 100),
-    // Habits & special
-    flag('night_owl', 'Night owl', 'Complete a trip after 10pm', 'moon', '🦉', 'Special', 'special', nightTrips > 0),
-    flag('early_bird', 'Early bird', 'Complete a trip before 8am', 'sunrise', '🌅', 'Special', 'special', dawnTrips > 0),
-    flag('first_expense', 'Bookkeeper', 'Log your first expense', 'file-text', '🧾', 'Special', 'bronze', expenseCount > 0),
-    flag('receipt_keeper', 'Receipt keeper', 'Attach a photo to an expense', 'camera', '📸', 'Special', 'silver', receiptCount > 0),
-    flag('multi_app', 'Multi-tasker', 'Work across 3+ platforms', 'grid', '🎯', 'Special', 'silver', distinctPlatforms >= 3),
-    flag('first_pack', 'Audit-ready', 'Export your first Accountant Pack', 'award', '🏅', 'Special', 'gold', packDone),
-  ];
+  // Count-based tiered medals (e.g. trips, miles).
+  const tiered = (prefix: string, category: string, icon: string, unit: string, value: number, specs: Spec[], money = false) => {
+    specs.forEach(([target, label, emoji], i) => {
+      const amount = money ? '£' + target.toLocaleString() : target.toLocaleString();
+      out.push({
+        key: `${prefix}_${target}`, label,
+        desc: `${amount} ${unit}`, icon, emoji, category,
+        tier: tierFor(i, specs.length),
+        value, target,
+        unlocked: value >= target,
+        progress: Math.max(0, Math.min(1, value / target)),
+      });
+    });
+  };
+  const flag = (key: string, label: string, desc: string, emoji: string, category: string, tier: AchievementTier, done: boolean) =>
+    out.push({ key, label, desc, icon: 'award', emoji, category, tier, unlocked: done, progress: done ? 1 : 0 });
+
+  tiered('trips', 'Trips', 'navigation', 'trips tracked', g.trips, [
+    [1, 'First trip', '🚀'], [5, 'Five down', '🪧'], [10, 'Getting rolling', '🛵'], [25, 'Quarter ton', '📦'],
+    [50, 'Seasoned rider', '🏍️'], [100, 'Centurion', '💯'], [150, 'Regular', '🔁'], [200, 'Double ton', '🎯'],
+    [250, 'Road warrior', '🛡️'], [500, 'Veteran', '🏅'], [750, 'Elite', '⭐'], [1000, 'Legend', '👑'],
+  ]);
+  tiered('miles', 'Miles', 'map', 'business miles', g.miles, [
+    [50, 'First fifty', '📍'], [100, 'First century', '🛣️'], [250, 'Pathfinder', '🧭'], [500, 'Half-grand', '🗺️'],
+    [1000, 'Long hauler', '🛤️'], [2500, 'Explorer', '🌄'], [5000, 'Marathoner', '🏔️'], [7500, 'Globetrotter', '✈️'],
+    [10000, 'Ten-K club', '🌍'], [15000, 'Road master', '🌟'], [20000, 'Distance demon', '🔥'], [25000, 'Odometer legend', '👑'],
+  ]);
+  tiered('saved', 'Tax saved', 'shield', 'saved in tax', g.taxSaved, [
+    [50, 'First £50', '🪙'], [100, 'First £100', '💷'], [250, 'Saver', '💵'], [500, 'Smart saver', '💰'],
+    [1000, 'Grand saver', '🤑'], [1500, 'Tactician', '🧮'], [2000, 'Optimiser', '📊'], [2500, 'Tax ninja', '🥷'],
+    [5000, 'Tax wizard', '🧙'], [7500, 'Tax master', '🎩'], [10000, 'Tax legend', '👑'],
+  ], true);
+  tiered('earned', 'Earnings', 'dollar-sign', 'earnings logged', g.earnings, [
+    [250, 'First earnings', '💵'], [500, 'Pocketing it', '💸'], [1000, 'Earner', '💲'], [2500, 'Grinder', '⚙️'],
+    [5000, 'High roller', '🎰'], [10000, 'Five figures', '🏦'], [15000, 'Big league', '🏟️'], [20000, 'Boss mode', '😎'],
+    [25000, 'Mogul', '🤵'], [50000, 'Tycoon', '🏰'],
+  ], true);
+  tiered('streak', 'Streaks', 'zap', 'day streak', streak, [
+    [2, 'Two in a row', '✌️'], [3, 'Warming up', '🔥'], [5, 'On a roll', '🎲'], [7, 'One week strong', '📅'],
+    [14, 'Fortnight', '🗓️'], [21, 'Habit formed', '🧠'], [30, 'Unstoppable', '⚡'], [50, 'Ironclad', '🛡️'],
+    [75, 'Relentless', '🐉'], [100, 'Centurion streak', '💯'], [150, 'Machine', '🤖'], [200, 'Phenomenon', '🌠'], [365, 'Year-long legend', '👑'],
+  ]);
+  tiered('hours', 'Hours', 'clock', 'hours tracked', g.hours, [
+    [5, 'First shift', '⏱️'], [10, 'Clocking in', '🕐'], [25, 'Grafter', '💪'], [50, 'Workhorse', '🐴'],
+    [100, 'Century of hours', '💯'], [250, 'Dedicated', '🎖️'], [500, 'Tireless', '🔋'], [1000, 'Time lord', '⏳'],
+  ]);
+  tiered('days', 'Active days', 'calendar', 'active days', g.activeDays, [
+    [3, 'Showing up', '👋'], [5, 'Reliable', '📌'], [10, 'Committed', '🤝'], [25, 'Devoted', '💚'],
+    [50, 'Half-ton days', '🗓️'], [100, 'Hundred days', '💯'], [200, 'Mainstay', '🏛️'], [365, 'All year', '🎆'],
+  ]);
+  tiered('bestday', 'Big days', 'trending-up', 'miles in a day', g.bestDayMiles, [
+    [15, 'Busy day', '📈'], [25, 'Big day', '🚀'], [40, 'Goal smasher', '🎯'], [60, 'Monster day', '💥'], [100, 'Century day', '🏆'],
+  ]);
+  tiered('longest', 'Long trips', 'navigation', 'miles in one trip', g.longestTrip, [
+    [5, 'Long run', '🏃'], [10, 'Cross-town', '🛣️'], [15, 'The big one', '🗺️'], [25, 'Epic ride', '🏔️'], [40, 'Ultra trip', '🌟'],
+  ]);
+  tiered('platforms', 'Platforms', 'grid', 'platforms worked', g.platforms, [
+    [2, 'Two-timer', '🔀'], [3, 'Multi-tasker', '🎯'], [4, 'Quad threat', '🃏'], [5, 'Omnipresent', '🌐'],
+  ]);
+
+  // Special one-off flags.
+  flag('night_owl', 'Night owl', 'A trip after 10pm', '🦉', 'Special', 'special', g.night > 0);
+  flag('early_bird', 'Early bird', 'A trip before 8am', '🌅', 'Special', 'special', g.dawn > 0);
+  flag('weekend_warrior', 'Weekend warrior', 'A trip on a weekend', '🏖️', 'Special', 'special', g.weekend > 0);
+  flag('first_expense', 'Bookkeeper', 'Log your first expense', '🧾', 'Special', 'bronze', g.expenses >= 1);
+  flag('ten_expenses', 'Diligent', 'Log 10 expenses', '📚', 'Special', 'silver', g.expenses >= 10);
+  flag('fifty_expenses', 'Meticulous', 'Log 50 expenses', '🗄️', 'Special', 'gold', g.expenses >= 50);
+  flag('receipt_keeper', 'Receipt keeper', 'Attach a receipt photo', '📸', 'Special', 'bronze', g.receipts >= 1);
+  flag('ten_receipts', 'Paper trail', 'Attach 10 receipts', '🖼️', 'Special', 'silver', g.receipts >= 10);
+  flag('first_pack', 'Audit-ready', 'Export an Accountant Pack', '🏅', 'Special', 'gold', packDone);
+  flag('first_backup', 'Safe keeper', 'Back up your data', '💾', 'Special', 'silver', backupDone);
+  flag('all_rounder', 'All-rounder', 'Track, earn, expense & export', '🌈', 'Special', 'gold',
+    g.trips > 0 && g.earnings > 0 && g.expenses > 0 && packDone);
+
+  return out;
 }
+
+export function achievementCount(): number { return getAchievements().length; }
 
 // Returns achievements newly unlocked since last check, and marks them seen.
 export function popNewAchievements(): Achievement[] {
