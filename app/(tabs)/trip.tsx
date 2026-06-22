@@ -6,10 +6,10 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip } from '../../src/components';
-import { PLATFORMS, VEHICLES, fmtGbp, fmtMiles, fmtDuration } from '../../src/db/tax';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing } from '../../src/components';
+import { PLATFORMS, VEHICLES, fmtGbp, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, getUser, getLastTrip } from '../../src/db';
+import { saveTrip, getUser, getLastTrip, getTodayMiles } from '../../src/db';
 
 type Phase = 'setup' | 'live' | 'summary';
 
@@ -22,6 +22,7 @@ export default function TripScreen() {
   const [phase, setPhase] = useState<Phase>('setup');
   const [finished, setFinished] = useState<LiveTrip | null>(null);
   const [earnings, setEarnings] = useState('');
+  const [todayBase, setTodayBase] = useState(0);
   const { trip, start, pause, resume, end } = useTrip();
 
   // Keep the screen awake only while a trip is running (phone is mounted).
@@ -33,6 +34,7 @@ export default function TripScreen() {
 
   async function handleStart() {
     try {
+      setTodayBase(getTodayMiles());
       await start(platform, vehicle);
       setPhase('live');
     } catch {
@@ -66,7 +68,9 @@ export default function TripScreen() {
   // ---- Phase 2: live tracking ------------------------------------------------
   if (phase === 'live') {
     const isPaused = trip.state === 'paused';
-    const mph = Math.round(trip.speedMph);
+    const dayMiles = todayBase + trip.miles;
+    const progress = dayMiles / DAILY_GOAL_MILES;
+    const goalPct = Math.min(100, Math.round(progress * 100));
     return (
       <View style={[s.screen, { backgroundColor: colors.dark }]}>
         <View style={s.liveHeader}>
@@ -74,10 +78,17 @@ export default function TripScreen() {
           <Text style={s.liveStatus}>{isPaused ? 'Paused' : trip.platform}</Text>
         </View>
 
-        {/* Speedometer — the live, exciting centrepiece */}
-        <View style={s.speedo}>
-          <Text style={s.speedoValue}>{mph}</Text>
-          <Text style={s.speedoUnit}>mph</Text>
+        {/* Daily goal activity ring — ambient and glanceable */}
+        <View style={s.ringWrap}>
+          <ProgressRing size={250} strokeWidth={20} progress={progress} color={colors.brand}>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={s.ringMiles}>{trip.miles.toFixed(1)}</Text>
+              <Text style={s.ringMilesUnit}>miles this trip</Text>
+              <View style={s.ringGoalChip}>
+                <Text style={s.ringGoalText}>{goalPct}% of daily goal</Text>
+              </View>
+            </View>
+          </ProgressRing>
         </View>
 
         <View style={s.liveStats}>
@@ -224,9 +235,14 @@ const s = StyleSheet.create({
   liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 72 },
   liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4ade80' },
   liveStatus: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: font.medium },
-  speedo: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  speedoValue: { fontSize: 140, fontWeight: font.bold, color: '#fff', letterSpacing: -6 },
-  speedoUnit: { fontSize: 24, color: 'rgba(255,255,255,0.5)', marginTop: -24 },
+  ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  ringMiles: { fontSize: 64, fontWeight: font.bold, color: '#fff', letterSpacing: -2 },
+  ringMilesUnit: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: -4 },
+  ringGoalChip: {
+    marginTop: 12, backgroundColor: 'rgba(31,184,154,0.22)',
+    paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.full,
+  },
+  ringGoalText: { color: colors.brandMid, fontSize: 12, fontWeight: font.medium },
   liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginBottom: spacing.xl },
   liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
   liveStatBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },

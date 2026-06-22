@@ -284,6 +284,81 @@ export function getPlatformStats(): PlatformStat[] {
     .sort((a, b) => b.perMile - a.perMile);
 }
 
+// Today's total miles (saved trips) — feeds the daily goal ring.
+export function getTodayMiles(): number {
+  const today = new Date().toISOString().slice(0, 10);
+  const row = db.getFirstSync<{ m: number }>(
+    `SELECT COALESCE(SUM(miles),0) AS m FROM trips WHERE date(started_at) = ?`, today,
+  );
+  return row?.m ?? 0;
+}
+
+export type VehicleStat = { vehicle: string; miles: number; deduction: number; trips: number };
+
+// Per-vehicle breakdown (multi-vehicle support).
+export function getVehicleStats(): VehicleStat[] {
+  const agg: { [v: string]: VehicleStat } = {};
+  const bump = (v: string, miles: number, deduction: number, isTrip: boolean) => {
+    const key = v || 'car';
+    if (!agg[key]) agg[key] = { vehicle: key, miles: 0, deduction: 0, trips: 0 };
+    agg[key].miles += miles;
+    agg[key].deduction += deduction;
+    if (isTrip) agg[key].trips += 1;
+  };
+  for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
+    bump(t.vehicle, t.miles, t.deduction, true);
+  }
+  for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type='mileage'`)) {
+    bump((r as any).vehicle ?? 'car', r.miles ?? 0, r.deduction ?? 0, false);
+  }
+  return Object.values(agg).filter(v => v.miles > 0).sort((a, b) => b.miles - a.miles);
+}
+
+export function getTrip(id: number): Trip | null {
+  return db.getFirstSync<Trip>('SELECT * FROM trips WHERE id = ?', id);
+}
+
+export function updateTrip(id: number, t: Partial<Trip>) {
+  const cur = getTrip(id);
+  if (!cur) return;
+  db.runSync(
+    'UPDATE trips SET platform=?, vehicle=?, miles=?, deduction=?, earnings=? WHERE id=?',
+    t.platform ?? cur.platform,
+    t.vehicle ?? cur.vehicle,
+    t.miles ?? cur.miles,
+    t.deduction ?? cur.deduction,
+    t.earnings ?? cur.earnings,
+    id,
+  );
+}
+
+export function deleteTrip(id: number) {
+  db.runSync('DELETE FROM trips WHERE id = ?', id);
+}
+
+export function getRecord(id: number): Record | null {
+  return db.getFirstSync<Record>('SELECT * FROM records WHERE id = ?', id);
+}
+
+export function updateRecord(id: number, r: Partial<Record>) {
+  const cur = getRecord(id);
+  if (!cur) return;
+  db.runSync(
+    'UPDATE records SET platform=?, amount=?, miles=?, deduction=?, category=?, notes=? WHERE id=?',
+    r.platform ?? cur.platform,
+    r.amount ?? cur.amount,
+    r.miles ?? cur.miles,
+    r.deduction ?? cur.deduction,
+    r.category ?? cur.category,
+    r.notes ?? cur.notes,
+    id,
+  );
+}
+
+export function deleteRecord(id: number) {
+  db.runSync('DELETE FROM records WHERE id = ?', id);
+}
+
 export function resetAllData() {
   db.execSync('DELETE FROM trips; DELETE FROM records; DELETE FROM user;');
 }

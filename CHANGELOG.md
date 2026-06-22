@@ -4,6 +4,12 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Mint theme, activity ring, edit/delete & multi-vehicle
+- New **mint** colour theme (replacing orange) — fresh and friendly.
+- Replaced the speedometer with an **Apple-fitness-style daily goal ring** on the live trip screen — ambient and safe to glance at while riding.
+- **Edit and delete** any trip or logged entry — tap it in Records to change details or remove it.
+- **Per-vehicle breakdown** in Records (miles, trips and deduction per car/bike/motorbike/van).
+
 ### Flat icons, tax-saved hero & speedometer
 - Replaced all 3D emoji with flat line icons (Feather + Material Community) — tab bar, settings gear, vehicles, buttons, metric cards.
 - Added a **"Tax saved this year"** hero on the dashboard — the headline number, front and centre, so the value is obvious at a glance.

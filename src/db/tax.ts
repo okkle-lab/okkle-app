@@ -9,6 +9,9 @@ export type VehicleKey = typeof VEHICLES[number]['key'];
 
 export const PLATFORMS = ['Uber Eats', 'Deliveroo', 'Just Eat', 'Stuart', 'Amazon Flex', 'Other'];
 
+// Default daily mileage goal for the activity ring (a typical shift).
+export const DAILY_GOAL_MILES = 40;
+
 // Income tax differs for Scottish taxpayers; England, Wales & NI share one set.
 // (HMRC mileage rates above are UK-wide and do NOT change by region.)
 export const REGIONS = [

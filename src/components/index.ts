@@ -6,3 +6,4 @@ export { SectionHeader } from './SectionHeader';
 export { SlideToConfirm } from './SlideToConfirm';
 export { Icon, VehicleIcon } from './Icon';
 export { VehicleChip } from './VehicleChip';
+export { ProgressRing } from './ProgressRing';

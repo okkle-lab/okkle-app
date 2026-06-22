@@ -1,29 +1,29 @@
 export const colors = {
-  brand: '#E06A4E',
-  brandDeep: '#C44E32',
-  brandLight: '#FBE9E2',
-  brandMid: '#EFA890',
+  brand: '#1FB89A',
+  brandDeep: '#0E8E78',
+  brandLight: '#E2F6F1',
+  brandMid: '#7FD6C5',
 
-  bg: '#FBF7F2',
-  bgSoft: '#F4EDE4',
+  bg: '#FBF9F6',
+  bgSoft: '#F1EFEA',
   bgCard: '#FFFFFF',
 
-  textPrimary: '#2A2320',
-  textSecondary: '#7A6E64',
-  textTertiary: '#A89C90',
+  textPrimary: '#22302C',
+  textSecondary: '#6B756F',
+  textTertiary: '#A2ABA5',
 
-  border: '#EBE2D6',
-  borderStrong: '#D9CCBC',
+  border: '#E8E6E0',
+  borderStrong: '#D3D1C9',
 
-  green: '#3F9B6D',
-  greenLight: '#E7F3EC',
-  amber: '#D98A29',
-  amberLight: '#FBEFD9',
-  red: '#D2553F',
+  green: '#2FA36B',
+  greenLight: '#E5F4EC',
+  amber: '#E0961F',
+  amberLight: '#FBEFD6',
+  red: '#E2604A',
   redLight: '#FBEAE5',
 
-  dark: '#2A211D',
-  darkSoft: '#3A2F2A',
+  dark: '#15211D',
+  darkSoft: '#26332E',
 };
 
 export const radius = {
