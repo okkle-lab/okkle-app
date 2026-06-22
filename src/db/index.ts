@@ -590,6 +590,82 @@ export function getQuarterlySummaries(): QuarterSummary[] {
   });
 }
 
+// ---- Gamification: streak + achievements -----------------------------------
+
+// Consecutive-day activity streak (any trip or logged entry counts).
+export function getStreak(): number {
+  const rows = db.getAllSync<{ d: string }>(`
+    SELECT d FROM (
+      SELECT DISTINCT date(started_at) AS d FROM trips
+      UNION
+      SELECT DISTINCT date(created_at) AS d FROM records
+    ) ORDER BY d DESC`);
+  const days = new Set(rows.map(r => r.d));
+  if (days.size === 0) return 0;
+  const iso = (dt: Date) => dt.toISOString().slice(0, 10);
+  const cur = new Date();
+  // Allow the streak to "hold" if there's been no activity yet today.
+  if (!days.has(iso(cur))) {
+    cur.setDate(cur.getDate() - 1);
+    if (!days.has(iso(cur))) return 0;
+  }
+  let streak = 0;
+  while (days.has(iso(cur))) { streak++; cur.setDate(cur.getDate() - 1); }
+  return streak;
+}
+
+export type LifetimeStats = { trips: number; miles: number; deduction: number; taxSaved: number };
+
+export function getLifetimeStats(): LifetimeStats {
+  const rate = getUser()?.tax_rate ?? 0.20;
+  const t = db.getFirstSync<{ n: number; m: number; d: number }>(
+    `SELECT COUNT(*) AS n, COALESCE(SUM(miles),0) AS m, COALESCE(SUM(deduction),0) AS d FROM trips`);
+  const r = db.getFirstSync<{ m: number; d: number }>(
+    `SELECT COALESCE(SUM(miles),0) AS m, COALESCE(SUM(deduction),0) AS d FROM records WHERE record_type='mileage'`);
+  const miles = (t?.m ?? 0) + (r?.m ?? 0);
+  const deduction = (t?.d ?? 0) + (r?.d ?? 0);
+  return { trips: t?.n ?? 0, miles, deduction, taxSaved: deduction * rate };
+}
+
+export type Achievement = {
+  key: string; label: string; desc: string; icon: string;
+  unlocked: boolean; progress: number; // 0..1
+};
+
+export function getAchievements(): Achievement[] {
+  const s = getLifetimeStats();
+  const streak = getStreak();
+  const packDone = kvGetNum('pack_exported') > 0;
+  const mk = (key: string, label: string, desc: string, icon: string, value: number, target: number): Achievement => ({
+    key, label, desc, icon,
+    unlocked: value >= target,
+    progress: Math.max(0, Math.min(1, value / target)),
+  });
+  return [
+    mk('first_trip', 'First trip', 'Track your first GPS trip', 'navigation', s.trips, 1),
+    mk('trips_10', 'Getting rolling', '10 trips tracked', 'map-pin', s.trips, 10),
+    mk('trips_50', 'Seasoned', '50 trips tracked', 'award', s.trips, 50),
+    mk('miles_100', 'Century', '100 business miles', 'map', s.miles, 100),
+    mk('miles_1000', 'Long hauler', '1,000 business miles', 'trending-up', s.miles, 1000),
+    mk('saved_100', 'First £100', '£100 saved in tax', 'shield', s.taxSaved, 100),
+    mk('saved_500', 'Big saver', '£500 saved in tax', 'star', s.taxSaved, 500),
+    mk('streak_7', 'One week strong', '7-day activity streak', 'zap', streak, 7),
+    mk('streak_30', 'Unstoppable', '30-day activity streak', 'zap', streak, 30),
+    { key: 'first_pack', label: 'Audit-ready', desc: 'Export your first Accountant Pack', icon: 'file-text', unlocked: packDone, progress: packDone ? 1 : 0 },
+  ];
+}
+
+// Returns achievements newly unlocked since last check, and marks them seen.
+export function popNewAchievements(): Achievement[] {
+  const seen = new Set((kvGet('ach_seen') ?? '').split(',').filter(Boolean));
+  const justUnlocked = getAchievements().filter(a => a.unlocked && !seen.has(a.key));
+  if (justUnlocked.length) {
+    justUnlocked.forEach(a => seen.add(a.key));
+    kvSet('ach_seen', [...seen].join(','));
+  }
+  return justUnlocked;
+}
+
 export type DailyStats = {
   miles: number;
   deduction: number;

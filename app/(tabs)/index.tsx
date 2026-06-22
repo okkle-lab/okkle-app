@@ -8,13 +8,12 @@ import {
   getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getTaxYearExpenses, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
-  kvGetNum, kvSet, type PlatformStat, type TimeBucket, type Period, type PeriodSummary,
+  getStreak, getAchievements, popNewAchievements,
+  kvGetNum, type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
 import { taxPosition } from '../../src/db/taxcalc';
-
-const MILESTONES = [50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000];
 
 const THRESHOLD = 10000;
 
@@ -28,7 +27,9 @@ export default function HomeScreen() {
   const [user, setUser] = React.useState(getUser());
   const [yearMiles, setYearMiles] = React.useState(0);
   const [setAside, setSetAside] = React.useState(0);
-  const [milestone, setMilestone] = React.useState<number | null>(null);
+  const [streak, setStreak] = React.useState(0);
+  const [achievements, setAchievements] = React.useState<Achievement[]>([]);
+  const [newAch, setNewAch] = React.useState<Achievement | null>(null);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -51,10 +52,11 @@ export default function HomeScreen() {
     const pos = taxPosition(y.earnings, y.deduction + getTaxYearExpenses(), u?.region ?? 'ruk', kvGetNum('other_income'));
     setSetAside(pos.totalDue);
 
-    // Milestone celebration when tax saved crosses a new threshold.
-    const reached = [...MILESTONES].reverse().find(m => y.taxSaved >= m) ?? 0;
-    const seen = kvGetNum('milestone_seen');
-    if (reached > seen) { setMilestone(reached); kvSet('milestone_seen', reached); }
+    // Gamification: streak, badges, and a celebration for anything new.
+    setStreak(getStreak());
+    setAchievements(getAchievements());
+    const fresh = popNewAchievements();
+    if (fresh.length) setNewAch(fresh[0]);
   }
 
   useFocusEffect(useCallback(() => { load(); }, [period]));
@@ -69,13 +71,16 @@ export default function HomeScreen() {
 
   return (
     <>
-    <Modal visible={milestone !== null} transparent animationType="fade" onRequestClose={() => setMilestone(null)}>
-      <Pressable style={s.modalBg} onPress={() => setMilestone(null)}>
+    <Modal visible={newAch !== null} transparent animationType="fade" onRequestClose={() => setNewAch(null)}>
+      <Pressable style={s.modalBg} onPress={() => setNewAch(null)}>
         <View style={s.modalCard}>
-          <Text style={s.modalEmoji}>🎉</Text>
-          <Text style={s.modalTitle}>Nice work!</Text>
-          <Text style={s.modalBody}>You've saved over {fmtGbp(milestone ?? 0)} in tax this year through mileage tracking.</Text>
-          <Pressable onPress={() => setMilestone(null)} style={s.modalBtn}><Text style={s.modalBtnText}>Keep it up</Text></Pressable>
+          <View style={s.achBurst}>
+            <Feather name={(newAch?.icon ?? 'award') as any} size={34} color="#fff" />
+          </View>
+          <Text style={s.achKicker}>Achievement unlocked</Text>
+          <Text style={s.modalTitle}>{newAch?.label}</Text>
+          <Text style={s.modalBody}>{newAch?.desc}</Text>
+          <Pressable onPress={() => setNewAch(null)} style={s.modalBtn}><Text style={s.modalBtnText}>Nice!</Text></Pressable>
         </View>
       </Pressable>
     </Modal>
@@ -175,6 +180,38 @@ export default function HomeScreen() {
                 </View>
               </View>
             ))}
+          </Card>
+        </View>
+      )}
+
+      {/* Gamification — streak + achievement badges */}
+      {achievements.length > 0 && (
+        <View style={{ marginTop: spacing.xl }}>
+          <SectionHeader title="Your progress" />
+          <Card>
+            <View style={s.streakRow}>
+              <View style={[s.streakIcon, streak > 0 ? { backgroundColor: colors.amberLight } : { backgroundColor: colors.bgSoft }]}>
+                <Feather name="zap" size={18} color={streak > 0 ? colors.amber : colors.textTertiary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.streakValue}>{streak > 0 ? `${streak}-day streak` : 'No streak yet'}</Text>
+                <Text style={s.streakSub}>{streak > 0 ? 'Keep logging daily to grow it' : 'Track a trip today to start one'}</Text>
+              </View>
+              <Text style={s.achCount}>{achievements.filter(a => a.unlocked).length}/{achievements.length}</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg, marginHorizontal: -4 }} contentContainerStyle={{ paddingHorizontal: 4, gap: 14 }}>
+              {achievements.map(a => (
+                <View key={a.key} style={s.badge}>
+                  <View style={[s.badgeCircle, a.unlocked ? s.badgeOn : s.badgeOff]}>
+                    <Feather name={a.icon as any} size={20} color={a.unlocked ? '#fff' : colors.textTertiary} />
+                  </View>
+                  <Text style={[s.badgeLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
+                  {!a.unlocked && a.progress > 0 && (
+                    <View style={s.badgeTrack}><View style={[s.badgeFill, { width: `${Math.round(a.progress * 100)}%` }]} /></View>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
           </Card>
         </View>
       )}
@@ -343,4 +380,20 @@ const s = StyleSheet.create({
   modalBody: { ...type.body, color: colors.textSecondary, textAlign: 'center', lineHeight: 23, marginBottom: spacing.xl },
   modalBtn: { backgroundColor: colors.brand, borderRadius: radius.lg, paddingVertical: 14, paddingHorizontal: spacing.xl, alignSelf: 'stretch', alignItems: 'center' },
   modalBtnText: { color: '#fff', fontSize: 16, fontWeight: font.semibold },
+  achBurst: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+  achKicker: { ...type.label, color: colors.brandDeep, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 12, marginBottom: 4 },
+
+  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  streakIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  streakValue: { ...type.bodyMedium, fontSize: 16 },
+  streakSub: { ...type.caption, marginTop: 1 },
+  achCount: { ...type.bodyMedium, ...tabular, color: colors.brandDeep },
+
+  badge: { width: 72, alignItems: 'center' },
+  badgeCircle: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  badgeOn: { backgroundColor: colors.brand },
+  badgeOff: { backgroundColor: colors.bgSoft, borderWidth: 1, borderColor: colors.border },
+  badgeLabel: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', lineHeight: 14, fontWeight: font.medium },
+  badgeTrack: { height: 4, width: 44, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden', marginTop: 4 },
+  badgeFill: { height: '100%', backgroundColor: colors.brandMid, borderRadius: radius.full },
 });

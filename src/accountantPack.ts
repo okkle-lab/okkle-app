@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system';
 import { shareFileAs } from './exportFile';
 import {
   getUser, getTrips, getRecords, getTaxYearSummary, getTaxYearMiles,
-  getTaxYearExpenses, kvGet, kvGetNum, taxYearStart,
+  getTaxYearExpenses, kvGet, kvGetNum, kvSet, taxYearStart,
 } from './db';
 import { taxPosition, compareMethods, caRate } from './db/taxcalc';
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel, regionLabel } from './db/tax';
@@ -226,6 +226,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
 export async function shareAccountantPack(): Promise<void> {
   const html = await buildAccountantPackHtml();
   const { uri } = await Print.printToFileAsync({ html });
+  kvSet('pack_exported', 1); // unlocks the "Audit-ready" achievement
   // Re-share under a clear, dated filename instead of the random print name.
   await shareFileAs(uri, 'Accountant-Pack', 'pdf');
 }
