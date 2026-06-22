@@ -15,7 +15,9 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Okkle uses your location in the background to track delivery trips accurately.",
         "NSPhotoLibraryUsageDescription": "Okkle saves receipts to your photo library.",
         "NSCameraUsageDescription": "Okkle lets you photograph receipts and pay statements.",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -28,7 +30,12 @@
         "ACCESS_BACKGROUND_LOCATION",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "CAMERA"
+        "CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -47,6 +54,12 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8d4fc276-a589-4340-bcde-0263c4a1b51d"
+      }
+    }
   }
 }
