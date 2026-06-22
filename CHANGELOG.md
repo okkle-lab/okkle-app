@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (XP, levels & weekly challenges)
+
+### Levels and challenges
+- **XP & levels** — earn XP for activity (trips, active days, medals, streak, miles, expenses — never income, so it stays fair and private). A Level + XP bar appears on the dashboard.
+- **Weekly challenges** — four challenges that refresh each week (track 5 trips, cover 50 miles, keep a 5-day streak, log your weekly pay), each worth XP with progress bars.
+- Local-first groundwork for future anonymous XP/streak leagues.
+
 ## 2026-06-23 (~100 medals)
 
 ### Way more medals

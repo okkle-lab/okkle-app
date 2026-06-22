@@ -78,6 +78,8 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - **Streak header chip** on the dashboard (🔥 N) keeps the daily-return hook above the fold; tap it (or the "Your progress" card) to open the Medals screen.
 - **Medals screen** — an Apple-Fitness-style grid grouped by category, with an earned/total ring, locked vs unlocked medals, per-medal progress and a tap-through detail card.
 - **Gamified Trip tab** — the setup screen shows a daily-goal ring, streak pill and a "next medal" progress row.
+- **XP & levels** — earn XP for activity (trips, active days, medals, streak, miles, expenses — never income). A Level + XP bar shows on the dashboard.
+- **Weekly challenges** — four refreshing challenges (track 5 trips, cover 50 miles, keep a 5-day streak, log your weekly pay), each worth XP.
 - **"Achievement unlocked" celebration** — a popup fires whenever you earn a new medal.
 
 ### Export filenames
