@@ -4,11 +4,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, Chip, SectionHeader, PrimaryButton, VehicleChip } from '../src/components';
+import { Card, Chip, SectionHeader, PrimaryButton, VehicleChip, IconBadge } from '../src/components';
 import {
   VEHICLES, PLATFORMS, REGIONS, regionRate, regionLabel,
 } from '../src/db/tax';
-import { getUser, saveUser, resetAllData } from '../src/db';
+import { getUser, saveUser, resetAllData, kvGet, kvSet } from '../src/db';
 import { syncReminders, WEEKDAYS } from '../src/notifications';
 import { backupNow, restoreFromFile } from '../src/backup';
 import { Feather } from '@expo/vector-icons';
@@ -29,12 +29,14 @@ export default function Settings() {
   const [reminderOn, setReminderOn] = useState((u?.reminder_enabled ?? 1) === 1);
   const [reminderDay, setReminderDay] = useState(u?.reminder_day ?? 'sun');
   const [frequency, setFrequency] = useState(u?.log_frequency ?? 'weekly');
+  const [deadlinesOn, setDeadlinesOn] = useState((kvGet('deadline_reminders') ?? 'on') !== 'off');
 
   function togglePlatform(p: string) {
     setPlatforms(prev => (prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]));
   }
 
   async function save() {
+    kvSet('deadline_reminders', deadlinesOn ? 'on' : 'off');
     saveUser({
       name,
       vehicle,
@@ -184,6 +186,18 @@ export default function Settings() {
             </View>
           </>
         )}
+        <View style={s.divider} />
+        <View style={s.rowBetween}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.rowTitle}>Tax deadline reminders</Text>
+            <Text style={s.rowSub}>Self Assessment, payment & MTD dates</Text>
+          </View>
+          <Switch
+            value={deadlinesOn}
+            onValueChange={setDeadlinesOn}
+            trackColor={{ true: colors.brand, false: colors.borderStrong }}
+          />
+        </View>
       </Card>
 
       <SectionHeader title="About" />
@@ -205,13 +219,13 @@ export default function Settings() {
           Your data lives only on this phone. Back it up to your own iCloud or Files so you don't lose your records — HMRC expects records kept for at least 5 years.
         </Text>
         <Pressable onPress={doBackup} disabled={busy} style={s.actionRow}>
-          <Feather name="upload-cloud" size={18} color={colors.textPrimary} />
+          <IconBadge icon="upload-cloud" tone="mint" />
           <Text style={s.actionText}>Back up my data</Text>
           <Feather name="chevron-right" size={18} color={colors.textTertiary} />
         </Pressable>
         <View style={s.divider} />
         <Pressable onPress={doRestore} disabled={busy} style={s.actionRow}>
-          <Feather name="download-cloud" size={18} color={colors.textPrimary} />
+          <IconBadge icon="download-cloud" tone="green" />
           <Text style={s.actionText}>Restore from a backup</Text>
           <Feather name="chevron-right" size={18} color={colors.textTertiary} />
         </Pressable>

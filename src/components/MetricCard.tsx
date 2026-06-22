@@ -24,8 +24,16 @@ export function MetricCard({ label, value, sub, accent, icon, style }: Props) {
       borderColor: accent ? colors.brandMid : colors.border,
       flex: 1,
     }, style]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-        {icon ? <Feather name={icon} size={14} color={accent ? colors.brandDeep : colors.textTertiary} /> : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {icon ? (
+          <View style={{
+            width: 28, height: 28, borderRadius: 14,
+            backgroundColor: accent ? 'rgba(255,255,255,0.5)' : colors.brandLight,
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Feather name={icon} size={15} color={colors.brandDeep} />
+          </View>
+        ) : null}
         <Text style={[type.label, { fontSize: 13 }]}>
           {label}
         </Text>

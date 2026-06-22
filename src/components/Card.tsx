@@ -10,6 +10,12 @@ export function Card({ children, style }: { children: React.ReactNode; style?: V
       padding: spacing.lg,
       borderWidth: 1,
       borderColor: colors.border,
+      // Gentle elevation for depth (soft, not heavy).
+      shadowColor: '#1a2a26',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 2,
     }, style]}>
       {children}
     </View>

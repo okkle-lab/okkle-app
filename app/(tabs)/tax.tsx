@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TextInput, Share, Pressable } from 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, PrimaryButton } from '../../src/components';
+import { Card, SectionHeader, PrimaryButton, IconBadge } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTrips, getRecords,
   getUser, getQuarterlySummaries, kvGet, kvGetNum, kvSet, type QuarterSummary,
@@ -236,17 +236,17 @@ export default function TaxScreen() {
 
       <Card style={{ gap: spacing.md, marginTop: spacing.md }}>
         <Pressable onPress={shareSA} style={s.exportBtn}>
-          <Feather name="file-text" size={18} color={colors.textPrimary} />
+          <IconBadge icon="file-text" tone="mint" size={34} />
           <Text style={s.exportText}>Self Assessment summary</Text>
           <Feather name="share" size={16} color={colors.textTertiary} />
         </Pressable>
         <Pressable onPress={shareMileageLog} style={s.exportBtn}>
-          <Feather name="map" size={18} color={colors.textPrimary} />
+          <IconBadge icon="map" tone="green" size={34} />
           <Text style={s.exportText}>HMRC mileage log</Text>
           <Feather name="share" size={16} color={colors.textTertiary} />
         </Pressable>
         <Pressable onPress={shareCsv} style={s.exportBtn}>
-          <Feather name="database" size={18} color={colors.textPrimary} />
+          <IconBadge icon="database" tone="neutral" size={34} />
           <Text style={s.exportText}>All data (CSV)</Text>
           <Feather name="share" size={16} color={colors.textTertiary} />
         </Pressable>
