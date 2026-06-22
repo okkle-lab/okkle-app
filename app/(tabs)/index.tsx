@@ -3,14 +3,15 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal } 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal } from '../../src/components';
+import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView } from '../../src/components';
 import {
   getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getTaxYearExpenses, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
   getStreak, getAchievements, popNewAchievements, getXp, getWeeklyChallenges, creditCompletedChallenges,
+  getHeatPoints,
   kvGetNum, type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
-  type XpInfo, type Challenge,
+  type XpInfo, type Challenge, type HeatPoint,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
@@ -34,6 +35,7 @@ export default function HomeScreen() {
   const [xp, setXp] = React.useState<XpInfo | null>(null);
   const [challenges, setChallenges] = React.useState<Challenge[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
+  const [heatPoints, setHeatPoints] = React.useState<HeatPoint[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
 
   function loadPeriod(p: Period) {
@@ -49,6 +51,7 @@ export default function HomeScreen() {
     setUser(u);
     setYearMiles(getTaxYearMiles());
     setBuckets(getEarningsByTimeOfDay());
+    setHeatPoints(getHeatPoints());
     loadPeriod(period);
 
     // "Set aside for tax" estimate.
@@ -155,22 +158,31 @@ export default function HomeScreen() {
         </Card>
       )}
       {challenges.length > 0 && (
-        <Card style={{ marginTop: spacing.md, gap: 12 }}>
+        <Card style={{ marginTop: spacing.md }}>
           <View style={s.challHead}>
-            <Text style={s.challTitle}>This week's challenges</Text>
-            <Text style={s.challXp}>+{challenges.reduce((n, c) => n + (c.done ? 0 : c.xp), 0)} XP left</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather name="target" size={15} color={colors.brand} />
+              <Text style={s.challTitle}>This week's challenges</Text>
+            </View>
+            <Text style={s.challXp}>{challenges.reduce((n, c) => n + (c.done ? 0 : c.xp), 0)} XP to go</Text>
           </View>
-          {challenges.map(c => (
-            <View key={c.key} style={s.challRow}>
-              <Text style={{ fontSize: 20, opacity: c.done ? 1 : 0.85 }}>{c.done ? '✅' : c.emoji}</Text>
-              <View style={{ flex: 1 }}>
-                <View style={s.challTop}>
-                  <Text style={[s.challLabel, c.done && { color: colors.textTertiary, textDecorationLine: 'line-through' }]}>{c.label}</Text>
-                  <Text style={s.challProg}>{Math.min(c.value, c.target)}/{c.target}</Text>
-                </View>
-                <View style={s.challTrack}><View style={[s.challFill, { width: `${Math.round(c.progress * 100)}%` }, c.done && { backgroundColor: colors.green }]} /></View>
+          {challenges.map((c, i) => (
+            <View key={c.key} style={[s.challRow, i < challenges.length - 1 && s.challRowBorder]}>
+              <View style={[s.challEmoji, c.done && { backgroundColor: colors.greenLight }]}>
+                <Text style={{ fontSize: 18 }}>{c.done ? '✅' : c.emoji}</Text>
               </View>
-              <Text style={[s.challReward, c.done && { color: colors.green }]}>+{c.xp}</Text>
+              <View style={{ flex: 1, gap: 7 }}>
+                <View style={s.challTop}>
+                  <Text style={[s.challLabel, c.done && { color: colors.textTertiary }]} numberOfLines={1}>{c.label}</Text>
+                  <View style={[s.xpPill, c.done && { backgroundColor: colors.greenLight }]}>
+                    <Text style={[s.xpPillText, c.done && { color: colors.green }]} numberOfLines={1}>{c.done ? 'Done' : `+${c.xp} XP`}</Text>
+                  </View>
+                </View>
+                <View style={s.challTrack}>
+                  <View style={[s.challFill, { width: `${Math.round(c.progress * 100)}%` }, c.done && { backgroundColor: colors.green }]} />
+                </View>
+                <Text style={s.challProg}>{Math.min(c.value, c.target)} / {c.target}</Text>
+              </View>
             </View>
           ))}
         </Card>
@@ -320,47 +332,25 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Insights entry — hotspots map + best times live here */}
-      <Pressable onPress={() => router.push('/insights')} style={({ pressed }) => [s.insightsCta, pressed && { opacity: 0.9 }]}>
-        <View style={s.insightsIcon}><Feather name="map" size={20} color={colors.brandDeep} /></View>
-        <View style={{ flex: 1 }}>
-          <Text style={s.insightsTitle}>Where you earn most</Text>
-          <Text style={s.insightsSub}>See your hotspots map &amp; best hours</Text>
+      {/* Insights preview — promoted to Home (hotspots + best times inside) */}
+      <View style={{ marginTop: spacing.xl }}>
+        <View style={s.progressHead}>
+          <SectionHeader icon="map" title="Where you earn most" />
+          <Pressable onPress={() => router.push('/insights')} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <Text style={s.seeAll}>Insights</Text>
+            <Feather name="chevron-right" size={15} color={colors.brandDeep} />
+          </Pressable>
         </View>
-        <Feather name="chevron-right" size={20} color={colors.brandDeep} />
-      </Pressable>
-
-      {/* Best hours heatmap */}
-      {buckets.some(b => b.trips > 0) && (
-        <View style={{ marginTop: spacing.xl }}>
-          <SectionHeader icon="sunrise" title="Best times to work" />
-          <Card>
-            {(() => {
-              const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
-              const anyEarnings = buckets.some(b => b.earnings > 0);
-              return buckets.map(b => {
-                const ref = anyEarnings ? b.perHour : b.trips;
-                const max = anyEarnings ? maxPer : Math.max(...buckets.map(x => x.trips), 1);
-                const pct = max > 0 ? (ref / max) * 100 : 0;
-                return (
-                  <View key={b.label} style={s.heatRow}>
-                    <Text style={s.heatLabel}>{b.label}</Text>
-                    <View style={s.heatTrack}>
-                      <View style={[s.heatFill, { width: `${Math.max(4, pct)}%`, opacity: 0.35 + (pct / 100) * 0.65 }]} />
-                    </View>
-                    <Text style={s.heatVal}>{anyEarnings ? fmtPerHour(b.perHour) : `${b.trips}`}</Text>
-                  </View>
-                );
-              });
-            })()}
-            <Text style={s.heatNote}>
-              {buckets.some(b => b.earnings > 0)
-                ? 'Based on your earnings per hour. Add earnings to trips for sharper insight.'
-                : 'Based on trip count — add earnings to each trip to see £/hour.'}
-            </Text>
+        <Pressable onPress={() => router.push('/insights')}>
+          <Card style={{ padding: spacing.sm }}>
+            <HeatMapView points={heatPoints} height={160} />
+            <View style={s.insightsCaptionRow}>
+              <Text style={s.insightsCaption}>Your hotspots, top areas &amp; best hours</Text>
+              <Feather name="arrow-right" size={16} color={colors.brandDeep} />
+            </View>
           </Card>
-        </View>
-      )}
+        </Pressable>
+      </View>
 
       <View style={s.disclaimer}>
         <Feather name="shield" size={14} color={colors.textTertiary} />
@@ -377,7 +367,7 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
-  hello: { ...type.heading, fontSize: 18 },
+  hello: { ...type.heading, fontSize: 22, letterSpacing: -0.4 },
   gear: { padding: 4 },
   streakChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full, marginRight: 6 },
   streakChipOn: { backgroundColor: colors.amberLight },
@@ -455,10 +445,8 @@ const s = StyleSheet.create({
 
   progressHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   seeAll: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
-  insightsCta: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: spacing.xl, backgroundColor: colors.brandLight, borderRadius: radius.lg, padding: spacing.lg },
-  insightsIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  insightsTitle: { ...type.bodyMedium, fontSize: 15, color: colors.brandDeep },
-  insightsSub: { ...type.caption, color: colors.brandDeep, opacity: 0.8, marginTop: 1 },
+  insightsCaptionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.sm, paddingTop: spacing.md, paddingBottom: 4 },
+  insightsCaption: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
 
   levelRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   levelBadge: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
@@ -469,16 +457,19 @@ const s = StyleSheet.create({
   xpTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
   xpFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
 
-  challHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  challHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
   challTitle: { ...type.bodyMedium, fontSize: 15 },
-  challXp: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
-  challRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  challTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  challLabel: { ...type.caption, color: colors.textPrimary, fontWeight: font.medium },
+  challXp: { ...type.caption, ...tabular, color: colors.brandDeep, fontWeight: font.semibold },
+  challRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  challRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  challEmoji: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.bgSoft, alignItems: 'center', justifyContent: 'center' },
+  challTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  challLabel: { ...type.bodyMedium, fontSize: 14, flex: 1 },
   challProg: { ...type.small, ...tabular },
-  challTrack: { height: 5, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
-  challFill: { height: '100%', backgroundColor: colors.brandMid, borderRadius: radius.full },
-  challReward: { ...type.caption, ...tabular, color: colors.amber, fontWeight: font.bold, width: 36, textAlign: 'right' },
+  challTrack: { height: 6, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
+  challFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
+  xpPill: { backgroundColor: colors.amberLight, paddingHorizontal: 9, paddingVertical: 3, borderRadius: radius.full },
+  xpPillText: { ...tabular, fontSize: 12, fontWeight: font.bold, color: colors.amber },
   streakRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   streakIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   streakValue: { ...type.bodyMedium, fontSize: 16 },
