@@ -8,7 +8,7 @@ import {
   getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getTaxYearExpenses, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
-  getStreak, getAchievements, popNewAchievements, getXp, getWeeklyChallenges,
+  getStreak, getAchievements, popNewAchievements, getXp, getWeeklyChallenges, creditCompletedChallenges,
   kvGetNum, type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
   type XpInfo, type Challenge,
 } from '../../src/db';
@@ -58,8 +58,9 @@ export default function HomeScreen() {
     // Gamification: streak, badges, and a celebration for anything new.
     setStreak(getStreak());
     setAchievements(getAchievements());
-    setXp(getXp());
     setChallenges(getWeeklyChallenges());
+    creditCompletedChallenges();   // award XP for any challenge finished since last open
+    setXp(getXp());
     const fresh = popNewAchievements();
     if (fresh.length) setNewAch(fresh[0]);
   }
@@ -126,19 +127,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Set aside for tax — practical money guidance */}
-      <Card style={s.setAside}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={s.piggy}><Feather name="shield" size={18} color={colors.amber} /></View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.setAsideLabel}>Set aside for tax</Text>
-            <Text style={s.setAsideSub}>Estimated bill so far this year</Text>
-          </View>
-          <Text style={s.setAsideValue}>{fmtGbp(setAside)}</Text>
-        </View>
-      </Card>
-
-      {/* Quick-start */}
+      {/* Quick-start — primary action right under the hero */}
       <Pressable onPress={() => router.push('/(tabs)/trip')} style={({ pressed }) => [s.quickStart, pressed && { opacity: 0.9 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Feather name="navigation" size={22} color="#fff" />
@@ -149,6 +138,43 @@ export default function HomeScreen() {
         </View>
         <Feather name="arrow-right" size={22} color="#fff" />
       </Pressable>
+
+      {/* Play block — level + weekly challenges, kept high so it feels like a game */}
+      {xp && (
+        <Card style={{ marginTop: spacing.lg }}>
+          <View style={s.levelRow}>
+            <View style={s.levelBadge}><Text style={s.levelBadgeText}>Lv {xp.level}</Text></View>
+            <View style={{ flex: 1 }}>
+              <View style={s.levelTop}>
+                <Text style={s.levelTitle}>Level {xp.level}</Text>
+                <Text style={s.levelXp}>{xp.into} / {xp.span} XP</Text>
+              </View>
+              <View style={s.xpTrack}><View style={[s.xpFill, { width: `${Math.round(xp.progress * 100)}%` }]} /></View>
+            </View>
+          </View>
+        </Card>
+      )}
+      {challenges.length > 0 && (
+        <Card style={{ marginTop: spacing.md, gap: 12 }}>
+          <View style={s.challHead}>
+            <Text style={s.challTitle}>This week's challenges</Text>
+            <Text style={s.challXp}>+{challenges.reduce((n, c) => n + (c.done ? 0 : c.xp), 0)} XP left</Text>
+          </View>
+          {challenges.map(c => (
+            <View key={c.key} style={s.challRow}>
+              <Text style={{ fontSize: 20, opacity: c.done ? 1 : 0.85 }}>{c.done ? '✅' : c.emoji}</Text>
+              <View style={{ flex: 1 }}>
+                <View style={s.challTop}>
+                  <Text style={[s.challLabel, c.done && { color: colors.textTertiary, textDecorationLine: 'line-through' }]}>{c.label}</Text>
+                  <Text style={s.challProg}>{Math.min(c.value, c.target)}/{c.target}</Text>
+                </View>
+                <View style={s.challTrack}><View style={[s.challFill, { width: `${Math.round(c.progress * 100)}%` }, c.done && { backgroundColor: colors.green }]} /></View>
+              </View>
+              <Text style={[s.challReward, c.done && { color: colors.green }]}>+{c.xp}</Text>
+            </View>
+          ))}
+        </Card>
+      )}
 
       {/* Period switcher — Today · Week · Month · Year */}
       <View style={s.segment}>
@@ -196,7 +222,19 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Gamification — streak + achievement badges */}
+      {/* Set aside for tax — practical guidance, after the fun stuff */}
+      <Card style={{ marginTop: spacing.xl }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={s.piggy}><Feather name="shield" size={18} color={colors.amber} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.setAsideLabel}>Set aside for tax</Text>
+            <Text style={s.setAsideSub}>Estimated bill so far this year</Text>
+          </View>
+          <Text style={s.setAsideValue}>{fmtGbp(setAside)}</Text>
+        </View>
+      </Card>
+
+      {/* Gamification — medal collection */}
       {achievements.length > 0 && (
         <View style={{ marginTop: spacing.xl }}>
           <View style={s.progressHead}>
@@ -206,45 +244,6 @@ export default function HomeScreen() {
               <Feather name="chevron-right" size={15} color={colors.brandDeep} />
             </Pressable>
           </View>
-          {/* Level + XP */}
-          {xp && (
-            <Card style={{ marginBottom: spacing.md }}>
-              <View style={s.levelRow}>
-                <View style={s.levelBadge}><Text style={s.levelBadgeText}>Lv {xp.level}</Text></View>
-                <View style={{ flex: 1 }}>
-                  <View style={s.levelTop}>
-                    <Text style={s.levelTitle}>Level {xp.level}</Text>
-                    <Text style={s.levelXp}>{xp.into} / {xp.span} XP</Text>
-                  </View>
-                  <View style={s.xpTrack}><View style={[s.xpFill, { width: `${Math.round(xp.progress * 100)}%` }]} /></View>
-                </View>
-              </View>
-            </Card>
-          )}
-
-          {/* This week's challenges */}
-          {challenges.length > 0 && (
-            <Card style={{ marginBottom: spacing.md, gap: 12 }}>
-              <View style={s.challHead}>
-                <Text style={s.challTitle}>This week's challenges</Text>
-                <Text style={s.challXp}>+{challenges.reduce((n, c) => n + (c.done ? 0 : c.xp), 0)} XP left</Text>
-              </View>
-              {challenges.map(c => (
-                <View key={c.key} style={s.challRow}>
-                  <Text style={{ fontSize: 20, opacity: c.done ? 1 : 0.85 }}>{c.done ? '✅' : c.emoji}</Text>
-                  <View style={{ flex: 1 }}>
-                    <View style={s.challTop}>
-                      <Text style={[s.challLabel, c.done && { color: colors.textTertiary, textDecorationLine: 'line-through' }]}>{c.label}</Text>
-                      <Text style={s.challProg}>{Math.min(c.value, c.target)}/{c.target}</Text>
-                    </View>
-                    <View style={s.challTrack}><View style={[s.challFill, { width: `${Math.round(c.progress * 100)}%` }, c.done && { backgroundColor: colors.green }]} /></View>
-                  </View>
-                  <Text style={[s.challReward, c.done && { color: colors.green }]}>+{c.xp}</Text>
-                </View>
-              ))}
-            </Card>
-          )}
-
           <Pressable onPress={() => router.push('/medals')}>
             <Card>
               <View style={s.streakRow}>

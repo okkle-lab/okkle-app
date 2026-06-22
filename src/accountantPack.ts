@@ -5,7 +5,7 @@ import {
   getUser, getTrips, getRecords, getTaxYearSummary, getTaxYearMiles,
   getTaxYearExpenses, kvGet, kvGetNum, kvSet, taxYearStart,
 } from './db';
-import { taxPosition, compareMethods, caRate } from './db/taxcalc';
+import { taxPosition, compareMethods, caRate, RATES_YEAR } from './db/taxcalc';
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel, regionLabel } from './db/tax';
 
 const VEHICLE_COST_WORDS = /fuel|petrol|diesel|tyre|tire|mot|service|servicing|repair|insurance|road tax|breakdown|oil|brake|battery/i;
@@ -162,7 +162,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
   <div class="kv"><span>Accounting basis</span><b>Cash basis</b></div>
   <div class="kv"><span>Mileage method</span><b>${usingActual ? 'Actual costs + capital allowances' : 'Simplified mileage (HMRC flat rate)'}</b></div>
   ${usingActual ? `<div class="kv"><span>Business-use proportion</span><b>${(method.businessUsePct * 100).toFixed(0)}%</b></div>` : ''}
-  <div class="kv"><span>Rates basis</span><b>2025/26 HMRC rates</b></div>
+  <div class="kv"><span>Rates basis</span><b>${RATES_YEAR} HMRC rates (allowances frozen to 2027/28)</b></div>
   <div class="kv"><span>Records source</span><b>GPS trips and manual entries logged in Okkle</b></div>
 
   <h3 class="ctrl">Record counts (completeness check)</h3>
@@ -213,7 +213,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
 
   <div class="note">
     <b>Basis &amp; limitations.</b> Prepared by Okkle from records kept on the client's device, on the cash basis,
-    using 2025/26 HMRC rates. Figures are estimates derived solely from data the client logged; they have
+    using ${RATES_YEAR} HMRC rates (allowances frozen to 2027/28). Figures are estimates derived solely from data the client logged; they have
     not been independently verified or reconciled to bank records, and do not constitute tax advice.
     The mileage deduction and the actual-cost figures are mutually exclusive — only one method applies per vehicle,
     and a vehicle on the actual-cost basis cannot revert to simplified. Please confirm completeness and all

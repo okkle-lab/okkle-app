@@ -792,7 +792,8 @@ export function getXp(): XpInfo {
   const days = db.getAllSync<{ d: string }>(
     `SELECT d FROM (SELECT DISTINCT date(started_at) AS d FROM trips UNION SELECT DISTINCT date(created_at) AS d FROM records)`).length;
 
-  const xp = tripsN * 10 + days * 20 + medals * 40 + streak * 8 + Math.round(miles) + expenses * 10;
+  const base = tripsN * 10 + days * 20 + medals * 40 + streak * 8 + Math.round(miles) + expenses * 10;
+  const xp = base + kvGetNum('bonus_xp'); // bonus from completed weekly challenges
 
   let level = 1, need = 120, acc = 0;
   while (xp >= acc + need) { acc += need; level++; need = Math.round(need * 1.3); }
@@ -816,6 +817,23 @@ export function getWeeklyChallenges(): Challenge[] {
     progress: Math.max(0, Math.min(1, value / target)),
     done: value >= target,
   }));
+}
+
+// Credit XP for challenges completed this week (once each). Old-week entries are
+// pruned automatically so the ledger stays small. Returns XP newly awarded.
+export function creditCompletedChallenges(): number {
+  const weekStart = periodRange('week').start;
+  const credited = new Set((kvGet('chall_credited') ?? '').split(',').filter(s => s.startsWith(weekStart)));
+  let added = 0;
+  for (const c of getWeeklyChallenges()) {
+    const id = `${weekStart}:${c.key}`;
+    if (c.done && !credited.has(id)) { credited.add(id); added += c.xp; }
+  }
+  if (added > 0) {
+    kvSet('chall_credited', [...credited].join(','));
+    kvSet('bonus_xp', kvGetNum('bonus_xp') + added);
+  }
+  return added;
 }
 
 // Returns achievements newly unlocked since last check, and marks them seen.

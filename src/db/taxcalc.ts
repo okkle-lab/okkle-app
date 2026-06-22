@@ -1,6 +1,11 @@
 // UK tax estimates for self-employed couriers — 2025/26 figures.
 // These are ESTIMATES to help users understand their position, not tax advice.
 
+// The tax year these rates/allowances are confirmed for. The personal allowance
+// and higher-rate threshold are frozen to 2027/28, and Class 4 NIC is unchanged,
+// so these remain a sound basis for the current year — but we label them honestly.
+export const RATES_YEAR = '2025/26';
+
 export const PERSONAL_ALLOWANCE = 12570;
 export const TRADING_ALLOWANCE = 1000;
 

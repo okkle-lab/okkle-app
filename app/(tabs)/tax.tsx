@@ -12,7 +12,7 @@ import {
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
 import {
-  compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE,
+  compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE, RATES_YEAR,
 } from '../../src/db/taxcalc';
 import { shareAccountantPack } from '../../src/accountantPack';
 import { shareTextExport } from '../../src/exportFile';
@@ -318,7 +318,7 @@ export default function TaxScreen() {
       <View style={s.disclaimer}>
         <Feather name="shield" size={14} color={colors.textTertiary} />
         <Text style={s.disclaimerText}>
-          Estimates based on 2025/26 rates and what you've logged — not tax advice. Your accountant confirms the final figures and files your return.
+          Estimated using {RATES_YEAR} HMRC rates (allowances frozen to 2027/28) and what you've logged — not tax advice. Your accountant confirms the final figures and files your return.
         </Text>
       </View>
     </ScrollView>
