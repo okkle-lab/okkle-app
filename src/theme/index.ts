@@ -54,6 +54,10 @@ export const type = {
   metricValue: { fontSize: 24, fontWeight: font.bold, letterSpacing: -0.5, color: colors.textPrimary },
 } as const;
 
+// Apply to any Text that shows numbers so digits sit in even columns and don't
+// jitter between values (tabular/monospaced figures).
+export const tabular = { fontVariant: ['tabular-nums' as const] };
+
 export const spacing = {
   xs: 4,
   sm: 8,

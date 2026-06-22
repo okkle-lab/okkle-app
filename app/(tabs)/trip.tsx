@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { colors, font, spacing, radius, type } from '../../src/theme';
+import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
@@ -336,7 +336,7 @@ const s = StyleSheet.create({
   },
   dayBarItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
   dayBarDivider: { width: 1, backgroundColor: colors.border, marginVertical: 10 },
-  dayBarValue: { fontSize: 17, fontWeight: font.bold, color: colors.textPrimary },
+  dayBarValue: { ...tabular, fontSize: 17, fontWeight: font.bold, color: colors.textPrimary },
   dayBarLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 
   logPayBtn: {
@@ -373,7 +373,7 @@ const s = StyleSheet.create({
   liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4ade80' },
   liveStatus: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: font.medium },
   ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  ringMiles: { fontSize: 64, fontWeight: font.bold, color: '#fff', letterSpacing: -2 },
+  ringMiles: { ...tabular, fontSize: 64, fontWeight: font.bold, color: '#fff', letterSpacing: -2 },
   ringMilesUnit: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: -4 },
   ringGoalChip: {
     marginTop: 12, backgroundColor: 'rgba(31,184,154,0.22)',
@@ -384,7 +384,7 @@ const s = StyleSheet.create({
   liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
   liveStatBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
   liveStatLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
-  liveStatValue: { fontSize: 19, fontWeight: font.semibold, color: '#fff' },
+  liveStatValue: { ...tabular, fontSize: 19, fontWeight: font.semibold, color: '#fff' },
   liveActions: { paddingHorizontal: spacing.xl, paddingBottom: 44, gap: spacing.md },
   pauseBtn: {
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', borderRadius: radius.full,
@@ -402,7 +402,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, marginVertical: spacing.xl,
   },
   summaryStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg },
-  summaryStatValue: { fontSize: 20, fontWeight: font.bold, color: colors.textPrimary },
+  summaryStatValue: { ...tabular, fontSize: 20, fontWeight: font.bold, color: colors.textPrimary },
   summaryStatLabel: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
   earningsInput: {
     borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,

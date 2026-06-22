@@ -10,7 +10,8 @@ import {
   getPeriodSummary, getPlatformStatsForPeriod,
   kvGetNum, kvSet, type PlatformStat, type TimeBucket, type Period, type PeriodSummary,
 } from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel } from '../../src/db/tax';
+import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
+import { tabular } from '../../src/theme';
 import { taxPosition } from '../../src/db/taxcalc';
 
 const MILESTONES = [50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000];
@@ -150,8 +151,8 @@ export default function HomeScreen() {
         <MetricCard
           icon="clock"
           label={period === 'today' ? 'Trips' : 'Hours'}
-          value={period === 'today' ? String(periodData?.trips ?? 0) : `${(periodData?.hours ?? 0).toFixed(1)}h`}
-          sub={(periodData?.hours ?? 0) > 0 ? `£${((periodData?.earnings ?? 0) / (periodData?.hours || 1)).toFixed(1)}/h` : undefined}
+          value={period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0)}
+          sub={(periodData?.hours ?? 0) > 0 ? fmtPerHour((periodData?.earnings ?? 0) / (periodData?.hours || 1)) : undefined}
         />
       </View>
 
@@ -165,7 +166,7 @@ export default function HomeScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={s.rowTitle}>{p.platform}</Text>
                   <Text style={s.rowSub}>
-                    {fmtMiles(p.miles)}{p.perMile > 0 ? ` · £${p.perMile.toFixed(2)}/mi` : ''}
+                    {fmtMiles(p.miles)}{p.perMile > 0 ? ` · ${fmtPerMile(p.perMile)}` : ''}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
@@ -184,7 +185,7 @@ export default function HomeScreen() {
           <Card>
             <View style={s.rowBetween}>
               <Text style={s.thresholdMiles}>{fmtMiles(yearMiles)} this year</Text>
-              <Text style={s.thresholdPct}>{thresholdPct.toFixed(0)}%</Text>
+              <Text style={s.thresholdPct}>{Math.round(thresholdPct)}%</Text>
             </View>
             <View style={s.progressTrack}>
               <View style={[s.progressFill, { width: `${thresholdPct}%`, backgroundColor: thresholdPct >= 100 ? colors.amber : colors.brand }]} />
@@ -244,7 +245,7 @@ export default function HomeScreen() {
                     <View style={s.heatTrack}>
                       <View style={[s.heatFill, { width: `${Math.max(4, pct)}%`, opacity: 0.35 + (pct / 100) * 0.65 }]} />
                     </View>
-                    <Text style={s.heatVal}>{anyEarnings ? `£${b.perHour.toFixed(0)}/h` : `${b.trips}`}</Text>
+                    <Text style={s.heatVal}>{anyEarnings ? fmtPerHour(b.perHour) : `${b.trips}`}</Text>
                   </View>
                 );
               });
@@ -281,7 +282,7 @@ const s = StyleSheet.create({
     padding: spacing.xl, marginBottom: spacing.lg,
   },
   heroLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: font.medium },
-  heroValue: { color: '#fff', fontSize: 44, fontWeight: font.bold, letterSpacing: -1, marginTop: 8 },
+  heroValue: { ...tabular, color: '#fff', fontSize: 44, fontWeight: font.bold, letterSpacing: -1, marginTop: 8 },
   heroSub: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4 },
   heroChip: {
     alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.18)',
@@ -305,8 +306,8 @@ const s = StyleSheet.create({
   periodLabel: { ...type.label, color: colors.textSecondary, marginBottom: spacing.sm, fontWeight: font.semibold },
   metricsRow: { flexDirection: 'row' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  thresholdMiles: { ...type.bodyMedium, fontSize: 15 },
-  thresholdPct: { ...type.bodyMedium, fontSize: 15, color: colors.brandDeep },
+  thresholdMiles: { ...type.bodyMedium, ...tabular, fontSize: 15 },
+  thresholdPct: { ...type.bodyMedium, ...tabular, fontSize: 15, color: colors.brandDeep },
   progressTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: radius.full },
   thresholdNote: { ...type.caption, color: colors.textTertiary, flex: 1, lineHeight: 18 },
@@ -315,8 +316,8 @@ const s = StyleSheet.create({
   rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
   rowTitle: { ...type.bodyMedium, fontSize: 15 },
   rowSub: { ...type.caption, marginTop: 2 },
-  rowAmount: { fontSize: 15, fontWeight: font.semibold, color: colors.brandDeep },
-  rowEarn: { fontSize: 12, color: colors.green, marginTop: 2 },
+  rowAmount: { ...tabular, fontSize: 15, fontWeight: font.semibold, color: colors.brandDeep },
+  rowEarn: { ...tabular, fontSize: 12, color: colors.green, marginTop: 2 },
   emptyText: { color: colors.textSecondary, fontSize: 14, textAlign: 'center', paddingVertical: 8 },
 
   disclaimer: { marginTop: spacing.xl, padding: spacing.lg, backgroundColor: colors.bgSoft, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -326,13 +327,13 @@ const s = StyleSheet.create({
   piggy: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.amberLight, alignItems: 'center', justifyContent: 'center' },
   setAsideLabel: { ...type.bodyMedium, fontSize: 15 },
   setAsideSub: { ...type.caption, marginTop: 1 },
-  setAsideValue: { fontSize: 20, fontWeight: font.bold, color: colors.amber },
+  setAsideValue: { ...tabular, fontSize: 20, fontWeight: font.bold, color: colors.amber },
 
   heatRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, gap: 10 },
   heatLabel: { ...type.caption, color: colors.textSecondary, width: 70 },
   heatTrack: { flex: 1, height: 14, backgroundColor: colors.bgSoft, borderRadius: radius.full, overflow: 'hidden' },
   heatFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
-  heatVal: { ...type.caption, color: colors.textPrimary, width: 48, textAlign: 'right', fontWeight: font.medium },
+  heatVal: { ...type.caption, ...tabular, color: colors.textPrimary, width: 62, textAlign: 'right', fontWeight: font.medium },
   heatNote: { ...type.small, marginTop: 10, lineHeight: 17 },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },

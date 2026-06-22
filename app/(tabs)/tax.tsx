@@ -9,7 +9,8 @@ import {
   getUser, getQuarterlySummaries, getHoursWorked, getPlatformStats,
   kvGet, kvGetNum, kvSet, type QuarterSummary, type PlatformStat,
 } from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel } from '../../src/db/tax';
+import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
+import { tabular } from '../../src/theme';
 import {
   compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE,
 } from '../../src/db/taxcalc';
@@ -168,7 +169,7 @@ export default function TaxScreen() {
         <Row label="Income Tax" value={fmtGbp(pos.incomeTax)} />
         <Row label="Class 4 NIC" value={fmtGbp(pos.class4)} />
         <Row label="Total estimated due" value={fmtGbp(pos.totalDue)} bold accent />
-        <Row label="Effective rate" value={`${(pos.effectiveRate * 100).toFixed(1)}%`} />
+        <Row label="Effective rate" value={fmtPct(pos.effectiveRate)} />
         <Text style={s.smallNote}>{class2Note(pos.profit)}</Text>
         {pos.paymentOnAccount > 0 && (
           <View style={s.poaBox}>
@@ -183,11 +184,11 @@ export default function TaxScreen() {
       {/* Insights — your business as a P&L */}
       <SectionHeader title="Business insights" />
       <Card>
-        <Row label="Effective net pay / hour" value={hours > 0 ? `£${((pos.profit - pos.totalDue) / hours).toFixed(2)}` : '—'} bold accent />
-        <Row label="Gross pay / hour" value={hours > 0 ? `£${(year.earnings / hours).toFixed(2)}` : '—'} />
-        <Row label="Gross earnings / mile" value={`£${grossPerMile.toFixed(2)}`} />
-        <Row label="Net margin (kept after tax)" value={year.earnings > 0 ? `${(((pos.profit - pos.totalDue) / year.earnings) * 100).toFixed(0)}%` : '—'} />
-        <Row label="Hours tracked this year" value={`${hours.toFixed(0)}h`} />
+        <Row label="Effective net pay / hour" value={hours > 0 ? fmtPerHour((pos.profit - pos.totalDue) / hours) : '—'} bold accent />
+        <Row label="Gross pay / hour" value={hours > 0 ? fmtPerHour(year.earnings / hours) : '—'} />
+        <Row label="Gross earnings / mile" value={fmtPerMile(grossPerMile)} />
+        <Row label="Net margin (kept after tax)" value={year.earnings > 0 ? fmtPct((pos.profit - pos.totalDue) / year.earnings) : '—'} />
+        <Row label="Hours tracked this year" value={fmtHours(hours)} />
         <Row label="Personal allowance left" value={fmtGbp(Math.max(0, PERSONAL_ALLOWANCE - pos.profit))} />
         {hours === 0 && (
           <Text style={s.smallNote}>Track trips and add earnings to unlock your hourly rate and margin.</Text>
@@ -203,11 +204,11 @@ export default function TaxScreen() {
               <View key={p.platform} style={[s.qRow, i < arr.length - 1 && s.qBorder]}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.qLabel}>{p.platform}</Text>
-                  <Text style={s.qDates}>£{p.perMile.toFixed(2)}/mi · {p.hours.toFixed(0)}h</Text>
+                  <Text style={s.qDates}>{fmtPerMile(p.perMile)} · {fmtHours(p.hours)}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} /> : null}
-                  <Text style={[s.qProfit, i === 0 && { color: colors.green }]}>£{p.perHour.toFixed(2)}/h</Text>
+                  <Text style={[s.qProfit, i === 0 && { color: colors.green }]}>{fmtPerHour(p.perHour)}</Text>
                 </View>
               </View>
             ))}
@@ -316,15 +317,15 @@ const s = StyleSheet.create({
   methodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   methodName: { ...type.bodyMedium, fontSize: 16 },
   methodSub: { ...type.caption, marginTop: 2 },
-  methodValue: { fontSize: 22, fontWeight: font.bold, color: colors.brandDeep, letterSpacing: -0.5 },
+  methodValue: { ...tabular, fontSize: 22, fontWeight: font.bold, color: colors.brandDeep, letterSpacing: -0.5 },
   compareCta: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md },
   compareCtaText: { ...type.caption, color: colors.brandDeep, flex: 1, fontWeight: font.medium },
   inputLabel: { ...type.caption, color: colors.textSecondary, marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg },
 
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border },
-  rowLabel: { fontSize: 15, color: colors.textSecondary },
-  rowValue: { fontSize: 15, fontWeight: font.medium, color: colors.textPrimary },
+  rowLabel: { fontSize: 15, color: colors.textSecondary, flex: 1, paddingRight: spacing.md },
+  rowValue: { ...tabular, fontSize: 15, fontWeight: font.medium, color: colors.textPrimary, textAlign: 'right' },
   smallNote: { ...type.small, marginTop: 10, lineHeight: 17 },
   poaBox: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'flex-start' },
   poaText: { ...type.caption, color: colors.textSecondary, flex: 1, lineHeight: 19 },
@@ -338,8 +339,8 @@ const s = StyleSheet.create({
   qLabel: { ...type.bodyMedium, fontSize: 16 },
   qNowTag: { backgroundColor: colors.brand, borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2 },
   qNowText: { color: '#fff', fontSize: 11, fontWeight: font.semibold },
-  qDates: { ...type.caption, marginTop: 2 },
-  qProfit: { fontSize: 15, fontWeight: font.semibold, color: colors.brandDeep },
+  qDates: { ...type.caption, ...tabular, marginTop: 2 },
+  qProfit: { ...tabular, fontSize: 15, fontWeight: font.semibold, color: colors.brandDeep },
   qProfitLabel: { ...type.small },
   mtdNote: { ...type.small, lineHeight: 18, marginTop: spacing.md },
 

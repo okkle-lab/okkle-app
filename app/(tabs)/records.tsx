@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, radius, type } from '../../src/theme';
+import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Card, SectionHeader, VehicleIcon } from '../../src/components';
 import { getTrips, getRecords, getVehicleStats, type VehicleStat } from '../../src/db';
 import { fmtGbp, fmtMiles, vehicleLabel } from '../../src/db/tax';
@@ -158,6 +158,6 @@ const row = StyleSheet.create({
   title: { fontSize: 15, fontWeight: font.medium, color: colors.textPrimary },
   sub: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   right: { alignItems: 'flex-end' },
-  amount: { fontSize: 15, fontWeight: font.semibold, color: colors.textPrimary },
-  amountSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  amount: { ...tabular, fontSize: 15, fontWeight: font.semibold, color: colors.textPrimary },
+  amountSub: { ...tabular, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 });

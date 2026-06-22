@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, font, spacing, type } from '../theme';
+import { colors, radius, font, spacing, type, tabular } from '../theme';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -23,8 +23,10 @@ export function MetricCard({ label, value, sub, accent, icon, style }: Props) {
       borderWidth: 1,
       borderColor: accent ? colors.brandMid : colors.border,
       flex: 1,
+      minHeight: 96,
+      justifyContent: 'flex-start',
     }, style]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         {icon ? (
           <View style={{
             width: 28, height: 28, borderRadius: 14,
@@ -34,15 +36,23 @@ export function MetricCard({ label, value, sub, accent, icon, style }: Props) {
             <Feather name={icon} size={15} color={colors.brandDeep} />
           </View>
         ) : null}
-        <Text style={[type.label, { fontSize: 13 }]}>
+        <Text style={[type.label, { fontSize: 13 }]} numberOfLines={1}>
           {label}
         </Text>
       </View>
-      <Text style={[type.metricValue, accent && { color: colors.brandDeep }]}>
+      <Text
+        style={[type.metricValue, tabular, accent && { color: colors.brandDeep }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
         {value}
       </Text>
       {sub ? (
-        <Text style={[type.small, { fontSize: 12, color: accent ? colors.brand : colors.textTertiary, marginTop: 3 }]}>
+        <Text
+          style={[type.small, tabular, { fontSize: 12, color: accent ? colors.brand : colors.textTertiary, marginTop: 4 }]}
+          numberOfLines={1}
+        >
           {sub}
         </Text>
       ) : null}

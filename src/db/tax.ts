@@ -58,12 +58,35 @@ export function vehicleLabel(vehicle: string): string {
 }
 
 export function fmtGbp(amount: number): string {
-  return '£' + amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const neg = amount < 0;
+  const body = Math.abs(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '-£' : '£') + body;
+}
+
+// Whole-pound currency (no pence) — for large headline figures where pence is noise.
+export function fmtGbpRound(amount: number): string {
+  const neg = amount < 0;
+  const body = Math.abs(Math.round(amount)).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '-£' : '£') + body;
 }
 
 export function fmtMiles(miles: number): string {
   return miles.toFixed(1) + ' mi';
 }
+
+// --- Consistent rate / time / percent formatting across every screen --------
+// Per-hour and per-mile rates: always £X.XX (2dp).
+export function fmtPerHour(value: number): string { return `£${value.toFixed(2)}/h`; }
+export function fmtPerMile(value: number): string { return `£${value.toFixed(2)}/mi`; }
+
+// Hours: 1dp but drop a trailing .0 (e.g. "12h", "12.5h").
+export function fmtHours(value: number): string {
+  const s = value.toFixed(1);
+  return (s.endsWith('.0') ? s.slice(0, -2) : s) + 'h';
+}
+
+// Percent: whole number (e.g. "23%").
+export function fmtPct(value0to1: number): string { return `${Math.round(value0to1 * 100)}%`; }
 
 export function fmtDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
