@@ -55,6 +55,11 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
   - Q4 6 Jan–5 Apr → deadline 7 May
 - Current quarter highlighted. Ready for when MTD ITSA becomes mandatory.
 
+### Dashboard period switcher
+- Toggle the home dashboard between **Today · Week · Month · Year** — take-home, miles, earnings and hours re-scope instantly.
+- **Per-platform breakdown** for the selected period with a winner badge, so multi-platform couriers can see which app paid best that day/week/month/year.
+- Week runs **Monday–Sunday** to match Uber Eats / Deliveroo / Just Eat weekly pay cycles. Year = UK tax year (6 Apr–5 Apr).
+
 ### Business insights
 - Net pay per hour, gross pay per hour, earnings per mile, net margin (% kept after tax), hours tracked.
 - Platform ranking by £/hour (not just total earnings).

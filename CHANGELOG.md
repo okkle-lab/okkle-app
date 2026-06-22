@@ -2,6 +2,14 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-22 (period switcher)
+
+### Daily / weekly / monthly / yearly views
+- **Period switcher on the dashboard** — tap Today, Week, Month or Year to re-scope your take-home, miles, earnings and hours. Previously the dashboard was locked to "this week" and there was no monthly view at all.
+- **Monthly summaries** — full calendar-month figures for budgeting, closing the biggest gap found in testing.
+- **Per-platform breakdown for the selected period** — see which platform (Uber Eats / Deliveroo / Just Eat) earned most *this month* (or day/week/year), with a winner badge. Replaces the old all-time-only "earnings per mile" card.
+- **Week now runs Monday–Sunday** to match Uber Eats / Deliveroo / Just Eat weekly pay cycles (was Sunday-based).
+
 ## 2026-06-22 (courier UX fixes)
 
 ### Real-world courier improvements
