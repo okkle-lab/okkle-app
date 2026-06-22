@@ -72,8 +72,13 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - Includes: cover + assumptions, SA103 summary, income by platform, full HMRC mileage log, expense breakdown, flagged review items, embedded receipt images (base64).
 - Nothing leaves the phone except what the user sends.
 
-### Milestone celebrations
-- Cheerful popup when tax saved crosses £50, £100, £250, £500, £1,000, £2,000, £3,000, £5,000, £10,000.
+### Gamification
+- **Activity streak** — counts consecutive days you log a trip or entry; holds if you haven't logged yet today.
+- **Achievement badges** — 10 collectible badges across trips, miles, tax saved, streaks and exporting your first Accountant Pack, with progress bars on locked ones and an unlocked/total count.
+- **"Achievement unlocked" celebration** — a popup fires whenever you earn a new badge.
+
+### Export filenames
+All exports save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26_<date>.<ext>` — e.g. `Okkle_HMRC-Mileage-Log_TaxYear-2025-26_2026-06-23.csv`, `Okkle_Accountant-Pack_TaxYear-2025-26_2026-06-23.pdf`.
 
 ### Notifications
 - Weekly/monthly logging reminders (configurable day).

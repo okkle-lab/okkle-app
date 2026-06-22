@@ -2,6 +2,17 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (gamification + clear export filenames)
+
+### Gamification
+- **Activity streak** — a daily streak that counts consecutive days you log a trip or entry, shown on the dashboard (and holds if you haven't logged yet today).
+- **Achievement badges** — 10 collectible badges across trips, miles, tax saved, streaks and exporting your first Accountant Pack. The dashboard shows your unlocked/total count and a badge collection; locked badges show a progress bar.
+- **"Achievement unlocked" celebration** — a single, richer popup replaces the old tax-saved-only milestone, and fires for any newly earned badge.
+
+### Clear export filenames
+- All exports now save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26_<date>.<ext>` (e.g. `Okkle_HMRC-Mileage-Log_TaxYear-2025-26_2026-06-23.csv`). Previously the share title wasn't a real filename, so files landed with confusing names.
+- Covers the Self Assessment summary, mileage log, FreeAgent import, all-data CSV, the Accountant Pack PDF, and backups.
+
 ## 2026-06-23 (FreeAgent export, audit-grade pack, day-bar fix)
 
 ### Accounting & audit
