@@ -4,6 +4,12 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Flat icons, tax-saved hero & speedometer
+- Replaced all 3D emoji with flat line icons (Feather + Material Community) — tab bar, settings gear, vehicles, buttons, metric cards.
+- Added a **"Tax saved this year"** hero on the dashboard — the headline number, front and centre, so the value is obvious at a glance.
+- Added a **live speedometer** (mph) to the trip screen while you ride.
+- Cut wordiness: icon-led metric cards, vehicle chips and log tabs.
+
 ### Settings, analytics & legitimacy features
 - Added a **Settings** screen (gear on the home header): edit name, vehicle, platforms, tax region/band, and reminder preferences; plus an About section explaining the HMRC rates, and a "delete all my data" option.
 - **Weekly/monthly logging reminders** via local notifications, with a chosen day.

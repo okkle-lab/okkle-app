@@ -9,7 +9,8 @@ import { colors, font, radius, spacing, type } from '../src/theme';
 import { VEHICLES, PLATFORMS, REGIONS, regionFromArea, regionRate, regionLabel } from '../src/db/tax';
 import { saveUser, getUser } from '../src/db';
 import { syncReminders } from '../src/notifications';
-import { PrimaryButton, Chip } from '../src/components';
+import { Feather } from '@expo/vector-icons';
+import { PrimaryButton, Chip, VehicleChip } from '../src/components';
 
 const STEPS = ['Welcome', 'Name', 'Vehicle', 'Platforms', 'Region'];
 
@@ -103,12 +104,13 @@ export default function Onboarding() {
             <Text style={s.sub}>We use HMRC's approved mileage rates — these are the same across the whole UK.</Text>
             <View style={s.chipGrid}>
               {VEHICLES.map(v => (
-                <Chip
+                <VehicleChip
                   key={v.key}
-                  label={`${v.icon}  ${v.label} · ${(v.rate * 100).toFixed(0)}p/mi`}
+                  vehicle={v.key}
+                  label={v.label}
+                  suffix={`${(v.rate * 100).toFixed(0)}p/mi`}
                   selected={vehicle === v.key}
                   onPress={() => setVehicle(v.key)}
-                  size="lg"
                   style={{ marginBottom: spacing.sm }}
                 />
               ))}
@@ -144,7 +146,10 @@ export default function Onboarding() {
               {detecting ? (
                 <ActivityIndicator color={colors.brand} size="small" />
               ) : (
-                <Text style={s.detectText}>📍  Detect from my location</Text>
+                <>
+                  <Feather name="map-pin" size={16} color={colors.brandDeep} />
+                  <Text style={s.detectText}>Detect from my location</Text>
+                </>
               )}
             </Pressable>
 
@@ -208,8 +213,8 @@ const s = StyleSheet.create({
   chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   detectBtn: {
     borderWidth: 1.5, borderColor: colors.brandMid, borderRadius: radius.md,
-    paddingVertical: 14, alignItems: 'center', marginBottom: spacing.lg,
-    backgroundColor: colors.brandLight,
+    paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginBottom: spacing.lg, backgroundColor: colors.brandLight,
   },
   detectText: { ...type.bodyMedium, color: colors.brandDeep },
   note: { ...type.caption, color: colors.textTertiary, lineHeight: 20, marginTop: spacing.lg },

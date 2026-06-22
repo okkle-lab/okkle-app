@@ -4,3 +4,5 @@ export { MetricCard } from './MetricCard';
 export { PrimaryButton } from './PrimaryButton';
 export { SectionHeader } from './SectionHeader';
 export { SlideToConfirm } from './SlideToConfirm';
+export { Icon, VehicleIcon } from './Icon';
+export { VehicleChip } from './VehicleChip';

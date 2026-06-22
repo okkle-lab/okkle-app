@@ -3,9 +3,10 @@ import {
   View, Text, ScrollView, StyleSheet, Alert, Pressable, TextInput,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtMiles, fmtDuration } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, getUser, getLastTrip } from '../../src/db';
@@ -65,40 +66,47 @@ export default function TripScreen() {
   // ---- Phase 2: live tracking ------------------------------------------------
   if (phase === 'live') {
     const isPaused = trip.state === 'paused';
+    const mph = Math.round(trip.speedMph);
     return (
       <View style={[s.screen, { backgroundColor: colors.dark }]}>
         <View style={s.liveHeader}>
           <View style={[s.liveDot, isPaused && { backgroundColor: colors.amber }]} />
-          <Text style={s.liveStatus}>{isPaused ? 'Paused' : 'Tracking your trip'}</Text>
-          <Text style={s.livePlatform}>{trip.platform}</Text>
+          <Text style={s.liveStatus}>{isPaused ? 'Paused' : trip.platform}</Text>
         </View>
 
-        <View style={s.liveBig}>
-          <Text style={s.liveMiles}>{trip.miles.toFixed(1)}</Text>
-          <Text style={s.liveMilesUnit}>miles</Text>
+        {/* Speedometer — the live, exciting centrepiece */}
+        <View style={s.speedo}>
+          <Text style={s.speedoValue}>{mph}</Text>
+          <Text style={s.speedoUnit}>mph</Text>
         </View>
 
         <View style={s.liveStats}>
           <View style={s.liveStat}>
-            <Text style={s.liveStatLabel}>Deduction</Text>
-            <Text style={s.liveStatValue}>{fmtGbp(trip.deduction)}</Text>
+            <Feather name="map" size={16} color="rgba(255,255,255,0.5)" />
+            <Text style={s.liveStatValue}>{trip.miles.toFixed(1)}</Text>
+            <Text style={s.liveStatLabel}>miles</Text>
           </View>
           <View style={[s.liveStat, s.liveStatBorder]}>
-            <Text style={s.liveStatLabel}>Time</Text>
+            <Feather name="trending-up" size={16} color="rgba(255,255,255,0.5)" />
+            <Text style={s.liveStatValue}>{fmtGbp(trip.deduction)}</Text>
+            <Text style={s.liveStatLabel}>saved</Text>
+          </View>
+          <View style={s.liveStat}>
+            <Feather name="clock" size={16} color="rgba(255,255,255,0.5)" />
             <Text style={s.liveStatValue}>{fmtDuration(trip.elapsedSeconds)}</Text>
+            <Text style={s.liveStatLabel}>time</Text>
           </View>
         </View>
 
         <View style={s.liveActions}>
-          {/* Big, single-finger pause toggle */}
           <Pressable
             onPress={isPaused ? resume : pause}
             style={({ pressed }) => [s.pauseBtn, pressed && { opacity: 0.7 }]}
           >
-            <Text style={s.pauseBtnText}>{isPaused ? '▶  Resume' : '❚❚  Pause'}</Text>
+            <Feather name={isPaused ? 'play' : 'pause'} size={20} color="#fff" />
+            <Text style={s.pauseBtnText}>{isPaused ? 'Resume' : 'Pause'}</Text>
           </Pressable>
 
-          {/* Slide to end — can't be triggered by accident, easy with gloves */}
           <SlideToConfirm label="Slide to end trip" onConfirm={handleEnd} color={colors.red} />
         </View>
       </View>
@@ -110,9 +118,11 @@ export default function TripScreen() {
     return (
       <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-          <Text style={s.bigCheck}>✅</Text>
-          <Text style={s.heading}>Trip saved to mileage</Text>
-          <Text style={s.sub}>{fmtMiles(finished.miles)} · {fmtGbp(finished.deduction)} deduction · {finished.platform}</Text>
+          <View style={s.checkCircle}>
+            <Feather name="check" size={36} color="#fff" />
+          </View>
+          <Text style={[s.heading, { textAlign: 'center' }]}>Trip saved</Text>
+          <Text style={[s.sub, { textAlign: 'center' }]}>{fmtMiles(finished.miles)} · {fmtGbp(finished.deduction)} saved · {finished.platform}</Text>
 
           <View style={s.summaryStats}>
             <View style={s.summaryStat}>
@@ -167,14 +177,14 @@ export default function TripScreen() {
       <SectionHeader title="Vehicle" />
       <View style={s.chips}>
         {VEHICLES.map(v => (
-          <Chip key={v.key} label={`${v.icon}  ${v.label}`} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} size="lg" style={s.chip} />
+          <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
         ))}
       </View>
 
       {/* Oversized start button — easy to hit one-handed on a mounted phone */}
       <Pressable onPress={handleStart} style={({ pressed }) => [s.startBtn, pressed && { opacity: 0.85 }]}>
+        <Feather name="navigation" size={24} color="#fff" />
         <Text style={s.startBtnLabel}>Start trip</Text>
-        <Text style={s.startBtnSub}>{platform} · {VEHICLES.find(v => v.key === vehicle)?.label}</Text>
       </Pressable>
       <Text style={s.gpsNote}>Keep Okkle open during your ride. Your screen will stay awake automatically.</Text>
     </ScrollView>
@@ -190,38 +200,50 @@ const s = StyleSheet.create({
   chip: { marginBottom: 0 },
   gpsNote: { ...type.caption, color: colors.textTertiary, textAlign: 'center', marginTop: 14, lineHeight: 20 },
 
+  vehicleChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 12, borderRadius: radius.full,
+    borderWidth: 1.5, borderColor: colors.borderStrong, backgroundColor: colors.bgCard,
+  },
+  vehicleChipOn: { borderColor: colors.brand, backgroundColor: colors.brandLight },
+  vehicleChipText: { fontSize: 15, fontWeight: font.medium, color: colors.textSecondary },
+
   startBtn: {
     marginTop: spacing.xl,
     backgroundColor: colors.brand,
     borderRadius: radius.xl,
-    paddingVertical: 26,
+    paddingVertical: 24,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
   },
-  startBtnLabel: { color: '#fff', fontSize: 24, fontWeight: font.bold, letterSpacing: -0.3 },
-  startBtnSub: { color: 'rgba(255,255,255,0.85)', fontSize: 14, marginTop: 4 },
+  startBtnLabel: { color: '#fff', fontSize: 22, fontWeight: font.bold, letterSpacing: -0.3 },
 
   // live
-  liveHeader: { alignItems: 'center', paddingTop: 64 },
-  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4ade80', marginBottom: 8 },
+  liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 72 },
+  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4ade80' },
   liveStatus: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: font.medium },
-  livePlatform: { color: 'rgba(255,255,255,0.5)', fontSize: 14, marginTop: 2 },
-  liveBig: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  liveMiles: { fontSize: 104, fontWeight: font.bold, color: '#fff', letterSpacing: -4 },
-  liveMilesUnit: { fontSize: 22, color: 'rgba(255,255,255,0.5)', marginTop: -14 },
+  speedo: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  speedoValue: { fontSize: 140, fontWeight: font.bold, color: '#fff', letterSpacing: -6 },
+  speedoUnit: { fontSize: 24, color: 'rgba(255,255,255,0.5)', marginTop: -24 },
   liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginBottom: spacing.xl },
-  liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg },
-  liveStatBorder: { borderLeftWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-  liveStatLabel: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 4 },
-  liveStatValue: { fontSize: 20, fontWeight: font.semibold, color: '#fff' },
+  liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
+  liveStatBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  liveStatLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
+  liveStatValue: { fontSize: 19, fontWeight: font.semibold, color: '#fff' },
   liveActions: { paddingHorizontal: spacing.xl, paddingBottom: 44, gap: spacing.md },
   pauseBtn: {
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', borderRadius: radius.full,
-    paddingVertical: 18, alignItems: 'center',
+    paddingVertical: 18, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8,
   },
   pauseBtnText: { color: '#fff', fontSize: 17, fontWeight: font.semibold },
 
   // summary
-  bigCheck: { fontSize: 48, textAlign: 'center', marginBottom: spacing.md },
+  checkCircle: {
+    width: 64, height: 64, borderRadius: 32, backgroundColor: colors.green,
+    alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: spacing.lg,
+  },
   summaryStats: {
     flexDirection: 'row', backgroundColor: colors.bgCard, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border, marginVertical: spacing.xl,

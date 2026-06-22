@@ -221,6 +221,42 @@ export function getTaxYearMiles(): number {
   return (trips?.m ?? 0) + (recs?.m ?? 0);
 }
 
+export type TaxYearSummary = {
+  miles: number;
+  deduction: number;
+  taxSaved: number;
+  earnings: number;
+  taxRate: number;
+};
+
+// Cumulative tax-year figures — drives the headline "tax saved" counter.
+export function getTaxYearSummary(): TaxYearSummary {
+  const user = getUser();
+  const taxRate = user?.tax_rate ?? 0.20;
+  const start = taxYearStart();
+
+  const trips = db.getFirstSync<{ miles: number; deduction: number; earnings: number }>(
+    `SELECT COALESCE(SUM(miles),0) AS miles, COALESCE(SUM(deduction),0) AS deduction,
+            COALESCE(SUM(earnings),0) AS earnings
+     FROM trips WHERE date(started_at) >= ?`, start,
+  );
+  const mil = db.getFirstSync<{ miles: number; deduction: number }>(
+    `SELECT COALESCE(SUM(miles),0) AS miles, COALESCE(SUM(deduction),0) AS deduction
+     FROM records WHERE record_type='mileage' AND date(created_at) >= ?`, start,
+  );
+  const inc = db.getFirstSync<{ earnings: number }>(
+    `SELECT COALESCE(SUM(amount),0) AS earnings
+     FROM records WHERE record_type='income' AND date(created_at) >= ?`, start,
+  );
+
+  const miles = (trips?.miles ?? 0) + (mil?.miles ?? 0);
+  const deduction = (trips?.deduction ?? 0) + (mil?.deduction ?? 0);
+  const earnings = (trips?.earnings ?? 0) + (inc?.earnings ?? 0);
+  // Tax "saved" = the tax you don't pay on the mileage deduction.
+  const taxSaved = deduction * taxRate;
+  return { miles, deduction, taxSaved, earnings, taxRate };
+}
+
 export type PlatformStat = { platform: string; miles: number; earnings: number; perMile: number };
 
 // Earnings-per-mile by platform — the headline analytic competitors lack.

@@ -5,7 +5,8 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Chip, PrimaryButton, Card, SectionHeader } from '../../src/components';
+import { Feather } from '@expo/vector-icons';
+import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser } from '../../src/db';
 
@@ -73,11 +74,14 @@ export default function LogScreen() {
       <Text style={s.heading}>Log entry</Text>
 
       <View style={s.tabs}>
-        {(['mileage', 'income', 'expense'] as Tab[]).map(t => (
+        {([
+          ['mileage', 'Mileage', 'map'],
+          ['income', 'Earnings', 'dollar-sign'],
+          ['expense', 'Expense', 'file-text'],
+        ] as [Tab, string, React.ComponentProps<typeof Feather>['name']][]).map(([t, label, icon]) => (
           <Pressable key={t} onPress={() => setTab(t)} style={[s.tab, tab === t && s.tabActive]}>
-            <Text style={[s.tabText, tab === t && s.tabTextActive]}>
-              {t === 'mileage' ? '🛣 Mileage' : t === 'income' ? '💷 Earnings' : '🧾 Expense'}
-            </Text>
+            <Feather name={icon} size={16} color={tab === t ? colors.textPrimary : colors.textSecondary} />
+            <Text style={[s.tabText, tab === t && s.tabTextActive]}>{label}</Text>
           </Pressable>
         ))}
       </View>
@@ -104,7 +108,7 @@ export default function LogScreen() {
             <SectionHeader title="Vehicle" />
             <View style={s.chips}>
               {VEHICLES.map(v => (
-                <Chip key={v.key} label={`${v.icon}  ${v.label}`} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} size="lg" />
+                <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
               ))}
             </View>
           </View>
@@ -178,10 +182,12 @@ export default function LogScreen() {
             ) : (
               <View style={s.receiptButtons}>
                 <Pressable onPress={() => pickReceipt(true)} style={s.receiptBtn}>
-                  <Text style={s.receiptBtnText}>📷  Take photo</Text>
+                  <Feather name="camera" size={16} color={colors.textPrimary} />
+                  <Text style={s.receiptBtnText}>Take photo</Text>
                 </Pressable>
                 <Pressable onPress={() => pickReceipt(false)} style={s.receiptBtn}>
-                  <Text style={s.receiptBtnText}>🖼  Choose</Text>
+                  <Feather name="image" size={16} color={colors.textPrimary} />
+                  <Text style={s.receiptBtnText}>Choose</Text>
                 </Pressable>
               </View>
             )}
@@ -209,7 +215,7 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   heading: { ...type.screenTitle, marginBottom: spacing.lg },
   tabs: { flexDirection: 'row', backgroundColor: colors.bgSoft, borderRadius: radius.lg, padding: 4, marginBottom: spacing.lg },
-  tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: radius.md },
+  tab: { flex: 1, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: radius.md },
   tabActive: { backgroundColor: colors.bgCard },
   tabText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
   tabTextActive: { color: colors.textPrimary, fontWeight: font.semibold },
@@ -225,7 +231,7 @@ const s = StyleSheet.create({
   receiptButtons: { flexDirection: 'row', gap: spacing.sm },
   receiptBtn: {
     flex: 1, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
-    paddingVertical: 14, alignItems: 'center', backgroundColor: colors.bg,
+    paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.bg,
   },
   receiptBtnText: { ...type.bodyMedium, fontSize: 14 },
   receiptWrap: { position: 'relative' },

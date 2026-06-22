@@ -1,9 +1,11 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme';
 
-function Icon({ emoji, focused }: { emoji: string; focused: boolean }) {
-  return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.45 }}>{emoji}</Text>;
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
+
+function tabIcon(name: FeatherName) {
+  return ({ color }: { color: string }) => <Feather name={name} size={22} color={color} />;
 }
 
 export default function TabLayout() {
@@ -16,17 +18,17 @@ export default function TabLayout() {
         borderTopColor: colors.border,
         borderTopWidth: 1,
         backgroundColor: colors.bg,
-        height: 80,
-        paddingBottom: 20,
+        height: 84,
+        paddingBottom: 24,
         paddingTop: 8,
       },
       tabBarLabelStyle: { fontSize: 11 },
     }}>
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ focused }) => <Icon emoji="🏠" focused={focused} /> }} />
-      <Tabs.Screen name="trip" options={{ title: 'Trip', tabBarIcon: ({ focused }) => <Icon emoji="📍" focused={focused} /> }} />
-      <Tabs.Screen name="log" options={{ title: 'Log', tabBarIcon: ({ focused }) => <Icon emoji="✏️" focused={focused} /> }} />
-      <Tabs.Screen name="records" options={{ title: 'Records', tabBarIcon: ({ focused }) => <Icon emoji="📋" focused={focused} /> }} />
-      <Tabs.Screen name="export" options={{ title: 'Export', tabBarIcon: ({ focused }) => <Icon emoji="📤" focused={focused} /> }} />
+      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tabIcon('home') }} />
+      <Tabs.Screen name="trip" options={{ title: 'Trip', tabBarIcon: tabIcon('navigation') }} />
+      <Tabs.Screen name="log" options={{ title: 'Log', tabBarIcon: tabIcon('edit-3') }} />
+      <Tabs.Screen name="records" options={{ title: 'Records', tabBarIcon: tabIcon('list') }} />
+      <Tabs.Screen name="export" options={{ title: 'Export', tabBarIcon: tabIcon('upload') }} />
     </Tabs>
   );
 }

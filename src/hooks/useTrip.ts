@@ -11,6 +11,7 @@ export type LiveTrip = {
   miles: number;
   deduction: number;
   elapsedSeconds: number;
+  speedMph: number;
   startedAt: Date | null;
 };
 
@@ -21,6 +22,7 @@ const INITIAL: LiveTrip = {
   miles: 0,
   deduction: 0,
   elapsedSeconds: 0,
+  speedMph: 0,
   startedAt: null,
 };
 
@@ -42,7 +44,7 @@ export function useTrip() {
     if (status !== 'granted') throw new Error('Location permission denied');
 
     const startedAt = new Date();
-    setTrip({ state: 'running', platform, vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, startedAt });
+    setTrip({ state: 'running', platform, vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
 
     timerRef.current = setInterval(() => {
       setTrip(t => ({ ...t, elapsedSeconds: t.elapsedSeconds + 1 }));
@@ -51,18 +53,18 @@ export function useTrip() {
     watchRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.High, distanceInterval: 20 },
       (loc) => {
+        const spd = loc.coords.speed; // m/s; -1 or null when unknown
+        const mph = spd != null && spd > 0 ? spd * 2.236936 : 0;
         if (lastPosRef.current) {
           const d = haversineKm(lastPosRef.current.coords, loc.coords);
           const meters = d * 1000;
-          const spd = loc.coords.speed; // m/s; -1 or null when unknown
           const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
-          if (!stationary) {
-            const addedMiles = d * 0.621371;
-            setTrip(t => {
-              const miles = t.miles + addedMiles;
-              return { ...t, miles, deduction: calcDeduction(miles, t.vehicle) };
-            });
-          }
+          setTrip(t => {
+            const miles = stationary ? t.miles : t.miles + d * 0.621371;
+            return { ...t, miles, deduction: calcDeduction(miles, t.vehicle), speedMph: mph };
+          });
+        } else {
+          setTrip(t => ({ ...t, speedMph: mph }));
         }
         lastPosRef.current = loc;
       },
@@ -85,18 +87,18 @@ export function useTrip() {
     watchRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.High, distanceInterval: 20 },
       (loc) => {
+        const spd = loc.coords.speed; // m/s; -1 or null when unknown
+        const mph = spd != null && spd > 0 ? spd * 2.236936 : 0;
         if (lastPosRef.current) {
           const d = haversineKm(lastPosRef.current.coords, loc.coords);
           const meters = d * 1000;
-          const spd = loc.coords.speed; // m/s; -1 or null when unknown
           const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
-          if (!stationary) {
-            const addedMiles = d * 0.621371;
-            setTrip(t => {
-              const miles = t.miles + addedMiles;
-              return { ...t, miles, deduction: calcDeduction(miles, t.vehicle) };
-            });
-          }
+          setTrip(t => {
+            const miles = stationary ? t.miles : t.miles + d * 0.621371;
+            return { ...t, miles, deduction: calcDeduction(miles, t.vehicle), speedMph: mph };
+          });
+        } else {
+          setTrip(t => ({ ...t, speedMph: mph }));
         }
         lastPosRef.current = loc;
       },

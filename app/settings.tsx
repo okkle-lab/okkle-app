@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, Chip, SectionHeader, PrimaryButton } from '../src/components';
+import { Card, Chip, SectionHeader, PrimaryButton, VehicleChip } from '../src/components';
 import {
   VEHICLES, PLATFORMS, REGIONS, regionRate, regionLabel,
 } from '../src/db/tax';
@@ -81,7 +81,7 @@ export default function Settings() {
           <Text style={s.fieldLabel}>Default vehicle</Text>
           <View style={s.chips}>
             {VEHICLES.map(v => (
-              <Chip key={v.key} label={`${v.icon}  ${v.label}`} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+              <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
             ))}
           </View>
         </View>
