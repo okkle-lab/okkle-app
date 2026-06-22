@@ -117,13 +117,15 @@ export type TaxPosition = {
   effectiveRate: number;
 };
 
-export function taxPosition(turnover: number, expenses: number, region: string): TaxPosition {
+export function taxPosition(turnover: number, expenses: number, region: string, otherIncome = 0): TaxPosition {
   // You can deduct either your actual expenses or the £1,000 trading allowance,
   // whichever is higher (you can't claim both).
   const useTrading = TRADING_ALLOWANCE > expenses;
   const deductible = Math.min(turnover, useTrading ? TRADING_ALLOWANCE : expenses);
   const profit = Math.max(0, turnover - deductible);
-  const it = incomeTax(profit, region);
+  // Self-employment profit stacks ON TOP of any other (e.g. PAYE) income, so it
+  // is taxed at the marginal rate — tax on (other + profit) minus tax on other.
+  const it = incomeTax(otherIncome + profit, region) - incomeTax(otherIncome, region);
   const c4 = class4Nic(profit);
   const totalDue = it + c4;
   // Payments on account apply when the bill exceeds £1,000.

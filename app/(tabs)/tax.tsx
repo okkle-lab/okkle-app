@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TextInput, Share, Pressable } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Card, SectionHeader, PrimaryButton } from '../../src/components';
@@ -14,40 +14,42 @@ import {
 } from '../../src/db/taxcalc';
 
 export default function TaxScreen() {
+  const router = useRouter();
   const [year, setYear] = React.useState(getTaxYearSummary());
   const [bizMiles, setBizMiles] = React.useState(0);
   const [otherExpenses, setOtherExpenses] = React.useState(0);
+  const [methodInputs, setMethodInputs] = React.useState({ personalMiles: 0, runningCosts: 0, vehicleValue: 0 });
+  const [otherIncome, setOtherIncome] = React.useState(String(kvGetNum('other_income') || ''));
   const user = getUser();
-
-  // Actual-cost inputs (persisted).
-  const [personalMiles, setPersonalMiles] = React.useState(String(kvGetNum('personal_miles')));
-  const [runningCosts, setRunningCosts] = React.useState(String(kvGetNum('running_costs')));
-  const [vehicleValue, setVehicleValue] = React.useState(String(kvGetNum('vehicle_value')));
 
   function reload() {
     setYear(getTaxYearSummary());
     setBizMiles(getTaxYearMiles());
     setOtherExpenses(getTaxYearExpenses());
+    setMethodInputs({
+      personalMiles: kvGetNum('personal_miles'),
+      runningCosts: kvGetNum('running_costs'),
+      vehicleValue: kvGetNum('vehicle_value'),
+    });
   }
   useFocusEffect(useCallback(() => { reload(); }, []));
 
   const region = user?.region ?? 'ruk';
+  const usingActual = methodInputs.runningCosts > 0;
 
   const method = compareMethods({
     businessMiles: bizMiles,
-    personalMiles: parseFloat(personalMiles) || 0,
-    runningCosts: parseFloat(runningCosts) || 0,
-    vehicleValue: parseFloat(vehicleValue) || 0,
+    personalMiles: methodInputs.personalMiles,
+    runningCosts: methodInputs.runningCosts,
+    vehicleValue: methodInputs.vehicleValue,
     simplifiedDeduction: year.deduction,
   });
 
-  const chosenDeduction = method.recommended === 'actual' ? method.actual : method.simplified;
+  const chosenDeduction = usingActual && method.recommended === 'actual' ? method.actual : method.simplified;
   const totalExpenses = chosenDeduction + otherExpenses;
-  const pos = taxPosition(year.earnings, totalExpenses, region);
+  const pos = taxPosition(year.earnings, totalExpenses, region, parseFloat(otherIncome) || 0);
 
   const grossPerMile = bizMiles > 0 ? year.earnings / bizMiles : 0;
-
-  function persist(key: string, val: string) { kvSet(key, parseFloat(val) || 0); }
 
   // --- exports --------------------------------------------------------------
   function shareSA() {
@@ -92,48 +94,25 @@ export default function TaxScreen() {
       <Text style={s.heading}>Tax</Text>
       <Text style={s.sub}>Your estimated position for {taxYearLabel()}</Text>
 
-      {/* KILLER FEATURE: method comparison */}
-      <SectionHeader title="Mileage method — which saves more?" />
+      {/* Mileage method — clean summary, comparison lives in its own tool */}
+      <SectionHeader title="Mileage method" />
       <Card style={{ gap: spacing.md }}>
-        <View style={s.compareRow}>
-          <View style={[s.compareBox, method.recommended === 'simplified' && s.compareWin]}>
-            <Text style={s.compareLabel}>Simplified</Text>
-            <Text style={s.compareValue}>{fmtGbp(method.simplified)}</Text>
-            <Text style={s.compareNote}>45p/25p flat rate</Text>
-          </View>
-          <View style={[s.compareBox, method.recommended === 'actual' && s.compareWin]}>
-            <Text style={s.compareLabel}>Actual costs</Text>
-            <Text style={s.compareValue}>{fmtGbp(method.actual)}</Text>
-            <Text style={s.compareNote}>{(method.businessUsePct * 100).toFixed(0)}% business use</Text>
-          </View>
-        </View>
-
-        {(parseFloat(runningCosts) > 0 || parseFloat(vehicleValue) > 0) && (
-          <View style={s.recommendBanner}>
-            <Feather name="award" size={16} color={colors.brandDeep} />
-            <Text style={s.recommendText}>
-              {method.recommended === 'actual'
-                ? `Actual costs could save you ${fmtGbp(method.difference)} more in deductions.`
-                : `Simplified is better for you by ${fmtGbp(method.difference)}.`}
+        <View style={s.methodRow}>
+          <View>
+            <Text style={s.methodName}>
+              {usingActual && method.recommended === 'actual' ? 'Actual costs' : 'Simplified (flat rate)'}
             </Text>
+            <Text style={s.methodSub}>{fmtMiles(bizMiles)} business miles this year</Text>
           </View>
-        )}
-
-        <Text style={s.inputLabel}>Total personal (non-work) miles this year</Text>
-        <TextInput style={s.input} value={personalMiles} onChangeText={setPersonalMiles} onBlur={() => persist('personal_miles', personalMiles)} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.textTertiary} />
-
-        <Text style={s.inputLabel}>Annual running costs (fuel, insurance, repairs…)</Text>
-        <TextInput style={s.input} value={runningCosts} onChangeText={setRunningCosts} onBlur={() => persist('running_costs', runningCosts)} keyboardType="decimal-pad" placeholder="£0" placeholderTextColor={colors.textTertiary} />
-
-        <Text style={s.inputLabel}>Vehicle value (for capital allowances)</Text>
-        <TextInput style={s.input} value={vehicleValue} onChangeText={setVehicleValue} onBlur={() => persist('vehicle_value', vehicleValue)} keyboardType="decimal-pad" placeholder="£0" placeholderTextColor={colors.textTertiary} />
-
-        <View style={s.warnBox}>
-          <Feather name="alert-triangle" size={15} color={colors.amber} />
-          <Text style={s.warnText}>
-            You usually must stick with one method per vehicle. Once you claim actual costs and capital allowances on a vehicle, you can't switch back to simplified for it. Choose with your accountant.
-          </Text>
+          <Text style={s.methodValue}>{fmtGbp(chosenDeduction)}</Text>
         </View>
+        <Pressable onPress={() => router.push('/compare')} style={s.compareCta}>
+          <Feather name="trending-up" size={16} color={colors.brandDeep} />
+          <Text style={s.compareCtaText}>
+            {usingActual ? 'Review method comparison' : 'Could actual costs save you more?'}
+          </Text>
+          <Feather name="chevron-right" size={18} color={colors.brandDeep} />
+        </Pressable>
       </Card>
 
       {/* Self Assessment summary */}
@@ -145,6 +124,24 @@ export default function TaxScreen() {
         {pos.usesTradingAllowance && (
           <Text style={s.smallNote}>Using the £1,000 trading allowance (more than your expenses).</Text>
         )}
+      </Card>
+
+      {/* Other income — for marginal-rate accuracy */}
+      <SectionHeader title="Other income (for accuracy)" />
+      <Card>
+        <Text style={s.inputLabel}>Wages or other income this tax year</Text>
+        <TextInput
+          style={s.input}
+          value={otherIncome}
+          onChangeText={setOtherIncome}
+          onBlur={() => kvSet('other_income', parseFloat(otherIncome) || 0)}
+          keyboardType="decimal-pad"
+          placeholder="£0 if courier work is your only income"
+          placeholderTextColor={colors.textTertiary}
+        />
+        <Text style={s.smallNote}>
+          If you have another job, your courier profit is taxed on top of it — so this makes your estimate accurate.
+        </Text>
       </Card>
 
       {/* Tax & NIC */}
@@ -235,18 +232,14 @@ const s = StyleSheet.create({
   heading: { ...type.screenTitle, marginBottom: 6 },
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.xl },
 
-  compareRow: { flexDirection: 'row', gap: spacing.md },
-  compareBox: { flex: 1, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.lg, alignItems: 'center' },
-  compareWin: { borderColor: colors.brand, backgroundColor: colors.brandLight },
-  compareLabel: { ...type.label, marginBottom: 4 },
-  compareValue: { fontSize: 22, fontWeight: font.bold, color: colors.textPrimary, letterSpacing: -0.5 },
-  compareNote: { ...type.small, marginTop: 2 },
-  recommendBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md },
-  recommendText: { ...type.caption, color: colors.brandDeep, flex: 1, fontWeight: font.medium },
-  inputLabel: { ...type.caption, color: colors.textSecondary, marginTop: 4 },
+  methodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  methodName: { ...type.bodyMedium, fontSize: 16 },
+  methodSub: { ...type.caption, marginTop: 2 },
+  methodValue: { fontSize: 22, fontWeight: font.bold, color: colors.brandDeep, letterSpacing: -0.5 },
+  compareCta: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md },
+  compareCtaText: { ...type.caption, color: colors.brandDeep, flex: 1, fontWeight: font.medium },
+  inputLabel: { ...type.caption, color: colors.textSecondary, marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg },
-  warnBox: { flexDirection: 'row', gap: 8, backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.md, marginTop: 4 },
-  warnText: { ...type.caption, color: colors.amber, flex: 1, lineHeight: 19 },
 
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border },
   rowLabel: { fontSize: 15, color: colors.textSecondary },

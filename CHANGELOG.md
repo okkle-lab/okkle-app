@@ -4,6 +4,11 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Clearer method comparison & more accurate tax
+- Split the confusing all-in-one method card into a clean summary on the Tax tab plus a dedicated **"Compare methods"** tool (its own focused screen) — progressive disclosure, one job per screen.
+- Default everyone to the simplified method; actual-costs is now an opt-in check.
+- Added an **"other income"** input so courier profit is taxed at the correct marginal rate when you also have a job (PAYE wages) — a real accuracy fix.
+
 ### Tax tab — method comparison & full Self Assessment estimate
 - New **Tax** tab (replacing the Export tab — keeps the bar at 5).
 - **Killer feature: simplified vs actual-cost comparison** — enter personal miles, running costs and vehicle value, and Okkle shows which method saves more, with a clear winner and the difference. Includes the HMRC method-lock warning (you can't switch back to simplified once you claim actual costs on a vehicle).
