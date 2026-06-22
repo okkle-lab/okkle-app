@@ -1,7 +1,7 @@
 export const VEHICLES = [
   { key: 'car', label: 'Car', rate: 0.45, rateAfter10k: 0.25, icon: '🚗' },
   { key: 'motorbike', label: 'Motorbike', rate: 0.24, rateAfter10k: 0.24, icon: '🏍️' },
-  { key: 'bike', label: 'Bicycle', rate: 0.20, rateAfter10k: 0.20, icon: '🚲' },
+  { key: 'bike', label: 'E-bike / Bicycle', rate: 0.20, rateAfter10k: 0.20, icon: '🚲' },
   { key: 'van', label: 'Van', rate: 0.45, rateAfter10k: 0.25, icon: '🚐' },
 ] as const;
 

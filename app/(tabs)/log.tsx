@@ -23,6 +23,13 @@ async function persistImage(uri: string): Promise<string> {
   }
 }
 
+const EXPENSE_CATEGORIES = [
+  'Charging', 'Fuel', 'Maintenance / repairs', 'Tyres',
+  'Waterproof gear', 'Helmet / safety', 'Phone mount', 'Insulated bag',
+  'Insurance', 'Congestion charge', 'ULEZ charge', 'Parking',
+  'Phone / data', 'App subscription',
+];
+
 type Tab = 'mileage' | 'income' | 'expense';
 
 export default function LogScreen() {
@@ -150,10 +157,21 @@ export default function LogScreen() {
       {tab === 'expense' && (
         <Card style={{ gap: spacing.md }}>
           <View>
-            <SectionHeader title="Description" />
+            <SectionHeader title="Category" />
+            <View style={s.chips}>
+              {EXPENSE_CATEGORIES.map(cat => (
+                <Pressable
+                  key={cat}
+                  onPress={() => setDescription(cat)}
+                  style={[s.catChip, description === cat && s.catChipActive]}
+                >
+                  <Text style={[s.catChipText, description === cat && s.catChipTextActive]}>{cat}</Text>
+                </Pressable>
+              ))}
+            </View>
             <TextInput
-              style={s.input}
-              placeholder="e.g. Phone mount, insurance top-up"
+              style={[s.input, { marginTop: spacing.sm }]}
+              placeholder="Or type your own description"
               placeholderTextColor={colors.textTertiary}
               value={description}
               onChangeText={setDescription}
@@ -241,4 +259,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
   },
   receiptRemoveText: { color: '#fff', fontSize: 13, fontWeight: font.medium },
+  catChip: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full,
+    borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bg,
+    marginBottom: spacing.xs ?? 4,
+  },
+  catChipActive: { borderColor: colors.brand, backgroundColor: colors.brandLight },
+  catChipText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
+  catChipTextActive: { color: colors.brandDeep },
 });

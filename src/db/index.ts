@@ -480,6 +480,33 @@ export function getQuarterlySummaries(): QuarterSummary[] {
   });
 }
 
+export type DailyStats = {
+  miles: number;
+  deduction: number;
+  earnings: number;
+  trips: number;
+  hours: number;
+};
+
+export function getDailyStats(dateStr?: string): DailyStats {
+  const d = dateStr ?? new Date().toISOString().slice(0, 10);
+  const tripRows = db.getAllSync<{ miles: number; deduction: number; earnings: number | null; started_at: string; ended_at: string }>(
+    `SELECT miles, deduction, earnings, started_at, ended_at FROM trips WHERE date(started_at) = ?`, d,
+  );
+  const incRows = db.getAllSync<{ amount: number }>(
+    `SELECT amount FROM records WHERE record_type='income' AND date(created_at) = ?`, d,
+  );
+  const miles = tripRows.reduce((s, r) => s + r.miles, 0);
+  const deduction = tripRows.reduce((s, r) => s + r.deduction, 0);
+  const tripEarnings = tripRows.reduce((s, r) => s + (r.earnings ?? 0), 0);
+  const manualEarnings = incRows.reduce((s, r) => s + (r.amount ?? 0), 0);
+  const hours = tripRows.reduce((s, r) => {
+    const ms = new Date(r.ended_at).getTime() - new Date(r.started_at).getTime();
+    return s + (ms > 0 ? ms / 3600000 : 0);
+  }, 0);
+  return { miles, deduction, earnings: tripEarnings + manualEarnings, trips: tripRows.length, hours };
+}
+
 export function resetAllData() {
   db.execSync('DELETE FROM trips; DELETE FROM records; DELETE FROM user; DELETE FROM kv;');
 }

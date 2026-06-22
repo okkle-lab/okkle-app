@@ -9,9 +9,9 @@ import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, getUser, getLastTrip, getTodayMiles } from '../../src/db';
+import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, type DailyStats } from '../../src/db';
 
-type Phase = 'setup' | 'live' | 'summary';
+type Phase = 'setup' | 'live' | 'summary' | 'logpay';
 
 export default function TripScreen() {
   const user = getUser();
@@ -23,7 +23,12 @@ export default function TripScreen() {
   const [finished, setFinished] = useState<LiveTrip | null>(null);
   const [earnings, setEarnings] = useState('');
   const [todayBase, setTodayBase] = useState(0);
+  const [today, setToday] = useState<DailyStats>({ miles: 0, deduction: 0, earnings: 0, trips: 0, hours: 0 });
+  const [payAmount, setPayAmount] = useState('');
+  const [payPlatform, setPayPlatform] = useState('');
   const { trip, start, pause, resume, end } = useTrip();
+
+  useEffect(() => { setToday(getDailyStats()); }, [phase]);
 
   // Keep the screen awake only while a trip is running (phone is mounted).
   useEffect(() => {
@@ -76,6 +81,62 @@ export default function TripScreen() {
     setPhase('setup');
   }
 
+  // ---- Phase: log weekly pay -------------------------------------------------
+  if (phase === 'logpay') {
+    return (
+      <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+          <Pressable onPress={() => setPhase('setup')} style={{ marginBottom: spacing.lg }}>
+            <Feather name="arrow-left" size={22} color={colors.textSecondary} />
+          </Pressable>
+          <Text style={s.heading}>Log weekly pay</Text>
+          <Text style={s.sub}>Uber Eats, Deliveroo and Just Eat all pay weekly by bank transfer. Log it here to keep your earnings accurate.</Text>
+
+          <SectionHeader title="Platform" />
+          <View style={s.chips}>
+            {PLATFORMS.map(p => (
+              <Chip key={p} label={p} selected={payPlatform === p} onPress={() => setPayPlatform(p)} size="lg" style={s.chip} />
+            ))}
+          </View>
+
+          <SectionHeader title="Amount received" />
+          <TextInput
+            style={s.earningsInput}
+            placeholder="£0.00"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="decimal-pad"
+            value={payAmount}
+            onChangeText={setPayAmount}
+            autoFocus
+          />
+          <Text style={s.earningsNote}>This is your gross pay before any Uber Eats / Deliveroo deductions. Check your weekly statement for the exact figure.</Text>
+
+          <PrimaryButton
+            label="Save pay"
+            disabled={!payAmount || !payPlatform}
+            onPress={() => {
+              saveRecord({
+                record_type: 'income',
+                platform: payPlatform,
+                amount: parseFloat(payAmount),
+                miles: null, deduction: null, category: null,
+                period_start: null, period_end: null,
+                receipt_uri: null, notes: 'Weekly pay',
+              });
+              setPayAmount('');
+              setPayPlatform('');
+              setPhase('setup');
+            }}
+            style={{ marginTop: spacing.lg }}
+          />
+          <Pressable onPress={() => { setPayAmount(''); setPayPlatform(''); setPhase('setup'); }} style={{ marginTop: 14, alignItems: 'center' }}>
+            <Text style={s.skip}>Cancel</Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
   // ---- Phase 2: live tracking ------------------------------------------------
   if (phase === 'live') {
     const isPaused = trip.state === 'paused';
@@ -94,13 +155,19 @@ export default function TripScreen() {
 
         {/* Daily goal activity ring — ambient and glanceable */}
         <View style={s.ringWrap}>
-          <ProgressRing size={250} strokeWidth={20} progress={progress} color={colors.brand}>
+          <ProgressRing size={250} strokeWidth={20} progress={progress} color={isPaused ? colors.amber : colors.brand}>
             <View style={{ alignItems: 'center' }}>
               <Text style={s.ringMiles}>{trip.miles.toFixed(1)}</Text>
               <Text style={s.ringMilesUnit}>miles this trip</Text>
-              <View style={s.ringGoalChip}>
-                <Text style={s.ringGoalText}>{goalPct}% of daily goal</Text>
-              </View>
+              {trip.speedMph < 0.5 && !isPaused ? (
+                <View style={[s.ringGoalChip, { backgroundColor: 'rgba(224,150,31,0.18)' }]}>
+                  <Text style={[s.ringGoalText, { color: colors.amber }]}>Waiting…</Text>
+                </View>
+              ) : (
+                <View style={s.ringGoalChip}>
+                  <Text style={s.ringGoalText}>{goalPct}% of daily goal</Text>
+                </View>
+              )}
             </View>
           </ProgressRing>
         </View>
@@ -190,10 +257,38 @@ export default function TripScreen() {
   }
 
   // ---- Phase 1: setup --------------------------------------------------------
+  const todayHasData = today.trips > 0 || today.earnings > 0;
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <Text style={s.heading}>Start a trip</Text>
       <Text style={s.sub}>Tap start and ride — GPS measures your distance for you.</Text>
+
+      {/* Today's running summary — visible after at least one trip today */}
+      {todayHasData && (
+        <View style={s.dayBar}>
+          <View style={s.dayBarItem}>
+            <Text style={s.dayBarValue}>{today.trips}</Text>
+            <Text style={s.dayBarLabel}>{today.trips === 1 ? 'trip' : 'trips'}</Text>
+          </View>
+          <View style={s.dayBarDivider} />
+          <View style={s.dayBarItem}>
+            <Text style={s.dayBarValue}>{today.miles.toFixed(1)}</Text>
+            <Text style={s.dayBarLabel}>miles</Text>
+          </View>
+          <View style={s.dayBarDivider} />
+          <View style={s.dayBarItem}>
+            <Text style={s.dayBarValue}>{fmtGbp(today.deduction)}</Text>
+            <Text style={s.dayBarLabel}>saved</Text>
+          </View>
+          {today.earnings > 0 && <>
+            <View style={s.dayBarDivider} />
+            <View style={s.dayBarItem}>
+              <Text style={s.dayBarValue}>{fmtGbp(today.earnings)}</Text>
+              <Text style={s.dayBarLabel}>earned</Text>
+            </View>
+          </>}
+        </View>
+      )}
 
       <SectionHeader title="Platform" />
       <View style={s.chips}>
@@ -214,6 +309,13 @@ export default function TripScreen() {
         <Feather name="navigation" size={24} color="#fff" />
         <Text style={s.startBtnLabel}>Start trip</Text>
       </Pressable>
+
+      {/* Log weekly pay — couriers are paid weekly by bank transfer, not per trip */}
+      <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={s.logPayBtn}>
+        <Feather name="dollar-sign" size={16} color={colors.brandDeep} />
+        <Text style={s.logPayText}>Log weekly pay</Text>
+      </Pressable>
+
       <Text style={s.gpsNote}>Keep Okkle open during your ride. Your screen will stay awake automatically.</Text>
     </ScrollView>
   );
@@ -227,6 +329,23 @@ const s = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
   chip: { marginBottom: 0 },
   gpsNote: { ...type.caption, color: colors.textTertiary, textAlign: 'center', marginTop: 14, lineHeight: 20 },
+
+  dayBar: {
+    flexDirection: 'row', backgroundColor: colors.bgCard, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border, marginBottom: spacing.xl,
+  },
+  dayBarItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  dayBarDivider: { width: 1, backgroundColor: colors.border, marginVertical: 10 },
+  dayBarValue: { fontSize: 17, fontWeight: font.bold, color: colors.textPrimary },
+  dayBarLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+
+  logPayBtn: {
+    marginTop: spacing.md, borderWidth: 1.5, borderColor: colors.brandMid,
+    borderRadius: radius.md, paddingVertical: 14, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: colors.brandLight,
+  },
+  logPayText: { ...type.bodyMedium, color: colors.brandDeep },
 
   vehicleChip: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
