@@ -6,11 +6,11 @@ import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Card, SectionHeader, PrimaryButton } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTrips, getRecords,
-  getUser, kvGetNum, kvSet,
+  getUser, getQuarterlySummaries, kvGet, kvGetNum, kvSet, type QuarterSummary,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel } from '../../src/db/tax';
 import {
-  compareMethods, taxPosition, class2Note, PERSONAL_ALLOWANCE,
+  compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE,
 } from '../../src/db/taxcalc';
 import { shareAccountantPack } from '../../src/accountantPack';
 
@@ -19,18 +19,21 @@ export default function TaxScreen() {
   const [year, setYear] = React.useState(getTaxYearSummary());
   const [bizMiles, setBizMiles] = React.useState(0);
   const [otherExpenses, setOtherExpenses] = React.useState(0);
-  const [methodInputs, setMethodInputs] = React.useState({ personalMiles: 0, runningCosts: 0, vehicleValue: 0 });
+  const [methodInputs, setMethodInputs] = React.useState({ personalMiles: 0, runningCosts: 0, vehicleValue: 0, caBasis: 'low' });
   const [otherIncome, setOtherIncome] = React.useState(String(kvGetNum('other_income') || ''));
+  const [quarters, setQuarters] = React.useState<QuarterSummary[]>([]);
   const user = getUser();
 
   function reload() {
     setYear(getTaxYearSummary());
     setBizMiles(getTaxYearMiles());
     setOtherExpenses(getTaxYearExpenses());
+    setQuarters(getQuarterlySummaries());
     setMethodInputs({
       personalMiles: kvGetNum('personal_miles'),
       runningCosts: kvGetNum('running_costs'),
       vehicleValue: kvGetNum('vehicle_value'),
+      caBasis: kvGet('ca_basis') || 'low',
     });
   }
   useFocusEffect(useCallback(() => { reload(); }, []));
@@ -43,6 +46,7 @@ export default function TaxScreen() {
     personalMiles: methodInputs.personalMiles,
     runningCosts: methodInputs.runningCosts,
     vehicleValue: methodInputs.vehicleValue,
+    capitalAllowanceRate: caRate(methodInputs.caBasis),
     simplifiedDeduction: year.deduction,
   });
 
@@ -179,6 +183,29 @@ export default function TaxScreen() {
         <Row label="Profit after tax" value={fmtGbp(pos.profit - pos.totalDue)} bold />
       </Card>
 
+      {/* MTD quarterly updates */}
+      <SectionHeader title="Making Tax Digital — quarterly updates" />
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {quarters.map((q, i) => (
+          <View key={q.label} style={[s.qRow, i < quarters.length - 1 && s.qBorder, q.isCurrent && s.qCurrent]}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={s.qLabel}>{q.label}</Text>
+                {q.isCurrent && <View style={s.qNowTag}><Text style={s.qNowText}>now</Text></View>}
+              </View>
+              <Text style={s.qDates}>{fmtShort(q.start)} – {fmtShort(q.end)} · due {q.deadline}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={s.qProfit}>{fmtGbp(q.profit)}</Text>
+              <Text style={s.qProfitLabel}>profit</Text>
+            </View>
+          </View>
+        ))}
+      </Card>
+      <Text style={s.mtdNote}>
+        MTD for Income Tax is mandatory if your self-employment income is over £50,000 (from April 2026), or over £30,000 (from April 2027). You'll submit these four updates digitally each year.
+      </Text>
+
       {/* Year-end checklist */}
       <SectionHeader title="Year-end checklist" />
       <Card style={{ gap: 10 }}>
@@ -235,6 +262,10 @@ export default function TaxScreen() {
   );
 }
 
+function fmtShort(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 function Row({ label, value, bold, accent }: { label: string; value: string; bold?: boolean; accent?: boolean }) {
   return (
     <View style={s.row}>
@@ -268,6 +299,17 @@ const s = StyleSheet.create({
 
   checkItem: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   checkText: { ...type.caption, color: colors.textSecondary, flex: 1, lineHeight: 20 },
+
+  qRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.lg },
+  qBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  qCurrent: { backgroundColor: colors.brandLight },
+  qLabel: { ...type.bodyMedium, fontSize: 16 },
+  qNowTag: { backgroundColor: colors.brand, borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  qNowText: { color: '#fff', fontSize: 11, fontWeight: font.semibold },
+  qDates: { ...type.caption, marginTop: 2 },
+  qProfit: { fontSize: 15, fontWeight: font.semibold, color: colors.brandDeep },
+  qProfitLabel: { ...type.small },
+  mtdNote: { ...type.small, lineHeight: 18, marginTop: spacing.md },
 
   packBtn: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, padding: spacing.lg },
   packTitle: { color: '#fff', fontSize: 16, fontWeight: font.bold },

@@ -386,6 +386,54 @@ export function getTaxYearExpenses(): number {
   return row?.t ?? 0;
 }
 
+export type QuarterSummary = {
+  label: string;
+  start: string;
+  end: string;
+  deadline: string;
+  income: number;
+  expenses: number;
+  profit: number;
+  isCurrent: boolean;
+};
+
+// MTD for Income Tax standard quarterly periods (tax year to 5 April) with the
+// "1 month and 7 days after quarter end" submission deadlines.
+export function getQuarterlySummaries(): QuarterSummary[] {
+  const start = taxYearStart();
+  const baseYear = parseInt(start.slice(0, 4), 10);
+  const quarters = [
+    { label: 'Q1', start: `${baseYear}-04-06`, end: `${baseYear}-07-05`, deadline: `7 Aug ${baseYear}` },
+    { label: 'Q2', start: `${baseYear}-07-06`, end: `${baseYear}-10-05`, deadline: `7 Nov ${baseYear}` },
+    { label: 'Q3', start: `${baseYear}-10-06`, end: `${baseYear + 1}-01-05`, deadline: `7 Feb ${baseYear + 1}` },
+    { label: 'Q4', start: `${baseYear + 1}-01-06`, end: `${baseYear + 1}-04-05`, deadline: `7 May ${baseYear + 1}` },
+  ];
+  const today = new Date().toISOString().slice(0, 10);
+
+  return quarters.map(q => {
+    const tripInc = db.getFirstSync<{ inc: number; ded: number }>(
+      `SELECT COALESCE(SUM(earnings),0) AS inc, COALESCE(SUM(deduction),0) AS ded
+       FROM trips WHERE date(started_at) BETWEEN ? AND ?`, q.start, q.end);
+    const recInc = db.getFirstSync<{ inc: number }>(
+      `SELECT COALESCE(SUM(amount),0) AS inc FROM records
+       WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, q.start, q.end);
+    const recMileDed = db.getFirstSync<{ ded: number }>(
+      `SELECT COALESCE(SUM(deduction),0) AS ded FROM records
+       WHERE record_type='mileage' AND date(created_at) BETWEEN ? AND ?`, q.start, q.end);
+    const recExp = db.getFirstSync<{ exp: number }>(
+      `SELECT COALESCE(SUM(amount),0) AS exp FROM records
+       WHERE record_type='expense' AND date(created_at) BETWEEN ? AND ?`, q.start, q.end);
+
+    const income = (tripInc?.inc ?? 0) + (recInc?.inc ?? 0);
+    const expenses = (tripInc?.ded ?? 0) + (recMileDed?.ded ?? 0) + (recExp?.exp ?? 0);
+    return {
+      label: q.label, start: q.start, end: q.end, deadline: q.deadline,
+      income, expenses, profit: income - expenses,
+      isCurrent: today >= q.start && today <= q.end,
+    };
+  });
+}
+
 export function resetAllData() {
   db.execSync('DELETE FROM trips; DELETE FROM records; DELETE FROM user; DELETE FROM kv;');
 }

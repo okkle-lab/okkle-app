@@ -3,9 +3,9 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import {
   getUser, getTrips, getRecords, getTaxYearSummary, getTaxYearMiles,
-  getTaxYearExpenses, kvGetNum, taxYearStart,
+  getTaxYearExpenses, kvGet, kvGetNum, taxYearStart,
 } from './db';
-import { taxPosition, compareMethods } from './db/taxcalc';
+import { taxPosition, compareMethods, caRate } from './db/taxcalc';
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel, regionLabel } from './db/tax';
 
 const VEHICLE_COST_WORDS = /fuel|petrol|diesel|tyre|tire|mot|service|servicing|repair|insurance|road tax|breakdown|oil|brake|battery/i;
@@ -36,6 +36,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
     personalMiles: kvGetNum('personal_miles'),
     runningCosts: kvGetNum('running_costs'),
     vehicleValue: kvGetNum('vehicle_value'),
+    capitalAllowanceRate: caRate(kvGet('ca_basis') || 'low'),
     simplifiedDeduction: year.deduction,
   });
   const usingActual = kvGetNum('running_costs') > 0 && method.recommended === 'actual';

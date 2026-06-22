@@ -13,7 +13,19 @@ const CLASS4_UPPER_RATE = 0.02;
 // NI benefit without paying) since 2024/25.
 const CLASS2_SMALL_PROFITS = 6725;
 
-const WDA_RATE = 0.18; // main-rate writing-down allowance (capital allowances)
+// Capital allowance bases (HMRC). Cars use writing-down allowances by CO2;
+// new zero-emission cars get a 100% first-year allowance; vans and motorbikes
+// are plant & machinery and qualify for the 100% Annual Investment Allowance.
+export const CAPITAL_ALLOWANCE_BASES = [
+  { key: 'ev', label: 'New electric car', sub: '100% first-year allowance', rate: 1.0 },
+  { key: 'low', label: 'Low-emission car (≤50g/km)', sub: '18% writing-down', rate: 0.18 },
+  { key: 'other', label: 'Other car (>50g/km)', sub: '6% writing-down', rate: 0.06 },
+  { key: 'plant', label: 'Van or motorbike', sub: '100% (AIA)', rate: 1.0 },
+] as const;
+
+export function caRate(basis: string): number {
+  return CAPITAL_ALLOWANCE_BASES.find(b => b.key === basis)?.rate ?? 0.18;
+}
 
 // --- Income tax: progressive bands ------------------------------------------
 
@@ -75,6 +87,7 @@ export type MethodInput = {
   personalMiles: number;
   runningCosts: number;   // fuel, insurance, tax, repairs, servicing (annual)
   vehicleValue: number;   // for capital allowances
+  capitalAllowanceRate?: number; // defaults to 18% main-rate WDA
   simplifiedDeduction: number;
 };
 
@@ -90,7 +103,7 @@ export type MethodResult = {
 export function compareMethods(i: MethodInput): MethodResult {
   const totalMiles = i.businessMiles + i.personalMiles;
   const pct = totalMiles > 0 ? i.businessMiles / totalMiles : 1;
-  const capitalAllowance = i.vehicleValue * WDA_RATE * pct;
+  const capitalAllowance = i.vehicleValue * (i.capitalAllowanceRate ?? 0.18) * pct;
   const actual = i.runningCosts * pct + capitalAllowance;
   const recommended = actual > i.simplifiedDeduction ? 'actual' : 'simplified';
   return {
