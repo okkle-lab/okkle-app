@@ -194,7 +194,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
   </table>
 
   <h2>Mileage log</h2>
-  <p class="sub">${fmtMiles(mileageMilesTotal)} business miles across ${trips.length} trips.</p>
+  <p class="sub">${fmtMiles(mileageMilesTotal)} business miles across ${trips.length} trips. Distances are GPS-measured from each trip (HMRC accepts a contemporaneous mileage record; GPS satisfies this).</p>
   <table>
     <thead><tr><th>Date</th><th>Vehicle</th><th>Purpose</th><th class="num">Miles</th><th class="num">Deduction</th></tr></thead>
     <tbody>${mileageRows || '<tr><td colspan="5" class="muted">No trips recorded.</td></tr>'}</tbody>

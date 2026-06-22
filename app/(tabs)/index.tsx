@@ -164,7 +164,7 @@ export default function HomeScreen() {
       {/* Per-platform breakdown for the selected period — multi-platform couriers */}
       {periodPlatforms.length > 0 && (
         <View style={{ marginTop: spacing.lg }}>
-          <SectionHeader title={`By platform · ${periodData?.label ?? ''}`} />
+          <SectionHeader icon="grid" title={`By platform · ${periodData?.label ?? ''}`} />
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             {periodPlatforms.map((p, i, arr) => (
               <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
@@ -187,7 +187,7 @@ export default function HomeScreen() {
       {/* Gamification — streak + achievement badges */}
       {achievements.length > 0 && (
         <View style={{ marginTop: spacing.xl }}>
-          <SectionHeader title="Your progress" />
+          <SectionHeader icon="zap" title="Your progress" />
           <Card>
             <View style={s.streakRow}>
               <View style={[s.streakIcon, streak > 0 ? { backgroundColor: colors.amberLight } : { backgroundColor: colors.bgSoft }]}>
@@ -218,7 +218,7 @@ export default function HomeScreen() {
 
       {isCarOrVan && yearMiles > 0 && (
         <View style={{ marginTop: spacing.xl }}>
-          <SectionHeader title="10,000-mile threshold" />
+          <SectionHeader icon="alert-circle" title="10,000-mile threshold" />
           <Card>
             <View style={s.rowBetween}>
               <Text style={s.thresholdMiles}>{fmtMiles(yearMiles)} this year</Text>
@@ -240,7 +240,7 @@ export default function HomeScreen() {
       )}
 
       <View style={{ marginTop: spacing.xl }}>
-        <SectionHeader title="Recent trips" />
+        <SectionHeader icon="clock" title="Recent trips" />
         {trips.length === 0 ? (
           <Card>
             <Text style={s.emptyText}>No trips yet — tap Start a trip above</Text>
@@ -267,7 +267,7 @@ export default function HomeScreen() {
       {/* Best hours heatmap */}
       {buckets.some(b => b.trips > 0) && (
         <View style={{ marginTop: spacing.xl }}>
-          <SectionHeader title="Best times to work" />
+          <SectionHeader icon="sunrise" title="Best times to work" />
           <Card>
             {(() => {
               const maxPer = Math.max(...buckets.map(b => b.perHour), 1);

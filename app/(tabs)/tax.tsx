@@ -95,9 +95,9 @@ export default function TaxScreen() {
 
   function shareMileageLog() {
     const trips = getTrips(500);
-    const header = 'Date,Vehicle,Platform (purpose),Miles,Rate note,Deduction (GBP)';
+    const header = 'Date,Vehicle,Platform (purpose),Miles,Basis,Deduction (GBP)';
     const rows = trips.slice().sort((a, b) => a.started_at.localeCompare(b.started_at)).map(t =>
-      `${t.started_at.slice(0, 10)},${vehicleLabel(t.vehicle)},${t.platform} delivery,${t.miles.toFixed(1)},HMRC simplified,${t.deduction.toFixed(2)}`);
+      `${t.started_at.slice(0, 10)},${vehicleLabel(t.vehicle)},${t.platform} delivery,${t.miles.toFixed(1)},GPS-measured (HMRC simplified),${t.deduction.toFixed(2)}`);
     shareTextExport('HMRC-Mileage-Log', 'csv', [header, ...rows].join('\n'));
   }
 
@@ -136,7 +136,7 @@ export default function TaxScreen() {
       <Text style={s.sub}>Your estimated position for {taxYearLabel()}</Text>
 
       {/* Mileage method — clean summary, comparison lives in its own tool */}
-      <SectionHeader title="Mileage method" />
+      <SectionHeader icon="navigation" title="Mileage method" />
       <Card style={{ gap: spacing.md }}>
         <View style={s.methodRow}>
           <View>
@@ -157,7 +157,7 @@ export default function TaxScreen() {
       </Card>
 
       {/* Self Assessment summary */}
-      <SectionHeader title="Self Assessment summary" />
+      <SectionHeader icon="file-text" title="Self Assessment summary" />
       <Card>
         <Row label="Turnover (income)" value={fmtGbp(pos.turnover)} />
         <Row label="Allowable expenses" value={fmtGbp(pos.expenses)} />
@@ -168,7 +168,7 @@ export default function TaxScreen() {
       </Card>
 
       {/* Other income — for marginal-rate accuracy */}
-      <SectionHeader title="Other income (for accuracy)" />
+      <SectionHeader icon="briefcase" title="Other income (for accuracy)" />
       <Card>
         <Text style={s.inputLabel}>Wages or other income this tax year</Text>
         <TextInput
@@ -186,7 +186,7 @@ export default function TaxScreen() {
       </Card>
 
       {/* Tax & NIC */}
-      <SectionHeader title="Estimated tax & National Insurance" />
+      <SectionHeader icon="percent" title="Estimated tax & National Insurance" />
       <Card>
         <Row label="Income Tax" value={fmtGbp(pos.incomeTax)} />
         <Row label="Class 4 NIC" value={fmtGbp(pos.class4)} />
@@ -204,7 +204,7 @@ export default function TaxScreen() {
       </Card>
 
       {/* Insights — your business as a P&L */}
-      <SectionHeader title="Business insights" />
+      <SectionHeader icon="bar-chart-2" title="Business insights" />
       <Card>
         <Row label="Effective net pay / hour" value={hours > 0 ? fmtPerHour((pos.profit - pos.totalDue) / hours) : '—'} bold accent />
         <Row label="Gross pay / hour" value={hours > 0 ? fmtPerHour(year.earnings / hours) : '—'} />
@@ -220,7 +220,7 @@ export default function TaxScreen() {
       {/* Platform ROI by hour */}
       {platforms.some(p => p.perHour > 0) && (
         <>
-          <SectionHeader title="Which platform pays best?" />
+          <SectionHeader icon="award" title="Which platform pays best?" />
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             {platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour).map((p, i, arr) => (
               <View key={p.platform} style={[s.qRow, i < arr.length - 1 && s.qBorder]}>
@@ -239,7 +239,7 @@ export default function TaxScreen() {
       )}
 
       {/* MTD quarterly updates */}
-      <SectionHeader title="Making Tax Digital — quarterly updates" />
+      <SectionHeader icon="calendar" title="Making Tax Digital — quarterly updates" />
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         {quarters.map((q, i) => (
           <View key={q.label} style={[s.qRow, i < quarters.length - 1 && s.qBorder, q.isCurrent && s.qCurrent]}>
@@ -262,7 +262,7 @@ export default function TaxScreen() {
       </Text>
 
       {/* Year-end checklist */}
-      <SectionHeader title="Year-end checklist" />
+      <SectionHeader icon="check-square" title="Year-end checklist" />
       <Card style={{ gap: 10 }}>
         {[
           'Register for Self Assessment if you haven\'t (deadline 5 Oct after your first tax year)',
@@ -279,7 +279,7 @@ export default function TaxScreen() {
       </Card>
 
       {/* Export */}
-      <SectionHeader title="Send to your accountant" />
+      <SectionHeader icon="send" title="Send to your accountant" />
       <Pressable onPress={makePack} disabled={packBusy} style={({ pressed }) => [s.packBtn, pressed && { opacity: 0.9 }]}>
         <Feather name="file-text" size={22} color="#fff" />
         <View style={{ flex: 1 }}>

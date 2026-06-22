@@ -21,6 +21,26 @@ const WEEKDAY_TO_NUM: { [k: string]: number } = {
   sun: 1, mon: 2, tue: 3, wed: 4, thu: 5, fri: 6, sat: 7,
 };
 
+// Playful, Duolingo-style nudges. One is picked at random each time we
+// (re)schedule, so the tone varies over time and never feels robotic.
+const STREAK_NUDGES: { title: string; body: string }[] = [
+  { title: 'Your streak misses you 🥺', body: 'One quick trip keeps it alive. Okkle is watching… in a friendly way.' },
+  { title: "Don't break the chain! 🔗", body: 'Log a trip today and keep that streak glowing.' },
+  { title: 'Psst… 🛵', body: 'Every mile you track is tax you keep. Open Okkle before bed?' },
+  { title: 'Tax-free miles await ✨', body: "You've come too far to drop the streak now. Tap to log today." },
+  { title: 'Your future self says thanks 🙏', body: 'Two taps to log today. January-you will be very grateful.' },
+  { title: 'Keep the engine warm 🔥', body: 'A quick log today keeps your streak — and your tax savings — rolling.' },
+];
+
+const WEEKLY_NUDGES: string[] = [
+  'Payday soon? Log this week’s earnings so nothing slips through 🛵',
+  'Weekly check-in: a minute now saves a headache in January 📒',
+  'Your miles = money back. Log this week’s trips and earnings ✨',
+  'Quick one — how did the week go? Pop your miles and pay in 🚀',
+];
+
+function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
+
 export async function ensurePermission(): Promise<boolean> {
   const { status } = await Notifications.getPermissionsAsync();
   if (status === 'granted') return true;
@@ -41,20 +61,33 @@ export async function syncReminders(user: User): Promise<void> {
     });
   }
 
-  // Weekly/monthly logging reminder.
+  // Weekly/monthly logging reminder — playful, varied copy.
   if (user.reminder_enabled) {
     const monthly = user.log_frequency === 'monthly';
     const body = monthly
-      ? 'Time to log this month’s delivery miles and earnings 🛵'
-      : 'Quick check-in — log this week’s miles and earnings 🛵';
+      ? 'New month, fresh miles 🛵 Log last month’s trips and earnings.'
+      : pick(WEEKLY_NUDGES);
     await Notifications.scheduleNotificationAsync({
-      content: { title: 'Okkle reminder', body },
+      content: { title: 'Okkle', body },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
         weekday: WEEKDAY_TO_NUM[user.reminder_day] ?? 1,
         hour: 18, minute: 0,
       },
     });
+
+    // Daily streak-keeper — the Duolingo-style "don't lose your streak" nudge.
+    // (Only when logging weekly; monthly users don't get a daily ping.)
+    if (!monthly) {
+      const nudge = pick(STREAK_NUDGES);
+      await Notifications.scheduleNotificationAsync({
+        content: { title: nudge.title, body: nudge.body },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: 19, minute: 30,
+        },
+      });
+    }
   }
 
   // Tax-deadline reminders (on by default; toggle stored in kv).

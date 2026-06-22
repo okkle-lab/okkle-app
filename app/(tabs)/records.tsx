@@ -102,7 +102,7 @@ export default function RecordsScreen() {
 
       {vehicles.length > 0 && (
         <View style={{ marginBottom: spacing.xl }}>
-          <SectionHeader title="By vehicle" />
+          <SectionHeader icon="truck" title="By vehicle" />
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             {vehicles.map((v, i) => (
               <View key={v.vehicle} style={[row.container, i < vehicles.length - 1 && row.border]}>
@@ -126,7 +126,7 @@ export default function RecordsScreen() {
         </Card>
       ) : (
         <>
-          <SectionHeader title="All entries" />
+          <SectionHeader icon="list" title="All entries" />
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             {items.map((item, i, arr) => renderItem(item, i, arr))}
           </Card>

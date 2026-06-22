@@ -102,14 +102,14 @@ export default function TripScreen() {
           <Text style={s.heading}>Log weekly pay</Text>
           <Text style={s.sub}>Uber Eats, Deliveroo and Just Eat all pay weekly by bank transfer. Log it here to keep your earnings accurate.</Text>
 
-          <SectionHeader title="Platform" />
+          <SectionHeader icon="grid" title="Platform" />
           <View style={s.chips}>
             {PLATFORMS.map(p => (
               <Chip key={p} label={p} selected={payPlatform === p} onPress={() => setPayPlatform(p)} size="lg" style={s.chip} />
             ))}
           </View>
 
-          <SectionHeader title="Amount received" />
+          <SectionHeader icon="dollar-sign" title="Amount received" />
           <TextInput
             style={s.earningsInput}
             placeholder="£0.00"
@@ -241,7 +241,7 @@ export default function TripScreen() {
             </View>
           </View>
 
-          <SectionHeader title="Add earnings for this trip (optional)" />
+          <SectionHeader icon="dollar-sign" title="Add earnings for this trip (optional)" />
           <TextInput
             style={s.earningsInput}
             placeholder="£0.00"
@@ -288,14 +288,14 @@ export default function TripScreen() {
         </View>
       )}
 
-      <SectionHeader title="Platform" />
+      <SectionHeader icon="grid" title="Platform" />
       <View style={s.chips}>
         {PLATFORMS.map(p => (
           <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" style={s.chip} />
         ))}
       </View>
 
-      <SectionHeader title="Vehicle" />
+      <SectionHeader icon="truck" title="Vehicle" />
       <View style={s.chips}>
         {VEHICLES.map(v => (
           <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
