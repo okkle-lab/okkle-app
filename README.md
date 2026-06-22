@@ -147,6 +147,10 @@ src/
 
 ## Run locally (Expo Go)
 
+**Easiest — double-click the launcher:** in Finder, open `launch.command` (first time: right-click → Open). It detects your WiFi IP, opens a QR page, and starts the server. Scan the QR with the iPhone Camera or Expo Go.
+
+**Or manually:**
+
 ```bash
 cd ~/Documents/okkle
 npx expo start

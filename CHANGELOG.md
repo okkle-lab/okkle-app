@@ -2,6 +2,18 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (number & alignment polish)
+
+### Cleaner numbers and layout
+- **Consistent number formatting everywhere** — per-hour, per-mile, hours and percentages now render the same way on every screen (previously per-hour appeared three different ways). New shared formatters: `fmtPerHour`, `fmtPerMile`, `fmtHours`, `fmtPct`.
+- **Tabular figures** — all numbers now use monospaced digits so they line up in even columns and stop jittering as values change.
+- **Metric cards** — large currency values shrink to fit instead of wrapping or overflowing, and paired cards now stay equal height and aligned.
+- **Tax tab rows** — labels and right-aligned values are properly columned.
+- Negative amounts now format cleanly (e.g. `-£12.34`).
+
+### Expo Go launcher
+- Added `launch.command` — double-click it in Finder to auto-detect your WiFi IP, pop up a branded QR page with scan instructions, and start the dev server. Makes it one click for anyone to open the app in Expo Go.
+
 ## 2026-06-22 (period switcher)
 
 ### Daily / weekly / monthly / yearly views
