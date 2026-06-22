@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (~100 medals)
+
+### Way more medals
+- Expanded from 26 to **~99 medals** across 11 categories: Trips, Miles, Tax saved, Earnings, Streaks, Hours, Active days, Big days (best single day), Long trips, Platforms and Special habits (night owl, early bird, weekend warrior, paper trail, safe keeper, all-rounder…).
+- All driven by a single-pass stats gatherer, so the collection stays fast.
+
 ## 2026-06-23 (3D medals + gamified Trip tab)
 
 ### Real medals
