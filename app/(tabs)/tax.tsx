@@ -108,6 +108,27 @@ export default function TaxScreen() {
     Share.share({ message: [header, ...tr, ...rr].join('\n'), title: `Okkle data ${taxYearLabel()}.csv` });
   }
 
+  // FreeAgent bank-statement import format: Date (DD/MM/YYYY), Amount, Description.
+  // Money in (earnings) is positive; money out (expenses) is negative.
+  // Mileage is a tax deduction, not a cash movement, so it is excluded here —
+  // it's claimed separately and appears in the Accountant Pack / mileage log.
+  function shareFreeAgentCsv() {
+    const uk = (iso: string) => { const d = iso.slice(0, 10).split('-'); return `${d[2]}/${d[1]}/${d[0]}`; };
+    const csvSafe = (s: string) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const lines: { date: string; amount: number; desc: string }[] = [];
+    for (const t of getTrips(1000)) {
+      if (t.earnings && t.earnings > 0) lines.push({ date: t.started_at, amount: t.earnings, desc: `${t.platform} earnings` });
+    }
+    for (const r of getRecords(1000)) {
+      if (r.record_type === 'income' && r.amount) lines.push({ date: r.created_at, amount: r.amount, desc: `${r.platform ?? 'Platform'} earnings` });
+      if (r.record_type === 'expense' && r.amount) lines.push({ date: r.created_at, amount: -Math.abs(r.amount), desc: r.category ?? r.notes ?? 'Expense' });
+    }
+    lines.sort((a, b) => a.date.localeCompare(b.date));
+    const header = 'Date,Amount,Description';
+    const rows = lines.map(l => `${uk(l.date)},${l.amount.toFixed(2)},${csvSafe(l.desc)}`);
+    Share.share({ message: [header, ...rows].join('\n'), title: `Okkle FreeAgent import ${taxYearLabel()}.csv` });
+  }
+
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <Text style={s.heading}>Tax</Text>
@@ -278,6 +299,14 @@ export default function TaxScreen() {
           <Text style={s.exportText}>HMRC mileage log</Text>
           <Feather name="share" size={16} color={colors.textTertiary} />
         </Pressable>
+        <Pressable onPress={shareFreeAgentCsv} style={s.exportBtn}>
+          <IconBadge icon="upload-cloud" tone="mint" size={34} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.exportText}>FreeAgent import (CSV)</Text>
+            <Text style={s.exportSub}>Earnings &amp; expenses, ready to upload</Text>
+          </View>
+          <Feather name="share" size={16} color={colors.textTertiary} />
+        </Pressable>
         <Pressable onPress={shareCsv} style={s.exportBtn}>
           <IconBadge icon="database" tone="neutral" size={34} />
           <Text style={s.exportText}>All data (CSV)</Text>
@@ -349,6 +378,7 @@ const s = StyleSheet.create({
   packSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
   exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
   exportText: { ...type.bodyMedium, fontSize: 15, flex: 1 },
+  exportSub: { ...type.caption, marginTop: 1 },
 
   disclaimer: { marginTop: spacing.xl, padding: spacing.lg, backgroundColor: colors.bgSoft, borderRadius: radius.md, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   disclaimerText: { ...type.small, lineHeight: 18, flex: 1 },
