@@ -10,3 +10,4 @@ export { ProgressRing } from './ProgressRing';
 export { IconBadge } from './IconBadge';
 export { CountUp } from './CountUp';
 export { Medal } from './Medal';
+export { HeatMapView } from './HeatMapView';

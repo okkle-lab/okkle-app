@@ -320,6 +320,16 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {/* Insights entry — hotspots map + best times live here */}
+      <Pressable onPress={() => router.push('/insights')} style={({ pressed }) => [s.insightsCta, pressed && { opacity: 0.9 }]}>
+        <View style={s.insightsIcon}><Feather name="map" size={20} color={colors.brandDeep} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.insightsTitle}>Where you earn most</Text>
+          <Text style={s.insightsSub}>See your hotspots map &amp; best hours</Text>
+        </View>
+        <Feather name="chevron-right" size={20} color={colors.brandDeep} />
+      </Pressable>
+
       {/* Best hours heatmap */}
       {buckets.some(b => b.trips > 0) && (
         <View style={{ marginTop: spacing.xl }}>
@@ -445,6 +455,10 @@ const s = StyleSheet.create({
 
   progressHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   seeAll: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
+  insightsCta: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: spacing.xl, backgroundColor: colors.brandLight, borderRadius: radius.lg, padding: spacing.lg },
+  insightsIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  insightsTitle: { ...type.bodyMedium, fontSize: 15, color: colors.brandDeep },
+  insightsSub: { ...type.caption, color: colors.brandDeep, opacity: 0.8, marginTop: 1 },
 
   levelRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   levelBadge: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },

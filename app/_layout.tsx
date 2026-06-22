@@ -22,6 +22,8 @@ export default function RootLayout() {
       <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
       <Stack.Screen name="compare" options={{ presentation: 'modal' }} />
       <Stack.Screen name="medals" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="insights" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="export" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }

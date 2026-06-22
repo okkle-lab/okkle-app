@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, Medal } from '../../src/components';
@@ -84,8 +85,22 @@ export default function TripScreen() {
     );
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!finished) return;
+    const pts = finished.points ?? [];
+
+    // Reverse-geocode a representative point to a friendly "zone" name, so the
+    // Insights map can rank where you earn. One lookup per trip; best-effort.
+    let zone: string | null = null;
+    if (pts.length > 0) {
+      const mid = pts[Math.floor(pts.length / 2)];
+      try {
+        const places = await Location.reverseGeocodeAsync({ latitude: mid.lat, longitude: mid.lng });
+        const p = places[0];
+        zone = p?.subregion ?? p?.city ?? p?.district ?? p?.region ?? null;
+      } catch { /* offline or denied — leave zone null */ }
+    }
+
     saveTrip({
       platform: finished.platform,
       vehicle: finished.vehicle,
@@ -94,6 +109,8 @@ export default function TripScreen() {
       earnings: earnings ? parseFloat(earnings) : null,
       started_at: finished.startedAt!.toISOString(),
       ended_at: new Date().toISOString(),
+      route_json: pts.length > 0 ? JSON.stringify(pts) : null,
+      zone,
     });
     setFinished(null);
     setEarnings('');

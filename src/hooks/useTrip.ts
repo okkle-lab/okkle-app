@@ -4,6 +4,8 @@ import { mileageRate, calcDeduction } from '../db/tax';
 
 export type TripState = 'idle' | 'running' | 'paused';
 
+export type GeoPoint = { lat: number; lng: number };
+
 export type LiveTrip = {
   state: TripState;
   platform: string;
@@ -13,6 +15,7 @@ export type LiveTrip = {
   elapsedSeconds: number;
   speedMph: number;
   startedAt: Date | null;
+  points?: GeoPoint[];
 };
 
 const INITIAL: LiveTrip = {
@@ -31,6 +34,25 @@ export function useTrip() {
   const watchRef = useRef<Location.LocationSubscription | null>(null);
   const lastPosRef = useRef<Location.LocationObject | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Downsampled GPS breadcrumb for the location heatmap (kept off render state).
+  const pointsRef = useRef<GeoPoint[]>([]);
+  const lastSampleRef = useRef<Location.LocationObject | null>(null);
+
+  function samplePoint(loc: Location.LocationObject) {
+    const prev = lastSampleRef.current;
+    // Keep a point roughly every 40m, capped so storage stays tiny.
+    if (prev) {
+      const m = haversineKm(prev.coords, loc.coords) * 1000;
+      if (m < 40) return;
+    }
+    if (pointsRef.current.length < 400) {
+      pointsRef.current.push({
+        lat: +loc.coords.latitude.toFixed(5),
+        lng: +loc.coords.longitude.toFixed(5),
+      });
+      lastSampleRef.current = loc;
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -47,6 +69,8 @@ export function useTrip() {
     try { await Location.requestBackgroundPermissionsAsync(); } catch { /* ignore */ }
 
     const startedAt = new Date();
+    pointsRef.current = [];
+    lastSampleRef.current = null;
     setTrip({ state: 'running', platform, vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
 
     timerRef.current = setInterval(() => {
@@ -74,6 +98,7 @@ export function useTrip() {
         } else {
           setTrip(t => ({ ...t, speedMph: mph }));
         }
+        samplePoint(loc);
         lastPosRef.current = loc;
       },
     );
@@ -113,6 +138,7 @@ export function useTrip() {
         } else {
           setTrip(t => ({ ...t, speedMph: mph }));
         }
+        samplePoint(loc);
         lastPosRef.current = loc;
       },
     );
@@ -124,7 +150,7 @@ export function useTrip() {
     watchRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
     lastPosRef.current = null;
-    const final = { ...trip, state: 'idle' as TripState };
+    const final = { ...trip, state: 'idle' as TripState, points: pointsRef.current.slice() };
     setTrip(INITIAL);
     return final;
   }

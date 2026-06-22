@@ -57,6 +57,7 @@ export function initDb() {
     `ALTER TABLE user ADD COLUMN reminder_enabled INTEGER DEFAULT 1`,
     `ALTER TABLE user ADD COLUMN reminder_day TEXT DEFAULT 'sun'`,
     `ALTER TABLE user ADD COLUMN log_frequency TEXT DEFAULT 'weekly'`,
+    `ALTER TABLE trips ADD COLUMN zone TEXT`,
   ];
   for (const sql of migrations) {
     try { db.execSync(sql); } catch { /* column already present */ }
@@ -86,6 +87,8 @@ export type Trip = {
   started_at: string;
   ended_at: string;
   created_at: string;
+  route_json?: string | null;
+  zone?: string | null;
 };
 
 export type Record = {
@@ -144,10 +147,10 @@ export function saveUser(u: Partial<User>) {
 
 export function saveTrip(t: Omit<Trip, 'id' | 'created_at'>) {
   db.runSync(
-    `INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at)
-     VALUES (?,?,?,?,?,?,?)`,
+    `INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at, route_json, zone)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
     t.platform, t.vehicle, t.miles, t.deduction, t.earnings ?? null,
-    t.started_at, t.ended_at,
+    t.started_at, t.ended_at, t.route_json ?? null, t.zone ?? null,
   );
 }
 
@@ -778,6 +781,47 @@ export function getAchievements(): Achievement[] {
 
 export function achievementCount(): number { return getAchievements().length; }
 
+// ---- Location insights: zones + heatmap points -----------------------------
+
+export type ZoneStat = { zone: string; trips: number; miles: number; earnings: number; deduction: number };
+
+// Ranked "where you work" zones (reverse-geocoded area names saved per trip).
+export function getZoneStats(): ZoneStat[] {
+  const rows = db.getAllSync<{ zone: string | null; miles: number; earnings: number | null; deduction: number }>(
+    `SELECT zone, miles, earnings, deduction FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
+  const agg: { [z: string]: ZoneStat } = {};
+  for (const r of rows) {
+    const z = r.zone as string;
+    if (!agg[z]) agg[z] = { zone: z, trips: 0, miles: 0, earnings: 0, deduction: 0 };
+    agg[z].trips += 1;
+    agg[z].miles += r.miles;
+    agg[z].earnings += r.earnings ?? 0;
+    agg[z].deduction += r.deduction;
+  }
+  const anyEarnings = Object.values(agg).some(z => z.earnings > 0);
+  return Object.values(agg).sort((a, b) => anyEarnings ? b.earnings - a.earnings : b.miles - a.miles);
+}
+
+export type HeatPoint = { lat: number; lng: number; w: number };
+
+// All saved GPS breadcrumb points, each weighted (earnings/point when known,
+// else 1). Feeds the location heatmap.
+export function getHeatPoints(): HeatPoint[] {
+  const rows = db.getAllSync<{ route_json: string | null; earnings: number | null }>(
+    `SELECT route_json, earnings FROM trips WHERE route_json IS NOT NULL`);
+  const out: HeatPoint[] = [];
+  for (const r of rows) {
+    let pts: { lat: number; lng: number }[] = [];
+    try { pts = JSON.parse(r.route_json as string); } catch { continue; }
+    if (!Array.isArray(pts) || pts.length === 0) continue;
+    const w = (r.earnings && r.earnings > 0) ? r.earnings / pts.length : 1;
+    for (const p of pts) {
+      if (typeof p?.lat === 'number' && typeof p?.lng === 'number') out.push({ lat: p.lat, lng: p.lng, w });
+    }
+  }
+  return out;
+}
+
 // ---- XP / levels (local, no backend) ---------------------------------------
 // XP rewards engagement (activity), never income — keeps it fair and private.
 export type XpInfo = { xp: number; level: number; into: number; span: number; progress: number; medals: number };
@@ -919,10 +963,10 @@ export function restoreData(p: BackupPayload) {
     }
     for (const t of p.trips) {
       db.runSync(
-        `INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at, route_json, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at, route_json, zone, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
         t.platform, t.vehicle, t.miles, t.deduction, t.earnings ?? null,
-        t.started_at, t.ended_at, (t as any).route_json ?? null, t.created_at,
+        t.started_at, t.ended_at, (t as any).route_json ?? null, (t as any).zone ?? null, t.created_at,
       );
     }
     for (const r of p.records) {

@@ -5,17 +5,15 @@ import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Card, SectionHeader, PrimaryButton, IconBadge } from '../../src/components';
 import {
-  getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTrips, getRecords,
+  getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries, getHoursWorked, getPlatformStats,
   kvGet, kvGetNum, kvSet, type QuarterSummary, type PlatformStat,
 } from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
+import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
 import {
   compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE, RATES_YEAR,
 } from '../../src/db/taxcalc';
-import { shareAccountantPack } from '../../src/accountantPack';
-import { shareTextExport } from '../../src/exportFile';
 
 export default function TaxScreen() {
   const router = useRouter();
@@ -62,73 +60,6 @@ export default function TaxScreen() {
   const pos = taxPosition(year.earnings, totalExpenses, region, parseFloat(otherIncome) || 0);
 
   const grossPerMile = bizMiles > 0 ? year.earnings / bizMiles : 0;
-  const [packBusy, setPackBusy] = React.useState(false);
-
-  async function makePack() {
-    setPackBusy(true);
-    try { await shareAccountantPack(); }
-    catch { /* user cancelled or sharing unavailable */ }
-    setPackBusy(false);
-  }
-
-  // --- exports --------------------------------------------------------------
-  function shareSA() {
-    const lines = [
-      `Okkle — Self Assessment summary ${taxYearLabel()}`,
-      ``,
-      `Turnover (income):        ${fmtGbp(pos.turnover)}`,
-      `Allowable expenses:       ${fmtGbp(pos.expenses)}`,
-      `Net profit:               ${fmtGbp(pos.profit)}`,
-      ``,
-      `Estimated Income Tax:     ${fmtGbp(pos.incomeTax)}`,
-      `Estimated Class 4 NIC:    ${fmtGbp(pos.class4)}`,
-      `Estimated total due:      ${fmtGbp(pos.totalDue)}`,
-      pos.paymentOnAccount > 0 ? `Payment on account (x2):  ${fmtGbp(pos.paymentOnAccount)} each` : ``,
-      ``,
-      `Mileage method: ${method.recommended}`,
-      `Business miles: ${fmtMiles(bizMiles)}`,
-      ``,
-      `— Estimates only, not tax advice. Confirm with your accountant.`,
-    ].filter(Boolean);
-    shareTextExport('SelfAssessment-Summary', 'txt', lines.join('\n'));
-  }
-
-  function shareMileageLog() {
-    const trips = getTrips(500);
-    const header = 'Date,Vehicle,Platform (purpose),Miles,Basis,Deduction (GBP)';
-    const rows = trips.slice().sort((a, b) => a.started_at.localeCompare(b.started_at)).map(t =>
-      `${t.started_at.slice(0, 10)},${vehicleLabel(t.vehicle)},${t.platform} delivery,${t.miles.toFixed(1)},GPS-measured (HMRC simplified),${t.deduction.toFixed(2)}`);
-    shareTextExport('HMRC-Mileage-Log', 'csv', [header, ...rows].join('\n'));
-  }
-
-  function shareCsv() {
-    const trips = getTrips(500); const records = getRecords(500);
-    const header = 'date,type,platform,vehicle,miles,deduction,earnings,amount,notes';
-    const tr = trips.map(t => `${t.started_at.slice(0,10)},trip,${t.platform},${t.vehicle},${t.miles.toFixed(2)},${t.deduction.toFixed(2)},${t.earnings ?? ''},,`);
-    const rr = records.map(r => `${r.created_at.slice(0,10)},${r.record_type},${r.platform ?? ''},,,${r.deduction ?? ''},,${r.amount ?? ''},${r.notes ?? ''}`);
-    shareTextExport('All-Data', 'csv', [header, ...tr, ...rr].join('\n'));
-  }
-
-  // FreeAgent bank-statement import format: Date (DD/MM/YYYY), Amount, Description.
-  // Money in (earnings) is positive; money out (expenses) is negative.
-  // Mileage is a tax deduction, not a cash movement, so it is excluded here —
-  // it's claimed separately and appears in the Accountant Pack / mileage log.
-  function shareFreeAgentCsv() {
-    const uk = (iso: string) => { const d = iso.slice(0, 10).split('-'); return `${d[2]}/${d[1]}/${d[0]}`; };
-    const csvSafe = (s: string) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    const lines: { date: string; amount: number; desc: string }[] = [];
-    for (const t of getTrips(1000)) {
-      if (t.earnings && t.earnings > 0) lines.push({ date: t.started_at, amount: t.earnings, desc: `${t.platform} earnings` });
-    }
-    for (const r of getRecords(1000)) {
-      if (r.record_type === 'income' && r.amount) lines.push({ date: r.created_at, amount: r.amount, desc: `${r.platform ?? 'Platform'} earnings` });
-      if (r.record_type === 'expense' && r.amount) lines.push({ date: r.created_at, amount: -Math.abs(r.amount), desc: r.category ?? r.notes ?? 'Expense' });
-    }
-    lines.sort((a, b) => a.date.localeCompare(b.date));
-    const header = 'Date,Amount,Description';
-    const rows = lines.map(l => `${uk(l.date)},${l.amount.toFixed(2)},${csvSafe(l.desc)}`);
-    shareTextExport('FreeAgent-Import', 'csv', [header, ...rows].join('\n'));
-  }
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
@@ -278,40 +209,25 @@ export default function TaxScreen() {
         ))}
       </Card>
 
-      {/* Export */}
-      <SectionHeader icon="send" title="Send to your accountant" />
-      <Pressable onPress={makePack} disabled={packBusy} style={({ pressed }) => [s.packBtn, pressed && { opacity: 0.9 }]}>
-        <Feather name="file-text" size={22} color="#fff" />
-        <View style={{ flex: 1 }}>
-          <Text style={s.packTitle}>{packBusy ? 'Preparing…' : 'Accountant Pack (PDF)'}</Text>
-          <Text style={s.packSub}>SA summary, mileage log, expenses & receipts in one file</Text>
-        </View>
-        <Feather name="share" size={18} color="#fff" />
-      </Pressable>
-
-      <Card style={{ gap: spacing.md, marginTop: spacing.md }}>
-        <Pressable onPress={shareSA} style={s.exportBtn}>
-          <IconBadge icon="file-text" tone="mint" size={34} />
-          <Text style={s.exportText}>Self Assessment summary</Text>
-          <Feather name="share" size={16} color={colors.textTertiary} />
-        </Pressable>
-        <Pressable onPress={shareMileageLog} style={s.exportBtn}>
-          <IconBadge icon="map" tone="green" size={34} />
-          <Text style={s.exportText}>HMRC mileage log</Text>
-          <Feather name="share" size={16} color={colors.textTertiary} />
-        </Pressable>
-        <Pressable onPress={shareFreeAgentCsv} style={s.exportBtn}>
-          <IconBadge icon="upload-cloud" tone="mint" size={34} />
+      {/* Insights + Export now live in their own focused subscreens */}
+      <SectionHeader icon="compass" title="Explore" />
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <Pressable onPress={() => router.push('/insights')} style={({ pressed }) => [s.linkRow, pressed && { backgroundColor: colors.bgSoft }]}>
+          <IconBadge icon="map" tone="mint" size={36} />
           <View style={{ flex: 1 }}>
-            <Text style={s.exportText}>FreeAgent import (CSV)</Text>
-            <Text style={s.exportSub}>Earnings &amp; expenses, ready to upload</Text>
+            <Text style={s.linkTitle}>Insights</Text>
+            <Text style={s.linkSub}>Your hotspots, top areas &amp; best hours</Text>
           </View>
-          <Feather name="share" size={16} color={colors.textTertiary} />
+          <Feather name="chevron-right" size={20} color={colors.textTertiary} />
         </Pressable>
-        <Pressable onPress={shareCsv} style={s.exportBtn}>
-          <IconBadge icon="database" tone="neutral" size={34} />
-          <Text style={s.exportText}>All data (CSV)</Text>
-          <Feather name="share" size={16} color={colors.textTertiary} />
+        <View style={s.linkDivider} />
+        <Pressable onPress={() => router.push('/export')} style={({ pressed }) => [s.linkRow, pressed && { backgroundColor: colors.bgSoft }]}>
+          <IconBadge icon="send" tone="green" size={36} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.linkTitle}>Export &amp; share</Text>
+            <Text style={s.linkSub}>Accountant Pack, FreeAgent, mileage log, CSV</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color={colors.textTertiary} />
         </Pressable>
       </Card>
 
@@ -374,12 +290,10 @@ const s = StyleSheet.create({
   qProfitLabel: { ...type.small },
   mtdNote: { ...type.small, lineHeight: 18, marginTop: spacing.md },
 
-  packBtn: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, padding: spacing.lg },
-  packTitle: { color: '#fff', fontSize: 16, fontWeight: font.bold },
-  packSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
-  exportText: { ...type.bodyMedium, fontSize: 15, flex: 1 },
-  exportSub: { ...type.caption, marginTop: 1 },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.lg },
+  linkDivider: { height: 1, backgroundColor: colors.border, marginLeft: 62 },
+  linkTitle: { ...type.bodyMedium, fontSize: 15 },
+  linkSub: { ...type.caption, marginTop: 1 },
 
   disclaimer: { marginTop: spacing.xl, padding: spacing.lg, backgroundColor: colors.bgSoft, borderRadius: radius.md, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   disclaimerText: { ...type.small, lineHeight: 18, flex: 1 },
