@@ -14,7 +14,8 @@
         "NSLocationWhenInUseUsageDescription": "Okkle uses your location to track delivery trip distance for HMRC mileage records.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Okkle uses your location in the background to track delivery trips accurately.",
         "NSPhotoLibraryUsageDescription": "Okkle saves receipts to your photo library.",
-        "NSCameraUsageDescription": "Okkle lets you photograph receipts and pay statements."
+        "NSCameraUsageDescription": "Okkle lets you photograph receipts and pay statements.",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
@@ -40,7 +41,10 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Okkle uses your location to track delivery trip distance."
+          "locationAlwaysAndWhenInUsePermission": "Okkle uses your location to track delivery trip distance.",
+          "locationWhenInUsePermission": "Okkle uses your location to track delivery trip distance.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
         }
       ]
     ]

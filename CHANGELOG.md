@@ -4,6 +4,10 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 2026-06-22
 
+### Dev build scaffolding (EAS) + background GPS config
+- Added `eas.json` (development / preview / production profiles) for EAS cloud builds.
+- Enabled **background location** in app config: `UIBackgroundModes: location` and the expo-location background flags, plus an "Always" permission request when a trip starts — so tracking continues when the phone is locked. Only active in a real dev build; Expo Go is unaffected.
+
 ### Milestones, heatmap, set-aside, trip exit & manual compare
 - **Discard a trip**: an × on the live screen and a "Discard this trip" option after ending — you can now bail out without saving (UX fix).
 - **Milestone celebrations**: a cheerful popup when your tax saved crosses £50, £100, £250, £500, £1,000…

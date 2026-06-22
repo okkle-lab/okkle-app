@@ -42,6 +42,9 @@ export function useTrip() {
   async function start(platform: string, vehicle: string) {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') throw new Error('Location permission denied');
+    // Ask for background permission so tracking continues when the phone is
+    // locked. Harmless in Expo Go (returns undetermined); real in a dev build.
+    try { await Location.requestBackgroundPermissionsAsync(); } catch { /* ignore */ }
 
     const startedAt = new Date();
     setTrip({ state: 'running', platform, vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
@@ -51,7 +54,12 @@ export function useTrip() {
     }, 1000);
 
     watchRef.current = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.High, distanceInterval: 20 },
+      {
+        accuracy: Location.Accuracy.High,
+        distanceInterval: 20,
+        // Background continuation comes from UIBackgroundModes "location" +
+        // the "Always" permission (configured in app.json) — dev build only.
+      },
       (loc) => {
         const spd = loc.coords.speed; // m/s; -1 or null when unknown
         const mph = spd != null && spd > 0 ? spd * 2.236936 : 0;
@@ -85,7 +93,12 @@ export function useTrip() {
     }, 1000);
 
     watchRef.current = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.High, distanceInterval: 20 },
+      {
+        accuracy: Location.Accuracy.High,
+        distanceInterval: 20,
+        // Background continuation comes from UIBackgroundModes "location" +
+        // the "Always" permission (configured in app.json) — dev build only.
+      },
       (loc) => {
         const spd = loc.coords.speed; // m/s; -1 or null when unknown
         const mph = spd != null && spd > 0 ? spd * 2.236936 : 0;
