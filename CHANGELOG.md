@@ -2,6 +2,15 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-22 (courier UX fixes)
+
+### Real-world courier improvements
+- **Log weekly pay** — dedicated flow on the Trip screen for logging Uber Eats / Deliveroo / Just Eat weekly bank transfers. Previously there was no clean way to record weekly pay separate from GPS trips.
+- **Today's summary bar** — after the first trip of the day, a "trips / miles / saved / earned" bar appears on the trip setup screen so you can see your shift at a glance without opening the dashboard.
+- **"Waiting…" ring indicator** — when you're stationary (e.g. waiting outside a restaurant), the activity ring chip now shows "Waiting…" in amber instead of the goal percentage, so you know tracking is active and filtering GPS drift correctly.
+- **E-bike / Bicycle label** — renamed "Bicycle" to "E-bike / Bicycle" so e-bike couriers know the 20p/mi HMRC rate applies to them too.
+- **Courier expense categories** — the Log tab's expense screen now shows tap-to-select chips for the most common courier costs: Charging, Fuel, Maintenance/repairs, Tyres, Waterproof gear, Helmet/safety, Phone mount, Insulated bag, Insurance, Congestion charge, ULEZ charge, Parking, Phone/data, App subscription.
+
 ## 2026-06-22
 
 ### Dev build scaffolding (EAS) + background GPS config

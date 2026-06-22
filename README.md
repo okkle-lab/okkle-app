@@ -9,14 +9,20 @@ A React Native / Expo iPhone app for UK gig-economy delivery couriers (Uber Eats
 ## Features
 
 ### Trip tracking
+- **Log weekly pay** — dedicated screen for logging weekly platform bank transfers (Uber Eats / Deliveroo / Just Eat all pay weekly, not per trip). Pre-fills the platform from your last selection.
+- **Today's summary bar** — shows today's trips / miles / saved / earned on the trip setup screen as soon as you've completed a trip. Day-level view without leaving the tab.
 - **One-tap GPS trips** — tap Start, ride, tap End. Distance accumulates via `watchPositionAsync` with a stationary jitter filter (ignores GPS drift when speed < 0.5 m/s or movement < 8 m).
 - **Slide-to-end control** — PanResponder slide gesture (like Lime/Uber) prevents accidental trip endings with gloves on.
+- **"Waiting…" indicator** — when stationary (speed < 0.5 mph), the activity ring shows "Waiting…" in amber so you know tracking is active and filtering GPS drift — it's not frozen.
 - **Background GPS** — `UIBackgroundModes: location` + "Always" permission keeps tracking when the phone locks (active in EAS dev build; Expo Go foreground only).
 - **Activity ring** — Apple-fitness-style daily goal ring showing miles driven today vs your target.
 - **Pause / resume** — pause mid-trip (e.g. waiting at a restaurant) without losing distance.
 - **Discard a trip** — × button on the live screen and a "Discard this trip" option on the summary screen, both with confirmation.
 - **Screen stays awake** automatically during a trip (expo-keep-awake).
 - **Remembers last platform and vehicle** so starting a trip is one tap.
+
+### Expense categories (courier-specific)
+Tap-to-select chips in the Log tab cover the most common allowable courier costs: Charging, Fuel, Maintenance/repairs, Tyres, Waterproof gear, Helmet/safety, Phone mount, Insulated bag, Insurance, Congestion charge, ULEZ charge, Parking, Phone/data, App subscription. Free-text override available.
 
 ### Mileage & earnings records
 - Log trips manually or from GPS summary.
