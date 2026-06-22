@@ -778,6 +778,46 @@ export function getAchievements(): Achievement[] {
 
 export function achievementCount(): number { return getAchievements().length; }
 
+// ---- XP / levels (local, no backend) ---------------------------------------
+// XP rewards engagement (activity), never income — keeps it fair and private.
+export type XpInfo = { xp: number; level: number; into: number; span: number; progress: number; medals: number };
+
+export function getXp(): XpInfo {
+  const ach = getAchievements();
+  const medals = ach.filter(a => a.unlocked).length;
+  const streak = getStreak();
+  const tripsN = db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n FROM trips`)?.n ?? 0;
+  const miles = db.getFirstSync<{ m: number }>(`SELECT COALESCE(SUM(miles),0) AS m FROM trips`)?.m ?? 0;
+  const expenses = db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n FROM records WHERE record_type='expense'`)?.n ?? 0;
+  const days = db.getAllSync<{ d: string }>(
+    `SELECT d FROM (SELECT DISTINCT date(started_at) AS d FROM trips UNION SELECT DISTINCT date(created_at) AS d FROM records)`).length;
+
+  const xp = tripsN * 10 + days * 20 + medals * 40 + streak * 8 + Math.round(miles) + expenses * 10;
+
+  let level = 1, need = 120, acc = 0;
+  while (xp >= acc + need) { acc += need; level++; need = Math.round(need * 1.3); }
+  return { xp, level, into: xp - acc, span: need, progress: (xp - acc) / need, medals };
+}
+
+// ---- Weekly challenges (local, reset implicitly each week) ------------------
+export type Challenge = { key: string; label: string; emoji: string; value: number; target: number; progress: number; done: boolean; xp: number };
+
+export function getWeeklyChallenges(): Challenge[] {
+  const w = getPeriodSummary('week');
+  const streak = getStreak();
+  const defs: [string, string, string, number, number, number][] = [
+    ['trips', 'Track 5 trips', '🛵', w.trips, 5, 100],
+    ['miles', 'Cover 50 miles', '🛣️', Math.round(w.miles), 50, 100],
+    ['streak', 'Keep a 5-day streak', '🔥', streak, 5, 150],
+    ['pay', 'Log your weekly pay', '💷', w.earnings > 0 ? 1 : 0, 1, 80],
+  ];
+  return defs.map(([key, label, emoji, value, target, xp]) => ({
+    key, label, emoji, value, target, xp,
+    progress: Math.max(0, Math.min(1, value / target)),
+    done: value >= target,
+  }));
+}
+
 // Returns achievements newly unlocked since last check, and marks them seen.
 export function popNewAchievements(): Achievement[] {
   const seen = new Set((kvGet('ach_seen') ?? '').split(',').filter(Boolean));

@@ -8,8 +8,9 @@ import {
   getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getTaxYearExpenses, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
-  getStreak, getAchievements, popNewAchievements,
+  getStreak, getAchievements, popNewAchievements, getXp, getWeeklyChallenges,
   kvGetNum, type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
+  type XpInfo, type Challenge,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
@@ -30,6 +31,8 @@ export default function HomeScreen() {
   const [streak, setStreak] = React.useState(0);
   const [achievements, setAchievements] = React.useState<Achievement[]>([]);
   const [newAch, setNewAch] = React.useState<Achievement | null>(null);
+  const [xp, setXp] = React.useState<XpInfo | null>(null);
+  const [challenges, setChallenges] = React.useState<Challenge[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -55,6 +58,8 @@ export default function HomeScreen() {
     // Gamification: streak, badges, and a celebration for anything new.
     setStreak(getStreak());
     setAchievements(getAchievements());
+    setXp(getXp());
+    setChallenges(getWeeklyChallenges());
     const fresh = popNewAchievements();
     if (fresh.length) setNewAch(fresh[0]);
   }
@@ -201,6 +206,45 @@ export default function HomeScreen() {
               <Feather name="chevron-right" size={15} color={colors.brandDeep} />
             </Pressable>
           </View>
+          {/* Level + XP */}
+          {xp && (
+            <Card style={{ marginBottom: spacing.md }}>
+              <View style={s.levelRow}>
+                <View style={s.levelBadge}><Text style={s.levelBadgeText}>Lv {xp.level}</Text></View>
+                <View style={{ flex: 1 }}>
+                  <View style={s.levelTop}>
+                    <Text style={s.levelTitle}>Level {xp.level}</Text>
+                    <Text style={s.levelXp}>{xp.into} / {xp.span} XP</Text>
+                  </View>
+                  <View style={s.xpTrack}><View style={[s.xpFill, { width: `${Math.round(xp.progress * 100)}%` }]} /></View>
+                </View>
+              </View>
+            </Card>
+          )}
+
+          {/* This week's challenges */}
+          {challenges.length > 0 && (
+            <Card style={{ marginBottom: spacing.md, gap: 12 }}>
+              <View style={s.challHead}>
+                <Text style={s.challTitle}>This week's challenges</Text>
+                <Text style={s.challXp}>+{challenges.reduce((n, c) => n + (c.done ? 0 : c.xp), 0)} XP left</Text>
+              </View>
+              {challenges.map(c => (
+                <View key={c.key} style={s.challRow}>
+                  <Text style={{ fontSize: 20, opacity: c.done ? 1 : 0.85 }}>{c.done ? '✅' : c.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={s.challTop}>
+                      <Text style={[s.challLabel, c.done && { color: colors.textTertiary, textDecorationLine: 'line-through' }]}>{c.label}</Text>
+                      <Text style={s.challProg}>{Math.min(c.value, c.target)}/{c.target}</Text>
+                    </View>
+                    <View style={s.challTrack}><View style={[s.challFill, { width: `${Math.round(c.progress * 100)}%` }, c.done && { backgroundColor: colors.green }]} /></View>
+                  </View>
+                  <Text style={[s.challReward, c.done && { color: colors.green }]}>+{c.xp}</Text>
+                </View>
+              ))}
+            </Card>
+          )}
+
           <Pressable onPress={() => router.push('/medals')}>
             <Card>
               <View style={s.streakRow}>
@@ -402,6 +446,26 @@ const s = StyleSheet.create({
 
   progressHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   seeAll: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
+
+  levelRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  levelBadge: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  levelBadgeText: { color: '#fff', fontSize: 14, fontWeight: font.bold },
+  levelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  levelTitle: { ...type.bodyMedium, fontSize: 15 },
+  levelXp: { ...type.caption, ...tabular },
+  xpTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
+  xpFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
+
+  challHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  challTitle: { ...type.bodyMedium, fontSize: 15 },
+  challXp: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
+  challRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  challTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  challLabel: { ...type.caption, color: colors.textPrimary, fontWeight: font.medium },
+  challProg: { ...type.small, ...tabular },
+  challTrack: { height: 5, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
+  challFill: { height: '100%', backgroundColor: colors.brandMid, borderRadius: radius.full },
+  challReward: { ...type.caption, ...tabular, color: colors.amber, fontWeight: font.bold, width: 36, textAlign: 'right' },
   streakRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   streakIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   streakValue: { ...type.bodyMedium, fontSize: 16 },
