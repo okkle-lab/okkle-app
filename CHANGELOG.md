@@ -2,6 +2,20 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (review pass: medals, home order, tax honesty)
+
+### Fancier medals
+- Medals now get visibly cooler as they get harder: bronze is a clean disc, silver gets a studded rim, **gold gets a 16-point starburst with sparkles**, and special tiers get a 12-point burst, sparkles and a distinct purple ribbon — Apple-Health style.
+
+### Home reorder (play-first)
+- Reordered so the app feels like a game, not a tax chore: hero → Start a trip → **Level & weekly challenges** → your numbers → **Set aside for tax moved lower** (off the top so it isn't an anxiety trigger) → medal collection.
+
+### Gamification correctness
+- Weekly-challenge XP is now **real** — finishing a challenge credits XP once per week (previously the "+XP" was cosmetic).
+
+### Tax honesty
+- The app previously showed a 2026/27 position using 2025/26 rates labelled as such. It now clearly states figures are **estimated using 2025/26 HMRC rates (allowances frozen to 2027/28)** in both the Tax tab and the Accountant Pack.
+
 ## 2026-06-23 (XP, levels & weekly challenges)
 
 ### Levels and challenges
