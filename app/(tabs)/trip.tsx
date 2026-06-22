@@ -7,11 +7,21 @@ import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing } from '../../src/components';
-import { PLATFORMS, VEHICLES, fmtGbp, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
+import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, type DailyStats } from '../../src/db';
 
 type Phase = 'setup' | 'live' | 'summary' | 'logpay';
+
+// One cell of the compact "today" strip — auto-shrinks so figures never wrap.
+function DayCell({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={s.dayBarItem}>
+      <Text style={s.dayBarValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{value}</Text>
+      <Text style={s.dayBarLabel} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
 
 export default function TripScreen() {
   const user = getUser();
@@ -266,26 +276,14 @@ export default function TripScreen() {
       {/* Today's running summary — visible after at least one trip today */}
       {todayHasData && (
         <View style={s.dayBar}>
-          <View style={s.dayBarItem}>
-            <Text style={s.dayBarValue}>{today.trips}</Text>
-            <Text style={s.dayBarLabel}>{today.trips === 1 ? 'trip' : 'trips'}</Text>
-          </View>
+          <DayCell value={String(today.trips)} label={today.trips === 1 ? 'trip' : 'trips'} />
           <View style={s.dayBarDivider} />
-          <View style={s.dayBarItem}>
-            <Text style={s.dayBarValue}>{today.miles.toFixed(1)}</Text>
-            <Text style={s.dayBarLabel}>miles</Text>
-          </View>
+          <DayCell value={today.miles.toFixed(1)} label="miles" />
           <View style={s.dayBarDivider} />
-          <View style={s.dayBarItem}>
-            <Text style={s.dayBarValue}>{fmtGbp(today.deduction)}</Text>
-            <Text style={s.dayBarLabel}>saved</Text>
-          </View>
+          <DayCell value={fmtGbpRound(today.deduction)} label="saved" />
           {today.earnings > 0 && <>
             <View style={s.dayBarDivider} />
-            <View style={s.dayBarItem}>
-              <Text style={s.dayBarValue}>{fmtGbp(today.earnings)}</Text>
-              <Text style={s.dayBarLabel}>earned</Text>
-            </View>
+            <DayCell value={fmtGbpRound(today.earnings)} label="earned" />
           </>}
         </View>
       )}
@@ -334,7 +332,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', backgroundColor: colors.bgCard, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border, marginBottom: spacing.xl,
   },
-  dayBarItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  dayBarItem: { flex: 1, alignItems: 'center', paddingVertical: 14, paddingHorizontal: 6 },
   dayBarDivider: { width: 1, backgroundColor: colors.border, marginVertical: 10 },
   dayBarValue: { ...tabular, fontSize: 17, fontWeight: font.bold, color: colors.textPrimary },
   dayBarLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
