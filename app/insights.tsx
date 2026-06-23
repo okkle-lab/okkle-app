@@ -4,8 +4,8 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, HeatMapView } from '../src/components';
-import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot } from '../src/db';
-import { fmtGbp, fmtMiles, fmtPerHour } from '../src/db/tax';
+import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../src/db';
+import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../src/db/tax';
 
 export default function InsightsScreen() {
   const router = useRouter();
@@ -14,6 +14,8 @@ export default function InsightsScreen() {
   const [points, setPoints] = React.useState<HeatPoint[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [best, setBest] = React.useState<BestSpot | null>(null);
+  const [pnl, setPnl] = React.useState<YearPnL | null>(null);
+  const [platforms, setPlatforms] = React.useState<PlatformStat[]>([]);
 
   React.useEffect(() => {
     setZones(getZoneStats(filter));
@@ -23,6 +25,8 @@ export default function InsightsScreen() {
   React.useEffect(() => {
     setBuckets(getEarningsByTimeOfDay());
     setBest(getBestSpot());
+    setPnl(getYearPnL());
+    setPlatforms(getPlatformStats());
   }, []);
 
   const anyEarnings = zones.some(z => z.earnings > 0);
@@ -128,12 +132,45 @@ export default function InsightsScreen() {
           </View>
         )}
 
+        {/* Which platform pays best (by £/hour) */}
+        {platforms.some(p => p.perHour > 0) && (
+          <View style={{ marginTop: spacing.xl }}>
+            <SectionHeader icon="award" title="Which platform pays best?" />
+            <Card style={{ padding: 0, overflow: 'hidden' }}>
+              {platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour).map((p, i, arr) => (
+                <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.zoneName}>{p.platform}</Text>
+                    <Text style={s.zoneSub}>{fmtPerMile(p.perMile)} · {fmtHours(p.hours)}</Text>
+                  </View>
+                  {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} style={{ marginRight: 6 }} /> : null}
+                  <Text style={[s.zoneVal, i === 0 && { color: colors.green }]}>{fmtPerHour(p.perHour)}</Text>
+                </View>
+              ))}
+            </Card>
+          </View>
+        )}
+
+        {/* Your business — the year as a P&L */}
+        {pnl?.hasData && (
+          <View style={{ marginTop: spacing.xl }}>
+            <SectionHeader icon="bar-chart-2" title="Your business this year" />
+            <Card>
+              <PnlRow label="Net pay / hour (after tax)" value={pnl.hours > 0 ? fmtPerHour(pnl.netPerHour) : '—'} bold />
+              <PnlRow label="Gross pay / hour" value={pnl.hours > 0 ? fmtPerHour(pnl.grossPerHour) : '—'} />
+              <PnlRow label="Earnings / mile" value={fmtPerMile(pnl.perMile)} />
+              <PnlRow label="Margin kept after tax" value={fmtPct(pnl.marginPct)} />
+              <PnlRow label="Hours worked" value={fmtHours(pnl.hours)} last />
+            </Card>
+          </View>
+        )}
+
         {zones.length === 0 && !buckets.some(b => b.trips > 0) && (
           <Card style={{ marginTop: spacing.xl, alignItems: 'center', paddingVertical: spacing.xxl }}>
             <Text style={{ fontSize: 34, marginBottom: 8 }}>📍</Text>
-            <Text style={[type.bodyMedium, { textAlign: 'center' }]}>No location data yet</Text>
+            <Text style={[type.bodyMedium, { textAlign: 'center' }]}>No data yet</Text>
             <Text style={[type.caption, { textAlign: 'center', marginTop: 4, lineHeight: 19 }]}>
-              Track trips with GPS for a week — your hotspots and best hours will appear here.
+              Track trips with GPS and log your pay — your hotspots, best hours and business stats will appear here.
             </Text>
           </Card>
         )}
@@ -142,8 +179,20 @@ export default function InsightsScreen() {
   );
 }
 
+function PnlRow({ label, value, bold, last }: { label: string; value: string; bold?: boolean; last?: boolean }) {
+  return (
+    <View style={[s.pnlRow, !last && s.rowBorder]}>
+      <Text style={[s.pnlLabel, bold && { color: colors.textPrimary, fontWeight: font.medium }]}>{label}</Text>
+      <Text style={[s.pnlValue, bold && { fontWeight: font.bold, color: colors.brandDeep }]}>{value}</Text>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  pnlRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
+  pnlLabel: { fontSize: 15, color: colors.textSecondary, flex: 1, paddingRight: spacing.md },
+  pnlValue: { ...tabular, fontSize: 15, fontWeight: font.medium, color: colors.textPrimary },
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   title: { ...type.screenTitle },

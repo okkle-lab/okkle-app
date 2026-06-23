@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { fmtGbp, fmtMiles, fmtPerHour } from './tax';
+import { taxPosition, PERSONAL_ALLOWANCE } from './taxcalc';
 
 const db = SQLite.openDatabaseSync('okkle.db');
 
@@ -983,6 +984,27 @@ export function getXp(): XpInfo {
   let level = 1, need = 120, acc = 0;
   while (xp >= acc + need) { acc += need; level++; need = Math.round(need * 1.3); }
   return { xp, level, into: xp - acc, span: need, progress: (xp - acc) / need, medals };
+}
+
+// ---- Your business: year P&L (performance, lives on the Insights screen) ----
+export type YearPnL = { netPerHour: number; grossPerHour: number; perMile: number; marginPct: number; hours: number; allowanceLeft: number; hasData: boolean };
+
+export function getYearPnL(): YearPnL {
+  const y = getTaxYearSummary();
+  const hours = getHoursWorked();
+  const expenses = getTaxYearExpenses();
+  const region = getUser()?.region ?? 'ruk';
+  const pos = taxPosition(y.earnings, y.deduction + expenses, region, kvGetNum('other_income'));
+  const net = pos.profit - pos.totalDue;
+  return {
+    netPerHour: hours > 0 ? net / hours : 0,
+    grossPerHour: hours > 0 ? y.earnings / hours : 0,
+    perMile: y.miles > 0 ? y.earnings / y.miles : 0,
+    marginPct: y.earnings > 0 ? net / y.earnings : 0,
+    hours,
+    allowanceLeft: Math.max(0, PERSONAL_ALLOWANCE - pos.profit),
+    hasData: hours > 0 || y.earnings > 0,
+  };
 }
 
 // ---- Personal records — beat your own best (real outcomes, not points) ------

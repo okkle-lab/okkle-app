@@ -6,10 +6,10 @@ import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Card, SectionHeader } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
-  getUser, getQuarterlySummaries, getHoursWorked, getPlatformStats,
-  kvGet, kvGetNum, kvSet, type QuarterSummary, type PlatformStat,
+  getUser, getQuarterlySummaries,
+  kvGet, kvGetNum, kvSet, type QuarterSummary,
 } from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
+import { fmtGbp, fmtMiles, taxYearLabel, fmtPct } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
 import {
   compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE, RATES_YEAR,
@@ -44,8 +44,6 @@ export default function TaxScreen() {
   const [methodInputs, setMethodInputs] = React.useState({ personalMiles: 0, runningCosts: 0, vehicleValue: 0, caBasis: 'low' });
   const [otherIncome, setOtherIncome] = React.useState(String(kvGetNum('other_income') || ''));
   const [quarters, setQuarters] = React.useState<QuarterSummary[]>([]);
-  const [hours, setHours] = React.useState(0);
-  const [platforms, setPlatforms] = React.useState<PlatformStat[]>([]);
   const user = getUser();
 
   function reload() {
@@ -53,8 +51,6 @@ export default function TaxScreen() {
     setBizMiles(getTaxYearMiles());
     setOtherExpenses(getTaxYearExpenses());
     setQuarters(getQuarterlySummaries());
-    setHours(getHoursWorked());
-    setPlatforms(getPlatformStats());
     setMethodInputs({
       personalMiles: kvGetNum('personal_miles'),
       runningCosts: kvGetNum('running_costs'),
@@ -80,7 +76,6 @@ export default function TaxScreen() {
   const totalExpenses = chosenDeduction + otherExpenses;
   const pos = taxPosition(year.earnings, totalExpenses, region, parseFloat(otherIncome) || 0);
 
-  const grossPerMile = bizMiles > 0 ? year.earnings / bizMiles : 0;
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
@@ -186,40 +181,6 @@ export default function TaxScreen() {
         )}
       </Card>
 
-      {/* Insights — your business as a P&L */}
-      <SectionHeader icon="bar-chart-2" title="Business insights" />
-      <Card style={{ marginBottom: spacing.xl }}>
-        <Row label="Effective net pay / hour" value={hours > 0 ? fmtPerHour((pos.profit - pos.totalDue) / hours) : '—'} bold accent />
-        <Row label="Gross pay / hour" value={hours > 0 ? fmtPerHour(year.earnings / hours) : '—'} />
-        <Row label="Gross earnings / mile" value={fmtPerMile(grossPerMile)} />
-        <Row label="Net margin (kept after tax)" value={year.earnings > 0 ? fmtPct((pos.profit - pos.totalDue) / year.earnings) : '—'} />
-        <Row label="Hours tracked this year" value={fmtHours(hours)} />
-        <Row label="Personal allowance left" value={fmtGbp(Math.max(0, PERSONAL_ALLOWANCE - pos.profit))} />
-        {hours === 0 && (
-          <Text style={s.smallNote}>Track trips and add earnings to unlock your hourly rate and margin.</Text>
-        )}
-      </Card>
-
-      {/* Platform ROI by hour */}
-      {platforms.some(p => p.perHour > 0) && (
-        <>
-          <SectionHeader icon="award" title="Which platform pays best?" />
-          <Card style={{ padding: 0, overflow: 'hidden', marginBottom: spacing.xl }}>
-            {platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour).map((p, i, arr) => (
-              <View key={p.platform} style={[s.qRow, i < arr.length - 1 && s.qBorder]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.qLabel}>{p.platform}</Text>
-                  <Text style={s.qDates}>{fmtPerMile(p.perMile)} · {fmtHours(p.hours)}</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} /> : null}
-                  <Text style={[s.qProfit, i === 0 && { color: colors.green }]}>{fmtPerHour(p.perHour)}</Text>
-                </View>
-              </View>
-            ))}
-          </Card>
-        </>
-      )}
 
       {/* MTD quarterly updates */}
       <SectionHeader icon="calendar" title="Making Tax Digital — quarterly updates" />

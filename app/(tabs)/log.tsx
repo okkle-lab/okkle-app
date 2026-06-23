@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
 import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip, DatePickerField } from '../../src/components';
@@ -77,6 +78,7 @@ export default function LogScreen() {
     }
     setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null);
     const t = new Date(); t.setHours(12, 0, 0, 0); setDate(t);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
