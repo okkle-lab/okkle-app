@@ -6,6 +6,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard } from '../../src/components';
@@ -29,9 +30,25 @@ export default function TripScreen() {
   const [today, setToday] = useState<DailyStats>({ miles: 0, deduction: 0, earnings: 0, trips: 0, hours: 0 });
   const [payAmount, setPayAmount] = useState('');
   const [payPlatform, setPayPlatform] = useState('');
+  const [flash, setFlash] = useState<string | null>(null); // milestone celebration
+  const milestoneRef = React.useRef(0);
   const { trip, start, pause, resume, end } = useTrip();
 
   useEffect(() => { setToday(getDailyStats()); }, [phase]);
+
+  // Gamified "earn it back" milestones — every £5 of mileage deduction earned
+  // mid-trip fires a haptic + a brief celebration, so progress feels rewarding.
+  const MILESTONE = 5;
+  useEffect(() => {
+    if (phase !== 'live') return;
+    const reached = Math.floor(trip.deduction / MILESTONE);
+    if (reached > milestoneRef.current && trip.deduction >= MILESTONE) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setFlash(`${fmtGbp(reached * MILESTONE)} earned back!`);
+      setTimeout(() => setFlash(null), 2600);
+    }
+    milestoneRef.current = reached;
+  }, [trip.deduction, phase]);
 
   // Keep the screen awake only while a trip is running (phone is mounted).
   useEffect(() => {
@@ -43,6 +60,8 @@ export default function TripScreen() {
   async function handleStart() {
     try {
       setTodayBase(getTodayMiles());
+      milestoneRef.current = 0;
+      setFlash(null);
       await start(platform, vehicle);
       setPhase('live');
     } catch {
@@ -187,8 +206,27 @@ export default function TripScreen() {
           <Text style={s.bigMilesUnit}>miles this trip</Text>
           <View style={s.moneyChip}>
             <Feather name="trending-up" size={15} color={colors.amber} />
-            <Text style={s.moneyChipText}>{fmtGbp(trip.deduction)} tax deduction earned</Text>
+            <Text style={s.moneyChipText}>{fmtGbp(trip.deduction)} earned back so far</Text>
           </View>
+
+          {/* "Earn it back" milestone bar — the gamified hook */}
+          {(() => {
+            const nextTarget = (Math.floor(trip.deduction / MILESTONE) + 1) * MILESTONE;
+            const into = trip.deduction - (nextTarget - MILESTONE);
+            const pct = Math.max(0.02, Math.min(1, into / MILESTONE));
+            return (
+              <View style={s.mileWrap}>
+                {flash ? (
+                  <Text style={s.flashText}>{flash}</Text>
+                ) : (
+                  <Text style={s.mileLabel}>{fmtGbp(nextTarget - trip.deduction)} more to {fmtGbp(nextTarget)} back</Text>
+                )}
+                <View style={s.mileTrack}>
+                  <View style={[s.mileFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: flash ? colors.green : colors.brand }]} />
+                </View>
+              </View>
+            );
+          })()}
         </View>
 
         {/* Glass stat strip — time, pace, day total */}
@@ -385,6 +423,11 @@ const s = StyleSheet.create({
   bigMilesUnit: { fontSize: 15, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
   moneyChip: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: spacing.lg, backgroundColor: 'rgba(224,150,31,0.16)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
   moneyChipText: { ...tabular, color: '#F5C97A', fontSize: 14, fontWeight: font.semibold },
+  mileWrap: { width: 240, marginTop: spacing.xl, alignItems: 'center', gap: 8 },
+  mileLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: font.medium },
+  flashText: { color: colors.green, fontSize: 15, fontWeight: font.bold },
+  mileTrack: { width: '100%', height: 8, borderRadius: radius.full, backgroundColor: 'rgba(255,255,255,0.14)', overflow: 'hidden' },
+  mileFill: { height: '100%', borderRadius: radius.full },
   liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginBottom: spacing.xl },
   liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
   liveStatBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },

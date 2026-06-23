@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Live "earn it back" gamification)
+
+- The live trip screen now has an **"earn it back" milestone bar**: it fills toward the next £5 of mileage money earned back, and each time you cross a milestone it fires a **success haptic** and a brief **"£X earned back!" celebration**. Turns the money figure into a live, motivating game instead of a static number.
+
 ## 2026-06-23 (Live trip revamp + slider fix)
 
 - **Fixed the slide-to-end slider** (and pause button) not responding — the new gradient background's SVG layer was swallowing touches; it's now `pointerEvents="none"`. This also makes every gradient card (Home hero, Start) reliably tappable.
