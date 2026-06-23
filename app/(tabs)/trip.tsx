@@ -311,10 +311,16 @@ export default function TripScreen() {
         <Text style={s.startBtnLabel}>Start trip</Text>
       </Pressable>
 
-      <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={s.logPayBtn}>
-        <Feather name="dollar-sign" size={16} color={colors.brandDeep} />
-        <Text style={s.logPayText}>Log weekly pay</Text>
-      </Pressable>
+      <View style={s.secondaryRow}>
+        <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={[s.logPayBtn, { flex: 1, marginTop: 0 }]}>
+          <Feather name="dollar-sign" size={16} color={colors.brandDeep} />
+          <Text style={s.logPayText}>Log pay</Text>
+        </Pressable>
+        <Pressable onPress={() => router.push('/order-check')} style={[s.logPayBtn, { flex: 1, marginTop: 0 }]}>
+          <Feather name="check-circle" size={16} color={colors.brandDeep} />
+          <Text style={s.logPayText}>Accept or skip?</Text>
+        </Pressable>
+      </View>
 
       {/* One quiet line of context — today's miles vs goal, no clutter */}
       {todayHasData && (
@@ -343,6 +349,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.brandLight,
   },
   logPayText: { ...type.bodyMedium, color: colors.brandDeep },
+  secondaryRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
 
   vehicleChip: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

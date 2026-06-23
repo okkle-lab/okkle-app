@@ -30,6 +30,7 @@ export default function RootLayout() {
       <Stack.Screen name="export" options={{ presentation: 'modal' }} />
       <Stack.Screen name="feedback" options={{ presentation: 'modal' }} />
       <Stack.Screen name="key-dates" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="order-check" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }

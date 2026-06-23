@@ -4,56 +4,15 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, HeatMapView, IconBadge } from '../src/components';
-import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, getUser, getTaxYearSummary, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../src/db';
+import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../src/db';
 import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../src/db/tax';
 
-type InsightTab = 'where' | 'when' | 'money' | 'tips';
+type InsightTab = 'where' | 'when' | 'money';
 const TABS: { key: InsightTab; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
   { key: 'where', label: 'Where', icon: 'map-pin' },
   { key: 'when', label: 'When', icon: 'clock' },
   { key: 'money', label: 'Money', icon: 'trending-up' },
-  { key: 'tips', label: 'Tips', icon: 'zap' },
 ];
-
-type Tip = { key: string; icon: React.ComponentProps<typeof Feather>['name']; tone: 'mint' | 'green' | 'amber' | 'blue' | 'violet' | 'red'; title: string; body: string };
-
-// Tactics experienced couriers use to earn more — personalised from the user's
-// own numbers where we can, with solid general defaults otherwise.
-function buildTips(args: {
-  platformsCount: number;
-  best: BestSpot | null;
-  bestTime: TimeBucket | null;
-  platforms: PlatformStat[];
-  pnl: YearPnL | null;
-  yearMiles: number;
-}): Tip[] {
-  const { platformsCount, best, bestTime, platforms, pnl, yearMiles } = args;
-  const tips: Tip[] = [];
-
-  if (platformsCount < 2) {
-    tips.push({ key: 'multiapp', icon: 'grid', tone: 'violet', title: 'Run a second app', body: 'Multi-apping (e.g. Uber Eats + Deliveroo + Just Eat together) cuts the dead time between orders — accept whichever offers the better drop.' });
-  }
-  if (best) {
-    tips.push({ key: 'position', icon: 'map-pin', tone: 'mint', title: `Position around ${best.zone}`, body: `Your best-paying spot is ${best.zone} on ${best.timeLabel} (${fmtPerHour(best.perHour)}). Be waiting there before the rush rather than driving in cold.` });
-  }
-  if (bestTime) {
-    tips.push({ key: 'peak', icon: 'clock', tone: 'amber', title: `Work the ${bestTime.label} peak`, body: `${bestTime.label} is your strongest window. Couriers earn most by concentrating hours at lunch (11–2) and dinner (5–9) instead of spreading them thin.` });
-  }
-  if (pnl?.hasData && pnl.perMile > 0) {
-    tips.push({ key: 'cherry', icon: 'check-circle', tone: 'green', title: 'Cherry-pick by £/mile', body: `You average ${fmtPerMile(pnl.perMile)}. A simple rule — decline orders paying less than that per mile — quietly lifts your hourly rate. Watch the unpaid drive back too.` });
-  }
-  const top = platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour);
-  if (top.length >= 2 && top[0].perHour - top[top.length - 1].perHour >= 1) {
-    tips.push({ key: 'favour', icon: 'award', tone: 'blue', title: `Favour ${top[0].platform}`, body: `${top[0].platform} pays you ${fmtPerHour(top[0].perHour)} vs ${fmtPerHour(top[top.length - 1].perHour)} on ${top[top.length - 1].platform}. Lean toward the better-paying app when orders clash.` });
-  }
-  if (yearMiles > 7500 && yearMiles < 10000) {
-    tips.push({ key: 'threshold', icon: 'alert-triangle', tone: 'red', title: 'Mind the 10,000-mile line', body: `You're at ${fmtMiles(yearMiles)}. The HMRC mileage rate drops from 45p to 25p after 10,000 business miles in a year — worth knowing as you plan the rest of the year.` });
-  }
-  tips.push({ key: 'quests', icon: 'target', tone: 'amber', title: 'Chase the quests & bonuses', body: 'Platform incentives (do X deliveries for £Y, busy-area boosts, surge) are often the difference between an average and a great shift — check them before you start.' });
-  tips.push({ key: 'tax', icon: 'shield', tone: 'green', title: 'Bank your tax as you go', body: 'Set aside roughly your tax rate of every payout in a separate pot. Logging every mile here turns into a 45p/mile deduction that shrinks the bill.' });
-
-  return tips;
-}
 
 export default function InsightsScreen() {
   const router = useRouter();
@@ -83,11 +42,6 @@ export default function InsightsScreen() {
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
   const anyBucketEarnings = buckets.some(b => b.earnings > 0);
   const hasData = zones.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.perHour > 0) || !!pnl?.hasData;
-  const bestTime = [...buckets].filter(b => b.trips > 0).sort((a, b) => (anyBucketEarnings ? b.perHour - a.perHour : b.trips - a.trips))[0] ?? null;
-  const tips = buildTips({
-    platformsCount: getUser()?.platforms?.split(',').filter(Boolean).length ?? 0,
-    best, bestTime, platforms, pnl, yearMiles: getTaxYearSummary().miles,
-  });
 
   return (
     <View style={s.screen}>
@@ -234,22 +188,6 @@ export default function InsightsScreen() {
           </>
         )}
 
-        {/* TIPS — tactics to earn more, personalised from your numbers */}
-        {hasData && tab === 'tips' && (
-          <View style={{ gap: spacing.md }}>
-            {tips.map(t => (
-              <Card key={t.key} style={s.tipCard}>
-                <IconBadge icon={t.icon} tone={t.tone} size={40} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.tipCardTitle}>{t.title}</Text>
-                  <Text style={s.tipCardBody}>{t.body}</Text>
-                </View>
-              </Card>
-            ))}
-            <Text style={s.note}>Tips adapt as you log more trips and pay. General advice — not financial advice.</Text>
-          </View>
-        )}
-
         {!hasData && (
           <Card style={{ marginTop: spacing.xl, alignItems: 'center', paddingVertical: spacing.xxl }}>
             <View style={{ marginBottom: 10 }}><IconBadge icon="map-pin" tone="mint" size={48} /></View>
@@ -294,9 +232,6 @@ const s = StyleSheet.create({
   tabText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
   tabTextOn: { color: colors.textPrimary, fontWeight: font.semibold },
   emptyInline: { ...type.caption, textAlign: 'center', paddingVertical: spacing.md, lineHeight: 19 },
-  tipCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  tipCardTitle: { ...type.bodyMedium, fontSize: 15, marginBottom: 3 },
-  tipCardBody: { ...type.caption, lineHeight: 19 },
 
   filterScroll: { marginBottom: spacing.lg, marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl },
   filterChip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard },

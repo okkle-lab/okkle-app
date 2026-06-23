@@ -74,7 +74,7 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - **Swipe sideways** on the card to move between Today · Week · Month · Year; the period switcher has an animated sliding pill that tracks the swipe.
 - **Tax saved this year** taps through to the full Tax breakdown.
 - **"Where & when you earn"** is a swipeable carousel — Top areas · Best times · Best platforms (each ranked 1·2·3), with your single best spot pinned above; the hotspot map lives in Insights.
-- **Tips tab in Insights** — data-driven tactics to earn more (multi-apping, hotspot positioning, cherry-picking by £/mile, peak windows, favouring the better-paying app, the 10k-mile rule, quests, banking tax).
+- **"Accept or skip?" order checker** — enter an offer's pay and distance and it shows the **£/mile** (and £/hour if you add a time estimate) with a clear *Worth it / Skip it* verdict against your personal minimum (seeded from your historical average). The everyday cherry-pick decision, as a tool. Opens from the Trip tab.
 - The plain **after-tax-&-costs** £/hour figure is right there: the one number couriers optimise, jargon-free.
 - The "Tax saved this year" hero uses a real **gradient** for depth (via a lightweight SVG `GradientCard`, no native build needed).
 

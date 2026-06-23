@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 ("Accept or skip?" order checker)
+
+- New **"Accept or skip?" order checker** (Trip tab): enter an offer's pay + distance and it shows the **£/mile** (and £/hour with an optional time estimate) plus a clear *Worth it / Skip it* verdict against your **minimum £/mile** — seeded from your own historical average and adjustable. This replaces the passive "Tips" tab with an actual decision tool couriers use on every order.
+- Removed the Insights **Tips** tab (advice, not a feature) in favour of the above.
+
 ## 2026-06-23 (Insights carousel, Tips tab, clearer time labels)
 
 - **"Where & when you earn" is now a swipeable carousel** on Home — Top areas · Best times · Best platforms, each ranked 1·2·3, with the best spot pinned above and dot indicators.
