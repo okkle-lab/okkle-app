@@ -3,9 +3,9 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, CoachMarks, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, CoachMarks, type CoachStep } from '../../src/components';
 import {
-  getTrips, getUser, getTaxYearMiles,
+  getUser,
   getTaxYearSummary, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
   getStreak, getAchievements, popNewAchievements, getWeeklyChallenges, getPersonalRecords,
@@ -16,7 +16,6 @@ import {
 import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
 
-const THRESHOLD = 10000;
 
 // A reference date inside the *previous* comparable period, for the trend.
 function prevRef(period: Period): Date {
@@ -50,10 +49,9 @@ export default function HomeScreen() {
   const [periodPlatforms, setPeriodPlatforms] = React.useState<PlatformStat[]>([]);
   const [prevData, setPrevData] = React.useState<PeriodSummary | null>(null);
   const [series, setSeries] = React.useState<SeriesPoint[]>([]);
+  const [metricPage, setMetricPage] = React.useState(0);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
-  const [trips, setTrips] = React.useState<ReturnType<typeof getTrips>>([]);
   const [user, setUser] = React.useState(getUser());
-  const [yearMiles, setYearMiles] = React.useState(0);
   const [streak, setStreak] = React.useState(0);
   const [achievements, setAchievements] = React.useState<Achievement[]>([]);
   const [newAch, setNewAch] = React.useState<Achievement | null>(null);
@@ -95,9 +93,7 @@ export default function HomeScreen() {
     const y = getTaxYearSummary();
     const u = getUser();
     setYear(y);
-    setTrips(getTrips(5));
     setUser(u);
-    setYearMiles(getTaxYearMiles());
     setBuckets(getEarningsByTimeOfDay());
     setHeatPoints(getHeatPoints());
     setBestSpot(getBestSpot());
@@ -118,9 +114,6 @@ export default function HomeScreen() {
 
   function onRefresh() { setRefreshing(true); load(); setRefreshing(false); }
 
-  const isCarOrVan = (user?.vehicle ?? 'car') === 'car' || (user?.vehicle ?? 'car') === 'van';
-  const thresholdPct = Math.min(100, (yearMiles / THRESHOLD) * 100);
-  const milesLeft = Math.max(0, THRESHOLD - yearMiles);
   // Home preview: show unlocked first, then those closest to unlocking.
   const achievementPreview = [...achievements]
     .sort((a, b) => (Number(b.unlocked) - Number(a.unlocked)) || (b.progress - a.progress))
@@ -187,6 +180,116 @@ export default function HomeScreen() {
         <Feather name="arrow-right" size={22} color="#fff" />
       </Pressable>
 
+      {/* Period switcher — Today · Week · Month · Year */}
+      <View style={s.segment}>
+        {([['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']] as [Period, string][]).map(([p, label]) => (
+          <Pressable key={p} onPress={() => selectPeriod(p)} style={[s.segItem, period === p && s.segItemActive]}>
+            <Text style={[s.segText, period === p && s.segTextActive]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={s.periodLabel}>{periodData ? fmtPeriodRange(period, periodData.rangeStart, periodData.rangeEnd) : ''}</Text>
+
+      {/* Swipeable metric carousel — one card, swipe through the figures that matter. */}
+      {(() => {
+        const hrs = periodData?.hours ?? 0;
+        const perHour = hrs > 0 ? periodData!.earnings / hrs : 0;
+        const netPerHour = hrs > 0 ? Math.max(0, periodData!.takeHome - periodData!.expenses) / hrs : 0;
+        const prevHrs = prevData?.hours ?? 0;
+        const prevPerHour = prevHrs > 0 ? prevData!.earnings / prevHrs : null;
+        const rateDelta = prevPerHour != null && hrs > 0 ? perHour - prevPerHour : null;
+        const earnDelta = prevData ? (periodData?.earnings ?? 0) - prevData.earnings : null;
+
+        const pages: { icon: any; label: string; value: string; sub?: string; trend?: string; up?: boolean }[] = [
+          {
+            icon: 'clock', label: 'Earned per hour',
+            value: hrs > 0 ? `£${perHour.toFixed(2)}/hr` : '—',
+            sub: hrs > 0 ? `£${netPerHour.toFixed(2)}/hr after tax & costs` : 'Track a trip + log pay to see this',
+            ...(rateDelta != null && Math.abs(rateDelta) >= 0.05 ? { trend: `£${Math.abs(rateDelta).toFixed(2)}/hr vs ${PREV_WORD[period]}`, up: rateDelta >= 0 } : {}),
+          },
+          {
+            icon: 'home', label: 'Take-home', value: fmtGbp(periodData?.takeHome ?? 0),
+            sub: 'after estimated tax',
+          },
+          {
+            icon: 'dollar-sign', label: 'Earnings', value: fmtGbp(periodData?.earnings ?? 0),
+            ...(earnDelta != null && Math.abs(earnDelta) >= 1 ? { trend: `${fmtGbp(Math.abs(earnDelta))} vs ${PREV_WORD[period]}`, up: earnDelta >= 0 } : { sub: 'money in' }),
+          },
+          {
+            icon: 'map', label: 'Miles', value: fmtMiles(periodData?.miles ?? 0),
+            sub: `${fmtGbp(periodData?.deduction ?? 0)} tax deduction`,
+          },
+          {
+            icon: 'navigation', label: period === 'today' ? 'Trips' : 'Hours worked',
+            value: period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0),
+            sub: period === 'today' ? 'today' : `${periodData?.trips ?? 0} trips`,
+          },
+        ];
+        return (
+          <View>
+            <ScrollView
+              horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={e => setMetricPage(Math.round(e.nativeEvent.contentOffset.x / win.width))}
+              style={{ marginHorizontal: -spacing.xl }}
+            >
+              {pages.map((p, i) => (
+                <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
+                  <View style={s.mc}>
+                    <View style={s.mcHead}>
+                      <View style={s.mcIcon}><Feather name={p.icon} size={15} color={colors.brandDeep} /></View>
+                      <Text style={s.mcLabel}>{p.label}</Text>
+                    </View>
+                    <Text style={s.mcValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{p.value}</Text>
+                    {p.trend ? (
+                      <View style={[s.mcTrend, { backgroundColor: p.up ? colors.greenLight : colors.redLight }]}>
+                        <Feather name={p.up ? 'arrow-up-right' : 'arrow-down-right'} size={13} color={p.up ? colors.green : colors.red} />
+                        <Text style={[s.mcTrendText, { color: p.up ? colors.green : colors.red }]}>{p.trend}</Text>
+                      </View>
+                    ) : p.sub ? <Text style={s.mcSub}>{p.sub}</Text> : null}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+            <View style={s.dots}>
+              {pages.map((_, i) => <View key={i} style={[s.cdot, i === metricPage && s.cdotOn]} />)}
+            </View>
+          </View>
+        );
+      })()}
+
+      {/* Earnings over time — week (daily), month (weekly), year (monthly) */}
+      {period !== 'today' && series.length > 0 && (
+        <View style={{ marginTop: spacing.sm }}>
+          <SectionHeader icon="bar-chart-2" title={`Earnings · ${period === 'week' ? 'by day' : period === 'month' ? 'by week' : 'by month'}`} />
+          <Card>
+            <BarChart data={series} height={150} />
+          </Card>
+        </View>
+      )}
+
+      {/* Per-platform breakdown for the selected period — multi-platform couriers */}
+      {periodPlatforms.length > 0 && (
+        <View style={{ marginTop: spacing.lg }}>
+          <SectionHeader icon="grid" title={`By platform · ${periodData?.label ?? ''}`} />
+          <Card style={{ padding: 0, overflow: 'hidden' }}>
+            {periodPlatforms.map((p, i, arr) => (
+              <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.rowTitle}>{p.platform}</Text>
+                  <Text style={s.rowSub}>
+                    {fmtMiles(p.miles)}{p.perMile > 0 ? ` · ${fmtPerMile(p.perMile)}` : ''}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
+                  {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} /> : null}
+                  <Text style={[s.rowAmount, { color: colors.textPrimary }, i === 0 && { color: colors.green }]}>{fmtGbp(p.earnings)}</Text>
+                </View>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
+
       {/* Personal records — beat your own best (real outcomes, not points) */}
       {records.length > 0 && (
         <View style={{ marginTop: spacing.lg }}>
@@ -235,98 +338,6 @@ export default function HomeScreen() {
         </Card>
       )}
 
-      {/* Period switcher — Today · Week · Month · Year */}
-      <View style={s.segment}>
-        {([['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']] as [Period, string][]).map(([p, label]) => (
-          <Pressable key={p} onPress={() => selectPeriod(p)} style={[s.segItem, period === p && s.segItemActive]}>
-            <Text style={[s.segText, period === p && s.segTextActive]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={s.periodLabel}>{periodData ? fmtPeriodRange(period, periodData.rangeStart, periodData.rangeEnd) : ''}</Text>
-
-      {/* THE number couriers care about: take-home per hour worked. */}
-      {(() => {
-        const hrs = periodData?.hours ?? 0;
-        const perHour = hrs > 0 ? (periodData!.earnings / hrs) : 0;
-        // After tax AND real costs: take-home (earnings - tax) minus actual expenses spent.
-        const netPerHour = hrs > 0 ? Math.max(0, periodData!.takeHome - periodData!.expenses) / hrs : 0;
-        const prevHrs = prevData?.hours ?? 0;
-        const prevPerHour = prevHrs > 0 ? (prevData!.earnings / prevHrs) : null;
-        const delta = prevPerHour != null && hrs > 0 ? perHour - prevPerHour : null;
-        return (
-          <View style={s.kpi}>
-            <View style={s.kpiHead}>
-              <Feather name="clock" size={15} color="#fff" />
-              <Text style={s.kpiLabel}>Earned per hour</Text>
-            </View>
-            {hrs > 0 ? (
-              <>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                  <Text style={s.kpiValue}>£{perHour.toFixed(2)}</Text>
-                  <Text style={s.kpiUnit}>/hr</Text>
-                </View>
-                <Text style={s.kpiNet}>£{netPerHour.toFixed(2)}/hr after tax &amp; costs</Text>
-                {delta != null && Math.abs(delta) >= 0.05 && (
-                  <View style={[s.kpiTrend, { backgroundColor: delta >= 0 ? 'rgba(255,255,255,0.22)' : 'rgba(226,96,74,0.30)' }]}>
-                    <Feather name={delta >= 0 ? 'arrow-up-right' : 'arrow-down-right'} size={13} color="#fff" />
-                    <Text style={s.kpiTrendText}>£{Math.abs(delta).toFixed(2)}/hr vs {PREV_WORD[period]}</Text>
-                  </View>
-                )}
-              </>
-            ) : (
-              <Text style={s.kpiEmpty}>Track a trip with GPS and log your pay to see what you really make per hour.</Text>
-            )}
-          </View>
-        );
-      })()}
-
-      <View style={s.metricsRow}>
-        <MetricCard icon="home" label="Take-home" value={fmtGbp(periodData?.takeHome ?? 0)} accent style={{ marginRight: 8 }} />
-        <MetricCard icon="map" label="Miles" value={fmtMiles(periodData?.miles ?? 0)} sub={fmtGbp(periodData?.deduction ?? 0)} />
-      </View>
-      <View style={[s.metricsRow, { marginTop: 10 }]}>
-        <MetricCard icon="dollar-sign" label="Earnings" value={fmtGbp(periodData?.earnings ?? 0)} style={{ marginRight: 8 }} />
-        <MetricCard
-          icon="clock"
-          label={period === 'today' ? 'Trips' : 'Hours'}
-          value={period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0)}
-        />
-      </View>
-
-      {/* Earnings over time — week (daily), month (weekly), year (monthly) */}
-      {period !== 'today' && series.length > 0 && (
-        <View style={{ marginTop: spacing.lg }}>
-          <SectionHeader icon="bar-chart-2" title={`Earnings · ${period === 'week' ? 'by day' : period === 'month' ? 'by week' : 'by month'}`} />
-          <Card>
-            <BarChart data={series} height={150} />
-          </Card>
-        </View>
-      )}
-
-      {/* Per-platform breakdown for the selected period — multi-platform couriers */}
-      {periodPlatforms.length > 0 && (
-        <View style={{ marginTop: spacing.lg }}>
-          <SectionHeader icon="grid" title={`By platform · ${periodData?.label ?? ''}`} />
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            {periodPlatforms.map((p, i, arr) => (
-              <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rowTitle}>{p.platform}</Text>
-                  <Text style={s.rowSub}>
-                    {fmtMiles(p.miles)}{p.perMile > 0 ? ` · ${fmtPerMile(p.perMile)}` : ''}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
-                  {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} /> : null}
-                  <Text style={[s.rowAmount, { color: colors.textPrimary }, i === 0 && { color: colors.green }]}>{fmtGbp(p.earnings)}</Text>
-                </View>
-              </View>
-            ))}
-          </Card>
-        </View>
-      )}
-
       {/* Gamification — medal collection */}
       {achievements.length > 0 && (
         <View style={{ marginTop: spacing.xl }}>
@@ -364,54 +375,6 @@ export default function HomeScreen() {
           </Pressable>
         </View>
       )}
-
-      {isCarOrVan && yearMiles > 0 && (
-        <View style={{ marginTop: spacing.xl }}>
-          <SectionHeader icon="alert-circle" title="10,000-mile threshold" />
-          <Card>
-            <View style={s.rowBetween}>
-              <Text style={s.thresholdMiles}>{fmtMiles(yearMiles)} this year</Text>
-              <Text style={s.thresholdPct}>{Math.round(thresholdPct)}%</Text>
-            </View>
-            <View style={s.progressTrack}>
-              <View style={[s.progressFill, { width: `${thresholdPct}%`, backgroundColor: thresholdPct >= 100 ? colors.amber : colors.brand }]} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
-              <Feather name="info" size={13} color={colors.textTertiary} />
-              <Text style={s.thresholdNote}>
-                {milesLeft > 0
-                  ? `${fmtMiles(milesLeft)} left before 45p drops to 25p/mile`
-                  : 'Past 10,000 miles — extra car/van miles at 25p'}
-              </Text>
-            </View>
-          </Card>
-        </View>
-      )}
-
-      <View style={{ marginTop: spacing.xl }}>
-        <SectionHeader icon="clock" title="Recent trips" />
-        {trips.length === 0 ? (
-          <Card>
-            <Text style={s.emptyText}>No trips yet — tap Start a trip above</Text>
-          </Card>
-        ) : (
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            {trips.map((t, i) => (
-              <View key={t.id} style={[s.row, i < trips.length - 1 && s.rowBorder]}>
-                <VehicleIcon vehicle={t.vehicle} size={20} color={colors.textSecondary} />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={s.rowTitle}>{t.platform}</Text>
-                  <Text style={s.rowSub}>{fmtMiles(t.miles)} · {new Date(t.started_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={s.rowAmount}>{fmtGbp(t.deduction)}</Text>
-                  {t.earnings ? <Text style={s.rowEarn}>{fmtGbp(t.earnings)}</Text> : null}
-                </View>
-              </View>
-            ))}
-          </Card>
-        )}
-      </View>
 
       {/* Insights preview — promoted to Home (hotspots + best times inside) */}
       <View style={{ marginTop: spacing.xl }}>
@@ -484,16 +447,17 @@ const s = StyleSheet.create({
   segText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
   segTextActive: { color: colors.textPrimary, fontWeight: font.semibold },
   periodLabel: { ...type.label, color: colors.textSecondary, marginBottom: spacing.md, fontWeight: font.semibold },
-  kpi: { backgroundColor: colors.brandDeep, borderRadius: radius.lg, padding: spacing.lg, marginBottom: 10 },
-  kpiHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  kpiLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: font.medium },
-  kpiValue: { ...tabular, color: '#fff', fontSize: 38, fontWeight: font.bold, letterSpacing: -1 },
-  kpiUnit: { color: 'rgba(255,255,255,0.85)', fontSize: 17, fontWeight: font.semibold },
-  kpiNet: { ...tabular, color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 },
-  kpiTrend: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, marginTop: spacing.md },
-  kpiTrendText: { ...tabular, color: '#fff', fontSize: 12, fontWeight: font.semibold },
-  kpiEmpty: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 20, marginTop: 2 },
-  metricsRow: { flexDirection: 'row' },
+  mc: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, minHeight: 124 },
+  mcHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  mcIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.brandLight, alignItems: 'center', justifyContent: 'center' },
+  mcLabel: { ...type.label, fontSize: 14, color: colors.textSecondary, fontWeight: font.medium },
+  mcValue: { ...tabular, fontSize: 36, fontWeight: font.bold, color: colors.textPrimary, letterSpacing: -1 },
+  mcSub: { ...tabular, ...type.caption, marginTop: 4 },
+  mcTrend: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, marginTop: spacing.sm },
+  mcTrendText: { ...tabular, fontSize: 12, fontWeight: font.semibold },
+  dots: { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: spacing.md },
+  cdot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
+  cdotOn: { backgroundColor: colors.brand, width: 18 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   thresholdMiles: { ...type.bodyMedium, ...tabular, fontSize: 15 },
   thresholdPct: { ...type.bodyMedium, ...tabular, fontSize: 15, color: colors.brandDeep },

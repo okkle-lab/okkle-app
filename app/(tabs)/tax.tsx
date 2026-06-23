@@ -118,6 +118,27 @@ export default function TaxScreen() {
         </Pressable>
       </Card>
 
+      {/* 10,000-mile threshold — only relevant for cars/vans on the simplified rate */}
+      {(user?.vehicle === 'car' || user?.vehicle === 'van') && bizMiles > 0 && (
+        <>
+          <SectionHeader icon="alert-circle" title="10,000-mile threshold" />
+          <Card style={{ marginBottom: spacing.xl }}>
+            <View style={s.row}>
+              <Text style={s.rowLabel}>{fmtMiles(bizMiles)} this tax year</Text>
+              <Text style={s.rowValue}>{Math.round(Math.min(100, (bizMiles / 10000) * 100))}%</Text>
+            </View>
+            <View style={s.thresholdTrack}>
+              <View style={[s.thresholdFill, { width: `${Math.min(100, (bizMiles / 10000) * 100)}%`, backgroundColor: bizMiles >= 10000 ? colors.amber : colors.brand }]} />
+            </View>
+            <Text style={s.smallNote}>
+              {bizMiles < 10000
+                ? `${fmtMiles(10000 - bizMiles)} left before your rate drops from 45p to 25p per mile.`
+                : 'Past 10,000 miles — extra car/van miles are claimed at 25p.'}
+            </Text>
+          </Card>
+        </>
+      )}
+
       {/* Self Assessment summary */}
       <SectionHeader icon="file-text" title="Self Assessment summary" />
       <Card style={{ marginBottom: spacing.xl }}>
@@ -313,6 +334,8 @@ const s = StyleSheet.create({
   inputLabel: { ...type.caption, color: colors.textSecondary, marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg },
 
+  thresholdTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden', marginTop: 8 },
+  thresholdFill: { height: '100%', borderRadius: radius.full },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border },
   rowLabel: { fontSize: 15, color: colors.textSecondary, flex: 1, paddingRight: spacing.md },
   rowValue: { ...tabular, fontSize: 15, fontWeight: font.medium, color: colors.textPrimary, textAlign: 'right' },
