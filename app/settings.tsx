@@ -200,6 +200,15 @@ export default function Settings() {
         </View>
       </Card>
 
+      <SectionHeader title="Help" />
+      <Card style={{ gap: spacing.md }}>
+        <Pressable onPress={() => { kvSet('coach_seen', ''); router.back(); }} style={s.actionRow}>
+          <IconBadge icon="help-circle" tone="mint" />
+          <Text style={s.actionText}>Replay the app tour</Text>
+          <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+        </Pressable>
+      </Card>
+
       <SectionHeader title="About" />
       <Card style={{ gap: spacing.md }}>
         <Text style={s.aboutText}>

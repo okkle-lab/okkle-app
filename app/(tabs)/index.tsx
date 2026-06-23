@@ -3,13 +3,13 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal } 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView } from '../../src/components';
+import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, CoachMarks, type CoachStep } from '../../src/components';
 import {
   getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
   getStreak, getAchievements, popNewAchievements, getXp, getWeeklyChallenges, creditCompletedChallenges,
-  getHeatPoints, getBestSpot,
+  getHeatPoints, getBestSpot, kvGet, kvSet,
   type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
   type XpInfo, type Challenge, type HeatPoint, type BestSpot,
 } from '../../src/db';
@@ -60,6 +60,26 @@ export default function HomeScreen() {
   const [bestSpot, setBestSpot] = React.useState<BestSpot | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
 
+  // First-run spotlight tour.
+  const [showCoach, setShowCoach] = React.useState(false);
+  const streakRef = React.useRef<View>(null);
+  const startRef = React.useRef<View>(null);
+  const levelRef = React.useRef<View>(null);
+  const tabsRef = React.useRef<View>(null);
+  useFocusEffect(useCallback(() => {
+    if (getUser()?.onboarded && !kvGet('coach_seen')) {
+      const t = setTimeout(() => setShowCoach(true), 650);
+      return () => clearTimeout(t);
+    }
+  }, []));
+  const coachSteps: CoachStep[] = [
+    { ref: startRef, title: 'Start a trip here', body: 'Tap this when you set off. GPS logs your miles — and your tax savings — automatically as you ride.' },
+    { ref: levelRef, title: 'Stay consistent, level up', body: 'Every trip, expense and streak day earns XP. Climb the ranks from Rookie to Legend.' },
+    { ref: streakRef, title: 'Keep your streak alive', body: 'Track something each day to grow this. Streaks earn medals and keep the habit going.' },
+    { ref: tabsRef, title: 'And there’s more below', body: 'Scroll for Insights — where and when you earn most. Use the tabs to Log, view Records and check your Tax.' },
+  ];
+  function dismissCoach() { kvSet('coach_seen', 1); setShowCoach(false); }
+
   function loadPeriod(p: Period) {
     setPeriodData(getPeriodSummary(p));
     setPeriodPlatforms(getPlatformStatsForPeriod(p));
@@ -103,6 +123,7 @@ export default function HomeScreen() {
 
   return (
     <>
+    <CoachMarks steps={coachSteps} visible={showCoach} onDone={dismissCoach} />
     <Modal visible={newAch !== null} transparent animationType="fade" onRequestClose={() => setNewAch(null)}>
       <Pressable style={s.modalBg} onPress={() => setNewAch(null)}>
         <View style={s.modalCard}>
@@ -125,7 +146,7 @@ export default function HomeScreen() {
           <Text style={s.hello}>{user?.name || 'Hi'}</Text>
         </View>
         {/* Streak chip — the daily-return hook, kept glanceable up top */}
-        <Pressable onPress={() => router.push('/medals')} hitSlop={8} style={[s.streakChip, streak > 0 ? s.streakChipOn : s.streakChipOff]}>
+        <Pressable ref={streakRef} onPress={() => router.push('/medals')} hitSlop={8} style={[s.streakChip, streak > 0 ? s.streakChipOn : s.streakChipOff]}>
           <Text style={{ fontSize: 14 }}>{streak > 0 ? '🔥' : '✨'}</Text>
           <Text style={[s.streakChipText, streak === 0 && { color: colors.textSecondary }]}>{streak > 0 ? streak : 'Start'}</Text>
         </Pressable>
@@ -150,7 +171,7 @@ export default function HomeScreen() {
       </View>
 
       {/* Quick-start — primary action right under the hero */}
-      <Pressable onPress={() => router.push('/(tabs)/trip')} style={({ pressed }) => [s.quickStart, pressed && { opacity: 0.9 }]}>
+      <Pressable ref={startRef} onPress={() => router.push('/(tabs)/trip')} style={({ pressed }) => [s.quickStart, pressed && { opacity: 0.9 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Feather name="navigation" size={22} color="#fff" />
           <View>
@@ -163,7 +184,8 @@ export default function HomeScreen() {
 
       {/* Play block — level + weekly challenges, kept high so it feels like a game */}
       {xp && (
-        <Card style={{ marginTop: spacing.lg }}>
+        <View ref={levelRef} collapsable={false} style={{ marginTop: spacing.lg }}>
+        <Card>
           <View style={s.levelRow}>
             <View style={s.levelBadge}><Text style={s.levelBadgeText}>Lv {xp.level}</Text></View>
             <View style={{ flex: 1 }}>
@@ -176,6 +198,7 @@ export default function HomeScreen() {
           </View>
           <Text style={s.levelHint}>You climb ranks by staying consistent — every trip, expense and streak day earns XP.</Text>
         </Card>
+        </View>
       )}
       {challenges.length > 0 && (
         <Card style={{ marginTop: spacing.md }}>
