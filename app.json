@@ -55,7 +55,8 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-mail-composer"
     ],
     "extra": {
       "router": {},

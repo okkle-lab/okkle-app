@@ -200,10 +200,20 @@ export default function Settings() {
         </View>
       </Card>
 
-      <SectionHeader title="Help" />
+      <SectionHeader title="Help & feedback" />
       <Card style={{ gap: spacing.md }}>
+        <Pressable onPress={() => router.push({ pathname: '/feedback', params: { mode: 'problem', screen: 'Settings' } })} style={s.actionRow}>
+          <IconBadge icon="alert-triangle" tone="amber" />
+          <Text style={s.actionText}>Report a problem</Text>
+          <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+        </Pressable>
+        <Pressable onPress={() => router.push({ pathname: '/feedback', params: { mode: 'suggestion', screen: 'Settings' } })} style={s.actionRow}>
+          <IconBadge icon="message-circle" tone="mint" />
+          <Text style={s.actionText}>Suggest an improvement</Text>
+          <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+        </Pressable>
         <Pressable onPress={() => { kvSet('coach_seen', ''); router.back(); }} style={s.actionRow}>
-          <IconBadge icon="help-circle" tone="mint" />
+          <IconBadge icon="help-circle" tone="neutral" />
           <Text style={s.actionText}>Replay the app tour</Text>
           <Feather name="chevron-right" size={18} color={colors.textTertiary} />
         </Pressable>
