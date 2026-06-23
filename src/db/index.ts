@@ -1021,7 +1021,7 @@ export function getYearPnL(): YearPnL {
 }
 
 // ---- Personal records — beat your own best (real outcomes, not points) ------
-export type PersonalRecord = { key: string; emoji: string; label: string; value: string; sub: string; set: boolean };
+export type PersonalRecord = { key: string; icon: string; tone: string; label: string; value: string; sub: string; set: boolean };
 
 export function getPersonalRecords(): PersonalRecord[] {
   type Day = { earnings: number; miles: number; hours: number; trips: number };
@@ -1074,29 +1074,29 @@ export function getPersonalRecords(): PersonalRecord[] {
 
   const dateStr = (iso: string) => iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
   return [
-    { key: 'best_day', emoji: '💷', label: 'Best day', value: fmtGbp(bestDay.v), sub: bestDay.date ? `on ${dateStr(bestDay.date)}` : 'Not set yet', set: bestDay.v > 0 },
-    { key: 'best_week', emoji: '📅', label: 'Best week', value: fmtGbp(bestWeek), sub: bestWeek > 0 ? 'earnings in a week' : 'Not set yet', set: bestWeek > 0 },
-    { key: 'best_rate', emoji: '⚡', label: 'Best £/hour', value: bestRate.v > 0 ? fmtPerHour(bestRate.v) : '—', sub: bestRate.date ? `on ${dateStr(bestRate.date)}` : 'Track a trip + pay', set: bestRate.v > 0 },
-    { key: 'most_miles', emoji: '🛣️', label: 'Most miles in a day', value: mostMiles.v > 0 ? fmtMiles(mostMiles.v) : '—', sub: mostMiles.date ? `on ${dateStr(mostMiles.date)}` : 'Not set yet', set: mostMiles.v > 0 },
-    { key: 'longest_streak', emoji: '🔥', label: 'Longest streak', value: longest > 0 ? `${longest} ${longest === 1 ? 'day' : 'days'}` : '—', sub: longest > 0 ? 'in a row' : 'Track daily to build it', set: longest > 0 },
-    { key: 'most_trips', emoji: '🚀', label: 'Most trips in a day', value: mostTrips.v > 0 ? String(mostTrips.v) : '—', sub: mostTrips.date ? `on ${dateStr(mostTrips.date)}` : 'Not set yet', set: mostTrips.v > 0 },
+    { key: 'best_day', icon: 'dollar-sign', tone: 'green', label: 'Best day', value: fmtGbp(bestDay.v), sub: bestDay.date ? `on ${dateStr(bestDay.date)}` : 'Not set yet', set: bestDay.v > 0 },
+    { key: 'best_week', icon: 'calendar', tone: 'blue', label: 'Best week', value: fmtGbp(bestWeek), sub: bestWeek > 0 ? 'earnings in a week' : 'Not set yet', set: bestWeek > 0 },
+    { key: 'best_rate', icon: 'zap', tone: 'amber', label: 'Best £/hour', value: bestRate.v > 0 ? fmtPerHour(bestRate.v) : '—', sub: bestRate.date ? `on ${dateStr(bestRate.date)}` : 'Track a trip + pay', set: bestRate.v > 0 },
+    { key: 'most_miles', icon: 'map', tone: 'mint', label: 'Most miles in a day', value: mostMiles.v > 0 ? fmtMiles(mostMiles.v) : '—', sub: mostMiles.date ? `on ${dateStr(mostMiles.date)}` : 'Not set yet', set: mostMiles.v > 0 },
+    { key: 'longest_streak', icon: 'trending-up', tone: 'red', label: 'Longest streak', value: longest > 0 ? `${longest} ${longest === 1 ? 'day' : 'days'}` : '—', sub: longest > 0 ? 'in a row' : 'Track daily to build it', set: longest > 0 },
+    { key: 'most_trips', icon: 'navigation', tone: 'violet', label: 'Most trips in a day', value: mostTrips.v > 0 ? String(mostTrips.v) : '—', sub: mostTrips.date ? `on ${dateStr(mostTrips.date)}` : 'Not set yet', set: mostTrips.v > 0 },
   ];
 }
 
 // ---- Weekly challenges (local, reset implicitly each week) ------------------
-export type Challenge = { key: string; label: string; emoji: string; value: number; target: number; progress: number; done: boolean; xp: number };
+export type Challenge = { key: string; label: string; icon: string; tone: string; value: number; target: number; progress: number; done: boolean; xp: number };
 
 export function getWeeklyChallenges(): Challenge[] {
   const w = getPeriodSummary('week');
   const streak = getStreak();
-  const defs: [string, string, string, number, number, number][] = [
-    ['trips', 'Track 5 trips', '🛵', w.trips, 5, 100],
-    ['miles', 'Cover 50 miles', '🛣️', Math.round(w.miles), 50, 100],
-    ['streak', 'Keep a 5-day streak', '🔥', streak, 5, 150],
-    ['pay', 'Log your weekly pay', '💷', w.earnings > 0 ? 1 : 0, 1, 80],
+  const defs: [string, string, string, string, number, number, number][] = [
+    ['trips', 'Track 5 trips', 'navigation', 'mint', w.trips, 5, 100],
+    ['miles', 'Cover 50 miles', 'map', 'blue', Math.round(w.miles), 50, 100],
+    ['streak', 'Keep a 5-day streak', 'zap', 'amber', streak, 5, 150],
+    ['pay', 'Log your weekly pay', 'dollar-sign', 'green', w.earnings > 0 ? 1 : 0, 1, 80],
   ];
-  return defs.map(([key, label, emoji, value, target, xp]) => ({
-    key, label, emoji, value, target, xp,
+  return defs.map(([key, label, icon, tone, value, target, xp]) => ({
+    key, label, icon, tone, value, target, xp,
     progress: Math.max(0, Math.min(1, value / target)),
     done: value >= target,
   }));

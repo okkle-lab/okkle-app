@@ -8,22 +8,12 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, Medal, ScreenHeader } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, ScreenHeader } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, getStreak, getAchievements, type DailyStats, type Achievement } from '../../src/db';
+import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, type DailyStats } from '../../src/db';
 
 type Phase = 'setup' | 'live' | 'summary' | 'logpay';
-
-// One cell of the compact "today" strip — auto-shrinks so figures never wrap.
-function DayCell({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={s.dayBarItem}>
-      <Text style={s.dayBarValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{value}</Text>
-      <Text style={s.dayBarLabel} numberOfLines={1}>{label}</Text>
-    </View>
-  );
-}
 
 export default function TripScreen() {
   const router = useRouter();
@@ -37,18 +27,11 @@ export default function TripScreen() {
   const [earnings, setEarnings] = useState('');
   const [todayBase, setTodayBase] = useState(0);
   const [today, setToday] = useState<DailyStats>({ miles: 0, deduction: 0, earnings: 0, trips: 0, hours: 0 });
-  const [streak, setStreak] = useState(0);
-  const [nextMedal, setNextMedal] = useState<Achievement | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payPlatform, setPayPlatform] = useState('');
   const { trip, start, pause, resume, end } = useTrip();
 
-  useEffect(() => {
-    setToday(getDailyStats());
-    setStreak(getStreak());
-    const locked = getAchievements().filter(a => !a.unlocked).sort((a, b) => b.progress - a.progress);
-    setNextMedal(locked[0] ?? null);
-  }, [phase]);
+  useEffect(() => { setToday(getDailyStats()); }, [phase]);
 
   // Keep the screen awake only while a trip is running (phone is mounted).
   useEffect(() => {
@@ -294,7 +277,6 @@ export default function TripScreen() {
 
   // ---- Phase 1: setup --------------------------------------------------------
   const todayHasData = today.trips > 0 || today.earnings > 0;
-  const goalProgress = Math.min(1, today.miles / DAILY_GOAL_MILES);
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <ScreenHeader title="Start a trip" subtitle="Tap start and ride — GPS measures your distance for you." />
@@ -324,47 +306,9 @@ export default function TripScreen() {
         <Text style={s.logPayText}>Log weekly pay</Text>
       </Pressable>
 
-      {/* Secondary: today's goal + summary, below the action */}
-      <View style={[s.goalCard, { marginTop: spacing.xl, marginBottom: 0 }]}>
-        <View style={s.goalTop}>
-          <ProgressRing size={64} strokeWidth={7} progress={goalProgress} color={colors.brand}>
-            <Text style={s.goalRingPct}>{Math.round(goalProgress * 100)}%</Text>
-          </ProgressRing>
-          <View style={{ flex: 1 }}>
-            <Text style={s.goalValue}>
-              {today.miles.toFixed(1)}<Text style={s.goalValueUnit}> / {DAILY_GOAL_MILES} mi</Text>
-            </Text>
-            <Text style={s.goalSub}>Daily mileage goal — keeps your streak alive</Text>
-          </View>
-          <View style={[s.streakPill, streak > 0 ? s.streakPillOn : s.streakPillOff]}>
-            <Text style={{ fontSize: 14 }}>{streak > 0 ? '🔥' : '✨'}</Text>
-            <Text style={[s.streakPillText, streak === 0 && { color: colors.textSecondary }]}>{streak > 0 ? `${streak}` : 'Start'}</Text>
-          </View>
-        </View>
-        {nextMedal && (
-          <Pressable onPress={() => router.push('/medals')} style={s.nextMedal}>
-            <Medal emoji={nextMedal.emoji} category={nextMedal.category} tier={nextMedal.tier} unlocked={false} size={40} />
-            <View style={{ flex: 1 }}>
-              <Text style={s.nextMedalLabel}>Next medal · {nextMedal.label}</Text>
-              <View style={s.nextMedalTrack}><View style={[s.nextMedalFill, { width: `${Math.round(nextMedal.progress * 100)}%` }]} /></View>
-            </View>
-            <Feather name="chevron-right" size={18} color={colors.textTertiary} />
-          </Pressable>
-        )}
-      </View>
-
+      {/* One quiet line of context — today's miles vs goal, no clutter */}
       {todayHasData && (
-        <View style={[s.dayBar, { marginTop: spacing.md }]}>
-          <DayCell value={String(today.trips)} label={today.trips === 1 ? 'trip' : 'trips'} />
-          <View style={s.dayBarDivider} />
-          <DayCell value={today.miles.toFixed(1)} label="miles" />
-          <View style={s.dayBarDivider} />
-          <DayCell value={fmtGbpRound(today.deduction)} label="saved" />
-          {today.earnings > 0 && <>
-            <View style={s.dayBarDivider} />
-            <DayCell value={fmtGbpRound(today.earnings)} label="earned" />
-          </>}
-        </View>
+        <Text style={s.todayLine}>Today: {today.miles.toFixed(1)} mi · {fmtGbpRound(today.deduction)} tax saved</Text>
       )}
 
       <Text style={s.gpsNote}>Keep Okkle open during your ride. Your screen will stay awake automatically.</Text>
@@ -380,30 +324,7 @@ const s = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
   chip: { marginBottom: 0 },
   gpsNote: { ...type.caption, color: colors.textTertiary, textAlign: 'center', marginTop: 14, lineHeight: 20 },
-
-  goalCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, marginBottom: spacing.lg },
-  goalTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  goalRingPct: { ...tabular, fontSize: 15, fontWeight: font.bold, color: colors.brandDeep },
-  goalValue: { ...tabular, fontSize: 24, fontWeight: font.bold, color: colors.textPrimary, letterSpacing: -0.5 },
-  goalValueUnit: { fontSize: 15, fontWeight: font.medium, color: colors.textSecondary, letterSpacing: 0 },
-  goalSub: { ...type.caption, marginTop: 3 },
-  streakPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.full },
-  streakPillOn: { backgroundColor: colors.amberLight },
-  streakPillOff: { backgroundColor: colors.bgSoft },
-  streakPillText: { ...tabular, fontSize: 14, fontWeight: font.bold, color: colors.amber },
-  nextMedal: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  nextMedalLabel: { ...type.caption, color: colors.textPrimary, fontWeight: font.medium, marginBottom: 5 },
-  nextMedalTrack: { height: 5, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
-  nextMedalFill: { height: '100%', backgroundColor: colors.brandMid, borderRadius: radius.full },
-
-  dayBar: {
-    flexDirection: 'row', backgroundColor: colors.bgCard, borderRadius: radius.lg,
-    borderWidth: 1, borderColor: colors.border, marginBottom: spacing.xl,
-  },
-  dayBarItem: { flex: 1, alignItems: 'center', paddingVertical: 14, paddingHorizontal: 6 },
-  dayBarDivider: { width: 1, backgroundColor: colors.border, marginVertical: 10 },
-  dayBarValue: { ...tabular, fontSize: 17, fontWeight: font.bold, color: colors.textPrimary },
-  dayBarLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  todayLine: { ...type.caption, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.lg, fontWeight: font.medium },
 
   logPayBtn: {
     marginTop: spacing.md, borderWidth: 1.5, borderColor: colors.brandMid,

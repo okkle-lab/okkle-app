@@ -43,6 +43,7 @@ export default function Settings() {
       <Card style={{ padding: 0, overflow: 'hidden', marginTop: spacing.lg }}>
         <Row icon="user" tone="mint" title="Profile & tax" sub="Name, vehicle, platforms, tax region" onPress={go('/settings-account')} />
         <Row icon="bell" tone="blue" title="Reminders" sub="Logging nudges & tax deadlines" onPress={go('/settings-reminders')} />
+        <Row icon="calendar" tone="amber" title="Key tax dates" sub="HMRC deadlines & add to calendar" onPress={go('/key-dates')} />
         <Row icon="shield" tone="green" title="Data & backup" sub="Back up, restore or delete your data" onPress={go('/settings-data')} last />
       </Card>
 

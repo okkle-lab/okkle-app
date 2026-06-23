@@ -58,7 +58,7 @@ export default function EditEntry() {
   const milesNum = parseFloat(miles) || 0;
   const previewDeduction = showMiles ? calcDeduction(milesNum, vehicle) : 0;
 
-  function save() {
+  function commitSave() {
     if (kind === 'trip') {
       updateTrip(entryId, {
         platform, vehicle,
@@ -79,6 +79,19 @@ export default function EditEntry() {
       });
     }
     router.back();
+  }
+
+  function save() {
+    // Editing changes figures HMRC could ask you to justify, so confirm first —
+    // GPS-tracked trips especially carry the original recorded mileage.
+    const isGps = kind === 'trip' && !!trip?.route_json;
+    const msg = isGps
+      ? 'This trip’s mileage was recorded by GPS. Editing it overwrites the original tracked figures used for your tax. Save anyway?'
+      : 'This updates the figures used in your tax calculations. Save these changes?';
+    Alert.alert('Save changes?', msg, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Save', onPress: commitSave },
+    ]);
   }
 
   function confirmDelete() {

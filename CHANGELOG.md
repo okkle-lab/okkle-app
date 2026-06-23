@@ -2,6 +2,21 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Declutter pass 2: premium icons, trip, tax, edit confirm)
+
+### Icons — our own, not emoji
+- Replaced every emoji-as-icon with our **gradient icon system** (IconBadge / Medal): medals now render a Feather glyph on a category-coloured gradient disc, and Personal bests use IconBadge tiles. No more flat, cheap emoji.
+- **Home** lost the fire-emoji streak chip and the "Start a trip" button (starting a trip belongs on the Trip tab). Weekly goals + medals are now a single swipeable **Progress** carousel.
+
+### Trip — only what you need to start
+- Stripped the start screen down to the essentials: platform → vehicle → **Start** → log pay. Removed the goal ring, streak pill (with emoji) and the four-stat trips/miles/saved/earned bar — replaced by one quiet "Today" line.
+
+### Tax — shorter
+- Moved **Key tax dates** off the Tax tab into **Settings → Key tax dates** (its own screen, with add-to-calendar). The Tax tab now stays focused on what you owe.
+
+### Editing — confirm before you change figures
+- Saving an edit now asks for **confirmation**, with an extra warning when you edit a **GPS-tracked trip** (it overwrites the original recorded mileage used for tax).
+
 ## 2026-06-23 (IA cleanup: Settings, Log, Home)
 
 ### Settings — a clean menu

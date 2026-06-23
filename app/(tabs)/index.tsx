@@ -52,6 +52,7 @@ export default function HomeScreen() {
   const [seriesMiles, setSeriesMiles] = React.useState<SeriesPoint[]>([]);
   const [seriesHours, setSeriesHours] = React.useState<SeriesPoint[]>([]);
   const [metricPage, setMetricPage] = React.useState(0);
+  const [gamePage, setGamePage] = React.useState(0);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [user, setUser] = React.useState(getUser());
   const [streak, setStreak] = React.useState(0);
@@ -127,7 +128,7 @@ export default function HomeScreen() {
     <Modal visible={newAch !== null} transparent animationType="fade" onRequestClose={() => setNewAch(null)}>
       <Pressable style={s.modalBg} onPress={() => setNewAch(null)}>
         <View style={s.modalCard}>
-          {newAch && <Medal emoji={newAch.emoji} category={newAch.category} tier={newAch.tier} unlocked size={104} />}
+          {newAch && <Medal icon={newAch.icon as any} category={newAch.category} tier={newAch.tier} unlocked size={104} />}
           <Text style={s.achKicker}>Medal unlocked</Text>
           <Text style={s.modalTitle}>{newAch?.label}</Text>
           <Text style={s.modalBody}>{newAch?.desc}</Text>
@@ -145,11 +146,6 @@ export default function HomeScreen() {
           <VehicleIcon vehicle={user?.vehicle ?? 'car'} size={22} color={colors.textSecondary} />
           <Text style={s.hello}>{user?.name || 'Hi'}</Text>
         </View>
-        {/* Streak chip — the daily-return hook, kept glanceable up top */}
-        <Pressable onPress={() => router.push('/medals')} hitSlop={8} style={[s.streakChip, streak > 0 ? s.streakChipOn : s.streakChipOff]}>
-          <Text style={{ fontSize: 14 }}>{streak > 0 ? '🔥' : '✨'}</Text>
-          <Text style={[s.streakChipText, streak === 0 && { color: colors.textSecondary }]}>{streak > 0 ? streak : 'Start'}</Text>
-        </Pressable>
         <Pressable onPress={() => router.push('/settings')} hitSlop={12} style={s.gear}>
           <Icon name="settings" size={22} color={colors.textSecondary} />
         </Pressable>
@@ -169,18 +165,6 @@ export default function HomeScreen() {
           <Text style={s.heroChipText}>Tax year {taxYearLabel()}</Text>
         </View>
       </View>
-
-      {/* Quick-start — primary action right under the hero */}
-      <Pressable onPress={() => router.push('/(tabs)/trip')} style={({ pressed }) => [s.quickStart, pressed && { opacity: 0.9 }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Feather name="navigation" size={22} color="#fff" />
-          <View>
-            <Text style={s.quickStartTitle}>Start a trip</Text>
-            <Text style={s.quickStartSub}>Track miles with GPS</Text>
-          </View>
-        </View>
-        <Feather name="arrow-right" size={22} color="#fff" />
-      </Pressable>
 
       {/* Period switcher — Today · Week · Month · Year */}
       <View style={s.segment}>
@@ -294,70 +278,74 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* This week's goals — habit nudges (no points; finishing is the reward) */}
-      {challenges.length > 0 && (
-        <Card style={{ marginTop: spacing.md }}>
-          <View style={s.challHead}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="target" size={15} color={colors.brand} />
-              <Text style={s.challTitle}>This week's goals</Text>
-            </View>
-            <Text style={s.challXp}>{challenges.filter(c => c.done).length}/{challenges.length} done</Text>
-          </View>
-          {challenges.map((c, i) => (
-            <View key={c.key} style={[s.challRow, i < challenges.length - 1 && s.challRowBorder]}>
-              <View style={[s.challEmoji, c.done && { backgroundColor: colors.greenLight }]}>
-                <Text style={{ fontSize: 18 }}>{c.done ? '✅' : c.emoji}</Text>
-              </View>
-              <View style={{ flex: 1, gap: 7 }}>
-                <View style={s.challTop}>
-                  <Text style={[s.challLabel, c.done && { color: colors.textTertiary }]} numberOfLines={1}>{c.label}</Text>
-                  <Text style={s.challProg}>{Math.min(c.value, c.target)} / {c.target}</Text>
-                </View>
-                <View style={s.challTrack}>
-                  <View style={[s.challFill, { width: `${Math.round(c.progress * 100)}%` }, c.done && { backgroundColor: colors.green }]} />
-                </View>
-              </View>
-            </View>
-          ))}
-        </Card>
-      )}
-
-      {/* Gamification — medal collection */}
-      {achievements.length > 0 && (
+      {/* Progress — goals + medals combined into one swipeable card */}
+      {(achievements.length > 0 || challenges.length > 0) && (
         <View style={{ marginTop: spacing.xl }}>
           <View style={s.progressHead}>
-            <SectionHeader icon="zap" title="Your progress" />
+            <SectionHeader icon="zap" title="Progress" />
             <Pressable onPress={() => router.push('/medals')} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-              <Text style={s.seeAll}>See all medals</Text>
+              <Text style={s.seeAll}>See all</Text>
               <Feather name="chevron-right" size={15} color={colors.brandDeep} />
             </Pressable>
           </View>
-          <Pressable onPress={() => router.push('/medals')}>
-            <Card>
-              <View style={s.streakRow}>
-                <View style={[s.streakIcon, streak > 0 ? { backgroundColor: colors.amberLight } : { backgroundColor: colors.bgSoft }]}>
-                  <Feather name="zap" size={18} color={streak > 0 ? colors.amber : colors.textTertiary} />
+          <ScrollView
+            horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={e => setGamePage(Math.round(e.nativeEvent.contentOffset.x / win.width))}
+            style={{ marginHorizontal: -spacing.xl }}
+          >
+            {/* Page 1: weekly goals */}
+            <View style={{ width: win.width, paddingHorizontal: spacing.xl }}>
+              <Card style={{ minHeight: 230 }}>
+                <View style={s.challHead}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Feather name="target" size={15} color={colors.brand} />
+                    <Text style={s.challTitle}>This week's goals</Text>
+                  </View>
+                  <Text style={s.challXp}>{challenges.filter(c => c.done).length}/{challenges.length} done</Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.streakValue}>{streak > 0 ? `${streak}-day streak` : 'No streak yet'}</Text>
-                  <Text style={s.streakSub}>{streak > 0 ? 'Keep logging daily to grow it' : 'Track a trip today to start one'}</Text>
-                </View>
-                <Text style={s.achCount}>{achievements.filter(a => a.unlocked).length}/{achievements.length}</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg, marginHorizontal: -4 }} contentContainerStyle={{ paddingHorizontal: 4, gap: 14 }}>
-                {achievementPreview.map(a => (
-                  <View key={a.key} style={s.badge}>
-                    <Medal emoji={a.emoji} category={a.category} tier={a.tier} unlocked={a.unlocked} size={54} />
-                    <Text style={[s.badgeLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
-                    {!a.unlocked && a.progress > 0 && (
-                      <View style={s.badgeTrack}><View style={[s.badgeFill, { width: `${Math.round(a.progress * 100)}%` }]} /></View>
-                    )}
+                {challenges.map((c, i) => (
+                  <View key={c.key} style={[s.challRow, i < challenges.length - 1 && s.challRowBorder]}>
+                    <IconBadge icon={c.done ? 'check' : (c.icon as any)} tone={c.done ? 'green' : (c.tone as any)} size={36} />
+                    <View style={{ flex: 1, gap: 7 }}>
+                      <View style={s.challTop}>
+                        <Text style={[s.challLabel, c.done && { color: colors.textTertiary }]} numberOfLines={1}>{c.label}</Text>
+                        <Text style={s.challProg}>{Math.min(c.value, c.target)} / {c.target}</Text>
+                      </View>
+                      <View style={s.challTrack}>
+                        <View style={[s.challFill, { width: `${Math.round(c.progress * 100)}%` }, c.done && { backgroundColor: colors.green }]} />
+                      </View>
+                    </View>
                   </View>
                 ))}
-              </ScrollView>
-            </Card>
-          </Pressable>
+              </Card>
+            </View>
+            {/* Page 2: medals */}
+            <View style={{ width: win.width, paddingHorizontal: spacing.xl }}>
+              <Pressable onPress={() => router.push('/medals')}>
+                <Card style={{ minHeight: 230 }}>
+                  <View style={s.streakRow}>
+                    <IconBadge icon="zap" tone={streak > 0 ? 'amber' : 'neutral'} size={40} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.streakValue}>{streak > 0 ? `${streak}-day streak` : 'No streak yet'}</Text>
+                      <Text style={s.streakSub}>{achievements.filter(a => a.unlocked).length} of {achievements.length} medals earned</Text>
+                    </View>
+                    <Feather name="chevron-right" size={20} color={colors.textTertiary} />
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg, marginHorizontal: -4 }} contentContainerStyle={{ paddingHorizontal: 4, gap: 14 }}>
+                    {achievementPreview.map(a => (
+                      <View key={a.key} style={s.badge}>
+                        <Medal icon={a.icon as any} category={a.category} tier={a.tier} unlocked={a.unlocked} size={54} />
+                        <Text style={[s.badgeLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </Card>
+              </Pressable>
+            </View>
+          </ScrollView>
+          <View style={s.dots}>
+            {[0, 1].map(i => <View key={i} style={[s.cdot, i === gamePage && s.cdotOn]} />)}
+          </View>
         </View>
       )}
 

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable, Modal } from 'react-nati
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Medal, Card, SectionHeader } from '../src/components';
+import { Medal, Card, SectionHeader, IconBadge } from '../src/components';
 import { getAchievements, getStreak, getPersonalRecords, type Achievement } from '../src/db';
 
 export default function MedalsScreen() {
@@ -40,9 +40,9 @@ export default function MedalsScreen() {
             <Text style={s.bannerOf}>of {all.length}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.bannerTitle}>{earned === all.length ? 'Every medal earned! 🏆' : 'Keep collecting'}</Text>
+            <Text style={s.bannerTitle}>{earned === all.length ? 'Every medal earned' : 'Keep collecting'}</Text>
             <Text style={s.bannerSub}>
-              {streak > 0 ? `🔥 ${streak}-day streak going` : 'Track a trip today to start a streak'}
+              {streak > 0 ? `${streak}-day streak going` : 'Track a trip today to start a streak'}
             </Text>
           </View>
         </View>
@@ -55,7 +55,7 @@ export default function MedalsScreen() {
               <View style={s.recGrid}>
                 {records.map(r => (
                   <View key={r.key} style={s.recCell}>
-                    <Text style={{ fontSize: 22, opacity: r.set ? 1 : 0.4 }}>{r.emoji}</Text>
+                    <View style={{ opacity: r.set ? 1 : 0.4 }}><IconBadge icon={r.icon as any} tone={r.tone as any} size={34} /></View>
                     <Text style={[s.recValue, !r.set && { color: colors.textTertiary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{r.value}</Text>
                     <Text style={s.recLabel} numberOfLines={2}>{r.label}</Text>
                     <Text style={s.recSub} numberOfLines={1}>{r.sub}</Text>
@@ -72,7 +72,7 @@ export default function MedalsScreen() {
             <View style={s.grid}>
               {byCat[cat].map(a => (
                 <Pressable key={a.key} style={s.cell} onPress={() => setSelected(a)}>
-                  <Medal emoji={a.emoji} category={a.category} tier={a.tier} unlocked={a.unlocked} size={62} />
+                  <Medal icon={a.icon as any} category={a.category} tier={a.tier} unlocked={a.unlocked} size={62} />
                   <Text style={[s.medalLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
                   {!a.unlocked && a.progress > 0 && a.progress < 1 && (
                     <Text style={s.medalPct}>{Math.round(a.progress * 100)}%</Text>
@@ -89,7 +89,7 @@ export default function MedalsScreen() {
       <Modal visible={selected !== null} transparent animationType="fade" onRequestClose={() => setSelected(null)}>
         <Pressable style={s.modalBg} onPress={() => setSelected(null)}>
           <View style={s.modalCard}>
-            {selected && <Medal emoji={selected.emoji} category={selected.category} tier={selected.tier} unlocked={selected.unlocked} size={108} />}
+            {selected && <Medal icon={selected.icon as any} category={selected.category} tier={selected.tier} unlocked={selected.unlocked} size={108} />}
             <Text style={s.modalTier}>{selected?.unlocked ? `${selected?.tier} medal` : 'Locked'}</Text>
             <Text style={s.modalTitle}>{selected?.label}</Text>
             <Text style={s.modalDesc}>{selected?.desc}</Text>

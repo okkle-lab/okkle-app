@@ -83,11 +83,10 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 
 ### Gamification
 - **Activity streak** — counts consecutive days you log a trip or entry; holds if you haven't logged yet today.
-- **~99 3D-style medals** — a glossy disc with ribbon and a playful emoji centre. Each **category has its own colour** (Trips blue, Miles teal, Tax saved green, Earnings gold, Streaks fire, Hours indigo, Active days pink, Big days red, Long trips bronze, Platforms violet, Special mint), and tier adds the flair (gold gets a starburst + sparkles).
-- **Streak header chip** on the dashboard (🔥 N) keeps the daily-return hook above the fold; tap it (or the "Your progress" card) to open the Medals screen.
+- **~99 3D-style medals** — a glossy gradient disc with ribbon and a **Feather icon** centre (no emoji). Each **category has its own colour** (Trips blue, Miles teal, Tax saved green, Earnings gold, Streaks fire, Hours indigo, Active days pink, Big days red, Long trips bronze, Platforms violet, Special mint), and tier adds the flair (gold gets a starburst + sparkles).
+- **Progress carousel on Home** — a single swipeable card combines this week's goals and a medals preview, so the dashboard stays short.
 - **Medals screen** — an Apple-Fitness-style grid grouped by category, with an earned/total ring, locked vs unlocked medals, per-medal progress and a tap-through detail card.
-- **Gamified Trip tab** — the setup screen shows a daily-goal ring, streak pill and a "next medal" progress row.
-- **Personal bests** — best day, best week, best £/hour, most miles in a day, longest streak, most trips in a day. Beat your own real numbers.
+- **Personal bests** — best day, best week, best £/hour, most miles in a day, longest streak, most trips in a day, each on a gradient IconBadge tile. Beat your own real numbers.
 - **This week's goals** — light habit nudges (track 5 trips, cover 50 miles, keep a 5-day streak, log your pay).
 - **Period graphs** — Week/Month/Year show an earnings bar chart with the best bar highlighted.
 - **"Achievement unlocked" celebration** — a popup fires whenever you earn a new medal.

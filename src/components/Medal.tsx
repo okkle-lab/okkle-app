@@ -1,7 +1,10 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import Svg, { Defs, RadialGradient, LinearGradient, Stop, Circle, Polygon, Ellipse, G } from 'react-native-svg';
 import type { AchievementTier } from '../db';
+
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
 // Each category has its OWN colour identity (disc gradient + ribbon + burst),
 // so medals look distinct at a glance. Tier drives the "fancy" ornamentation:
@@ -25,7 +28,7 @@ const CATEGORY: { [c: string]: Palette } = {
 const FALLBACK = CATEGORY.Special;
 const LOCKED: Palette = { disc: ['#E4E2DC', '#C4C2BA', '#9C9A92'], ribbon: ['#CFCDC6', '#B4B2AA'], burst: '#D7D5CE' };
 
-type Props = { emoji: string; category: string; tier: AchievementTier; unlocked: boolean; size?: number };
+type Props = { icon: FeatherName; category: string; tier: AchievementTier; unlocked: boolean; size?: number };
 
 function starPoints(cx: number, cy: number, spikes: number, outer: number, inner: number): string {
   const pts: string[] = [];
@@ -38,7 +41,7 @@ function starPoints(cx: number, cy: number, spikes: number, outer: number, inner
   return pts.join(' ');
 }
 
-export function Medal({ emoji, category, tier, unlocked, size = 64 }: Props) {
+export function Medal({ icon, category, tier, unlocked, size = 64 }: Props) {
   const h = size * 1.3;
   const pal = unlocked ? (CATEGORY[category] ?? FALLBACK) : LOCKED;
   const [hi, mid, lo] = pal.disc;
@@ -98,19 +101,9 @@ export function Medal({ emoji, category, tier, unlocked, size = 64 }: Props) {
         )}
       </Svg>
 
-      <Text
-        style={{
-          position: 'absolute',
-          top: size * 0.52,
-          left: 0,
-          right: 0,
-          textAlign: 'center',
-          fontSize: size * 0.4,
-          opacity: unlocked ? 1 : 0.35,
-        }}
-      >
-        {emoji}
-      </Text>
+      <View style={{ position: 'absolute', top: size * 0.5, left: 0, right: 0, alignItems: 'center', opacity: unlocked ? 1 : 0.4 }}>
+        <Feather name={icon} size={size * 0.34} color={unlocked ? '#ffffff' : '#7E7C76'} />
+      </View>
     </View>
   );
 }
