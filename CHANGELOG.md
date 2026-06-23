@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Real weekly entries)
+
+- **Weekly logging is now a real feature**, not just a lump on one day. The Log tab has a **Day / Week** toggle for earnings, mileage and expenses. A weekly entry stores its Mon–Sun range (`period_start`/`period_end`).
+- **Reports spread weekly entries across their days** — `getPeriodSummary`, `getPeriodSeries` (charts) and `getDailyStats` now distribute a weekly amount evenly over the 7 days it covers and clip to the view window, so the daily/weekly breakdowns stay accurate (no false spike on payday; "today" shows ~1/7).
+- Week mode offers **This week / Last week** quick presets and shows the covered range; **Records** labels weekly entries "Week of X–Y".
+
 ## 2026-06-23 (Log: daily earnings + smarter categories)
 
 - **Earnings can be daily or weekly** — dropped the "weekly" framing and added **Today / Yesterday** quick-date chips so logging a single day's takings (or back-dating) is one tap.

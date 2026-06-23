@@ -77,12 +77,13 @@ export default function RecordsScreen() {
       c = { id: `t${t.id}`, edit: () => openEdit('trip', t.id), icon: 'navigation', tone: 'mint', title: t.platform, source: 'GPS', meta: `${fmtMiles(t.miles)} · ${fmtDate(t.started_at)}`, amount: fmtGbp(t.deduction), amountColor: colors.brandDeep, amountSub: t.earnings ? `${fmtGbp(t.earnings)} earned` : null };
     } else {
       const r = item.data;
+      const when = fmtWhen(r);
       if (r.record_type === 'mileage') {
-        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'map', tone: 'neutral', title: r.platform ?? 'Mileage', source: 'Manual', meta: `${fmtMiles(r.miles ?? 0)} · ${fmtDate(r.created_at)}`, amount: fmtGbp(r.deduction ?? 0), amountColor: colors.brandDeep, amountSub: null };
+        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'map', tone: 'neutral', title: r.platform ?? 'Mileage', source: 'Manual', meta: `${fmtMiles(r.miles ?? 0)} · ${when}`, amount: fmtGbp(r.deduction ?? 0), amountColor: colors.brandDeep, amountSub: null };
       } else if (r.record_type === 'income') {
-        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'dollar-sign', tone: 'green', title: r.platform ?? 'Earnings', source: null, meta: `Earnings · ${fmtDate(r.created_at)}`, amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
+        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'dollar-sign', tone: 'green', title: r.platform ?? 'Earnings', source: null, meta: `Earnings · ${when}`, amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
       } else {
-        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'file-text', tone: 'amber', title: r.category ?? r.notes ?? 'Expense', source: null, meta: fmtDate(r.created_at), amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
+        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'file-text', tone: 'amber', title: r.category ?? r.notes ?? 'Expense', source: null, meta: when, amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
       }
     }
     return (
@@ -173,6 +174,15 @@ export default function RecordsScreen() {
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+// Weekly entries show their Mon–Sun range; single-day entries show the date.
+function fmtWhen(r: OkkleRecord): string {
+  if (r.period_start && r.period_end) {
+    const f = (s: string) => new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return `Week of ${f(r.period_start)}–${f(r.period_end)}`;
+  }
+  return fmtDate(r.created_at);
 }
 
 const s = StyleSheet.create({

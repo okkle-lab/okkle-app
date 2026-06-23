@@ -78,8 +78,19 @@ export default function LogScreen() {
   const [description, setDescription] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
+  const [period, setPeriod] = useState<'day' | 'week'>('day');
   const [saved, setSaved] = useState(false);
   const [catCounts, setCatCounts] = useState(getCatCounts);
+
+  // The Mon–Sun week the chosen date falls in (pay weeks run Monday–Sunday).
+  const weekBounds = (d: Date) => {
+    const day = d.getDay(); const mondayOffset = day === 0 ? 6 : day - 1;
+    const start = new Date(d); start.setDate(d.getDate() - mondayOffset); start.setHours(12, 0, 0, 0);
+    const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(12, 0, 0, 0);
+    return { start, end };
+  };
+  const wb = weekBounds(date);
+  const fmtShort = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
   // Most-used categories first, then the default priority order (benchmark apps
   // surface what you reach for most so you're not hunting every time).
@@ -123,15 +134,18 @@ export default function LogScreen() {
 
   function handleSave() {
     const createdAt = date.toISOString();
+    // A weekly entry stores the Mon–Sun range so reports spread it across the days.
+    const ps = period === 'week' ? wb.start.toISOString() : null;
+    const pe = period === 'week' ? wb.end.toISOString() : null;
     if (tab === 'mileage') {
       if (!miles) { Alert.alert('Enter miles'); return; }
-      saveRecord({ record_type: 'mileage', platform, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: null, period_end: null, receipt_uri: null, notes: null }, createdAt);
+      saveRecord({ record_type: 'mileage', platform, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
     } else if (tab === 'income') {
       if (!amount) { Alert.alert('Enter amount'); return; }
-      saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: null, period_end: null, receipt_uri: null, notes: null }, createdAt);
+      saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
     } else {
       if (!amount || !description) { Alert.alert('Enter amount and description'); return; }
-      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: null, period_end: null, receipt_uri: receiptUri, notes: description }, createdAt);
+      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: description }, createdAt);
       bumpCat(description); setCatCounts(getCatCounts());
     }
     setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null);
@@ -303,22 +317,44 @@ export default function LogScreen() {
             </>
           )}
 
-          {/* Date — compact, with quick presets for fast daily logging */}
+          {/* When — a single day or a whole pay-week */}
           <View style={s.dateBlock}>
             <View style={s.dateHeadRow}>
               <IconBadge icon="calendar" tone="neutral" size={32} />
-              <Text style={s.dateLabel}>Date</Text>
-              <View style={s.quickDates}>
-                {([['Today', 0], ['Yesterday', -1]] as [string, number][]).map(([label, off]) => {
-                  const on = isSameDay(date, dayAt(off));
-                  return (
-                    <Pressable key={label} onPress={() => setDate(dayAt(off))} style={[s.quickChip, on && s.quickChipOn]}>
-                      <Text style={[s.quickChipText, on && s.quickChipTextOn]}>{label}</Text>
-                    </Pressable>
-                  );
-                })}
+              <Text style={s.dateLabel}>{period === 'week' ? 'Pay week' : 'Date'}</Text>
+              <View style={s.periodSeg}>
+                {(['day', 'week'] as const).map(p => (
+                  <Pressable key={p} onPress={() => setPeriod(p)} style={[s.periodItem, period === p && s.periodItemOn]}>
+                    <Text style={[s.periodText, period === p && s.periodTextOn]}>{p === 'day' ? 'Day' : 'Week'}</Text>
+                  </Pressable>
+                ))}
               </View>
             </View>
+
+            {/* Quick presets adapt to day vs week */}
+            <View style={s.quickDates}>
+              {period === 'day'
+                ? ([['Today', 0], ['Yesterday', -1]] as [string, number][]).map(([label, off]) => {
+                    const on = isSameDay(date, dayAt(off));
+                    return (
+                      <Pressable key={label} onPress={() => setDate(dayAt(off))} style={[s.quickChip, on && s.quickChipOn]}>
+                        <Text style={[s.quickChipText, on && s.quickChipTextOn]}>{label}</Text>
+                      </Pressable>
+                    );
+                  })
+                : ([['This week', 0], ['Last week', -7]] as [string, number][]).map(([label, off]) => {
+                    const on = isSameDay(weekBounds(date).start, weekBounds(dayAt(off)).start);
+                    return (
+                      <Pressable key={label} onPress={() => setDate(dayAt(off))} style={[s.quickChip, on && s.quickChipOn]}>
+                        <Text style={[s.quickChipText, on && s.quickChipTextOn]}>{label}</Text>
+                      </Pressable>
+                    );
+                  })}
+            </View>
+
+            {period === 'week' && (
+              <Text style={s.weekCaption}>Covers {fmtShort(wb.start)} – {fmtShort(wb.end)} · spread evenly across the 7 days</Text>
+            )}
             <DatePickerField value={date} onChange={setDate} />
           </View>
         </Card>
@@ -367,6 +403,12 @@ const s = StyleSheet.create({
   dateBlock: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg, gap: spacing.md },
   dateHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dateLabel: { ...type.bodyMedium, fontSize: 15, flex: 1 },
+  periodSeg: { flexDirection: 'row', backgroundColor: colors.bgSoft, borderRadius: radius.md, padding: 3 },
+  periodItem: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: radius.sm },
+  periodItemOn: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  periodText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
+  periodTextOn: { color: colors.textPrimary, fontWeight: font.semibold },
+  weekCaption: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
   quickDates: { flexDirection: 'row', gap: 6 },
   quickChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bgSoft },
   quickChipOn: { backgroundColor: colors.brandDeep },

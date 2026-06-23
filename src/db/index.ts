@@ -274,6 +274,39 @@ export function periodRange(period: Period, ref = new Date()): { start: string; 
   return { start, end: `${sy + 1}-04-05`, label: `Tax year ${taxYearLabelFor(ref)}` };
 }
 
+// ---- Weekly/period spreading -----------------------------------------------
+// A record can cover a date range (e.g. a week's pay). These helpers spread its
+// value evenly across the days it covers so daily/weekly views stay accurate,
+// instead of dumping a lump on one day. Single-day records count as before.
+function dnum(s: string): number { return Math.floor(new Date(s.slice(0, 10) + 'T00:00:00').getTime() / 86400000); }
+function isoFromNum(n: number): string { return new Date(n * 86400000).toISOString().slice(0, 10); }
+
+function spreadValue(value: number, ps: string | null, pe: string | null, createdAt: string, start: string, end: string): number {
+  const S = dnum(start), E = dnum(end);
+  if (ps && pe) {
+    const A = dnum(ps), B = dnum(pe);
+    if (B > A) { const ov = Math.min(B, E) - Math.max(A, S) + 1; return ov > 0 ? value * (ov / (B - A + 1)) : 0; }
+  }
+  const C = dnum(createdAt); return C >= S && C <= E ? value : 0;
+}
+function spreadIntoDays(addFn: (k: string, v: number) => void, value: number, ps: string | null, pe: string | null, createdAt: string, start: string, end: string) {
+  const S = dnum(start), E = dnum(end);
+  if (ps && pe) {
+    const A = dnum(ps), B = dnum(pe);
+    if (B > A) { const per = value / (B - A + 1); for (let d = Math.max(A, S); d <= Math.min(B, E); d++) addFn(isoFromNum(d), per); return; }
+  }
+  const c = createdAt.slice(0, 10); if (c >= start && c <= end) addFn(c, value);
+}
+type OverlapRec = { created_at: string; amount: number | null; miles: number | null; deduction: number | null; ps: string | null; pe: string | null };
+function recordsOverlapping(type: string, start: string, end: string): OverlapRec[] {
+  return db.getAllSync<OverlapRec>(
+    `SELECT created_at, amount, miles, deduction, period_start AS ps, period_end AS pe FROM records
+     WHERE record_type=? AND (
+       (period_start IS NOT NULL AND date(period_start) <= ? AND date(period_end) >= ?)
+       OR (period_start IS NULL AND date(created_at) BETWEEN ? AND ?))`,
+    type, end, start, start, end);
+}
+
 export function getPeriodSummary(period: Period, ref = new Date()): PeriodSummary {
   const user = getUser();
   const taxRate = user?.tax_rate ?? 0.20;
@@ -282,20 +315,18 @@ export function getPeriodSummary(period: Period, ref = new Date()): PeriodSummar
   const tripRows = db.getAllSync<{ miles: number; deduction: number; earnings: number | null; started_at: string; ended_at: string }>(
     `SELECT miles, deduction, earnings, started_at, ended_at FROM trips WHERE date(started_at) BETWEEN ? AND ?`, start, end,
   );
-  const incomeRows = db.getAllSync<{ amount: number }>(
-    `SELECT amount FROM records WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, start, end,
-  );
-  const mileRows = db.getAllSync<{ miles: number; deduction: number }>(
-    `SELECT miles, deduction FROM records WHERE record_type='mileage' AND date(created_at) BETWEEN ? AND ?`, start, end,
-  );
-  const expRow = db.getFirstSync<{ exp: number }>(
-    `SELECT COALESCE(SUM(amount),0) AS exp FROM records WHERE record_type='expense' AND date(created_at) BETWEEN ? AND ?`, start, end,
-  );
+  // Income / mileage / expense records, spread across any period they cover.
+  const incomeRows = recordsOverlapping('income', start, end);
+  const mileRows = recordsOverlapping('mileage', start, end);
+  const expRows = recordsOverlapping('expense', start, end);
 
-  const miles = tripRows.reduce((s, r) => s + r.miles, 0) + mileRows.reduce((s, r) => s + r.miles, 0);
-  const deduction = tripRows.reduce((s, r) => s + r.deduction, 0) + mileRows.reduce((s, r) => s + (r.deduction ?? 0), 0);
-  const earnings = tripRows.reduce((s, r) => s + (r.earnings ?? 0), 0) + incomeRows.reduce((s, r) => s + (r.amount ?? 0), 0);
-  const expenses = expRow?.exp ?? 0;
+  const miles = tripRows.reduce((s, r) => s + r.miles, 0)
+    + mileRows.reduce((s, r) => s + spreadValue(r.miles ?? 0, r.ps, r.pe, r.created_at, start, end), 0);
+  const deduction = tripRows.reduce((s, r) => s + r.deduction, 0)
+    + mileRows.reduce((s, r) => s + spreadValue(r.deduction ?? 0, r.ps, r.pe, r.created_at, start, end), 0);
+  const earnings = tripRows.reduce((s, r) => s + (r.earnings ?? 0), 0)
+    + incomeRows.reduce((s, r) => s + spreadValue(r.amount ?? 0, r.ps, r.pe, r.created_at, start, end), 0);
+  const expenses = expRows.reduce((s, r) => s + spreadValue(r.amount ?? 0, r.ps, r.pe, r.created_at, start, end), 0);
   const hours = tripRows.reduce((s, r) => {
     const ms = new Date(r.ended_at).getTime() - new Date(r.started_at).getTime();
     return s + (ms > 0 ? ms / 3600000 : 0);
@@ -337,8 +368,10 @@ export function getPeriodSeries(period: Period, metric: SeriesMetric = 'earnings
       else { const ms = new Date(t.ended_at).getTime() - new Date(t.started_at).getTime(); sums[idx] += ms > 0 ? ms / 3600000 : 0; }
     }
     if (metric === 'earnings') {
+      // Only single-day income has a time-of-day; multi-day (weekly) entries are
+      // excluded from this "when today" chart (they have no hour).
       for (const r of db.getAllSync<{ created_at: string; amount: number | null }>(
-        `SELECT created_at, amount FROM records WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, start, end)) {
+        `SELECT created_at, amount FROM records WHERE record_type='income' AND period_start IS NULL AND date(created_at) BETWEEN ? AND ?`, start, end)) {
         sums[dayPartIndex(new Date(r.created_at).getHours())] += r.amount ?? 0;
       }
     }
@@ -356,14 +389,12 @@ export function getPeriodSeries(period: Period, metric: SeriesMetric = 'earnings
     else { const ms = new Date(t.ended_at).getTime() - new Date(t.started_at).getTime(); add(k, ms > 0 ? ms / 3600000 : 0); }
   }
   if (metric === 'earnings') {
-    for (const r of db.getAllSync<{ created_at: string; amount: number | null }>(
-      `SELECT created_at, amount FROM records WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, start, end)) {
-      add(r.created_at.slice(0, 10), r.amount ?? 0);
+    for (const r of recordsOverlapping('income', start, end)) {
+      spreadIntoDays(add, r.amount ?? 0, r.ps, r.pe, r.created_at, start, end);
     }
   } else if (metric === 'miles') {
-    for (const r of db.getAllSync<{ created_at: string; miles: number | null }>(
-      `SELECT created_at, miles FROM records WHERE record_type='mileage' AND date(created_at) BETWEEN ? AND ?`, start, end)) {
-      add(r.created_at.slice(0, 10), r.miles ?? 0);
+    for (const r of recordsOverlapping('mileage', start, end)) {
+      spreadIntoDays(add, r.miles ?? 0, r.ps, r.pe, r.created_at, start, end);
     }
   }
   const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -1182,13 +1213,11 @@ export function getDailyStats(dateStr?: string): DailyStats {
   const tripRows = db.getAllSync<{ miles: number; deduction: number; earnings: number | null; started_at: string; ended_at: string }>(
     `SELECT miles, deduction, earnings, started_at, ended_at FROM trips WHERE date(started_at) = ?`, d,
   );
-  const incRows = db.getAllSync<{ amount: number }>(
-    `SELECT amount FROM records WHERE record_type='income' AND date(created_at) = ?`, d,
-  );
+  const incRows = recordsOverlapping('income', d, d);
   const miles = tripRows.reduce((s, r) => s + r.miles, 0);
   const deduction = tripRows.reduce((s, r) => s + r.deduction, 0);
   const tripEarnings = tripRows.reduce((s, r) => s + (r.earnings ?? 0), 0);
-  const manualEarnings = incRows.reduce((s, r) => s + (r.amount ?? 0), 0);
+  const manualEarnings = incRows.reduce((s, r) => s + spreadValue(r.amount ?? 0, r.ps, r.pe, r.created_at, d, d), 0);
   const hours = tripRows.reduce((s, r) => {
     const ms = new Date(r.ended_at).getTime() - new Date(r.started_at).getTime();
     return s + (ms > 0 ? ms / 3600000 : 0);
