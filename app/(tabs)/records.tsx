@@ -16,6 +16,19 @@ export default function RecordsScreen() {
   const [items, setItems] = React.useState<Item[]>([]);
   const [vehicles, setVehicles] = React.useState<VehicleStat[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [filter, setFilter] = React.useState<'all' | 'trip' | 'income' | 'expense' | 'mileage'>('all');
+
+  const FILTERS: { key: typeof filter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'trip', label: 'GPS trips' },
+    { key: 'income', label: 'Earnings' },
+    { key: 'expense', label: 'Expenses' },
+    { key: 'mileage', label: 'Manual miles' },
+  ];
+  const visible = items.filter(it =>
+    filter === 'all' ? true :
+    filter === 'trip' ? it.kind === 'trip' :
+    it.kind === 'record' && it.data.record_type === filter);
 
   function load() {
     const trips = getTrips(50).map(t => ({ kind: 'trip' as const, data: t }));
@@ -108,9 +121,20 @@ export default function RecordsScreen() {
       ) : (
         <>
           <SectionHeader icon="list" title="All entries" />
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            {items.map((item, i, arr) => renderItem(item, i, arr))}
-          </Card>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
+            {FILTERS.map(f => (
+              <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.filterChip, filter === f.key && s.filterChipOn]}>
+                <Text style={[s.filterText, filter === f.key && s.filterTextOn]}>{f.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          {visible.length === 0 ? (
+            <Card><Text style={{ color: colors.textSecondary, textAlign: 'center', paddingVertical: 8 }}>Nothing here yet.</Text></Card>
+          ) : (
+            <Card style={{ padding: 0, overflow: 'hidden' }}>
+              {visible.map((item, i, arr) => renderItem(item, i, arr))}
+            </Card>
+          )}
           <Text style={s.hint}>Tap any entry to edit or delete it.</Text>
         </>
       )}
@@ -127,6 +151,11 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   heading: { ...type.screenTitle, marginBottom: spacing.lg },
   hint: { ...type.small, textAlign: 'center', marginTop: spacing.md },
+  filterScroll: { marginBottom: spacing.md, marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard },
+  filterChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  filterText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
+  filterTextOn: { color: '#fff' },
 });
 
 const row = StyleSheet.create({
