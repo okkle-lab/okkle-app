@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { fmtGbp, fmtMiles, fmtPerHour } from './tax';
 
 const db = SQLite.openDatabaseSync('okkle.db');
 
@@ -982,6 +983,69 @@ export function getXp(): XpInfo {
   let level = 1, need = 120, acc = 0;
   while (xp >= acc + need) { acc += need; level++; need = Math.round(need * 1.3); }
   return { xp, level, into: xp - acc, span: need, progress: (xp - acc) / need, medals };
+}
+
+// ---- Personal records — beat your own best (real outcomes, not points) ------
+export type PersonalRecord = { key: string; emoji: string; label: string; value: string; sub: string; set: boolean };
+
+export function getPersonalRecords(): PersonalRecord[] {
+  type Day = { earnings: number; miles: number; hours: number; trips: number };
+  const days: { [d: string]: Day } = {};
+  const touch = (d: string) => (days[d] ??= { earnings: 0, miles: 0, hours: 0, trips: 0 });
+
+  for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
+    const d = touch(t.started_at.slice(0, 10));
+    d.earnings += t.earnings ?? 0; d.miles += t.miles; d.trips += 1;
+    const ms = new Date(t.ended_at).getTime() - new Date(t.started_at).getTime();
+    d.hours += ms > 0 ? ms / 3600000 : 0;
+  }
+  for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type IN ('income','mileage')`)) {
+    const d = touch(r.created_at.slice(0, 10));
+    if (r.record_type === 'income') d.earnings += r.amount ?? 0;
+    if (r.record_type === 'mileage') d.miles += r.miles ?? 0;
+  }
+
+  const allDays = Object.entries(days);
+  const best = <T>(fn: (d: Day) => number): { v: number; date: string } =>
+    allDays.reduce((acc, [date, d]) => fn(d) > acc.v ? { v: fn(d), date } : acc, { v: 0, date: '' });
+
+  const bestDay = best(d => d.earnings);
+  const mostMiles = best(d => d.miles);
+  const mostTrips = best(d => d.trips);
+  const bestRate = allDays
+    .filter(([, d]) => d.hours > 0.5 && d.earnings > 0)
+    .reduce((acc, [date, d]) => (d.earnings / d.hours > acc.v ? { v: d.earnings / d.hours, date } : acc), { v: 0, date: '' });
+
+  // Best week (Mon–Sun) by earnings.
+  const weeks: { [monday: string]: number } = {};
+  for (const [date, d] of allDays) {
+    const dt = new Date(date); const dow = dt.getDay(); const off = dow === 0 ? 6 : dow - 1;
+    const mon = new Date(dt); mon.setDate(dt.getDate() - off);
+    const key = mon.toISOString().slice(0, 10);
+    weeks[key] = (weeks[key] ?? 0) + d.earnings;
+  }
+  const bestWeek = Object.values(weeks).reduce((m, v) => Math.max(m, v), 0);
+
+  // Longest streak ever (consecutive active days).
+  const sorted = Object.keys(days).sort();
+  let longest = 0, run = 0, prev: string | null = null;
+  for (const d of sorted) {
+    if (prev) {
+      const gap = (new Date(d).getTime() - new Date(prev).getTime()) / 86400000;
+      run = gap === 1 ? run + 1 : 1;
+    } else run = 1;
+    longest = Math.max(longest, run); prev = d;
+  }
+
+  const dateStr = (iso: string) => iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+  return [
+    { key: 'best_day', emoji: '💷', label: 'Best day', value: fmtGbp(bestDay.v), sub: bestDay.date ? `on ${dateStr(bestDay.date)}` : 'Not set yet', set: bestDay.v > 0 },
+    { key: 'best_week', emoji: '📅', label: 'Best week', value: fmtGbp(bestWeek), sub: bestWeek > 0 ? 'earnings in a week' : 'Not set yet', set: bestWeek > 0 },
+    { key: 'best_rate', emoji: '⚡', label: 'Best £/hour', value: bestRate.v > 0 ? fmtPerHour(bestRate.v) : '—', sub: bestRate.date ? `on ${dateStr(bestRate.date)}` : 'Track a trip + pay', set: bestRate.v > 0 },
+    { key: 'most_miles', emoji: '🛣️', label: 'Most miles in a day', value: mostMiles.v > 0 ? fmtMiles(mostMiles.v) : '—', sub: mostMiles.date ? `on ${dateStr(mostMiles.date)}` : 'Not set yet', set: mostMiles.v > 0 },
+    { key: 'longest_streak', emoji: '🔥', label: 'Longest streak', value: longest > 0 ? `${longest} ${longest === 1 ? 'day' : 'days'}` : '—', sub: longest > 0 ? 'in a row' : 'Track daily to build it', set: longest > 0 },
+    { key: 'most_trips', emoji: '🚀', label: 'Most trips in a day', value: mostTrips.v > 0 ? String(mostTrips.v) : '—', sub: mostTrips.date ? `on ${dateStr(mostTrips.date)}` : 'Not set yet', set: mostTrips.v > 0 },
+  ];
 }
 
 // ---- Weekly challenges (local, reset implicitly each week) ------------------

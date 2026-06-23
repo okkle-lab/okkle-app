@@ -8,10 +8,10 @@ import {
   getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
-  getStreak, getAchievements, popNewAchievements, getXp, getWeeklyChallenges, creditCompletedChallenges,
+  getStreak, getAchievements, popNewAchievements, getWeeklyChallenges, getPersonalRecords,
   getHeatPoints, getBestSpot, getPeriodSeries, kvGet, kvSet,
   type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
-  type XpInfo, type Challenge, type HeatPoint, type BestSpot, type SeriesPoint,
+  type Challenge, type HeatPoint, type BestSpot, type SeriesPoint, type PersonalRecord,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
@@ -28,15 +28,6 @@ function prevRef(period: Period): Date {
   return d;
 }
 const PREV_WORD: { [k in Period]: string } = { today: 'yesterday', week: 'last week', month: 'last month', year: 'last year' };
-
-// Named rank for a level — status/identity, so the number means something.
-function rankFor(level: number): string {
-  if (level >= 15) return `Legend · Level ${level}`;
-  if (level >= 10) return `Veteran · Level ${level}`;
-  if (level >= 6) return `Pro · Level ${level}`;
-  if (level >= 3) return `Regular · Level ${level}`;
-  return `Rookie · Level ${level}`;
-}
 
 // A clear date range under the period switcher (e.g. "Mon 17 – Sun 23 Jun").
 function fmtPeriodRange(period: Period, startIso: string, endIso: string): string {
@@ -66,8 +57,8 @@ export default function HomeScreen() {
   const [streak, setStreak] = React.useState(0);
   const [achievements, setAchievements] = React.useState<Achievement[]>([]);
   const [newAch, setNewAch] = React.useState<Achievement | null>(null);
-  const [xp, setXp] = React.useState<XpInfo | null>(null);
   const [challenges, setChallenges] = React.useState<Challenge[]>([]);
+  const [records, setRecords] = React.useState<PersonalRecord[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [heatPoints, setHeatPoints] = React.useState<HeatPoint[]>([]);
   const [bestSpot, setBestSpot] = React.useState<BestSpot | null>(null);
@@ -116,8 +107,7 @@ export default function HomeScreen() {
     setStreak(getStreak());
     setAchievements(getAchievements());
     setChallenges(getWeeklyChallenges());
-    creditCompletedChallenges();   // award XP for any challenge finished since last open
-    setXp(getXp());
+    setRecords(getPersonalRecords());
     const fresh = popNewAchievements();
     if (fresh.length) setNewAch(fresh[0]);
   }
@@ -197,30 +187,34 @@ export default function HomeScreen() {
         <Feather name="arrow-right" size={22} color="#fff" />
       </Pressable>
 
-      {/* Play block — level + weekly challenges, kept high so it feels like a game */}
-      {xp && (
-        <Card style={{ marginTop: spacing.lg }}>
-          <View style={s.levelRow}>
-            <View style={s.levelBadge}><Text style={s.levelBadgeText}>Lv {xp.level}</Text></View>
-            <View style={{ flex: 1 }}>
-              <View style={s.levelTop}>
-                <Text style={s.levelTitle}>{rankFor(xp.level)}</Text>
-                <Text style={s.levelXp}>{xp.into} / {xp.span} XP</Text>
-              </View>
-              <View style={s.xpTrack}><View style={[s.xpFill, { width: `${Math.round(xp.progress * 100)}%` }]} /></View>
+      {/* Personal records — beat your own best (real outcomes, not points) */}
+      {records.length > 0 && (
+        <View style={{ marginTop: spacing.lg }}>
+          <SectionHeader icon="award" title="Your personal bests" />
+          <Card style={{ padding: spacing.md }}>
+            <View style={s.recGrid}>
+              {records.map(r => (
+                <View key={r.key} style={s.recCell}>
+                  <Text style={{ fontSize: 22, opacity: r.set ? 1 : 0.4 }}>{r.emoji}</Text>
+                  <Text style={[s.recValue, !r.set && { color: colors.textTertiary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{r.value}</Text>
+                  <Text style={s.recLabel} numberOfLines={2}>{r.label}</Text>
+                  <Text style={s.recSub} numberOfLines={1}>{r.sub}</Text>
+                </View>
+              ))}
             </View>
-          </View>
-          <Text style={s.levelHint}>You climb ranks by staying consistent — every trip, expense and streak day earns XP.</Text>
-        </Card>
+          </Card>
+        </View>
       )}
+
+      {/* This week's goals — habit nudges (no points; finishing is the reward) */}
       {challenges.length > 0 && (
         <Card style={{ marginTop: spacing.md }}>
           <View style={s.challHead}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Feather name="target" size={15} color={colors.brand} />
-              <Text style={s.challTitle}>This week's challenges</Text>
+              <Text style={s.challTitle}>This week's goals</Text>
             </View>
-            <Text style={s.challXp}>{challenges.reduce((n, c) => n + (c.done ? 0 : c.xp), 0)} XP to go</Text>
+            <Text style={s.challXp}>{challenges.filter(c => c.done).length}/{challenges.length} done</Text>
           </View>
           {challenges.map((c, i) => (
             <View key={c.key} style={[s.challRow, i < challenges.length - 1 && s.challRowBorder]}>
@@ -230,14 +224,11 @@ export default function HomeScreen() {
               <View style={{ flex: 1, gap: 7 }}>
                 <View style={s.challTop}>
                   <Text style={[s.challLabel, c.done && { color: colors.textTertiary }]} numberOfLines={1}>{c.label}</Text>
-                  <View style={[s.xpPill, c.done && { backgroundColor: colors.greenLight }]}>
-                    <Text style={[s.xpPillText, c.done && { color: colors.green }]} numberOfLines={1}>{c.done ? 'Done' : `+${c.xp} XP`}</Text>
-                  </View>
+                  <Text style={s.challProg}>{Math.min(c.value, c.target)} / {c.target}</Text>
                 </View>
                 <View style={s.challTrack}>
                   <View style={[s.challFill, { width: `${Math.round(c.progress * 100)}%` }, c.done && { backgroundColor: colors.green }]} />
                 </View>
-                <Text style={s.challProg}>{Math.min(c.value, c.target)} / {c.target}</Text>
               </View>
             </View>
           ))}
@@ -544,15 +535,11 @@ const s = StyleSheet.create({
   insightsCaptionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.sm, paddingTop: spacing.md, paddingBottom: 4 },
   insightsCaption: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
 
-  levelRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  levelBadge: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
-  levelBadgeText: { color: '#fff', fontSize: 14, fontWeight: font.bold },
-  levelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  levelTitle: { ...type.bodyMedium, fontSize: 15 },
-  levelXp: { ...type.caption, ...tabular },
-  levelHint: { ...type.small, lineHeight: 17, marginTop: spacing.md },
-  xpTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
-  xpFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
+  recGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  recCell: { width: '33.33%', alignItems: 'center', paddingVertical: spacing.md, paddingHorizontal: 4 },
+  recValue: { ...tabular, fontSize: 18, fontWeight: font.bold, color: colors.textPrimary, marginTop: 4, letterSpacing: -0.3 },
+  recLabel: { ...type.small, color: colors.textSecondary, fontWeight: font.medium, textAlign: 'center', marginTop: 3, lineHeight: 14 },
+  recSub: { ...type.small, fontSize: 10, color: colors.textTertiary, textAlign: 'center', marginTop: 1 },
 
   challHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
   challTitle: { ...type.bodyMedium, fontSize: 15 },
@@ -565,8 +552,6 @@ const s = StyleSheet.create({
   challProg: { ...type.small, ...tabular },
   challTrack: { height: 6, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
   challFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
-  xpPill: { backgroundColor: colors.amberLight, paddingHorizontal: 9, paddingVertical: 3, borderRadius: radius.full },
-  xpPillText: { ...tabular, fontSize: 12, fontWeight: font.bold, color: colors.amber },
   streakRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   streakIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   streakValue: { ...type.bodyMedium, fontSize: 16 },
