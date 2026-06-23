@@ -7,7 +7,7 @@ import { colors, font, spacing, radius, type } from '../theme';
 // Pick a date for an entry (defaults to today; can't be in the future).
 // Quick "Today/Yesterday" chips cover the common cases; the calendar covers the
 // "receipt from last month" case. Works on iOS (compact) and Android (dialog).
-export function DatePickerField({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
+export function DatePickerField({ value, onChange, quickChips = true }: { value: Date; onChange: (d: Date) => void; quickChips?: boolean }) {
   const [showAndroid, setShowAndroid] = React.useState(false);
   const today = startOfDay(new Date());
   const yesterday = addDays(today, -1);
@@ -18,8 +18,8 @@ export function DatePickerField({ value, onChange }: { value: Date; onChange: (d
   return (
     <View>
       <View style={s.chips}>
-        <Quick label="Today" active={isSameDay(value, today)} onPress={() => set(today)} />
-        <Quick label="Yesterday" active={isSameDay(value, yesterday)} onPress={() => set(yesterday)} />
+        {quickChips && <Quick label="Today" active={isSameDay(value, today)} onPress={() => set(today)} />}
+        {quickChips && <Quick label="Yesterday" active={isSameDay(value, yesterday)} onPress={() => set(yesterday)} />}
         {Platform.OS === 'ios' ? (
           <DateTimePicker
             value={value}

@@ -331,18 +331,12 @@ export default function LogScreen() {
               </View>
             </View>
 
-            {/* Quick presets adapt to day vs week */}
-            <View style={s.quickDates}>
-              {period === 'day'
-                ? ([['Today', 0], ['Yesterday', -1]] as [string, number][]).map(([label, off]) => {
-                    const on = isSameDay(date, dayAt(off));
-                    return (
-                      <Pressable key={label} onPress={() => setDate(dayAt(off))} style={[s.quickChip, on && s.quickChipOn]}>
-                        <Text style={[s.quickChipText, on && s.quickChipTextOn]}>{label}</Text>
-                      </Pressable>
-                    );
-                  })
-                : ([['This week', 0], ['Last week', -7]] as [string, number][]).map(([label, off]) => {
+            {/* Week mode: This week / Last week presets + the covered range.
+                Day mode uses the picker's own Today/Yesterday chips (no dupes). */}
+            {period === 'week' && (
+              <>
+                <View style={s.quickDates}>
+                  {([['This week', 0], ['Last week', -7]] as [string, number][]).map(([label, off]) => {
                     const on = isSameDay(weekBounds(date).start, weekBounds(dayAt(off)).start);
                     return (
                       <Pressable key={label} onPress={() => setDate(dayAt(off))} style={[s.quickChip, on && s.quickChipOn]}>
@@ -350,12 +344,11 @@ export default function LogScreen() {
                       </Pressable>
                     );
                   })}
-            </View>
-
-            {period === 'week' && (
-              <Text style={s.weekCaption}>Covers {fmtShort(wb.start)} – {fmtShort(wb.end)} · spread evenly across the 7 days</Text>
+                </View>
+                <Text style={s.weekCaption}>Covers {fmtShort(wb.start)} – {fmtShort(wb.end)} · spread evenly across the 7 days</Text>
+              </>
             )}
-            <DatePickerField value={date} onChange={setDate} />
+            <DatePickerField value={date} onChange={setDate} quickChips={period === 'day'} />
           </View>
         </Card>
 
