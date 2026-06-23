@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TextInput, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TextInput, Pressable, Alert } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
@@ -14,6 +14,27 @@ import { tabular } from '../../src/theme';
 import {
   compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE, RATES_YEAR,
 } from '../../src/db/taxcalc';
+import { addDeadlineToCalendar } from '../../src/calendar';
+
+// month is 1-12. Real HMRC Self Assessment deadlines.
+const KEY_DEADLINES: { title: string; month: number; day: number; note: string }[] = [
+  { title: 'Register for Self Assessment', month: 10, day: 5, note: 'Only if this was your first year self-employed.' },
+  { title: 'File your return & pay your tax', month: 1, day: 31, note: 'Online Self Assessment deadline for the previous tax year.' },
+  { title: 'Second payment on account', month: 7, day: 31, note: 'Only if HMRC asked you for payments on account.' },
+];
+
+function nextOccurrence(month: number, day: number): Date {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let d = new Date(now.getFullYear(), month - 1, day);
+  if (d < today) d = new Date(now.getFullYear() + 1, month - 1, day);
+  return d;
+}
+function daysUntil(d: Date): number {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
 
 export default function TaxScreen() {
   const router = useRouter();
@@ -202,22 +223,40 @@ export default function TaxScreen() {
         MTD for Income Tax is mandatory if your self-employment income is over £50,000 (from April 2026), or over £30,000 (from April 2027). You'll submit these four updates digitally each year.
       </Text>
 
-      {/* Year-end checklist */}
-      <SectionHeader icon="check-square" title="Year-end checklist" />
-      <Card style={{ gap: 10 }}>
-        {[
-          'Register for Self Assessment if you haven\'t (deadline 5 Oct after your first tax year)',
-          'File online and pay by 31 January',
-          'Second payment on account due 31 July',
-          'Keep records for at least 5 years after the 31 Jan deadline',
-          'MTD for Income Tax applies if your income is over £50,000 (quarterly updates)',
-        ].map((item, i) => (
-          <View key={i} style={s.checkItem}>
-            <Feather name="check-circle" size={16} color={colors.brand} />
-            <Text style={s.checkText}>{item}</Text>
-          </View>
-        ))}
+      {/* Key dates — actionable, with add-to-calendar */}
+      <SectionHeader icon="calendar" title="Key tax dates" />
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {KEY_DEADLINES.map((d, i) => {
+          const next = nextOccurrence(d.month, d.day);
+          const days = daysUntil(next);
+          return (
+            <View key={d.title} style={[s.deadlineRow, i < KEY_DEADLINES.length - 1 && s.qBorder]}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.deadlineTitle}>{d.title}</Text>
+                <Text style={s.deadlineDate}>
+                  {next.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {' · '}{days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}
+                </Text>
+                <Text style={s.deadlineNote}>{d.note}</Text>
+              </View>
+              <Pressable
+                onPress={async () => {
+                  try {
+                    const ok = await addDeadlineToCalendar(`HMRC: ${d.title}`, next, d.note);
+                    Alert.alert(ok ? 'Added to your calendar' : 'Couldn’t add it', ok ? `${d.title} — ${next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.` : 'Please allow calendar access and try again.');
+                  } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
+                }}
+                style={s.calBtn}
+                hitSlop={6}
+              >
+                <Feather name="calendar" size={15} color={colors.brandDeep} />
+                <Text style={s.calBtnText}>Add</Text>
+              </Pressable>
+            </View>
+          );
+        })}
       </Card>
+      <Text style={s.mtdNote}>Keep your records for at least 5 years after the 31 January deadline. MTD for Income Tax adds quarterly updates once your income passes the threshold (see above).</Text>
 
       {/* Export — send everything to your accountant */}
       <SectionHeader icon="send" title="Send to your accountant" />
@@ -281,8 +320,12 @@ const s = StyleSheet.create({
   poaBox: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'flex-start' },
   poaText: { ...type.caption, color: colors.textSecondary, flex: 1, lineHeight: 19 },
 
-  checkItem: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  checkText: { ...type.caption, color: colors.textSecondary, flex: 1, lineHeight: 20 },
+  deadlineRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.lg },
+  deadlineTitle: { ...type.bodyMedium, fontSize: 15 },
+  deadlineDate: { ...type.caption, ...tabular, color: colors.brandDeep, fontWeight: font.medium, marginTop: 2 },
+  deadlineNote: { ...type.small, lineHeight: 17, marginTop: 3 },
+  calBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full, backgroundColor: colors.brandLight },
+  calBtnText: { ...type.caption, color: colors.brandDeep, fontWeight: font.semibold },
 
   qRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.lg },
   qBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },

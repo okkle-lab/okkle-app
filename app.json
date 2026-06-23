@@ -15,6 +15,7 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Okkle uses your location in the background to track delivery trips accurately.",
         "NSPhotoLibraryUsageDescription": "Okkle saves receipts to your photo library.",
         "NSCameraUsageDescription": "Okkle lets you photograph receipts and pay statements.",
+        "NSCalendarsUsageDescription": "Okkle adds your HMRC tax deadlines to your calendar so you don't miss them.",
         "UIBackgroundModes": [
           "location"
         ]
