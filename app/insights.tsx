@@ -7,8 +7,16 @@ import { Card, SectionHeader, HeatMapView, IconBadge } from '../src/components';
 import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../src/db';
 import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../src/db/tax';
 
+type InsightTab = 'where' | 'when' | 'money';
+const TABS: { key: InsightTab; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
+  { key: 'where', label: 'Where', icon: 'map-pin' },
+  { key: 'when', label: 'When', icon: 'clock' },
+  { key: 'money', label: 'Money', icon: 'trending-up' },
+];
+
 export default function InsightsScreen() {
   const router = useRouter();
+  const [tab, setTab] = React.useState<InsightTab>('where');
   const [filter, setFilter] = React.useState<TimeFilter>('all');
   const [zones, setZones] = React.useState<ZoneStat[]>([]);
   const [points, setPoints] = React.useState<HeatPoint[]>([]);
@@ -33,6 +41,7 @@ export default function InsightsScreen() {
   const anyPerHour = zones.some(z => z.perHour > 0);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
   const anyBucketEarnings = buckets.some(b => b.earnings > 0);
+  const hasData = zones.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.perHour > 0) || !!pnl?.hasData;
 
   return (
     <View style={s.screen}>
@@ -44,126 +53,142 @@ export default function InsightsScreen() {
         </View>
         <Text style={s.sub}>Where and when your work pays off best.</Text>
 
-        {/* Time-of-day filter — compare where you earn at different times */}
-        {buckets.some(b => b.trips > 0) && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
-            {TIME_FILTERS.map(f => (
-              <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.filterChip, filter === f.key && s.filterChipOn]}>
-                <Text style={[s.filterText, filter === f.key && s.filterTextOn]}>{f.label}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+        {/* Headline takeaway — always visible above the categories */}
+        {best && (
+          <View style={[s.tip, { marginBottom: spacing.lg }]}>
+            <IconBadge icon="zap" tone="amber" size={38} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.tipText}>
+                You earn most around <Text style={s.tipStrong}>{best.zone}</Text> on <Text style={s.tipStrong}>{best.timeLabel}</Text>
+              </Text>
+              <Text style={s.tipRate}>
+                {fmtPerHour(best.perHour)}
+                {best.vsAverage >= 0.5 ? ` · £${best.vsAverage.toFixed(2)}/h above your average` : ` · ${best.trips} ${best.trips === 1 ? 'trip' : 'trips'}`}
+              </Text>
+            </View>
+          </View>
         )}
 
-        {/* WHERE — hotspots, with the headline tip folded into the same card */}
-        <SectionHeader icon="map" title="Your hotspots" />
-        <Card style={{ padding: spacing.sm }}>
-          {best && (
-            <View style={s.tip}>
-              <IconBadge icon="zap" tone="amber" size={38} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.tipText}>
-                  You earn most around <Text style={s.tipStrong}>{best.zone}</Text> on <Text style={s.tipStrong}>{best.timeLabel}</Text>
-                </Text>
-                <Text style={s.tipRate}>
-                  {fmtPerHour(best.perHour)}
-                  {best.vsAverage >= 0.5 ? ` · £${best.vsAverage.toFixed(2)}/h above your average` : ` · ${best.trips} ${best.trips === 1 ? 'trip' : 'trips'}`}
-                </Text>
-              </View>
-            </View>
-          )}
-          <HeatMapView points={points} height={210} />
-          <View style={s.legend}>
-            <Text style={s.legendText}>Quieter</Text>
-            <View style={s.legendBar}>
-              {['#9BE3D2', '#5FD0BB', '#E7C66B', '#E0961F', '#E2604A'].map(c => (
-                <View key={c} style={[s.legendSwatch, { backgroundColor: c }]} />
-              ))}
-            </View>
-            <Text style={s.legendText}>Busier</Text>
+        {/* Category switcher — one focused view at a time, not one long scroll */}
+        {hasData && (
+          <View style={s.tabs}>
+            {TABS.map(t => (
+              <Pressable key={t.key} onPress={() => setTab(t.key)} style={[s.tabItem, tab === t.key && s.tabItemOn]}>
+                <Feather name={t.icon} size={14} color={tab === t.key ? colors.brandDeep : colors.textSecondary} />
+                <Text style={[s.tabText, tab === t.key && s.tabTextOn]}>{t.label}</Text>
+              </Pressable>
+            ))}
           </View>
-          <Text style={s.note}>Built on-device from your GPS trips. Nothing leaves your phone.</Text>
-        </Card>
+        )}
 
-        {/* WHERE — ranked zones */}
-        {zones.length > 0 && (
-          <View style={{ marginTop: spacing.xl }}>
-            <SectionHeader icon="award" title={`${anyPerHour ? 'Best-paying areas (£/hr)' : anyEarnings ? 'Top earning areas' : 'Busiest areas'}${filter !== 'all' ? ` · ${TIME_FILTERS.find(f => f.key === filter)?.label}` : ''}`} />
-            <Card style={{ padding: 0, overflow: 'hidden' }}>
-              {zones.slice(0, 6).map((z, i, arr) => (
-                <View key={z.zone} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
-                  <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
-                    <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
+        {/* WHERE — hotspots + ranked areas */}
+        {hasData && tab === 'where' && (
+          <>
+            {buckets.some(b => b.trips > 0) && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
+                {TIME_FILTERS.map(f => (
+                  <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.filterChip, filter === f.key && s.filterChipOn]}>
+                    <Text style={[s.filterText, filter === f.key && s.filterTextOn]}>{f.label}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+            {zones.length > 0 && (
+              <Card style={{ padding: 0, overflow: 'hidden' }}>
+                {zones.slice(0, 6).map((z, i, arr) => (
+                  <View key={z.zone} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
+                    <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
+                      <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.zoneName}>{z.zone}</Text>
+                      <Text style={s.zoneSub}>
+                        {z.trips} {z.trips === 1 ? 'trip' : 'trips'} · {fmtMiles(z.miles)}{z.earnings > 0 ? ` · ${fmtGbp(z.earnings)}` : ''}
+                      </Text>
+                    </View>
+                    <Text style={s.zoneVal}>{anyPerHour ? fmtPerHour(z.perHour) : anyEarnings ? fmtGbp(z.earnings) : fmtMiles(z.miles)}</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.zoneName}>{z.zone}</Text>
-                    <Text style={s.zoneSub}>
-                      {z.trips} {z.trips === 1 ? 'trip' : 'trips'} · {fmtMiles(z.miles)}{z.earnings > 0 ? ` · ${fmtGbp(z.earnings)}` : ''}
-                    </Text>
+                ))}
+              </Card>
+            )}
+            <View style={{ marginTop: spacing.lg }}>
+              <SectionHeader icon="map" title="Hotspot map" />
+              <Card style={{ padding: spacing.sm }}>
+                <HeatMapView points={points} height={210} />
+                <View style={s.legend}>
+                  <Text style={s.legendText}>Quieter</Text>
+                  <View style={s.legendBar}>
+                    {['#9BE3D2', '#5FD0BB', '#E7C66B', '#E0961F', '#E2604A'].map(c => (
+                      <View key={c} style={[s.legendSwatch, { backgroundColor: c }]} />
+                    ))}
                   </View>
-                  <Text style={s.zoneVal}>{anyPerHour ? fmtPerHour(z.perHour) : anyEarnings ? fmtGbp(z.earnings) : fmtMiles(z.miles)}</Text>
+                  <Text style={s.legendText}>Busier</Text>
                 </View>
-              ))}
-            </Card>
-            {!anyEarnings && <Text style={s.note}>Add earnings to your trips to rank areas by what they actually pay per hour.</Text>}
-          </View>
+                <Text style={s.note}>Built on-device from your GPS trips. Nothing leaves your phone.</Text>
+              </Card>
+            </View>
+          </>
         )}
 
         {/* WHEN — best times */}
-        {buckets.some(b => b.trips > 0) && (
-          <View style={{ marginTop: spacing.xl }}>
-            <SectionHeader icon="clock" title="Best times to work" />
-            <Card>
-              {buckets.map(b => {
-                const ref = anyBucketEarnings ? b.perHour : b.trips;
-                const max = anyBucketEarnings ? maxPer : Math.max(...buckets.map(x => x.trips), 1);
-                const pct = max > 0 ? (ref / max) * 100 : 0;
-                return (
-                  <View key={b.label} style={s.heatRow}>
-                    <Text style={s.heatLabel}>{b.label}</Text>
-                    <View style={s.heatTrack}><View style={[s.heatFill, { width: `${Math.max(4, pct)}%`, opacity: 0.35 + (pct / 100) * 0.65 }]} /></View>
-                    <Text style={s.heatVal}>{anyBucketEarnings ? `£${b.perHour.toFixed(0)}/h` : `${b.trips}`}</Text>
-                  </View>
-                );
-              })}
-            </Card>
-          </View>
-        )}
-
-        {/* Which platform pays best (by £/hour) */}
-        {platforms.some(p => p.perHour > 0) && (
-          <View style={{ marginTop: spacing.xl }}>
-            <SectionHeader icon="award" title="Which platform pays best?" />
-            <Card style={{ padding: 0, overflow: 'hidden' }}>
-              {platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour).map((p, i, arr) => (
-                <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.zoneName}>{p.platform}</Text>
-                    <Text style={s.zoneSub}>{fmtPerMile(p.perMile)} · {fmtHours(p.hours)}</Text>
-                  </View>
-                  {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} style={{ marginRight: 6 }} /> : null}
-                  <Text style={[s.zoneVal, i === 0 && { color: colors.green }]}>{fmtPerHour(p.perHour)}</Text>
+        {hasData && tab === 'when' && (
+          <Card>
+            {buckets.some(b => b.trips > 0) ? buckets.map(b => {
+              const ref = anyBucketEarnings ? b.perHour : b.trips;
+              const max = anyBucketEarnings ? maxPer : Math.max(...buckets.map(x => x.trips), 1);
+              const pct = max > 0 ? (ref / max) * 100 : 0;
+              return (
+                <View key={b.label} style={s.heatRow}>
+                  <Text style={s.heatLabel}>{b.label}</Text>
+                  <View style={s.heatTrack}><View style={[s.heatFill, { width: `${Math.max(4, pct)}%`, opacity: 0.35 + (pct / 100) * 0.65 }]} /></View>
+                  <Text style={s.heatVal}>{anyBucketEarnings ? `£${b.perHour.toFixed(0)}/h` : `${b.trips}`}</Text>
                 </View>
-              ))}
-            </Card>
-          </View>
+              );
+            }) : <Text style={s.emptyInline}>Track a few trips and your best hours will appear here.</Text>}
+          </Card>
         )}
 
-        {/* Your business — the year as a P&L */}
-        {pnl?.hasData && (
-          <View style={{ marginTop: spacing.xl }}>
-            <SectionHeader icon="bar-chart-2" title="Your business this year" />
-            <Card>
-              <PnlRow label="Net pay / hour (after tax)" value={pnl.hours > 0 ? fmtPerHour(pnl.netPerHour) : '—'} bold />
-              <PnlRow label="Gross pay / hour" value={pnl.hours > 0 ? fmtPerHour(pnl.grossPerHour) : '—'} />
-              <PnlRow label="Earnings / mile" value={fmtPerMile(pnl.perMile)} />
-              <PnlRow label="Margin kept after tax" value={fmtPct(pnl.marginPct)} />
-              <PnlRow label="Hours worked" value={fmtHours(pnl.hours)} last />
-            </Card>
-          </View>
+        {/* MONEY — platform ranking + business P&L */}
+        {hasData && tab === 'money' && (
+          <>
+            {platforms.some(p => p.perHour > 0) && (
+              <View>
+                <SectionHeader icon="award" title="Which platform pays best?" />
+                <Card style={{ padding: 0, overflow: 'hidden' }}>
+                  {platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour).map((p, i, arr) => (
+                    <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
+                      <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
+                        <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.zoneName}>{p.platform}</Text>
+                        <Text style={s.zoneSub}>{fmtPerMile(p.perMile)} · {fmtHours(p.hours)}</Text>
+                      </View>
+                      <Text style={[s.zoneVal, i === 0 && { color: colors.green }]}>{fmtPerHour(p.perHour)}</Text>
+                    </View>
+                  ))}
+                </Card>
+              </View>
+            )}
+            {pnl?.hasData && (
+              <View style={{ marginTop: spacing.lg }}>
+                <SectionHeader icon="bar-chart-2" title="Your business this year" />
+                <Card>
+                  <PnlRow label="Net pay / hour (after tax)" value={pnl.hours > 0 ? fmtPerHour(pnl.netPerHour) : '—'} bold />
+                  <PnlRow label="Gross pay / hour" value={pnl.hours > 0 ? fmtPerHour(pnl.grossPerHour) : '—'} />
+                  <PnlRow label="Earnings / mile" value={fmtPerMile(pnl.perMile)} />
+                  <PnlRow label="Margin kept after tax" value={fmtPct(pnl.marginPct)} />
+                  <PnlRow label="Hours worked" value={fmtHours(pnl.hours)} last />
+                </Card>
+              </View>
+            )}
+            {!platforms.some(p => p.perHour > 0) && !pnl?.hasData && (
+              <Card><Text style={s.emptyInline}>Log your pay against trips to see which platform pays best and your business stats.</Text></Card>
+            )}
+          </>
         )}
 
-        {zones.length === 0 && !buckets.some(b => b.trips > 0) && (
+        {!hasData && (
           <Card style={{ marginTop: spacing.xl, alignItems: 'center', paddingVertical: spacing.xxl }}>
             <View style={{ marginBottom: 10 }}><IconBadge icon="map-pin" tone="mint" size={48} /></View>
             <Text style={[type.bodyMedium, { textAlign: 'center' }]}>No data yet</Text>
@@ -200,6 +225,13 @@ const s = StyleSheet.create({
   tipText: { ...type.body, fontSize: 15, color: colors.textPrimary, lineHeight: 21 },
   tipStrong: { fontWeight: font.bold, color: colors.brandDeep },
   tipRate: { ...type.bodyMedium, ...tabular, color: colors.brandDeep, marginTop: 3 },
+
+  tabs: { flexDirection: 'row', backgroundColor: colors.bgSoft, borderRadius: radius.lg, padding: 4, marginBottom: spacing.lg },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: radius.md },
+  tabItemOn: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  tabText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
+  tabTextOn: { color: colors.textPrimary, fontWeight: font.semibold },
+  emptyInline: { ...type.caption, textAlign: 'center', paddingVertical: spacing.md, lineHeight: 19 },
 
   filterScroll: { marginBottom: spacing.lg, marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl },
   filterChip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard },

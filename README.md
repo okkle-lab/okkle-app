@@ -62,7 +62,7 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 
 ### Insights — where & when you earn most
 - Trips capture an on-device GPS breadcrumb and a reverse-geocoded **area name**.
-- **Hotspots heatmap** drawn on-device (works in Expo Go; real Google Maps can drop in on a dev build), a ranked **top earning / busiest areas** list, and a **best-hours** chart — all in a dedicated Insights screen (also previewed on Home).
+- The Insights screen is **split into three tabs** — **Where** (ranked areas + on-device hotspot heatmap), **When** (best hours), **Money** (platform ranking + business P&L) — with the headline takeaway pinned above, so it's never one long scroll.
 - **Time-of-day filter** (All / Morning / Lunch / Afternoon / Dinner / Late) — compare where you earn most at each part of the day.
 - **Best zone × best time tip** — your most lucrative combination, tied to your £/hour: "You earn most around Wimbledon on evenings — £14.20/h · £4.10/h above your average." Areas are ranked by £/hour.
 
@@ -70,7 +70,10 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - **Collapsing large-title headers** on every tab (Home, Trip, Log, Records, Tax): the title sits large at the top and slides away as you scroll while a compact pinned bar fades in, Starling-style. The settings gear stays pinned top-right throughout.
 
 ### Earnings — one combined card on Home
-- A single **Earnings card** tied to the period switcher: the headline number + week-over-week trend, a three-stat strip (**£/hour** worked · miles & tax back · hours), the earnings trend chart, and a top-3 **by-platform** breakdown — all in one place, no scrolling between separate blocks.
+- A single **Earnings card** tied to the period switcher: the headline number + week-over-week trend, a three-stat strip (**£/hour** worked · miles & tax back · hours), the earnings trend chart, and a ranked **by-platform** breakdown (1 · 2 · 3) — all in one place, no scrolling between separate blocks.
+- **Swipe sideways** on the card to move between Today · Week · Month · Year; the period switcher has an animated sliding pill that tracks the swipe.
+- **Tax saved this year** taps through to the full Tax breakdown.
+- **"Where you earn most"** leads with numbers — best zone + £/hour and a ranked top-3 of areas; the hotspot map lives in Insights.
 - The plain **after-tax-&-costs** £/hour figure is right there: the one number couriers optimise, jargon-free.
 - The "Tax saved this year" hero uses a real **gradient** for depth (via a lightweight SVG `GradientCard`, no native build needed).
 

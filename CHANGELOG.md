@@ -2,6 +2,17 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Swipeable earnings, tappable tax, categorised Insights)
+
+### Home
+- **Tax saved → tap through** to the full Tax breakdown (with a chevron + "see breakdown" hint).
+- **Earnings is now swipeable**: swipe sideways to move between Today · Week · Month · Year. The period switcher has an **animated sliding pill** driven by the swipe — buttery, premium feel.
+- **By-platform now ranks 1 · 2 · 3** with numbered badges (the leader highlighted).
+- **"Where you earn most" leads with numbers** instead of a map: your best zone + £/hour, then a ranked top-3 of areas. The full hotspot map stays in Insights.
+
+### Insights — categorised, no longer one long scroll
+- Split into three focused tabs — **Where** (ranked areas + hotspot map), **When** (best hours), **Money** (platform ranking + business P&L) — with the headline takeaway pinned above. One view at a time.
+
 ## 2026-06-23 (Starling-style headers + number fixes)
 
 ### Animated collapsing headers on every tab
