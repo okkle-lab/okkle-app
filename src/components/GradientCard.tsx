@@ -23,7 +23,7 @@ export function GradientCard({ colors, style, radius = 20, diagonal = true, chil
       onLayout={e => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
     >
       {size.w > 0 && (
-        <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill}>
+        <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
           <Defs>
             <LinearGradient id="gc" x1="0" y1="0" x2={diagonal ? '1' : '0'} y2="1">
               {stops.map((c, i) => <Stop key={i} offset={offsets[i]} stopColor={c} />)}

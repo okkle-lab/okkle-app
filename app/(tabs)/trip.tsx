@@ -8,8 +8,8 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, CollapsingHeader, Icon, Card, IconBadge, GradientCard } from '../../src/components';
-import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES, vehicleLabel } from '../../src/db/tax';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard } from '../../src/components';
+import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, type DailyStats } from '../../src/db';
 
@@ -163,53 +163,50 @@ export default function TripScreen() {
   // ---- Phase 2: live tracking ------------------------------------------------
   if (phase === 'live') {
     const isPaused = trip.state === 'paused';
+    const waiting = !isPaused && trip.speedMph < 0.5;
     const dayMiles = todayBase + trip.miles;
-    const progress = dayMiles / DAILY_GOAL_MILES;
-    const goalPct = Math.min(100, Math.round(progress * 100));
+    const avgMph = trip.elapsedSeconds > 0 ? trip.miles / (trip.elapsedSeconds / 3600) : 0;
+    const statusText = isPaused ? 'Paused' : waiting ? 'Waiting for movement' : 'Recording';
+    const statusColor = isPaused ? colors.amber : waiting ? colors.amber : colors.brand;
     return (
       <GradientCard colors={[colors.dark, '#103029']} radius={0} diagonal={false} style={{ flex: 1 }}>
+        {/* Status pill (live/waiting/paused) + discard */}
         <View style={s.liveHeader}>
-          <View style={[s.liveDot, isPaused && { backgroundColor: colors.amber }]} />
-          <Text style={s.liveStatus}>{isPaused ? 'Paused' : trip.platform}</Text>
+          <View style={s.statusPill}>
+            <View style={[s.liveDot, { backgroundColor: statusColor }]} />
+            <Text style={s.statusPillText}>{statusText} · {trip.platform}</Text>
+          </View>
         </View>
         <Pressable onPress={handleDiscard} hitSlop={12} style={s.discardX}>
           <Feather name="x" size={24} color="rgba(255,255,255,0.7)" />
         </Pressable>
 
-        {/* Daily goal activity ring — ambient and glanceable */}
+        {/* Hero: distance — the thing being measured, big and satisfying */}
         <View style={s.ringWrap}>
-          <ProgressRing size={250} strokeWidth={20} progress={progress} color={isPaused ? colors.amber : colors.brand}>
-            <View style={{ alignItems: 'center' }}>
-              <Text style={s.ringMiles}>{trip.miles.toFixed(1)}</Text>
-              <Text style={s.ringMilesUnit}>miles this trip</Text>
-              {trip.speedMph < 0.5 && !isPaused ? (
-                <View style={[s.ringGoalChip, { backgroundColor: 'rgba(224,150,31,0.18)' }]}>
-                  <Text style={[s.ringGoalText, { color: colors.amber }]}>Waiting…</Text>
-                </View>
-              ) : (
-                <View style={s.ringGoalChip}>
-                  <Text style={s.ringGoalText}>{goalPct}% of daily goal</Text>
-                </View>
-              )}
-            </View>
-          </ProgressRing>
+          <Text style={s.bigMiles}>{trip.miles.toFixed(1)}</Text>
+          <Text style={s.bigMilesUnit}>miles this trip</Text>
+          <View style={s.moneyChip}>
+            <Feather name="trending-up" size={15} color={colors.amber} />
+            <Text style={s.moneyChipText}>{fmtGbp(trip.deduction)} tax deduction earned</Text>
+          </View>
         </View>
 
+        {/* Glass stat strip — time, pace, day total */}
         <View style={s.liveStats}>
-          <View style={s.liveStat}>
-            <Feather name="map" size={16} color="rgba(255,255,255,0.5)" />
-            <Text style={s.liveStatValue}>{trip.miles.toFixed(1)}</Text>
-            <Text style={s.liveStatLabel}>miles</Text>
-          </View>
-          <View style={[s.liveStat, s.liveStatBorder]}>
-            <Feather name="trending-up" size={16} color="rgba(255,255,255,0.5)" />
-            <Text style={s.liveStatValue}>{fmtGbp(trip.deduction)}</Text>
-            <Text style={s.liveStatLabel}>saved</Text>
-          </View>
           <View style={s.liveStat}>
             <Feather name="clock" size={16} color="rgba(255,255,255,0.5)" />
             <Text style={s.liveStatValue}>{fmtDuration(trip.elapsedSeconds)}</Text>
             <Text style={s.liveStatLabel}>time</Text>
+          </View>
+          <View style={[s.liveStat, s.liveStatBorder]}>
+            <Feather name="zap" size={16} color="rgba(255,255,255,0.5)" />
+            <Text style={s.liveStatValue}>{avgMph.toFixed(0)}</Text>
+            <Text style={s.liveStatLabel}>avg mph</Text>
+          </View>
+          <View style={s.liveStat}>
+            <Feather name="map" size={16} color="rgba(255,255,255,0.5)" />
+            <Text style={s.liveStatValue}>{dayMiles.toFixed(1)}</Text>
+            <Text style={s.liveStatLabel}>today</Text>
           </View>
         </View>
 
@@ -219,7 +216,7 @@ export default function TripScreen() {
             style={({ pressed }) => [s.pauseBtn, pressed && { opacity: 0.7 }]}
           >
             <Feather name={isPaused ? 'play' : 'pause'} size={20} color="#fff" />
-            <Text style={s.pauseBtnText}>{isPaused ? 'Resume' : 'Pause'}</Text>
+            <Text style={s.pauseBtnText}>{isPaused ? 'Resume tracking' : 'Pause'}</Text>
           </Pressable>
 
           <SlideToConfirm label="Slide to end trip" onConfirm={handleEnd} color={colors.red} />
@@ -378,18 +375,16 @@ const s = StyleSheet.create({
   tileLabel: { ...type.bodyMedium, fontSize: 14, textAlign: 'center' },
 
   // live
-  liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 72 },
+  liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 72 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.10)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
+  statusPillText: { color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: font.medium },
   discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
-  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.green },
-  liveStatus: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: font.medium },
+  liveDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.green },
   ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  ringMiles: { ...tabular, fontSize: 64, fontWeight: font.bold, color: '#fff', letterSpacing: -2 },
-  ringMilesUnit: { fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: -4 },
-  ringGoalChip: {
-    marginTop: 12, backgroundColor: 'rgba(31,184,154,0.22)',
-    paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.full,
-  },
-  ringGoalText: { color: colors.brandMid, fontSize: 12, fontWeight: font.medium },
+  bigMiles: { ...tabular, fontSize: 96, fontWeight: font.bold, color: '#fff', letterSpacing: -4, lineHeight: 100 },
+  bigMilesUnit: { fontSize: 15, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  moneyChip: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: spacing.lg, backgroundColor: 'rgba(224,150,31,0.16)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
+  moneyChipText: { ...tabular, color: '#F5C97A', fontSize: 14, fontWeight: font.semibold },
   liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginBottom: spacing.xl },
   liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
   liveStatBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },

@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Live trip revamp + slider fix)
+
+- **Fixed the slide-to-end slider** (and pause button) not responding — the new gradient background's SVG layer was swallowing touches; it's now `pointerEvents="none"`. This also makes every gradient card (Home hero, Start) reliably tappable.
+- **Revamped the live tracking screen.** Dropped the arbitrary "% of daily goal" activity ring — mid-trip there's no fixed distance target — in favour of what couriers actually glance at: a **big live distance**, the **tax deduction it's earning** (amber chip), and a glass strip of **time · avg mph · miles today**, with a clear **Recording / Waiting / Paused** status pill.
+
 ## 2026-06-23 (Trip screen redesign)
 
 - **Redesigned the Trip start screen** in the Home design language. Platform + vehicle are now in **one calm card** (with gradient `IconBadge` labels) instead of two stacked sections, **Start trip is a gradient hero card** with the selected platform/vehicle summarised, and **Log pay / Accept-or-skip are clean tiles** rather than competing bordered buttons. Same capabilities, far less button noise.
