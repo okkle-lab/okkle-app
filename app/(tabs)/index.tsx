@@ -3,15 +3,15 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, Icon, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, CoachMarks, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, Icon, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, HeatMapView, CoachMarks, type CoachStep } from '../../src/components';
 import {
   getUser,
   getTaxYearSummary,
   getPeriodSummary, getPlatformStatsForPeriod,
   getStreak, getAchievements, popNewAchievements, getWeeklyChallenges,
-  getBestSpot, getZoneStats, getEarningsByTimeOfDay, getPlatformStats, getPeriodSeries, kvGet, kvSet,
+  getBestSpot, getZoneStats, getEarningsByTimeOfDay, getPlatformStats, getHeatPoints, getPeriodSeries, kvGet, kvSet,
   type PlatformStat, type Period, type PeriodSummary, type Achievement,
-  type Challenge, type BestSpot, type SeriesPoint, type ZoneStat, type TimeBucket,
+  type Challenge, type BestSpot, type SeriesPoint, type ZoneStat, type TimeBucket, type HeatPoint,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
@@ -54,7 +54,6 @@ export default function HomeScreen() {
   const scrollX = React.useRef(new Animated.Value(win.width)).current; // start on Week
   const pagerRef = React.useRef<ScrollView>(null);
   const didInitPager = React.useRef(false);
-  const [gamePage, setGamePage] = React.useState(0);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [user, setUser] = React.useState(getUser());
   const [streak, setStreak] = React.useState(0);
@@ -64,9 +63,11 @@ export default function HomeScreen() {
   const [zones, setZones] = React.useState<ZoneStat[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [platformsAll, setPlatformsAll] = React.useState<PlatformStat[]>([]);
+  const [heatPoints, setHeatPoints] = React.useState<HeatPoint[]>([]);
   const [bestSpot, setBestSpot] = React.useState<BestSpot | null>(null);
-  const [insightPage, setInsightPage] = React.useState(0);
   const [refreshing, setRefreshing] = React.useState(false);
+  const gameScrollX = React.useRef(new Animated.Value(0)).current;
+  const insightScrollX = React.useRef(new Animated.Value(0)).current;
 
   // First-run tour — a quick walk across the five tabs so people know what each does.
   const [showCoach, setShowCoach] = React.useState(false);
@@ -94,6 +95,7 @@ export default function HomeScreen() {
     setZones(getZoneStats('all'));
     setBuckets(getEarningsByTimeOfDay());
     setPlatformsAll(getPlatformStats());
+    setHeatPoints(getHeatPoints());
 
     // Preload all four periods so swiping between them is instant & smooth.
     setBundles(PERIODS.map(p => ({
@@ -124,6 +126,11 @@ export default function HomeScreen() {
   const achievementPreview = [...achievements]
     .sort((a, b) => (Number(b.unlocked) - Number(a.unlocked)) || (b.progress - a.progress))
     .slice(0, 12);
+  // The next medals you're closest to earning — fills the medals card with a goal.
+  const nextLocked = [...achievements]
+    .filter(a => !a.unlocked && a.progress > 0)
+    .sort((a, b) => b.progress - a.progress)
+    .slice(0, 2);
 
   // Animated sliding pill for the period switcher, driven by the earnings pager.
   const SEG_W = win.width - spacing.xl * 2;
@@ -279,9 +286,7 @@ export default function HomeScreen() {
               </View>
             ))}
           </Animated.ScrollView>
-          <View style={s.dots}>
-            {PERIODS.map((_, i) => <View key={i} style={[s.cdot, i === periodIndex && s.cdotOn]} />)}
-          </View>
+          <AnimatedDots scrollX={scrollX} count={PERIODS.length} pageWidth={win.width} />
         </>
       )}
 
@@ -295,9 +300,10 @@ export default function HomeScreen() {
               <Feather name="chevron-right" size={15} color={colors.brandDeep} />
             </Pressable>
           </View>
-          <ScrollView
+          <Animated.ScrollView
             horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={e => setGamePage(Math.round(e.nativeEvent.contentOffset.x / win.width))}
+            scrollEventThrottle={16}
+            onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: gameScrollX } } }], { useNativeDriver: true })}
             style={{ marginHorizontal: -spacing.xl }}
           >
             {/* Page 1: weekly goals */}
@@ -346,13 +352,30 @@ export default function HomeScreen() {
                       </View>
                     ))}
                   </ScrollView>
+                  {nextLocked.length > 0 && (
+                    <View style={s.nextWrap}>
+                      <Text style={s.nextHead}>Closest to unlocking</Text>
+                      {nextLocked.map(a => (
+                        <View key={a.key} style={s.nextRow}>
+                          <Medal icon={a.icon as any} category={a.category} tier={a.tier} unlocked={false} size={30} />
+                          <View style={{ flex: 1, gap: 6 }}>
+                            <View style={s.challTop}>
+                              <Text style={s.nextLabel} numberOfLines={1}>{a.label}</Text>
+                              <Text style={s.challProg}>{Math.round(a.progress * 100)}%</Text>
+                            </View>
+                            <View style={s.challTrack}>
+                              <View style={[s.challFill, { width: `${Math.round(a.progress * 100)}%`, backgroundColor: colors.brandMid }]} />
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </Card>
               </Pressable>
             </View>
-          </ScrollView>
-          <View style={s.dots}>
-            {[0, 1].map(i => <View key={i} style={[s.cdot, i === gamePage && s.cdotOn]} />)}
-          </View>
+          </Animated.ScrollView>
+          <AnimatedDots scrollX={gameScrollX} count={2} pageWidth={win.width} />
         </View>
       )}
 
@@ -386,6 +409,12 @@ export default function HomeScreen() {
         if (rankedZones.length) pages.push({ title: 'Top areas', node: (
           <RankList rows={rankedZones.map(z => ({ key: z.zone, name: z.zone, sub: `${z.trips} ${z.trips === 1 ? 'trip' : 'trips'} · ${fmtMiles(z.miles)}`, val: anyPerHour ? fmtPerHour(z.perHour) : z.earnings > 0 ? fmtGbp(z.earnings) : fmtMiles(z.miles) }))} />
         ) });
+        if (heatPoints.length) pages.push({ title: 'Hotspot map', node: (
+          <View style={{ marginTop: spacing.sm }}>
+            <HeatMapView points={heatPoints} height={168} />
+            <Text style={[s.zoneSub, { marginTop: spacing.sm }]}>Brighter = where you spend more time. Tap for the full map.</Text>
+          </View>
+        ) });
         if (rankedTimes.length) pages.push({ title: 'Best times', node: (
           <RankList rows={rankedTimes.map(b => ({ key: b.label, name: b.label, sub: `${b.trips} ${b.trips === 1 ? 'trip' : 'trips'}`, val: anyBucketEarn ? fmtPerHour(b.perHour) : `${b.trips}` }))} />
         ) });
@@ -414,9 +443,10 @@ export default function HomeScreen() {
                 </View>
               </Pressable>
             )}
-            <ScrollView
+            <Animated.ScrollView
               horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={e => setInsightPage(Math.round(e.nativeEvent.contentOffset.x / win.width))}
+              scrollEventThrottle={16}
+              onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: insightScrollX } } }], { useNativeDriver: true })}
               style={{ marginHorizontal: -spacing.xl, marginTop: spacing.md }}
             >
               {pages.map((pg, i) => (
@@ -429,12 +459,8 @@ export default function HomeScreen() {
                   </Pressable>
                 </View>
               ))}
-            </ScrollView>
-            {pages.length > 1 && (
-              <View style={s.dots}>
-                {pages.map((_, i) => <View key={i} style={[s.cdot, i === insightPage && s.cdotOn]} />)}
-              </View>
-            )}
+            </Animated.ScrollView>
+            <AnimatedDots scrollX={insightScrollX} count={pages.length} pageWidth={win.width} />
           </View>
         );
       })()}
@@ -591,6 +617,10 @@ const s = StyleSheet.create({
   challProg: { ...type.small, ...tabular },
   challTrack: { height: 6, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
   challFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
+  nextWrap: { marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md, gap: spacing.sm },
+  nextHead: { ...type.label, color: colors.textSecondary, fontWeight: font.semibold },
+  nextRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nextLabel: { ...type.bodyMedium, fontSize: 14, flex: 1 },
   streakRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   streakIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   streakValue: { ...type.bodyMedium, fontSize: 16 },

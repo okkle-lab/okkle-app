@@ -321,7 +321,7 @@ function dayPartIndex(h: number): number {
   if (h < 21) return 3;            // Evening
   return 4;                         // Late (21:00–05:00)
 }
-const DAY_PARTS = ['6–11a', '11–2p', '2–5p', '5–9p', '9p+'];
+const DAY_PARTS = ['6am', '11am', '2pm', '5pm', '9pm'];
 
 export function getPeriodSeries(period: Period, metric: SeriesMetric = 'earnings', ref = new Date()): SeriesPoint[] {
   if (period === 'today') {
@@ -940,7 +940,9 @@ export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
     agg[z].hours += ms > 0 ? ms / 3600000 : 0;
   }
   const list = Object.values(agg);
-  for (const z of list) z.perHour = z.hours > 0 ? z.earnings / z.hours : 0;
+  // Only compute £/hour with real tracked time — under ~15 min it explodes into
+  // nonsense (e.g. £400k/hr from a trip logged with no duration).
+  for (const z of list) z.perHour = z.hours >= 0.25 ? z.earnings / z.hours : 0;
   const anyPerHour = list.some(z => z.perHour > 0);
   const anyEarnings = list.some(z => z.earnings > 0);
   return list.sort((a, b) =>
@@ -979,7 +981,7 @@ export function getBestSpot(): BestSpot | null {
   }
   const avgPerHour = totalHours > 0 ? totalEarnings / totalHours : 0;
   const candidates = Object.values(agg)
-    .filter(s => s.hours > 0.1)
+    .filter(s => s.hours >= 0.25)
     .map(s => ({ ...s, perHour: s.earnings / s.hours, vsAverage: s.earnings / s.hours - avgPerHour }))
     .sort((a, b) => b.perHour - a.perHour);
   return candidates[0] ?? null;

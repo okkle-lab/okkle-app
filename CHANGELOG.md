@@ -2,6 +2,14 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Smooth carousels, heatmap on Home, £/h fix)
+
+- **Fixed another £/hour explosion** — zone stats (and the best-spot tip) were showing things like £402,613/h when a trip had earnings but ~no tracked time. Now ignored under ~15 min; those areas rank and display by earnings instead.
+- **"Where & when you earn" carousel now includes a Hotspot map page** and richer ranked lists (Areas · Map · Best times · Best platforms), so it's no longer one lonely card.
+- **All Home carousels now use a smooth sliding dot indicator** (`AnimatedDots`) that tracks your finger — same premium feel as the Today/Week/Month/Year switcher. Applies to Earnings, Progress and the insights carousel.
+- **Clearer Today time labels** — now `6am · 11am · 2pm · 5pm · 9pm` instead of `6–11a`.
+- **The medals card (Progress page 2) is no longer empty** — it now shows a "Closest to unlocking" list with progress bars for the next medals you'll earn.
+
 ## 2026-06-23 ("Accept or skip?" order checker)
 
 - New **"Accept or skip?" order checker** (Trip tab): enter an offer's pay + distance and it shows the **£/mile** (and £/hour with an optional time estimate) plus a clear *Worth it / Skip it* verdict against your **minimum £/mile** — seeded from your own historical average and adjustable. This replaces the passive "Tips" tab with an actual decision tool couriers use on every order.

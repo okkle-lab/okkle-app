@@ -18,3 +18,4 @@ export { ScreenHeader } from './ScreenHeader';
 export { RouteMap } from './RouteMap';
 export { GradientCard } from './GradientCard';
 export { CollapsingHeader } from './CollapsingHeader';
+export { AnimatedDots } from './AnimatedDots';
