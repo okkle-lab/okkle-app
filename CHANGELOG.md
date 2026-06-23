@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (premium icons, Starling-inspired)
+
+### Richer icons, less flat
+- Replaced the flat tinted icon circles with **soft gradient discs** — a top highlight and a coloured glow give them depth and warmth (Starling-style). Added blue + violet tones for variety, so it's no longer all-mint (earnings green, miles mint, hours blue, etc.).
+- One shared component, so Records, Settings, Export, Insights and the Home cards all lift at once.
+- **Medals** gained a soft glow halo so they pop off the surface.
+
 ## 2026-06-23 (combined cards + cleaner Records)
 
 ### Home — value + chart in one card (Trading-212 style)
