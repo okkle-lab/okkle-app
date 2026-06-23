@@ -19,6 +19,10 @@ export default function RootLayout() {
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="settings-account" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="settings-reminders" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="settings-data" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="settings-about" options={{ presentation: 'modal' }} />
       <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
       <Stack.Screen name="compare" options={{ presentation: 'modal' }} />
       <Stack.Screen name="medals" options={{ presentation: 'modal' }} />
