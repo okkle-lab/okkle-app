@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, IconBadge, CoachMarks, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, IconBadge, GradientCard, CoachMarks, type CoachStep } from '../../src/components';
 import {
   getUser,
   getTaxYearSummary, getEarningsByTimeOfDay,
@@ -13,7 +13,7 @@ import {
   type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
   type Challenge, type HeatPoint, type BestSpot, type SeriesPoint,
 } from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
+import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtHours } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
 
 
@@ -49,9 +49,6 @@ export default function HomeScreen() {
   const [periodPlatforms, setPeriodPlatforms] = React.useState<PlatformStat[]>([]);
   const [prevData, setPrevData] = React.useState<PeriodSummary | null>(null);
   const [seriesEarn, setSeriesEarn] = React.useState<SeriesPoint[]>([]);
-  const [seriesMiles, setSeriesMiles] = React.useState<SeriesPoint[]>([]);
-  const [seriesHours, setSeriesHours] = React.useState<SeriesPoint[]>([]);
-  const [metricPage, setMetricPage] = React.useState(0);
   const [gamePage, setGamePage] = React.useState(0);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [user, setUser] = React.useState(getUser());
@@ -89,8 +86,6 @@ export default function HomeScreen() {
     setPeriodPlatforms(getPlatformStatsForPeriod(p));
     setPrevData(getPeriodSummary(p, prevRef(p)));
     setSeriesEarn(getPeriodSeries(p, 'earnings'));
-    setSeriesMiles(getPeriodSeries(p, 'miles'));
-    setSeriesHours(getPeriodSeries(p, 'hours'));
   }
 
   function load() {
@@ -152,7 +147,7 @@ export default function HomeScreen() {
       </View>
 
       {/* HERO: tax saved this year — the emotional centrepiece */}
-      <View style={s.hero}>
+      <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Feather name="trending-up" size={15} color="#fff" />
           <Text style={s.heroLabel}>Tax saved this year</Text>
@@ -164,7 +159,7 @@ export default function HomeScreen() {
         <View style={s.heroChip}>
           <Text style={s.heroChipText}>Tax year {taxYearLabel()}</Text>
         </View>
-      </View>
+      </GradientCard>
 
       {/* Period switcher — Today · Week · Month · Year */}
       <View style={s.segment}>
@@ -176,107 +171,79 @@ export default function HomeScreen() {
       </View>
       <Text style={s.periodLabel}>{periodData ? fmtPeriodRange(period, periodData.rangeStart, periodData.rangeEnd) : ''}</Text>
 
-      {/* £/hour — the hero KPI, its own prominent card */}
+      {/* ONE earnings card: the headline number, £/hour, miles & hours, the
+          trend chart, and a top-platforms breakdown — all in one place. */}
       {(() => {
+        const earnings = periodData?.earnings ?? 0;
         const hrs = periodData?.hours ?? 0;
-        const perHour = hrs > 0 ? periodData!.earnings / hrs : 0;
+        const miles = periodData?.miles ?? 0;
+        const perHour = hrs > 0 ? earnings / hrs : 0;
         const netPerHour = hrs > 0 ? Math.max(0, periodData!.takeHome - periodData!.expenses) / hrs : 0;
-        const prevHrs = prevData?.hours ?? 0;
-        const prevPerHour = prevHrs > 0 ? prevData!.earnings / prevHrs : null;
-        const d = prevPerHour != null && hrs > 0 ? perHour - prevPerHour : null;
+        const earnDelta = prevData ? earnings - prevData.earnings : null;
+        const hasTrend = earnDelta != null && Math.abs(earnDelta) >= 1;
+        const tops = [...periodPlatforms].sort((a, b) => b.earnings - a.earnings).slice(0, 3);
         return (
-          <View style={s.kpi}>
-            <View style={s.kpiHead}>
-              <Feather name="clock" size={15} color="#fff" />
-              <Text style={s.kpiLabel}>Earned per hour</Text>
-            </View>
-            {hrs > 0 ? (
-              <>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                  <Text style={s.kpiValue}>£{perHour.toFixed(2)}</Text><Text style={s.kpiUnit}>/hr</Text>
-                </View>
-                <Text style={s.kpiNet}>£{netPerHour.toFixed(2)}/hr after tax &amp; costs · take-home {fmtGbp(periodData?.takeHome ?? 0)}</Text>
-                {d != null && Math.abs(d) >= 0.05 && (
-                  <View style={[s.kpiTrend, { backgroundColor: d >= 0 ? 'rgba(255,255,255,0.22)' : 'rgba(226,96,74,0.30)' }]}>
-                    <Feather name={d >= 0 ? 'arrow-up-right' : 'arrow-down-right'} size={13} color="#fff" />
-                    <Text style={s.kpiTrendText}>£{Math.abs(d).toFixed(2)}/hr vs {PREV_WORD[period]}</Text>
-                  </View>
-                )}
-              </>
-            ) : (
-              <Text style={s.kpiEmpty}>Track a trip with GPS and log your pay to see what you really make per hour.</Text>
-            )}
-          </View>
-        );
-      })()}
-
-      {/* Swipeable carousel — each page combines the value with its own chart. */}
-      {(() => {
-        const earnDelta = prevData ? (periodData?.earnings ?? 0) - prevData.earnings : null;
-        const cards = [
-          { icon: 'dollar-sign' as const, tone: 'green' as const, label: 'Earnings', value: fmtGbp(periodData?.earnings ?? 0), series: seriesEarn, fmt: fmtGbp, empty: 'No earnings logged in this period.', trend: earnDelta != null && Math.abs(earnDelta) >= 1 ? { text: `${fmtGbp(Math.abs(earnDelta))} vs ${PREV_WORD[period]}`, up: earnDelta >= 0 } : null, sub: 'money in' },
-          { icon: 'map' as const, tone: 'mint' as const, label: 'Miles', value: fmtMiles(periodData?.miles ?? 0), series: seriesMiles, fmt: fmtMiles, empty: 'No miles in this period.', trend: null, sub: `${fmtGbp(periodData?.deduction ?? 0)} tax deduction` },
-          { icon: 'navigation' as const, tone: 'blue' as const, label: period === 'today' ? 'Trips' : 'Hours', value: period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0), series: seriesHours, fmt: fmtHours, empty: 'No hours in this period.', trend: null, sub: `${periodData?.trips ?? 0} trips` },
-        ];
-        return (
-          <View style={{ marginTop: spacing.md }}>
-            <ScrollView
-              horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={e => setMetricPage(Math.round(e.nativeEvent.contentOffset.x / win.width))}
-              style={{ marginHorizontal: -spacing.xl }}
-            >
-              {cards.map((c, i) => (
-                <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
-                  <View style={[s.mc, period !== 'today' && { minHeight: 256 }]}>
-                    <View style={s.mcHead}>
-                      <IconBadge icon={c.icon} tone={c.tone} size={30} />
-                      <Text style={s.mcLabel}>{c.label}</Text>
-                    </View>
-                    <Text style={s.mcValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{c.value}</Text>
-                    {c.trend ? (
-                      <View style={[s.mcTrend, { backgroundColor: c.trend.up ? colors.greenLight : colors.redLight }]}>
-                        <Feather name={c.trend.up ? 'arrow-up-right' : 'arrow-down-right'} size={13} color={c.trend.up ? colors.green : colors.red} />
-                        <Text style={[s.mcTrendText, { color: c.trend.up ? colors.green : colors.red }]}>{c.trend.text}</Text>
-                      </View>
-                    ) : <Text style={s.mcSub}>{c.sub}</Text>}
-                    {period !== 'today' && (
-                      <View style={{ marginTop: spacing.lg }}>
-                        <BarChart data={c.series} format={c.fmt} emptyLabel={c.empty} height={118} />
-                      </View>
-                    )}
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-            <View style={s.dots}>
-              {cards.map((_, i) => <View key={i} style={[s.cdot, i === metricPage && s.cdotOn]} />)}
-            </View>
-          </View>
-        );
-      })()}
-
-      {/* Per-platform breakdown for the selected period — multi-platform couriers */}
-      {periodPlatforms.length > 0 && (
-        <View style={{ marginTop: spacing.lg }}>
-          <SectionHeader icon="grid" title={`By platform · ${periodData?.label ?? ''}`} />
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            {periodPlatforms.map((p, i, arr) => (
-              <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rowTitle}>{p.platform}</Text>
-                  <Text style={s.rowSub}>
-                    {fmtMiles(p.miles)}{p.perMile > 0 ? ` · ${fmtPerMile(p.perMile)}` : ''}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
-                  {i === 0 && arr.length > 1 ? <Feather name="award" size={15} color={colors.green} /> : null}
-                  <Text style={[s.rowAmount, { color: colors.textPrimary }, i === 0 && { color: colors.green }]}>{fmtGbp(p.earnings)}</Text>
-                </View>
+          <Card style={{ marginTop: spacing.md, padding: spacing.lg }}>
+            <View style={s.earnHead}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconBadge icon="dollar-sign" tone="green" size={32} />
+                <Text style={s.earnLabel}>Earnings</Text>
               </View>
-            ))}
+              {hasTrend && (
+                <View style={[s.mcTrend, { backgroundColor: earnDelta! >= 0 ? colors.greenLight : colors.redLight, marginTop: 0 }]}>
+                  <Feather name={earnDelta! >= 0 ? 'arrow-up-right' : 'arrow-down-right'} size={13} color={earnDelta! >= 0 ? colors.green : colors.red} />
+                  <Text style={[s.mcTrendText, { color: earnDelta! >= 0 ? colors.green : colors.red }]}>{fmtGbp(Math.abs(earnDelta!))} vs {PREV_WORD[period]}</Text>
+                </View>
+              )}
+            </View>
+            <Text style={s.earnValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{fmtGbp(earnings)}</Text>
+
+            {/* three inline stats */}
+            <View style={s.statRow}>
+              <View style={s.statCell}>
+                <Text style={s.statVal}>{hrs > 0 ? `£${perHour.toFixed(2)}` : '—'}</Text>
+                <Text style={s.statLbl}>per hour</Text>
+              </View>
+              <View style={s.statDivider} />
+              <View style={s.statCell}>
+                <Text style={s.statVal}>{fmtMiles(miles)}</Text>
+                <Text style={s.statLbl}>{fmtGbp(periodData?.deduction ?? 0)} tax back</Text>
+              </View>
+              <View style={s.statDivider} />
+              <View style={s.statCell}>
+                <Text style={s.statVal}>{period === 'today' ? (periodData?.trips ?? 0) : fmtHours(hrs)}</Text>
+                <Text style={s.statLbl}>{period === 'today' ? 'trips' : 'hours'}</Text>
+              </View>
+            </View>
+
+            {hrs > 0 && (
+              <Text style={s.earnNet}>£{netPerHour.toFixed(2)}/hr after tax &amp; costs · take-home {fmtGbp(periodData?.takeHome ?? 0)}</Text>
+            )}
+
+            {period !== 'today' && (
+              <View style={{ marginTop: spacing.lg }}>
+                <BarChart data={seriesEarn} format={fmtGbp} emptyLabel="No earnings logged in this period." height={120} />
+              </View>
+            )}
+
+            {tops.length > 0 && (
+              <View style={s.platWrap}>
+                <Text style={s.platHead}>By platform</Text>
+                {tops.map((p, i) => (
+                  <View key={p.platform} style={s.platRow}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={s.platName} numberOfLines={1}>{p.platform}</Text>
+                      {i === 0 && tops.length > 1 && <Feather name="award" size={13} color={colors.green} />}
+                    </View>
+                    <Text style={s.platMiles}>{fmtMiles(p.miles)}</Text>
+                    <Text style={[s.platVal, i === 0 && { color: colors.green }]}>{fmtGbp(p.earnings)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </Card>
-        </View>
-      )}
+        );
+      })()}
 
       {/* Progress — goals + medals combined into one swipeable card */}
       {(achievements.length > 0 || challenges.length > 0) && (
@@ -393,10 +360,7 @@ const s = StyleSheet.create({
   streakChipOff: { backgroundColor: colors.bgSoft },
   streakChipText: { ...tabular, fontSize: 14, fontWeight: font.bold, color: colors.amber },
 
-  hero: {
-    backgroundColor: colors.brandDeep, borderRadius: radius.xl,
-    padding: spacing.xl, marginBottom: spacing.lg,
-  },
+  hero: { padding: spacing.xl, marginBottom: spacing.lg },
   heroLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: font.medium },
   heroValue: { ...tabular, color: '#fff', fontSize: 44, fontWeight: font.bold, letterSpacing: -1, marginTop: 8 },
   heroSub: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4 },
@@ -437,6 +401,22 @@ const s = StyleSheet.create({
   mcSub: { ...tabular, ...type.caption, marginTop: 4 },
   mcTrend: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, marginTop: spacing.sm },
   mcTrendText: { ...tabular, fontSize: 12, fontWeight: font.semibold },
+
+  earnHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  earnLabel: { ...type.label, fontSize: 14, color: colors.textSecondary, fontWeight: font.medium },
+  earnValue: { ...tabular, fontSize: 40, fontWeight: font.bold, color: colors.textPrimary, letterSpacing: -1 },
+  earnNet: { ...tabular, ...type.caption, color: colors.textSecondary, marginTop: spacing.sm },
+  statRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, backgroundColor: colors.bgSoft, borderRadius: radius.md, paddingVertical: 12 },
+  statCell: { flex: 1, alignItems: 'center' },
+  statDivider: { width: 1, alignSelf: 'stretch', marginVertical: 6, backgroundColor: colors.border },
+  statVal: { ...tabular, fontSize: 17, fontWeight: font.bold, color: colors.textPrimary },
+  statLbl: { ...type.small, fontSize: 11, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  platWrap: { marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md },
+  platHead: { ...type.label, color: colors.textSecondary, fontWeight: font.semibold, marginBottom: 8 },
+  platRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  platName: { ...type.bodyMedium, fontSize: 14, flexShrink: 1 },
+  platMiles: { ...tabular, ...type.caption, color: colors.textTertiary },
+  platVal: { ...tabular, fontSize: 14, fontWeight: font.bold, color: colors.textPrimary, minWidth: 64, textAlign: 'right' },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: spacing.md },
   cdot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   cdotOn: { backgroundColor: colors.brand, width: 18 },

@@ -16,3 +16,4 @@ export { DatePickerField } from './DatePickerField';
 export { BarChart } from './BarChart';
 export { ScreenHeader } from './ScreenHeader';
 export { RouteMap } from './RouteMap';
+export { GradientCard } from './GradientCard';

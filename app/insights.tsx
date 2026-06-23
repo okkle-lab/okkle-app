@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Card, SectionHeader, HeatMapView } from '../src/components';
+import { Card, SectionHeader, HeatMapView, IconBadge } from '../src/components';
 import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../src/db';
 import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../src/db/tax';
 
@@ -44,22 +44,6 @@ export default function InsightsScreen() {
         </View>
         <Text style={s.sub}>Where and when your work pays off best.</Text>
 
-        {/* Headline tip — best zone × best time by £/hour */}
-        {best && (
-          <View style={s.tip}>
-            <Text style={s.tipEmoji}>💡</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={s.tipText}>
-                You earn most around <Text style={s.tipStrong}>{best.zone}</Text> on <Text style={s.tipStrong}>{best.timeLabel}</Text>
-              </Text>
-              <Text style={s.tipRate}>
-                {fmtPerHour(best.perHour)}
-                {best.vsAverage >= 0.5 ? ` · £${best.vsAverage.toFixed(2)}/h above your average` : ` · ${best.trips} ${best.trips === 1 ? 'trip' : 'trips'}`}
-              </Text>
-            </View>
-          </View>
-        )}
-
         {/* Time-of-day filter — compare where you earn at different times */}
         {buckets.some(b => b.trips > 0) && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
@@ -71,10 +55,24 @@ export default function InsightsScreen() {
           </ScrollView>
         )}
 
-        {/* WHERE — location heatmap */}
+        {/* WHERE — hotspots, with the headline tip folded into the same card */}
         <SectionHeader icon="map" title="Your hotspots" />
         <Card style={{ padding: spacing.sm }}>
-          <HeatMapView points={points} height={230} />
+          {best && (
+            <View style={s.tip}>
+              <IconBadge icon="zap" tone="amber" size={38} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.tipText}>
+                  You earn most around <Text style={s.tipStrong}>{best.zone}</Text> on <Text style={s.tipStrong}>{best.timeLabel}</Text>
+                </Text>
+                <Text style={s.tipRate}>
+                  {fmtPerHour(best.perHour)}
+                  {best.vsAverage >= 0.5 ? ` · £${best.vsAverage.toFixed(2)}/h above your average` : ` · ${best.trips} ${best.trips === 1 ? 'trip' : 'trips'}`}
+                </Text>
+              </View>
+            </View>
+          )}
+          <HeatMapView points={points} height={210} />
           <View style={s.legend}>
             <Text style={s.legendText}>Quieter</Text>
             <View style={s.legendBar}>
@@ -167,7 +165,7 @@ export default function InsightsScreen() {
 
         {zones.length === 0 && !buckets.some(b => b.trips > 0) && (
           <Card style={{ marginTop: spacing.xl, alignItems: 'center', paddingVertical: spacing.xxl }}>
-            <Text style={{ fontSize: 34, marginBottom: 8 }}>📍</Text>
+            <View style={{ marginBottom: 10 }}><IconBadge icon="map-pin" tone="mint" size={48} /></View>
             <Text style={[type.bodyMedium, { textAlign: 'center' }]}>No data yet</Text>
             <Text style={[type.caption, { textAlign: 'center', marginTop: 4, lineHeight: 19 }]}>
               Track trips with GPS and log your pay — your hotspots, best hours and business stats will appear here.
@@ -198,8 +196,7 @@ const s = StyleSheet.create({
   title: { ...type.screenTitle },
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.lg },
 
-  tip: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.brandLight, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xl },
-  tipEmoji: { fontSize: 26 },
+  tip: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
   tipText: { ...type.body, fontSize: 15, color: colors.textPrimary, lineHeight: 21 },
   tipStrong: { fontWeight: font.bold, color: colors.brandDeep },
   tipRate: { ...type.bodyMedium, ...tabular, color: colors.brandDeep, marginTop: 3 },

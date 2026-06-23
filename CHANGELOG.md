@@ -2,6 +2,18 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Declutter pass 3: compact filters, combined cards, gradients)
+
+### Home — one earnings card instead of three blocks
+- Merged the **Earned-per-hour** card, the **Earnings/Miles/Hours** carousel and the **By-platform** list into a **single Earnings card**: the headline number + trend, a three-stat strip (£/hour · miles & tax back · hours), the earnings chart, and the top-3 platforms — all in one place. Much shorter, one glance.
+- The hero "Tax saved" card now uses a **real gradient** (brand → deep → dark) for depth instead of a flat fill, via a new `GradientCard` (SVG-based, works in Expo Go).
+
+### Records — one filter row, not two
+- Replaced the two stacked scrolling chip rows with a **single segmented control** (All · Trips · Earnings · Expenses) plus a compact **month picker** pill. "Trips" now covers GPS + manual mileage together, and each row keeps its GPS / Manual tag so they're still distinguishable.
+
+### Insights — compact, gradient icons
+- Folded the headline "you earn most…" tip **into** the hotspots card (one card, not two stacked), and swapped the 💡 and 📍 emoji for gradient **IconBadge** glyphs.
+
 ## 2026-06-23 (Declutter pass 2: premium icons, trip, tax, edit confirm)
 
 ### Icons — our own, not emoji

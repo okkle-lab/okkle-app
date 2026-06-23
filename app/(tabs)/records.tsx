@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Alert } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
@@ -16,25 +16,37 @@ export default function RecordsScreen() {
   const [items, setItems] = React.useState<Item[]>([]);
   const [vehicles, setVehicles] = React.useState<VehicleStat[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
-  const [filter, setFilter] = React.useState<'all' | 'trip' | 'income' | 'expense' | 'mileage'>('all');
+  const [filter, setFilter] = React.useState<'all' | 'trips' | 'income' | 'expense'>('all');
   const [month, setMonth] = React.useState<string>('all'); // 'all' or 'YYYY-MM'
 
+  // Four clear buckets. "Trips" covers driving (GPS + manual mileage) — each row
+  // still carries a GPS / Manual tag so you can tell them apart at a glance.
   const FILTERS: { key: typeof filter; label: string }[] = [
     { key: 'all', label: 'All' },
-    { key: 'trip', label: 'GPS trips' },
+    { key: 'trips', label: 'Trips' },
     { key: 'income', label: 'Earnings' },
     { key: 'expense', label: 'Expenses' },
-    { key: 'mileage', label: 'Manual miles' },
   ];
   const itemDate = (it: Item) => (it.kind === 'trip' ? it.data.started_at : it.data.created_at).slice(0, 10);
   const months = Array.from(new Set(items.map(it => itemDate(it).slice(0, 7)))).sort().reverse();
   const monthLabel = (m: string) => new Date(m + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 
   const visible = items.filter(it => {
-    const typeOk = filter === 'all' ? true : filter === 'trip' ? it.kind === 'trip' : it.kind === 'record' && it.data.record_type === filter;
+    const typeOk =
+      filter === 'all' ? true :
+      filter === 'trips' ? (it.kind === 'trip' || (it.kind === 'record' && it.data.record_type === 'mileage')) :
+      it.kind === 'record' && it.data.record_type === filter;
     const monthOk = month === 'all' ? true : itemDate(it).slice(0, 7) === month;
     return typeOk && monthOk;
   });
+
+  function pickMonth() {
+    Alert.alert('Show month', undefined, [
+      { text: 'All time', onPress: () => setMonth('all') },
+      ...months.slice(0, 8).map(m => ({ text: monthLabel(m), onPress: () => setMonth(m) })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  }
 
   function load() {
     const trips = getTrips(50).map(t => ({ kind: 'trip' as const, data: t }));
@@ -126,26 +138,22 @@ export default function RecordsScreen() {
         </Card>
       ) : (
         <>
-          <SectionHeader icon="list" title="All entries" />
-          {months.length > 1 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
-              <Pressable onPress={() => setMonth('all')} style={[s.monthChip, month === 'all' && s.monthChipOn]}>
-                <Text style={[s.monthText, month === 'all' && s.monthTextOn]}>All time</Text>
-              </Pressable>
-              {months.map(m => (
-                <Pressable key={m} onPress={() => setMonth(m)} style={[s.monthChip, month === m && s.monthChipOn]}>
-                  <Text style={[s.monthText, month === m && s.monthTextOn]}>{monthLabel(m)}</Text>
+          <View style={s.filterBar}>
+            <View style={s.segment}>
+              {FILTERS.map(f => (
+                <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.segItem, filter === f.key && s.segItemOn]}>
+                  <Text style={[s.segText, filter === f.key && s.segTextOn]} numberOfLines={1}>{f.label}</Text>
                 </Pressable>
               ))}
-            </ScrollView>
-          )}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
-            {FILTERS.map(f => (
-              <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.filterChip, filter === f.key && s.filterChipOn]}>
-                <Text style={[s.filterText, filter === f.key && s.filterTextOn]}>{f.label}</Text>
+            </View>
+            {months.length > 1 && (
+              <Pressable onPress={pickMonth} style={s.monthBtn} hitSlop={6}>
+                <Feather name="calendar" size={14} color={colors.brandDeep} />
+                <Text style={s.monthBtnText} numberOfLines={1}>{month === 'all' ? 'All time' : monthLabel(month)}</Text>
+                <Feather name="chevron-down" size={14} color={colors.brandDeep} />
               </Pressable>
-            ))}
-          </ScrollView>
+            )}
+          </View>
           {visible.length === 0 ? (
             <Card><Text style={{ color: colors.textSecondary, textAlign: 'center', paddingVertical: 8 }}>Nothing here yet.</Text></Card>
           ) : (
@@ -169,15 +177,14 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   heading: { ...type.screenTitle, marginBottom: spacing.lg },
   hint: { ...type.small, textAlign: 'center', marginTop: spacing.md },
-  filterScroll: { marginBottom: spacing.md, marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard },
-  filterChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  filterText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
-  filterTextOn: { color: '#fff' },
-  monthChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bgSoft },
-  monthChipOn: { backgroundColor: colors.brandDeep },
-  monthText: { fontSize: 13, fontWeight: font.semibold, color: colors.textSecondary },
-  monthTextOn: { color: '#fff' },
+  filterBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.md },
+  segment: { flexDirection: 'row', flex: 1, backgroundColor: colors.bgSoft, borderRadius: radius.md, padding: 3 },
+  segItem: { flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: radius.sm },
+  segItemOn: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segText: { fontSize: 12.5, fontWeight: font.medium, color: colors.textSecondary },
+  segTextOn: { color: colors.textPrimary, fontWeight: font.semibold },
+  monthBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 10, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.brandLight },
+  monthBtnText: { fontSize: 12.5, fontWeight: font.semibold, color: colors.brandDeep, maxWidth: 72 },
 });
 
 const row = StyleSheet.create({
