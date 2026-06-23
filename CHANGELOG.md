@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (the £/hour KPI)
+
+### The number couriers care about
+- A prominent **"Earned per hour"** card on Home, tied to the period switcher: big **£X/hr**, a plain **"£Y/hr after tax & costs"** line (take-home minus real expenses), and a **week-over-week trend** ("up £1.10/hr vs last week").
+- No jargon — the one metric couriers actually optimise. The detailed P&L (margins, effective rate) stays on the Tax tab.
+
 ## 2026-06-23 (spotlight app tour)
 
 ### First-run coachmarks

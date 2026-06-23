@@ -66,6 +66,9 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - **Time-of-day filter** (All / Morning / Lunch / Afternoon / Dinner / Late) — compare where you earn most at each part of the day.
 - **Best zone × best time tip** — your single most lucrative combination by £/hour ("You earn most around Wimbledon on evenings · £14.20/h").
 
+### Earned per hour (the headline KPI)
+- A prominent **£/hour** card on Home tied to the period switcher — what you make per hour worked, a plain **after-tax-&-costs** figure, and a week-over-week trend. The one number couriers optimise, jargon-free.
+
 ### Business insights
 - Net pay per hour, gross pay per hour, earnings per mile, net margin (% kept after tax), hours tracked.
 - Platform ranking by £/hour (not just total earnings).
