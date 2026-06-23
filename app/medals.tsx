@@ -3,13 +3,14 @@ import { View, Text, ScrollView, StyleSheet, Pressable, Modal } from 'react-nati
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Medal } from '../src/components';
-import { getAchievements, getStreak, type Achievement } from '../src/db';
+import { Medal, Card, SectionHeader } from '../src/components';
+import { getAchievements, getStreak, getPersonalRecords, type Achievement } from '../src/db';
 
 export default function MedalsScreen() {
   const router = useRouter();
   const all = getAchievements();
   const streak = getStreak();
+  const records = getPersonalRecords();
   const earned = all.filter(a => a.unlocked).length;
   const [selected, setSelected] = React.useState<Achievement | null>(null);
 
@@ -45,6 +46,25 @@ export default function MedalsScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Personal bests — your own records, moved here from Home */}
+        {records.length > 0 && (
+          <View style={{ marginTop: spacing.xl }}>
+            <SectionHeader icon="award" title="Personal bests" />
+            <Card style={{ padding: spacing.md }}>
+              <View style={s.recGrid}>
+                {records.map(r => (
+                  <View key={r.key} style={s.recCell}>
+                    <Text style={{ fontSize: 22, opacity: r.set ? 1 : 0.4 }}>{r.emoji}</Text>
+                    <Text style={[s.recValue, !r.set && { color: colors.textTertiary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{r.value}</Text>
+                    <Text style={s.recLabel} numberOfLines={2}>{r.label}</Text>
+                    <Text style={s.recSub} numberOfLines={1}>{r.sub}</Text>
+                  </View>
+                ))}
+              </View>
+            </Card>
+          </View>
+        )}
 
         {categories.map(cat => (
           <View key={cat} style={{ marginTop: spacing.xl }}>
@@ -103,6 +123,11 @@ const s = StyleSheet.create({
   catTitle: { ...type.label, fontWeight: font.semibold, color: colors.textSecondary, marginBottom: spacing.md, letterSpacing: 0.3 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: '25%', alignItems: 'center', marginBottom: spacing.lg, paddingHorizontal: 2 },
+  recGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  recCell: { width: '33.33%', alignItems: 'center', paddingVertical: spacing.md, paddingHorizontal: 4 },
+  recValue: { ...tabular, fontSize: 18, fontWeight: font.bold, color: colors.textPrimary, marginTop: 4, letterSpacing: -0.3 },
+  recLabel: { ...type.small, color: colors.textSecondary, fontWeight: font.medium, textAlign: 'center', marginTop: 3, lineHeight: 14 },
+  recSub: { ...type.small, fontSize: 10, color: colors.textTertiary, textAlign: 'center', marginTop: 1 },
   medalLabel: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', lineHeight: 14, fontWeight: font.medium, marginTop: 2 },
   medalPct: { ...tabular, ...type.small, fontSize: 10, color: colors.brandDeep, marginTop: 1 },
   footnote: { ...type.small, lineHeight: 18, marginTop: spacing.xl, textAlign: 'center' },

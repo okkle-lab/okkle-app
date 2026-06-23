@@ -8,10 +8,10 @@ import {
   getUser,
   getTaxYearSummary, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
-  getStreak, getAchievements, popNewAchievements, getWeeklyChallenges, getPersonalRecords,
+  getStreak, getAchievements, popNewAchievements, getWeeklyChallenges,
   getHeatPoints, getBestSpot, getPeriodSeries, kvGet, kvSet,
   type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
-  type Challenge, type HeatPoint, type BestSpot, type SeriesPoint, type PersonalRecord,
+  type Challenge, type HeatPoint, type BestSpot, type SeriesPoint,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
@@ -58,7 +58,6 @@ export default function HomeScreen() {
   const [achievements, setAchievements] = React.useState<Achievement[]>([]);
   const [newAch, setNewAch] = React.useState<Achievement | null>(null);
   const [challenges, setChallenges] = React.useState<Challenge[]>([]);
-  const [records, setRecords] = React.useState<PersonalRecord[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [heatPoints, setHeatPoints] = React.useState<HeatPoint[]>([]);
   const [bestSpot, setBestSpot] = React.useState<BestSpot | null>(null);
@@ -107,7 +106,6 @@ export default function HomeScreen() {
     setStreak(getStreak());
     setAchievements(getAchievements());
     setChallenges(getWeeklyChallenges());
-    setRecords(getPersonalRecords());
     const fresh = popNewAchievements();
     if (fresh.length) setNewAch(fresh[0]);
   }
@@ -292,25 +290,6 @@ export default function HomeScreen() {
                 </View>
               </View>
             ))}
-          </Card>
-        </View>
-      )}
-
-      {/* Personal records — beat your own best (real outcomes, not points) */}
-      {records.length > 0 && (
-        <View style={{ marginTop: spacing.lg }}>
-          <SectionHeader icon="award" title="Your personal bests" />
-          <Card style={{ padding: spacing.md }}>
-            <View style={s.recGrid}>
-              {records.map(r => (
-                <View key={r.key} style={s.recCell}>
-                  <Text style={{ fontSize: 22, opacity: r.set ? 1 : 0.4 }}>{r.emoji}</Text>
-                  <Text style={[s.recValue, !r.set && { color: colors.textTertiary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{r.value}</Text>
-                  <Text style={s.recLabel} numberOfLines={2}>{r.label}</Text>
-                  <Text style={s.recSub} numberOfLines={1}>{r.sub}</Text>
-                </View>
-              ))}
-            </View>
           </Card>
         </View>
       )}
