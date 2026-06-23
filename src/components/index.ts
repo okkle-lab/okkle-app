@@ -15,3 +15,4 @@ export { CoachMarks, type CoachStep } from './CoachMarks';
 export { DatePickerField } from './DatePickerField';
 export { BarChart } from './BarChart';
 export { ScreenHeader } from './ScreenHeader';
+export { RouteMap } from './RouteMap';

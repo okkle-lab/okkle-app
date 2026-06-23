@@ -4,12 +4,19 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { colors, font, spacing, radius, type } from '../src/theme';
-import { Chip, SectionHeader, PrimaryButton, VehicleChip, DatePickerField } from '../src/components';
-import { PLATFORMS, VEHICLES, calcDeduction, fmtGbp } from '../src/db/tax';
+import { colors, font, spacing, radius, type, tabular } from '../src/theme';
+import { Chip, SectionHeader, PrimaryButton, VehicleChip, DatePickerField, RouteMap } from '../src/components';
+import { PLATFORMS, VEHICLES, calcDeduction, fmtGbp, fmtMiles } from '../src/db/tax';
 import {
   getTrip, updateTrip, deleteTrip, getRecord, updateRecord, deleteRecord,
 } from '../src/db';
+
+function tripDuration(start: string, end: string): string {
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (ms <= 0) return '—';
+  const mins = Math.round(ms / 60000);
+  return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+}
 
 export default function EditEntry() {
   const router = useRouter();
@@ -18,6 +25,9 @@ export default function EditEntry() {
 
   const trip = kind === 'trip' ? getTrip(entryId) : null;
   const record = kind === 'record' ? getRecord(entryId) : null;
+  const routePts: { lat: number; lng: number }[] = React.useMemo(() => {
+    try { return trip?.route_json ? JSON.parse(trip.route_json) : []; } catch { return []; }
+  }, [trip?.route_json]);
 
   const [platform, setPlatform] = useState(trip?.platform ?? record?.platform ?? 'Uber Eats');
   const [vehicle, setVehicle] = useState(trip?.vehicle ?? 'car');
@@ -96,6 +106,30 @@ export default function EditEntry() {
           <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Cancel</Text></Pressable>
         </View>
 
+        {/* Premium trip summary — route map + at-a-glance stats (GPS trips only) */}
+        {trip && routePts.length > 0 && (
+          <View style={s.tripCard}>
+            <RouteMap route={routePts} height={170} />
+            <View style={s.tripStats}>
+              <View style={s.tripStat}>
+                <Text style={s.tripStatValue}>{fmtMiles(trip.miles)}</Text>
+                <Text style={s.tripStatLabel}>distance</Text>
+              </View>
+              <View style={s.tripStatDivider} />
+              <View style={s.tripStat}>
+                <Text style={s.tripStatValue}>{tripDuration(trip.started_at, trip.ended_at)}</Text>
+                <Text style={s.tripStatLabel}>time</Text>
+              </View>
+              <View style={s.tripStatDivider} />
+              <View style={s.tripStat}>
+                <Text style={s.tripStatValue}>{fmtGbp(trip.deduction)}</Text>
+                <Text style={s.tripStatLabel}>tax saved</Text>
+              </View>
+            </View>
+            {trip.zone ? <Text style={s.tripZone}>📍 {trip.zone}</Text> : null}
+          </View>
+        )}
+
         <SectionHeader title="Date" />
         <DatePickerField value={date} onChange={setDate} />
 
@@ -165,6 +199,13 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   heading: { ...type.screenTitle },
   close: { ...type.bodyMedium, color: colors.brandDeep },
+  tripCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.sm, marginBottom: spacing.xl, overflow: 'hidden' },
+  tripStats: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md },
+  tripStat: { flex: 1, alignItems: 'center' },
+  tripStatDivider: { width: 1, height: 28, backgroundColor: colors.border },
+  tripStatValue: { ...tabular, fontSize: 17, fontWeight: font.bold, color: colors.textPrimary },
+  tripStatLabel: { ...type.small, marginTop: 2 },
+  tripZone: { ...type.caption, color: colors.textSecondary, textAlign: 'center', paddingBottom: spacing.sm },
   sub: { ...type.body, color: colors.textSecondary },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
   input: {
