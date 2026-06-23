@@ -6,6 +6,7 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ### First-run coachmarks
 - A **spotlight tour** runs once after onboarding: it dims the screen and highlights real elements one at a time — **Start a trip → Level/XP → your streak → "there's more below"** (Insights + tabs) — so new users learn exactly where to tap.
+- A focused **Trip-tab tour** highlights just the two things couriers care about: starting a trip (tax-free miles, money back) and logging weekly pay (keeps £/hour accurate).
 - Added **Settings → Help → "Replay the app tour"** to run it again anytime.
 
 ## 2026-06-23 (onboarding redesign)
