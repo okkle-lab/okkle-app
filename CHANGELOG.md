@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Log: daily earnings + smarter categories)
+
+- **Earnings can be daily or weekly** — dropped the "weekly" framing and added **Today / Yesterday** quick-date chips so logging a single day's takings (or back-dating) is one tap.
+- **Expense categories are now icon chips, sorted by how often you use them** — like benchmark accounting apps (QuickBooks Self-Employed, Coconut), the ones you reach for most float to the front so you're not hunting. Each category has a Feather icon for fast scanning, and a sensible courier-priority default order (Fuel, Charging, Parking, Phone, Insurance…).
+
 ## 2026-06-23 (Log tab redesign)
 
 - **Redesigned the Log tab** in the Home/Trip design language. The type switcher (Expense · Earnings · Mileage) now has a **smooth animated sliding pill**, and switching type **cross-fades/slides** the form in.

@@ -10,7 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, Icon, IconBadge, GradientCard } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
-import { saveRecord, getUser } from '../../src/db';
+import { saveRecord, getUser, kvGet, kvSet } from '../../src/db';
 
 // Copy a picked image into app storage so it survives even if the cache clears.
 async function persistImage(uri: string): Promise<string> {
@@ -25,17 +25,38 @@ async function persistImage(uri: string): Promise<string> {
   }
 }
 
-const EXPENSE_CATEGORIES = [
-  'Charging', 'Fuel', 'Maintenance / repairs', 'Tyres',
-  'Waterproof gear', 'Helmet / safety', 'Phone mount', 'Insulated bag',
-  'Insurance', 'Congestion charge', 'ULEZ charge', 'Parking',
-  'Phone / data', 'App subscription',
+// Category list with icons (benchmark accounting apps show an icon per category
+// for fast scanning). Default order roughly follows how often couriers claim
+// each one; this is then personalised by the user's own usage.
+type Cat = { name: string; icon: React.ComponentProps<typeof Feather>['name'] };
+const EXPENSE_CATEGORIES: Cat[] = [
+  { name: 'Fuel', icon: 'droplet' },
+  { name: 'Charging', icon: 'battery-charging' },
+  { name: 'Parking', icon: 'map-pin' },
+  { name: 'Phone / data', icon: 'smartphone' },
+  { name: 'Insurance', icon: 'shield' },
+  { name: 'Maintenance / repairs', icon: 'tool' },
+  { name: 'Tyres', icon: 'disc' },
+  { name: 'Congestion charge', icon: 'alert-circle' },
+  { name: 'ULEZ charge', icon: 'wind' },
+  { name: 'Insulated bag', icon: 'shopping-bag' },
+  { name: 'Waterproof gear', icon: 'umbrella' },
+  { name: 'Helmet / safety', icon: 'shield' },
+  { name: 'Phone mount', icon: 'crosshair' },
+  { name: 'App subscription', icon: 'repeat' },
 ];
+
+function getCatCounts(): Record<string, number> {
+  try { return JSON.parse(kvGet('expense_cat_counts') || '{}'); } catch { return {}; }
+}
+function bumpCat(name: string) {
+  const c = getCatCounts(); c[name] = (c[name] || 0) + 1; kvSet('expense_cat_counts', JSON.stringify(c));
+}
 
 type Tab = 'mileage' | 'income' | 'expense';
 const TABS: { key: Tab; label: string; icon: React.ComponentProps<typeof Feather>['name']; tone: 'amber' | 'green' | 'mint'; title: string; sub: string }[] = [
   { key: 'expense', label: 'Expense', icon: 'file-text', tone: 'amber', title: 'Add an expense', sub: 'A cost you can claim against tax' },
-  { key: 'income', label: 'Earnings', icon: 'dollar-sign', tone: 'green', title: 'Log earnings', sub: 'Your weekly pay from a platform' },
+  { key: 'income', label: 'Earnings', icon: 'dollar-sign', tone: 'green', title: 'Log earnings', sub: 'A day or a week of pay — set the date below' },
   { key: 'mileage', label: 'Mileage', icon: 'map', tone: 'mint', title: 'Add mileage', sub: 'Miles you drove without GPS tracking' },
 ];
 
@@ -58,6 +79,18 @@ export default function LogScreen() {
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
   const [saved, setSaved] = useState(false);
+  const [catCounts, setCatCounts] = useState(getCatCounts);
+
+  // Most-used categories first, then the default priority order (benchmark apps
+  // surface what you reach for most so you're not hunting every time).
+  const sortedCats = React.useMemo(
+    () => EXPENSE_CATEGORIES.map((c, i) => ({ c, i })).sort((a, b) => (catCounts[b.c.name] || 0) - (catCounts[a.c.name] || 0) || a.i - b.i).map(x => x.c),
+    [catCounts],
+  );
+
+  // Quick date presets so logging a single day's takings is one tap.
+  const dayAt = (offset: number) => { const d = new Date(); d.setDate(d.getDate() + offset); d.setHours(12, 0, 0, 0); return d; };
+  const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 
   // Animated tab pill + content cross-fade for a smooth, premium transition.
   const tabIndex = TABS.findIndex(t => t.key === tab);
@@ -99,6 +132,7 @@ export default function LogScreen() {
     } else {
       if (!amount || !description) { Alert.alert('Enter amount and description'); return; }
       saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: null, period_end: null, receipt_uri: receiptUri, notes: description }, createdAt);
+      bumpCat(description); setCatCounts(getCatCounts());
     }
     setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null);
     const t = new Date(); t.setHours(12, 0, 0, 0); setDate(t);
@@ -189,11 +223,15 @@ export default function LogScreen() {
               <View>
                 <SectionHeader title="Category" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
-                  {EXPENSE_CATEGORIES.map(cat => (
-                    <Pressable key={cat} onPress={() => setDescription(cat)} style={[s.catChip, description === cat && s.catChipActive]}>
-                      <Text style={[s.catChipText, description === cat && s.catChipTextActive]}>{cat}</Text>
-                    </Pressable>
-                  ))}
+                  {sortedCats.map(cat => {
+                    const on = description === cat.name;
+                    return (
+                      <Pressable key={cat.name} onPress={() => setDescription(cat.name)} style={[s.catChip, on && s.catChipActive]}>
+                        <Feather name={cat.icon} size={14} color={on ? colors.brandDeep : colors.textSecondary} />
+                        <Text style={[s.catChipText, on && s.catChipTextActive]}>{cat.name}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </ScrollView>
                 <TextInput
                   style={[s.input, { marginTop: spacing.sm }]}
@@ -265,13 +303,23 @@ export default function LogScreen() {
             </>
           )}
 
-          {/* Date — compact, defaults to today */}
-          <View style={s.dateRow}>
-            <IconBadge icon="calendar" tone="neutral" size={32} />
-            <Text style={s.dateLabel}>Date</Text>
-            <View style={{ flex: 1 }}>
-              <DatePickerField value={date} onChange={setDate} />
+          {/* Date — compact, with quick presets for fast daily logging */}
+          <View style={s.dateBlock}>
+            <View style={s.dateHeadRow}>
+              <IconBadge icon="calendar" tone="neutral" size={32} />
+              <Text style={s.dateLabel}>Date</Text>
+              <View style={s.quickDates}>
+                {([['Today', 0], ['Yesterday', -1]] as [string, number][]).map(([label, off]) => {
+                  const on = isSameDay(date, dayAt(off));
+                  return (
+                    <Pressable key={label} onPress={() => setDate(dayAt(off))} style={[s.quickChip, on && s.quickChipOn]}>
+                      <Text style={[s.quickChipText, on && s.quickChipTextOn]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
+            <DatePickerField value={date} onChange={setDate} />
           </View>
         </Card>
 
@@ -316,8 +364,14 @@ const s = StyleSheet.create({
   },
   chipRow: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.lg },
 
-  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg },
-  dateLabel: { ...type.bodyMedium, fontSize: 15 },
+  dateBlock: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg, gap: spacing.md },
+  dateHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  dateLabel: { ...type.bodyMedium, fontSize: 15, flex: 1 },
+  quickDates: { flexDirection: 'row', gap: 6 },
+  quickChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bgSoft },
+  quickChipOn: { backgroundColor: colors.brandDeep },
+  quickChipText: { fontSize: 12.5, fontWeight: font.semibold, color: colors.textSecondary },
+  quickChipTextOn: { color: '#fff' },
 
   notice: { backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.md },
   noticeText: { fontSize: 13, color: colors.amberDark, lineHeight: 19 },
@@ -335,6 +389,7 @@ const s = StyleSheet.create({
   },
   receiptRemoveText: { color: '#fff', fontSize: 13, fontWeight: font.medium },
   catChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full,
     borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bg,
   },
