@@ -130,19 +130,19 @@ export default function LogScreen() {
           </View>
           <View>
             <SectionHeader title="Vehicle" />
-            <View style={s.chips}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
               {VEHICLES.map(v => (
                 <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
               ))}
-            </View>
+            </ScrollView>
           </View>
           <View>
             <SectionHeader title="Platform" />
-            <View style={s.chips}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
               {PLATFORMS.map(p => (
                 <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
               ))}
-            </View>
+            </ScrollView>
           </View>
         </Card>
       )}
@@ -151,11 +151,11 @@ export default function LogScreen() {
         <Card style={{ gap: spacing.md }}>
           <View>
             <SectionHeader title="Platform" />
-            <View style={s.chips}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
               {PLATFORMS.map(p => (
                 <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
               ))}
-            </View>
+            </ScrollView>
           </View>
           <View>
             <SectionHeader title="Amount (£)" />
@@ -175,7 +175,7 @@ export default function LogScreen() {
         <Card style={{ gap: spacing.md }}>
           <View>
             <SectionHeader title="Category" />
-            <View style={s.chips}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
               {EXPENSE_CATEGORIES.map(cat => (
                 <Pressable
                   key={cat}
@@ -185,7 +185,7 @@ export default function LogScreen() {
                   <Text style={[s.catChipText, description === cat && s.catChipTextActive]}>{cat}</Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
             <TextInput
               style={[s.input, { marginTop: spacing.sm }]}
               placeholder="Or type your own description"
@@ -260,6 +260,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.bgCard,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chipRow: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.lg },
   deductionPreview: { fontSize: 14, color: colors.brandDeep, fontWeight: font.medium, marginTop: 8 },
   notice: { backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.md },
   noticeText: { fontSize: 13, color: colors.amber, lineHeight: 19 },
