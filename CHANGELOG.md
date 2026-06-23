@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Trip screen redesign)
+
+- **Redesigned the Trip start screen** in the Home design language. Platform + vehicle are now in **one calm card** (with gradient `IconBadge` labels) instead of two stacked sections, **Start trip is a gradient hero card** with the selected platform/vehicle summarised, and **Log pay / Accept-or-skip are clean tiles** rather than competing bordered buttons. Same capabilities, far less button noise.
+- **Live tracking screen** now has a subtle dark→green **gradient background** for depth, and the trip-saved **success check is a gradient** — consistent with the rest of the app.
+
 ## 2026-06-23 (Smooth carousels, heatmap on Home, £/h fix)
 
 - **Fixed another £/hour explosion** — zone stats (and the best-spot tip) were showing things like £402,613/h when a trip had earnings but ~no tracked time. Now ignored under ~15 min; those areas rank and display by earnings instead.

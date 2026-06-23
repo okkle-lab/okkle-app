@@ -8,8 +8,8 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, CollapsingHeader, Icon } from '../../src/components';
-import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, CollapsingHeader, Icon, Card, IconBadge, GradientCard } from '../../src/components';
+import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, type DailyStats } from '../../src/db';
 
@@ -167,7 +167,7 @@ export default function TripScreen() {
     const progress = dayMiles / DAILY_GOAL_MILES;
     const goalPct = Math.min(100, Math.round(progress * 100));
     return (
-      <View style={[s.screen, { backgroundColor: colors.dark }]}>
+      <GradientCard colors={[colors.dark, '#103029']} radius={0} diagonal={false} style={{ flex: 1 }}>
         <View style={s.liveHeader}>
           <View style={[s.liveDot, isPaused && { backgroundColor: colors.amber }]} />
           <Text style={s.liveStatus}>{isPaused ? 'Paused' : trip.platform}</Text>
@@ -224,7 +224,7 @@ export default function TripScreen() {
 
           <SlideToConfirm label="Slide to end trip" onConfirm={handleEnd} color={colors.red} />
         </View>
-      </View>
+      </GradientCard>
     );
   }
 
@@ -233,9 +233,9 @@ export default function TripScreen() {
     return (
       <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-          <View style={s.checkCircle}>
+          <GradientCard colors={['#3BC07E', colors.green, '#1C7048']} radius={32} style={s.checkCircle}>
             <Feather name="check" size={36} color="#fff" />
-          </View>
+          </GradientCard>
           <Text style={[s.heading, { textAlign: 'center' }]}>Trip saved</Text>
           <Text style={[s.sub, { textAlign: 'center' }]}>{fmtMiles(finished.miles)} · {fmtGbp(finished.deduction)} saved · {finished.platform}</Text>
 
@@ -291,43 +291,63 @@ export default function TripScreen() {
         </Pressable>
       }
     >
-      {/* Primary action FIRST — pick platform/vehicle (remembered) then Start, no scrolling */}
-      <SectionHeader icon="grid" title="Platform" />
-      <View style={s.chips}>
-        {PLATFORMS.map(p => (
-          <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" style={s.chip} />
-        ))}
-      </View>
+      {/* Your setup — platform + vehicle in one calm card */}
+      <Card style={s.setupCard}>
+        <View style={s.setupSection}>
+          <View style={s.setupLabelRow}>
+            <IconBadge icon="grid" tone="mint" size={28} />
+            <Text style={s.setupLabel}>Platform</Text>
+          </View>
+          <View style={s.chips}>
+            {PLATFORMS.map(p => (
+              <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} style={s.chip} />
+            ))}
+          </View>
+        </View>
+        <View style={s.setupDivider} />
+        <View style={s.setupSection}>
+          <View style={s.setupLabelRow}>
+            <IconBadge icon="truck" tone="blue" size={28} />
+            <Text style={s.setupLabel}>Vehicle</Text>
+          </View>
+          <View style={[s.chips, { marginBottom: 0 }]}>
+            {VEHICLES.map(v => (
+              <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+            ))}
+          </View>
+        </View>
+      </Card>
 
-      <SectionHeader icon="truck" title="Vehicle" />
-      <View style={s.chips}>
-        {VEHICLES.map(v => (
-          <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-        ))}
-      </View>
-
-      <Pressable onPress={handleStart} style={({ pressed }) => [s.startBtn, pressed && { opacity: 0.85 }]}>
-        <Feather name="navigation" size={24} color="#fff" />
-        <Text style={s.startBtnLabel}>Start trip</Text>
+      {/* Start — the hero action, gradient like Home */}
+      <Pressable onPress={handleStart} style={({ pressed }) => pressed && { opacity: 0.9 }}>
+        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.startHero}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.startKicker}>GPS TRIP</Text>
+            <Text style={s.startTitle}>Start trip</Text>
+            <Text style={s.startSub}>Tracking {vehicleLabel(vehicle)} miles on {platform}</Text>
+          </View>
+          <View style={s.startCircle}>
+            <Feather name="navigation" size={26} color={colors.brandDeep} />
+          </View>
+        </GradientCard>
       </Pressable>
 
-      <View style={s.secondaryRow}>
-        <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={[s.logPayBtn, { flex: 1, marginTop: 0 }]}>
-          <Feather name="dollar-sign" size={16} color={colors.brandDeep} />
-          <Text style={s.logPayText}>Log pay</Text>
+      {/* Secondary actions — clean tiles, not loud buttons */}
+      <View style={s.tileRow}>
+        <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={({ pressed }) => [s.tile, pressed && { backgroundColor: colors.bgSoft }]}>
+          <IconBadge icon="dollar-sign" tone="green" size={34} />
+          <Text style={s.tileLabel}>Log weekly pay</Text>
         </Pressable>
-        <Pressable onPress={() => router.push('/order-check')} style={[s.logPayBtn, { flex: 1, marginTop: 0 }]}>
-          <Feather name="check-circle" size={16} color={colors.brandDeep} />
-          <Text style={s.logPayText}>Accept or skip?</Text>
+        <Pressable onPress={() => router.push('/order-check')} style={({ pressed }) => [s.tile, pressed && { backgroundColor: colors.bgSoft }]}>
+          <IconBadge icon="check-circle" tone="violet" size={34} />
+          <Text style={s.tileLabel}>Accept or skip?</Text>
         </Pressable>
       </View>
 
-      {/* One quiet line of context — today's miles vs goal, no clutter */}
       {todayHasData && (
         <Text style={s.todayLine}>Today: {today.miles.toFixed(1)} mi · {fmtGbpRound(today.deduction)} tax saved</Text>
       )}
-
-      <Text style={s.gpsNote}>Keep Okkle open during your ride. Your screen will stay awake automatically.</Text>
+      <Text style={s.gpsNote}>Keep Okkle open during your ride — your screen stays awake automatically.</Text>
     </CollapsingHeader>
   );
 }
@@ -342,34 +362,20 @@ const s = StyleSheet.create({
   gpsNote: { ...type.caption, color: colors.textTertiary, textAlign: 'center', marginTop: 14, lineHeight: 20 },
   todayLine: { ...type.caption, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.lg, fontWeight: font.medium },
 
-  logPayBtn: {
-    marginTop: spacing.md, borderWidth: 1.5, borderColor: colors.brandMid,
-    borderRadius: radius.md, paddingVertical: 14, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: colors.brandLight,
-  },
-  logPayText: { ...type.bodyMedium, color: colors.brandDeep },
-  secondaryRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-
-  vehicleChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 16, paddingVertical: 12, borderRadius: radius.full,
-    borderWidth: 1.5, borderColor: colors.borderStrong, backgroundColor: colors.bgCard,
-  },
-  vehicleChipOn: { borderColor: colors.brand, backgroundColor: colors.brandLight },
-  vehicleChipText: { fontSize: 15, fontWeight: font.medium, color: colors.textSecondary },
-
-  startBtn: {
-    marginTop: spacing.xl,
-    backgroundColor: colors.brand,
-    borderRadius: radius.xl,
-    paddingVertical: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  startBtnLabel: { color: '#fff', fontSize: 22, fontWeight: font.bold, letterSpacing: -0.3 },
+  // setup
+  setupCard: { padding: 0, overflow: 'hidden' },
+  setupSection: { padding: spacing.lg },
+  setupDivider: { height: 1, backgroundColor: colors.border },
+  setupLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
+  setupLabel: { ...type.bodyMedium, fontSize: 15 },
+  startHero: { flexDirection: 'row', alignItems: 'center', padding: spacing.xl, marginTop: spacing.lg },
+  startKicker: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: font.semibold, letterSpacing: 1 },
+  startTitle: { color: '#fff', fontSize: 28, fontWeight: font.bold, letterSpacing: -0.5, marginTop: 2 },
+  startSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 4 },
+  startCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  tileRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
+  tile: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.lg, paddingHorizontal: spacing.md, alignItems: 'center', gap: 8 },
+  tileLabel: { ...type.bodyMedium, fontSize: 14, textAlign: 'center' },
 
   // live
   liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 72 },
@@ -398,7 +404,7 @@ const s = StyleSheet.create({
 
   // summary
   checkCircle: {
-    width: 64, height: 64, borderRadius: 32, backgroundColor: colors.green,
+    width: 64, height: 64, borderRadius: 32,
     alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: spacing.lg,
   },
   summaryStats: {
