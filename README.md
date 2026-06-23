@@ -64,7 +64,7 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - Trips capture an on-device GPS breadcrumb and a reverse-geocoded **area name**.
 - **Hotspots heatmap** drawn on-device (works in Expo Go; real Google Maps can drop in on a dev build), a ranked **top earning / busiest areas** list, and a **best-hours** chart — all in a dedicated Insights screen (also previewed on Home).
 - **Time-of-day filter** (All / Morning / Lunch / Afternoon / Dinner / Late) — compare where you earn most at each part of the day.
-- **Best zone × best time tip** — your single most lucrative combination by £/hour ("You earn most around Wimbledon on evenings · £14.20/h").
+- **Best zone × best time tip** — your most lucrative combination, tied to your £/hour: "You earn most around Wimbledon on evenings — £14.20/h · £4.10/h above your average." Areas are ranked by £/hour.
 
 ### Earned per hour (the headline KPI)
 - A prominent **£/hour** card on Home tied to the period switcher — what you make per hour worked, a plain **after-tax-&-costs** figure, and a week-over-week trend. The one number couriers optimise, jargon-free.
