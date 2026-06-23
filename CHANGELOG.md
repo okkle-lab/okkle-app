@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Log tab redesign)
+
+- **Redesigned the Log tab** in the Home/Trip design language. The type switcher (Expense · Earnings · Mileage) now has a **smooth animated sliding pill**, and switching type **cross-fades/slides** the form in.
+- **The amount is now the hero** — a big gradient input card (green for earnings, amber for expenses, brand for mileage) shows what you're logging front-and-centre, with live context (mileage deduction, "gross pay before deductions", etc.).
+- **Easier to log** — a friendly type header ("Add an expense", with a gradient icon), prominent number entry, a compact inline **Date** row instead of a separate card, and a **gradient Save button** that turns green on success.
+
 ## 2026-06-23 (Bigger live map, finer areas, pay logging moved to Log)
 
 - **The live Map view is now much bigger** (~42% of screen height) when you swap it into the hero spot.
