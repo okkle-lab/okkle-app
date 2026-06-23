@@ -299,8 +299,33 @@ export default function TripScreen() {
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <ScreenHeader title="Start a trip" subtitle="Tap start and ride — GPS measures your distance for you." />
 
-      {/* Gamified goal card — daily goal ring + streak + next medal */}
-      <View style={s.goalCard}>
+      {/* Primary action FIRST — pick platform/vehicle (remembered) then Start, no scrolling */}
+      <SectionHeader icon="grid" title="Platform" />
+      <View style={s.chips}>
+        {PLATFORMS.map(p => (
+          <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" style={s.chip} />
+        ))}
+      </View>
+
+      <SectionHeader icon="truck" title="Vehicle" />
+      <View style={s.chips}>
+        {VEHICLES.map(v => (
+          <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+        ))}
+      </View>
+
+      <Pressable onPress={handleStart} style={({ pressed }) => [s.startBtn, pressed && { opacity: 0.85 }]}>
+        <Feather name="navigation" size={24} color="#fff" />
+        <Text style={s.startBtnLabel}>Start trip</Text>
+      </Pressable>
+
+      <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={s.logPayBtn}>
+        <Feather name="dollar-sign" size={16} color={colors.brandDeep} />
+        <Text style={s.logPayText}>Log weekly pay</Text>
+      </Pressable>
+
+      {/* Secondary: today's goal + summary, below the action */}
+      <View style={[s.goalCard, { marginTop: spacing.xl, marginBottom: 0 }]}>
         <View style={s.goalTop}>
           <ProgressRing size={64} strokeWidth={7} progress={goalProgress} color={colors.brand}>
             <Text style={s.goalRingPct}>{Math.round(goalProgress * 100)}%</Text>
@@ -328,9 +353,8 @@ export default function TripScreen() {
         )}
       </View>
 
-      {/* Today's running summary — visible after at least one trip today */}
       {todayHasData && (
-        <View style={s.dayBar}>
+        <View style={[s.dayBar, { marginTop: spacing.md }]}>
           <DayCell value={String(today.trips)} label={today.trips === 1 ? 'trip' : 'trips'} />
           <View style={s.dayBarDivider} />
           <DayCell value={today.miles.toFixed(1)} label="miles" />
@@ -342,32 +366,6 @@ export default function TripScreen() {
           </>}
         </View>
       )}
-
-      <SectionHeader icon="grid" title="Platform" />
-      <View style={s.chips}>
-        {PLATFORMS.map(p => (
-          <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" style={s.chip} />
-        ))}
-      </View>
-
-      <SectionHeader icon="truck" title="Vehicle" />
-      <View style={s.chips}>
-        {VEHICLES.map(v => (
-          <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-        ))}
-      </View>
-
-      {/* Oversized start button — easy to hit one-handed on a mounted phone */}
-      <Pressable onPress={handleStart} style={({ pressed }) => [s.startBtn, pressed && { opacity: 0.85 }]}>
-        <Feather name="navigation" size={24} color="#fff" />
-        <Text style={s.startBtnLabel}>Start trip</Text>
-      </Pressable>
-
-      {/* Log weekly pay — couriers are paid weekly by bank transfer, not per trip */}
-      <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={s.logPayBtn}>
-        <Feather name="dollar-sign" size={16} color={colors.brandDeep} />
-        <Text style={s.logPayText}>Log weekly pay</Text>
-      </Pressable>
 
       <Text style={s.gpsNote}>Keep Okkle open during your ride. Your screen will stay awake automatically.</Text>
     </ScrollView>

@@ -17,6 +17,7 @@ export default function RecordsScreen() {
   const [vehicles, setVehicles] = React.useState<VehicleStat[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
   const [filter, setFilter] = React.useState<'all' | 'trip' | 'income' | 'expense' | 'mileage'>('all');
+  const [month, setMonth] = React.useState<string>('all'); // 'all' or 'YYYY-MM'
 
   const FILTERS: { key: typeof filter; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -25,10 +26,15 @@ export default function RecordsScreen() {
     { key: 'expense', label: 'Expenses' },
     { key: 'mileage', label: 'Manual miles' },
   ];
-  const visible = items.filter(it =>
-    filter === 'all' ? true :
-    filter === 'trip' ? it.kind === 'trip' :
-    it.kind === 'record' && it.data.record_type === filter);
+  const itemDate = (it: Item) => (it.kind === 'trip' ? it.data.started_at : it.data.created_at).slice(0, 10);
+  const months = Array.from(new Set(items.map(it => itemDate(it).slice(0, 7)))).sort().reverse();
+  const monthLabel = (m: string) => new Date(m + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+
+  const visible = items.filter(it => {
+    const typeOk = filter === 'all' ? true : filter === 'trip' ? it.kind === 'trip' : it.kind === 'record' && it.data.record_type === filter;
+    const monthOk = month === 'all' ? true : itemDate(it).slice(0, 7) === month;
+    return typeOk && monthOk;
+  });
 
   function load() {
     const trips = getTrips(50).map(t => ({ kind: 'trip' as const, data: t }));
@@ -121,6 +127,18 @@ export default function RecordsScreen() {
       ) : (
         <>
           <SectionHeader icon="list" title="All entries" />
+          {months.length > 1 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
+              <Pressable onPress={() => setMonth('all')} style={[s.monthChip, month === 'all' && s.monthChipOn]}>
+                <Text style={[s.monthText, month === 'all' && s.monthTextOn]}>All time</Text>
+              </Pressable>
+              {months.map(m => (
+                <Pressable key={m} onPress={() => setMonth(m)} style={[s.monthChip, month === m && s.monthChipOn]}>
+                  <Text style={[s.monthText, month === m && s.monthTextOn]}>{monthLabel(m)}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
             {FILTERS.map(f => (
               <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.filterChip, filter === f.key && s.filterChipOn]}>
@@ -156,6 +174,10 @@ const s = StyleSheet.create({
   filterChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   filterText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
   filterTextOn: { color: '#fff' },
+  monthChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bgSoft },
+  monthChipOn: { backgroundColor: colors.brandDeep },
+  monthText: { fontSize: 13, fontWeight: font.semibold, color: colors.textSecondary },
+  monthTextOn: { color: '#fff' },
 });
 
 const row = StyleSheet.create({
