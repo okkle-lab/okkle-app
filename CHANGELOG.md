@@ -8,6 +8,16 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - The Insights areas list ranks your zones by **£/hour** (the number that matters), showing it as the headline figure with trips · miles · total earnings underneath.
 - The headline tip now ties location to your KPI: **"You earn most around Wimbledon on evenings — £14.20/h · £4.10/h above your average."**
 
+## 2026-06-23 (graphs + gamification rethink)
+
+### Period graphs
+- Week / Month / Year on Home now show an **earnings bar chart** (daily / weekly / monthly), with the best bar highlighted ("Best: Fri · £x").
+
+### Gamification: real progress over points
+- **Dropped abstract XP & levels** — they were shallow (a level number meant nothing).
+- New **"Your personal bests"** — best day, best week, best £/hour, most miles in a day, longest streak, most trips in a day — beating your own real numbers (Nike-style), tied to money and effort.
+- Weekly "challenges" reframed as **"This week's goals"** (habit nudges, no points). Streaks and medals unchanged.
+
 ## 2026-06-23 (the £/hour KPI)
 
 ### The number couriers care about
