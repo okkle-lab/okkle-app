@@ -2,13 +2,14 @@ import React from 'react';
 import { View, Text, Modal, Pressable, StyleSheet, Dimensions, type View as RNView } from 'react-native';
 import { colors, font, spacing, radius, type } from '../theme';
 
+type Rect = { x: number; y: number; w: number; h: number };
+
 export type CoachStep = {
-  ref: React.RefObject<RNView | null>;
+  ref?: React.RefObject<RNView | null>;
+  rect?: Rect;          // explicit highlight area (e.g. a tab-bar item)
   title: string;
   body: string;
 };
-
-type Rect = { x: number; y: number; w: number; h: number };
 
 const PAD = 8; // breathing room around the highlighted element
 
@@ -23,7 +24,9 @@ export function CoachMarks({ steps, visible, onDone }: { steps: CoachStep[]; vis
 
   React.useEffect(() => {
     if (!visible) return;
-    const target = steps[index]?.ref.current;
+    const step = steps[index];
+    if (step?.rect) { setRect({ x: step.rect.x - PAD, y: step.rect.y - PAD, w: step.rect.w + PAD * 2, h: step.rect.h + PAD * 2 }); return; }
+    const target = step?.ref?.current;
     if (!target) { setRect(null); return; }
     // Let layout settle, then measure absolute (window) position.
     const t = setTimeout(() => {

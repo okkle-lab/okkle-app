@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, Dimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
@@ -72,23 +72,23 @@ export default function HomeScreen() {
   const [bestSpot, setBestSpot] = React.useState<BestSpot | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
 
-  // First-run spotlight tour.
+  // First-run tour — a quick walk across the five tabs so people know what each does.
   const [showCoach, setShowCoach] = React.useState(false);
-  const streakRef = React.useRef<View>(null);
-  const startRef = React.useRef<View>(null);
-  const levelRef = React.useRef<View>(null);
-  const tabsRef = React.useRef<View>(null);
   useFocusEffect(useCallback(() => {
     if (getUser()?.onboarded && !kvGet('coach_seen')) {
       const t = setTimeout(() => setShowCoach(true), 650);
       return () => clearTimeout(t);
     }
   }, []));
+  const win = Dimensions.get('window');
+  const TAB_H = 84;
+  const tabRect = (i: number) => ({ x: (win.width / 5) * i + 4, y: win.height - TAB_H + 2, w: win.width / 5 - 8, h: 50 });
   const coachSteps: CoachStep[] = [
-    { ref: startRef, title: 'Start a trip here', body: 'Tap this when you set off. GPS logs your miles — and your tax savings — automatically as you ride.' },
-    { ref: levelRef, title: 'Stay consistent, level up', body: 'Every trip, expense and streak day earns XP. Climb the ranks from Rookie to Legend.' },
-    { ref: streakRef, title: 'Keep your streak alive', body: 'Track something each day to grow this. Streaks earn medals and keep the habit going.' },
-    { ref: tabsRef, title: 'And there’s more below', body: 'Scroll for Insights — where and when you earn most. Use the tabs to Log, view Records and check your Tax.' },
+    { rect: tabRect(0), title: 'Home', body: 'Your earnings, your £/hour, and where you earn most — at a glance.' },
+    { rect: tabRect(1), title: 'Track a trip', body: 'Tap Trip, then Start. GPS logs every mile as tax-free money back — automatically, no notes.' },
+    { rect: tabRect(2), title: 'Log', body: 'Add expenses (snap the receipt) and your weekly pay so your numbers stay accurate.' },
+    { rect: tabRect(3), title: 'Records', body: 'Everything you’ve logged — tap any entry to edit or delete it.' },
+    { rect: tabRect(4), title: 'Tax', body: 'Your estimated bill, what to set aside, and a one-tap summary for your accountant.' },
   ];
   function dismissCoach() { kvSet('coach_seen', 1); setShowCoach(false); }
 
@@ -159,7 +159,7 @@ export default function HomeScreen() {
           <Text style={s.hello}>{user?.name || 'Hi'}</Text>
         </View>
         {/* Streak chip — the daily-return hook, kept glanceable up top */}
-        <Pressable ref={streakRef} onPress={() => router.push('/medals')} hitSlop={8} style={[s.streakChip, streak > 0 ? s.streakChipOn : s.streakChipOff]}>
+        <Pressable onPress={() => router.push('/medals')} hitSlop={8} style={[s.streakChip, streak > 0 ? s.streakChipOn : s.streakChipOff]}>
           <Text style={{ fontSize: 14 }}>{streak > 0 ? '🔥' : '✨'}</Text>
           <Text style={[s.streakChipText, streak === 0 && { color: colors.textSecondary }]}>{streak > 0 ? streak : 'Start'}</Text>
         </Pressable>
@@ -184,7 +184,7 @@ export default function HomeScreen() {
       </View>
 
       {/* Quick-start — primary action right under the hero */}
-      <Pressable ref={startRef} onPress={() => router.push('/(tabs)/trip')} style={({ pressed }) => [s.quickStart, pressed && { opacity: 0.9 }]}>
+      <Pressable onPress={() => router.push('/(tabs)/trip')} style={({ pressed }) => [s.quickStart, pressed && { opacity: 0.9 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Feather name="navigation" size={22} color="#fff" />
           <View>
@@ -197,8 +197,7 @@ export default function HomeScreen() {
 
       {/* Play block — level + weekly challenges, kept high so it feels like a game */}
       {xp && (
-        <View ref={levelRef} collapsable={false} style={{ marginTop: spacing.lg }}>
-        <Card>
+        <Card style={{ marginTop: spacing.lg }}>
           <View style={s.levelRow}>
             <View style={s.levelBadge}><Text style={s.levelBadgeText}>Lv {xp.level}</Text></View>
             <View style={{ flex: 1 }}>
@@ -211,7 +210,6 @@ export default function HomeScreen() {
           </View>
           <Text style={s.levelHint}>You climb ranks by staying consistent — every trip, expense and streak day earns XP.</Text>
         </Card>
-        </View>
       )}
       {challenges.length > 0 && (
         <Card style={{ marginTop: spacing.md }}>

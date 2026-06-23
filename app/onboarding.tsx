@@ -102,7 +102,7 @@ export default function Onboarding() {
                 </View>
               ))}
             </View>
-            <Text style={s.note}>Free to start. Your data stays on your phone.</Text>
+            <Text style={s.note}>Your data stays on your phone.</Text>
           </View>
         )}
 
