@@ -2,6 +2,17 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (IA cleanup: Settings, Log, Home)
+
+### Settings — a clean menu
+- Replaced the long stacked settings with a **profile summary + tappable category rows** (Profile & tax · Reminders · Data & backup · Report a problem · Suggest an improvement · About), each opening a focused sub-screen. Starling-style.
+
+### Log — compact entry
+- The chip pickers (14 expense categories, platforms, vehicles) now **scroll in one row** instead of wrapping into many — an entry fits on screen.
+
+### Home — less stacked
+- Moved **Personal bests** onto the Medals screen, so Home keeps just the weekly goals + medals preview. Cleaner flow.
+
 ## 2026-06-23 (Trip flow + Records month filter)
 
 ### Trip — start without scrolling
