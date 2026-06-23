@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (onboarding redesign)
+
+### Onboarding that sells the whole app
+- Reframed the welcome from "mileage tracking" to the full value: **track trips, see where you earn most, stay HMRC-ready, and play** (streaks, medals, levels) — with confident, professional copy.
+- Clearer per-step purpose (vehicle sets your mileage rate; platforms → we show which pays best/hour; region sharpens take-home).
+- New **"You're set" final step** that tells users exactly what to do first (start a trip → log weekly pay → check Insights) and sets the gamification expectation, with a CTA that jumps straight into a first trip.
+
 ## 2026-06-23 (UX pass: clarity & flow)
 
 ### Clearer & more intentional

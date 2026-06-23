@@ -101,7 +101,7 @@ All exports save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26
 - Restore on a new or wiped phone. Zero server cost — file goes to the user's own cloud.
 
 ### Settings & onboarding
-- Multi-step onboarding: name → vehicle → platforms → tax region (with GPS auto-detect).
+- Value-first onboarding: welcome → name → vehicle → platforms → tax region (GPS auto-detect) → a "what to do first" step (start a trip, log weekly pay, check Insights).
 - Edit everything in Settings: name, vehicle, platforms, tax region, income band, reminder preferences.
 - Delete all data option.
 
