@@ -2,6 +2,15 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (combined cards + cleaner Records)
+
+### Home — value + chart in one card (Trading-212 style)
+- £/hour stays a prominent hero card; the metric carousel now **combines each value with its own chart** — swipe **Earnings / Miles / Hours**, each with the big number, trend and a bar chart of that metric over the period. The separate graph section is gone.
+
+### Records — cleaner, clearer
+- Replaced ragged text badges with a **consistent leading icon** per type and aligned columns (amounts no longer wrap).
+- Distance entries now show an explicit **GPS vs Manual** tag, so it's obvious what was tracked automatically versus typed in.
+
 ## 2026-06-23 (in-app feedback)
 
 ### Report a problem / Suggest an improvement
