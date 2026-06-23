@@ -2,6 +2,18 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (best-spot tip, Home/Tax split, spacing)
+
+### Best zone × best time
+- A headline tip on Insights tells you your most lucrative combination — e.g. **"You earn most around Wimbledon on evenings · £14.20/h"** — and a short version shows on the Home insights preview.
+
+### Clearer Home vs Tax
+- **Home** now owns your work & the game (earnings, gamification, hotspots, recent trips). **Tax** owns what you owe: **"Set aside for tax"** moved off Home and is now the headline at the top of the Tax tab.
+- Insights lives with Home; the Tax tab has one clear **"Send to your accountant" → Export** action. No more overlap between the two screens.
+
+### Even spacing
+- Fixed uneven gaps between Home cards (a double-margin was creating a 40px gap in one place and almost none in another) — the rhythm is now consistent.
+
 ## 2026-06-23 (colourful medals + time-based insights)
 
 ### Medals get their own colours

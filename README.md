@@ -64,6 +64,7 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - Trips capture an on-device GPS breadcrumb and a reverse-geocoded **area name**.
 - **Hotspots heatmap** drawn on-device (works in Expo Go; real Google Maps can drop in on a dev build), a ranked **top earning / busiest areas** list, and a **best-hours** chart — all in a dedicated Insights screen (also previewed on Home).
 - **Time-of-day filter** (All / Morning / Lunch / Afternoon / Dinner / Late) — compare where you earn most at each part of the day.
+- **Best zone × best time tip** — your single most lucrative combination by £/hour ("You earn most around Wimbledon on evenings · £14.20/h").
 
 ### Business insights
 - Net pay per hour, gross pay per hour, earnings per mile, net margin (% kept after tax), hours tracked.
@@ -111,10 +112,10 @@ All exports save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26
 ```
 app/
   (tabs)/
-    index.tsx       — Home dashboard (hero, heatmap, set-aside, milestones)
+    index.tsx       — Home: your work & the game (earnings, XP/medals, hotspots, trips)
     trip.tsx        — Trip flow: setup → live → summary
     records.tsx     — Trip & expense log with vehicle breakdown
-    tax.tsx         — Tax tab: MTD quarters, SA estimate, insights, Accountant Pack
+    tax.tsx         — Tax: what you owe (set-aside, SA estimate, NIC, MTD quarters) → Export
   compare.tsx       — Method comparison modal (simplified vs actual costs)
   edit.tsx          — Edit / delete individual trip or record
   onboarding.tsx    — Multi-step onboarding
