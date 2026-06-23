@@ -12,7 +12,7 @@ import { syncReminders } from '../src/notifications';
 import { Feather } from '@expo/vector-icons';
 import { PrimaryButton, Chip, VehicleChip } from '../src/components';
 
-const STEPS = ['Welcome', 'Name', 'Vehicle', 'Platforms', 'Region'];
+const STEPS = ['Welcome', 'Name', 'Vehicle', 'Platforms', 'Region', 'Ready'];
 
 export default function Onboarding() {
   const router = useRouter();
@@ -24,19 +24,25 @@ export default function Onboarding() {
   const [band, setBand] = useState<'basic' | 'higher'>('basic');
   const [detecting, setDetecting] = useState(false);
 
-  async function next() {
-    if (step < STEPS.length - 1) { setStep(s => s + 1); return; }
+  function persist() {
     saveUser({
-      name,
-      vehicle,
-      platforms: platforms.join(','),
-      region,
-      tax_rate: regionRate(region, band),
-      onboarded: 1,
+      name, vehicle, platforms: platforms.join(','), region,
+      tax_rate: regionRate(region, band), onboarded: 1,
     });
     const u = getUser();
     if (u) { syncReminders(u).catch(() => {}); }
+  }
+
+  async function next() {
+    if (step < STEPS.length - 1) { setStep(s => s + 1); return; }
+    persist();
     router.replace('/(tabs)');
+  }
+
+  // On the final step, "Start a trip" saves and jumps straight to the Trip tab.
+  function finishToTrip() {
+    persist();
+    router.replace('/(tabs)/trip');
   }
 
   function togglePlatform(p: string) {
@@ -59,7 +65,6 @@ export default function Onboarding() {
   }
 
   const canContinue =
-    step === 0 ? true :
     step === 1 ? name.trim().length > 0 :
     step === 2 ? !!vehicle :
     step === 3 ? platforms.length > 0 :
@@ -77,16 +82,19 @@ export default function Onboarding() {
         {step === 0 && (
           <View style={s.stepContent}>
             <View style={s.welcomeIcon}>
-              <Feather name="navigation" size={32} color="#fff" />
+              <Feather name="navigation" size={30} color="#fff" />
             </View>
             <Text style={s.logo}>Okkle</Text>
-            <Text style={s.hero}>Track your miles,{'\n'}keep more money.</Text>
-            <Text style={s.sub}>Friendly mileage tracking built for UK delivery couriers. Free forever, and your data stays on your phone.</Text>
+            <Text style={s.hero}>Drive smarter.{'\n'}Keep more of it.</Text>
+            <Text style={s.sub}>
+              Built for UK delivery couriers. Okkle tracks your trips, shows you where the money is, and keeps you ready for the taxman — without the spreadsheet.
+            </Text>
             <View style={s.welcomeList}>
               {[
-                { icon: 'map-pin' as const, text: 'Automatic GPS trip tracking' },
-                { icon: 'trending-up' as const, text: 'See your tax savings add up' },
-                { icon: 'file-text' as const, text: 'One-tap pack for your accountant' },
+                { icon: 'navigation' as const, text: 'Track every trip automatically with GPS' },
+                { icon: 'trending-up' as const, text: 'See where and when you earn the most' },
+                { icon: 'shield' as const, text: 'Stay HMRC-ready — and know what to set aside' },
+                { icon: 'award' as const, text: 'Build streaks, earn medals, level up' },
               ].map(item => (
                 <View key={item.text} style={s.welcomeRow}>
                   <View style={s.welcomeDot}><Feather name={item.icon} size={15} color={colors.brandDeep} /></View>
@@ -94,12 +102,14 @@ export default function Onboarding() {
                 </View>
               ))}
             </View>
+            <Text style={s.note}>Free to start. Your data stays on your phone.</Text>
           </View>
         )}
 
         {step === 1 && (
           <View style={s.stepContent}>
-            <Text style={s.hero}>What should we{'\n'}call you?</Text>
+            <Text style={s.hero}>First — what{'\n'}should we call you?</Text>
+            <Text style={s.sub}>So Okkle feels like yours.</Text>
             <TextInput
               style={s.input}
               placeholder="Your first name"
@@ -108,15 +118,15 @@ export default function Onboarding() {
               onChangeText={setName}
               autoFocus
               returnKeyType="next"
-              onSubmitEditing={next}
+              onSubmitEditing={() => { if (name.trim()) next(); }}
             />
           </View>
         )}
 
         {step === 2 && (
           <View style={s.stepContent}>
-            <Text style={s.hero}>What do you{'\n'}deliver with?</Text>
-            <Text style={s.sub}>We use HMRC's approved mileage rates — these are the same across the whole UK.</Text>
+            <Text style={s.hero}>What do you{'\n'}ride or drive?</Text>
+            <Text style={s.sub}>This sets your HMRC mileage rate — the tax-free amount you can claim per mile.</Text>
             <View style={s.chipGrid}>
               {VEHICLES.map(v => (
                 <VehicleChip
@@ -135,8 +145,8 @@ export default function Onboarding() {
 
         {step === 3 && (
           <View style={s.stepContent}>
-            <Text style={s.hero}>Which platforms{'\n'}do you work for?</Text>
-            <Text style={s.sub}>Select all that apply — you can change this anytime.</Text>
+            <Text style={s.hero}>Who do you{'\n'}deliver for?</Text>
+            <Text style={s.sub}>Pick all that apply. Okkle will show you which one actually pays you best per hour.</Text>
             <View style={s.chipGrid}>
               {PLATFORMS.map(p => (
                 <Chip
@@ -154,8 +164,8 @@ export default function Onboarding() {
 
         {step === 4 && (
           <View style={s.stepContent}>
-            <Text style={s.hero}>Where are you{'\n'}based?</Text>
-            <Text style={s.sub}>Scotland has slightly different income tax rates to the rest of the UK. This is based on where you live, not where you drive. Used only to estimate your take-home.</Text>
+            <Text style={s.hero}>Where are{'\n'}you based?</Text>
+            <Text style={s.sub}>Scotland's income tax rates differ slightly. This is where you live, not where you drive — and it only sharpens your take-home estimate.</Text>
 
             <Pressable onPress={detectRegion} style={s.detectBtn}>
               {detecting ? (
@@ -188,21 +198,57 @@ export default function Onboarding() {
             </View>
 
             <Text style={s.note}>
-              You'll be taxed at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}). Okkle is a tracking tool, not tax advice — your accountant confirms the final figures.
+              We'll estimate your tax at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}). Okkle is a tracking tool, not tax advice — your accountant confirms the final figures.
             </Text>
           </View>
         )}
 
+        {step === 5 && (
+          <View style={s.stepContent}>
+            <View style={s.readyIcon}><Feather name="check" size={30} color="#fff" /></View>
+            <Text style={s.hero}>You're set,{'\n'}{name || 'let’s go'}.</Text>
+            <Text style={s.sub}>Here's how to get the most out of Okkle:</Text>
+
+            <View style={s.doList}>
+              {[
+                { n: '1', icon: 'navigation' as const, title: 'Start a trip when you set off', body: 'GPS measures your miles and your tax savings as you ride.' },
+                { n: '2', icon: 'dollar-sign' as const, title: 'Log your pay each week', body: 'Most couriers add their Friday bank transfer — it keeps your numbers honest.' },
+                { n: '3', icon: 'trending-up' as const, title: 'Check Insights', body: 'After a week, see the spots and times that pay you best.' },
+              ].map(item => (
+                <View key={item.n} style={s.doRow}>
+                  <View style={s.doNum}><Text style={s.doNumText}>{item.n}</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.doTitle}>{item.title}</Text>
+                    <Text style={s.doBody}>{item.body}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={s.streakNote}>
+              <Text style={{ fontSize: 16 }}>🔥</Text>
+              <Text style={s.streakNoteText}>Track something every day to build your streak, earn medals and climb the ranks.</Text>
+            </View>
+          </View>
+        )}
+
         <View style={s.footer}>
-          <PrimaryButton
-            label={step === STEPS.length - 1 ? "Let's go" : 'Continue'}
-            onPress={next}
-            disabled={!canContinue}
-          />
-          {step > 0 && (
-            <Pressable onPress={() => setStep(s => s - 1)} style={{ marginTop: 14, alignItems: 'center' }}>
-              <Text style={s.backText}>Back</Text>
-            </Pressable>
+          {step === STEPS.length - 1 ? (
+            <>
+              <PrimaryButton label="Start my first trip" onPress={finishToTrip} />
+              <Pressable onPress={next} style={{ marginTop: 14, alignItems: 'center' }}>
+                <Text style={s.backText}>Explore the app first</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <PrimaryButton label={step === 0 ? 'Get started' : 'Continue'} onPress={next} disabled={!canContinue} />
+              {step > 0 && (
+                <Pressable onPress={() => setStep(s => s - 1)} style={{ marginTop: 14, alignItems: 'center' }}>
+                  <Text style={s.backText}>Back</Text>
+                </Pressable>
+              )}
+            </>
           )}
         </View>
       </ScrollView>
@@ -217,12 +263,13 @@ const s = StyleSheet.create({
   dotActive: { backgroundColor: colors.brandMid },
   dotCurrent: { backgroundColor: colors.brand },
   stepContent: { flex: 1, paddingBottom: spacing.xl },
-  welcomeIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xl },
+  welcomeIcon: { width: 62, height: 62, borderRadius: 20, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
+  readyIcon: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
   welcomeList: { marginTop: spacing.xl, gap: spacing.lg },
   welcomeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   welcomeDot: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.brandLight, alignItems: 'center', justifyContent: 'center' },
-  welcomeText: { ...type.body, color: colors.textPrimary },
-  logo: { fontSize: 32, fontWeight: font.bold, color: colors.brand, letterSpacing: -1, marginBottom: spacing.lg },
+  welcomeText: { ...type.body, color: colors.textPrimary, flex: 1 },
+  logo: { fontSize: 30, fontWeight: font.bold, color: colors.brand, letterSpacing: -1, marginBottom: spacing.md },
   hero: { ...type.hero, lineHeight: 38, marginBottom: spacing.md },
   sub: { ...type.body, color: colors.textSecondary, lineHeight: 24, marginBottom: spacing.xl },
   input: {
@@ -238,6 +285,16 @@ const s = StyleSheet.create({
   },
   detectText: { ...type.bodyMedium, color: colors.brandDeep },
   note: { ...type.caption, color: colors.textTertiary, lineHeight: 20, marginTop: spacing.lg },
+
+  doList: { gap: spacing.lg, marginTop: spacing.xs },
+  doRow: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' },
+  doNum: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
+  doNumText: { color: '#fff', fontWeight: font.bold, fontSize: 14 },
+  doTitle: { ...type.bodyMedium, fontSize: 16 },
+  doBody: { ...type.caption, color: colors.textSecondary, lineHeight: 20, marginTop: 2 },
+  streakNote: { flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.lg, marginTop: spacing.xl },
+  streakNoteText: { ...type.caption, color: '#8a5510', flex: 1, lineHeight: 19 },
+
   footer: { marginTop: 'auto', paddingTop: spacing.xl },
   backText: { ...type.label, color: colors.textSecondary },
 });
