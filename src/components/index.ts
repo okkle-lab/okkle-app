@@ -12,3 +12,4 @@ export { CountUp } from './CountUp';
 export { Medal } from './Medal';
 export { HeatMapView } from './HeatMapView';
 export { CoachMarks, type CoachStep } from './CoachMarks';
+export { DatePickerField } from './DatePickerField';

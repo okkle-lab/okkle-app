@@ -162,7 +162,19 @@ export function getLastTrip(): Trip | null {
   return db.getFirstSync<Trip>('SELECT * FROM trips ORDER BY created_at DESC LIMIT 1');
 }
 
-export function saveRecord(r: Omit<Record, 'id' | 'created_at'>) {
+// `createdAt` (ISO) lets users back-date an entry (e.g. a receipt from last month).
+export function saveRecord(r: Omit<Record, 'id' | 'created_at'>, createdAt?: string) {
+  if (createdAt) {
+    db.runSync(
+      `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
+        period_start, period_end, receipt_uri, notes, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      r.record_type, r.platform ?? null, r.amount ?? null, r.miles ?? null,
+      r.deduction ?? null, r.category ?? null, r.period_start ?? null,
+      r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, createdAt,
+    );
+    return;
+  }
   db.runSync(
     `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
       period_start, period_end, receipt_uri, notes)
@@ -486,12 +498,13 @@ export function updateTrip(id: number, t: Partial<Trip>) {
   const cur = getTrip(id);
   if (!cur) return;
   db.runSync(
-    'UPDATE trips SET platform=?, vehicle=?, miles=?, deduction=?, earnings=? WHERE id=?',
+    'UPDATE trips SET platform=?, vehicle=?, miles=?, deduction=?, earnings=?, started_at=? WHERE id=?',
     t.platform ?? cur.platform,
     t.vehicle ?? cur.vehicle,
     t.miles ?? cur.miles,
     t.deduction ?? cur.deduction,
     t.earnings ?? cur.earnings,
+    t.started_at ?? cur.started_at,
     id,
   );
 }
@@ -508,13 +521,14 @@ export function updateRecord(id: number, r: Partial<Record>) {
   const cur = getRecord(id);
   if (!cur) return;
   db.runSync(
-    'UPDATE records SET platform=?, amount=?, miles=?, deduction=?, category=?, notes=? WHERE id=?',
+    'UPDATE records SET platform=?, amount=?, miles=?, deduction=?, category=?, notes=?, created_at=? WHERE id=?',
     r.platform ?? cur.platform,
     r.amount ?? cur.amount,
     r.miles ?? cur.miles,
     r.deduction ?? cur.deduction,
     r.category ?? cur.category,
     r.notes ?? cur.notes,
+    r.created_at ?? cur.created_at,
     id,
   );
 }

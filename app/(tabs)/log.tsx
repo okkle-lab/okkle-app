@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
-import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip } from '../../src/components';
+import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip, DatePickerField } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser } from '../../src/db';
 
@@ -44,6 +44,7 @@ export default function LogScreen() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
   const [saved, setSaved] = useState(false);
 
   async function pickReceipt(useCamera: boolean) {
@@ -63,17 +64,19 @@ export default function LogScreen() {
   const deduction = miles ? calcDeduction(parseFloat(miles) || 0, vehicle) : 0;
 
   function handleSave() {
+    const createdAt = date.toISOString();
     if (tab === 'mileage') {
       if (!miles) { Alert.alert('Enter miles'); return; }
-      saveRecord({ record_type: 'mileage', platform, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: null, period_end: null, receipt_uri: null, notes: null });
+      saveRecord({ record_type: 'mileage', platform, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: null, period_end: null, receipt_uri: null, notes: null }, createdAt);
     } else if (tab === 'income') {
       if (!amount) { Alert.alert('Enter amount'); return; }
-      saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: null, period_end: null, receipt_uri: null, notes: null });
+      saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: null, period_end: null, receipt_uri: null, notes: null }, createdAt);
     } else {
       if (!amount || !description) { Alert.alert('Enter amount and description'); return; }
-      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: null, period_end: null, receipt_uri: receiptUri, notes: description });
+      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: null, period_end: null, receipt_uri: receiptUri, notes: description }, createdAt);
     }
     setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null);
+    const t = new Date(); t.setHours(12, 0, 0, 0); setDate(t);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -94,6 +97,12 @@ export default function LogScreen() {
           </Pressable>
         ))}
       </View>
+
+      {/* Date — defaults to today; back-date a receipt or pay from any past day. */}
+      <Card style={{ marginBottom: spacing.md }}>
+        <SectionHeader title="Date" />
+        <DatePickerField value={date} onChange={setDate} />
+      </Card>
 
       {tab === 'mileage' && (
         <Card style={{ gap: spacing.md }}>

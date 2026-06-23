@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Chip, SectionHeader, PrimaryButton, VehicleChip } from '../src/components';
+import { Chip, SectionHeader, PrimaryButton, VehicleChip, DatePickerField } from '../src/components';
 import { PLATFORMS, VEHICLES, calcDeduction, fmtGbp } from '../src/db/tax';
 import {
   getTrip, updateTrip, deleteTrip, getRecord, updateRecord, deleteRecord,
@@ -24,6 +24,11 @@ export default function EditEntry() {
   const [miles, setMiles] = useState(String(trip?.miles ?? record?.miles ?? ''));
   const [amount, setAmount] = useState(String(record?.amount ?? trip?.earnings ?? ''));
   const [description, setDescription] = useState(record?.category ?? record?.notes ?? '');
+  const [date, setDate] = useState(() => {
+    const iso = trip?.started_at ?? record?.created_at;
+    const d = iso ? new Date(iso) : new Date();
+    return isNaN(d.getTime()) ? new Date() : d;
+  });
 
   if (!trip && !record) {
     return (
@@ -50,6 +55,7 @@ export default function EditEntry() {
         miles: milesNum,
         deduction: parseFloat(previewDeduction.toFixed(2)),
         earnings: amount ? parseFloat(amount) : null,
+        started_at: date.toISOString(),
       });
     } else if (record) {
       updateRecord(entryId, {
@@ -59,6 +65,7 @@ export default function EditEntry() {
         deduction: showMiles ? parseFloat(previewDeduction.toFixed(2)) : record.deduction,
         category: showDescription ? description : record.category,
         notes: showDescription ? description : record.notes,
+        created_at: date.toISOString(),
       });
     }
     router.back();
@@ -88,6 +95,9 @@ export default function EditEntry() {
           <Text style={s.heading}>{title}</Text>
           <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Cancel</Text></Pressable>
         </View>
+
+        <SectionHeader title="Date" />
+        <DatePickerField value={date} onChange={setDate} />
 
         {showPlatform && (
           <>
