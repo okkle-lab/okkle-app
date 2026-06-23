@@ -52,7 +52,7 @@ export default function MedalsScreen() {
             <View style={s.grid}>
               {byCat[cat].map(a => (
                 <Pressable key={a.key} style={s.cell} onPress={() => setSelected(a)}>
-                  <Medal emoji={a.emoji} tier={a.tier} unlocked={a.unlocked} size={62} />
+                  <Medal emoji={a.emoji} category={a.category} tier={a.tier} unlocked={a.unlocked} size={62} />
                   <Text style={[s.medalLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
                   {!a.unlocked && a.progress > 0 && a.progress < 1 && (
                     <Text style={s.medalPct}>{Math.round(a.progress * 100)}%</Text>
@@ -69,7 +69,7 @@ export default function MedalsScreen() {
       <Modal visible={selected !== null} transparent animationType="fade" onRequestClose={() => setSelected(null)}>
         <Pressable style={s.modalBg} onPress={() => setSelected(null)}>
           <View style={s.modalCard}>
-            {selected && <Medal emoji={selected.emoji} tier={selected.tier} unlocked={selected.unlocked} size={108} />}
+            {selected && <Medal emoji={selected.emoji} category={selected.category} tier={selected.tier} unlocked={selected.unlocked} size={108} />}
             <Text style={s.modalTier}>{selected?.unlocked ? `${selected?.tier} medal` : 'Locked'}</Text>
             <Text style={s.modalTitle}>{selected?.label}</Text>
             <Text style={s.modalDesc}>{selected?.desc}</Text>
@@ -103,16 +103,13 @@ const s = StyleSheet.create({
   catTitle: { ...type.label, fontWeight: font.semibold, color: colors.textSecondary, marginBottom: spacing.md, letterSpacing: 0.3 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: '25%', alignItems: 'center', marginBottom: spacing.lg, paddingHorizontal: 2 },
-  medal: { width: 60, height: 60, borderRadius: 30, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  lockDot: { position: 'absolute', bottom: -2, right: -2, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  medalLabel: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', lineHeight: 14, fontWeight: font.medium },
+  medalLabel: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', lineHeight: 14, fontWeight: font.medium, marginTop: 2 },
   medalPct: { ...tabular, ...type.small, fontSize: 10, color: colors.brandDeep, marginTop: 1 },
   footnote: { ...type.small, lineHeight: 18, marginTop: spacing.xl, textAlign: 'center' },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   modalCard: { backgroundColor: colors.bgCard, borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', width: '100%', maxWidth: 340 },
-  modalMedal: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
-  modalTier: { ...type.label, color: colors.textTertiary, textTransform: 'capitalize', fontSize: 12, marginBottom: 2 },
+  modalTier: { ...type.label, color: colors.textTertiary, textTransform: 'capitalize', fontSize: 12, marginBottom: 2, marginTop: spacing.sm },
   modalTitle: { ...type.screenTitle, fontSize: 22, marginBottom: spacing.sm, textAlign: 'center' },
   modalDesc: { ...type.body, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg },
   modalTrack: { height: 6, width: '100%', borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden', marginBottom: spacing.lg },

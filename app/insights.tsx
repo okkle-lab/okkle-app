@@ -4,20 +4,22 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, HeatMapView } from '../src/components';
-import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, type ZoneStat, type TimeBucket, type HeatPoint } from '../src/db';
+import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter } from '../src/db';
 import { fmtGbp, fmtMiles } from '../src/db/tax';
 
 export default function InsightsScreen() {
   const router = useRouter();
+  const [filter, setFilter] = React.useState<TimeFilter>('all');
   const [zones, setZones] = React.useState<ZoneStat[]>([]);
   const [points, setPoints] = React.useState<HeatPoint[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
 
   React.useEffect(() => {
-    setZones(getZoneStats());
-    setPoints(getHeatPoints());
-    setBuckets(getEarningsByTimeOfDay());
-  }, []);
+    setZones(getZoneStats(filter));
+    setPoints(getHeatPoints(filter));
+  }, [filter]);
+
+  React.useEffect(() => { setBuckets(getEarningsByTimeOfDay()); }, []);
 
   const anyEarnings = zones.some(z => z.earnings > 0);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
@@ -32,6 +34,17 @@ export default function InsightsScreen() {
           <View style={{ width: 26 }} />
         </View>
         <Text style={s.sub}>Where and when your work pays off best.</Text>
+
+        {/* Time-of-day filter — compare where you earn at different times */}
+        {buckets.some(b => b.trips > 0) && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
+            {TIME_FILTERS.map(f => (
+              <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.filterChip, filter === f.key && s.filterChipOn]}>
+                <Text style={[s.filterText, filter === f.key && s.filterTextOn]}>{f.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
 
         {/* WHERE — location heatmap */}
         <SectionHeader icon="map" title="Your hotspots" />
@@ -52,7 +65,7 @@ export default function InsightsScreen() {
         {/* WHERE — ranked zones */}
         {zones.length > 0 && (
           <View style={{ marginTop: spacing.xl }}>
-            <SectionHeader icon="award" title={anyEarnings ? 'Top earning areas' : 'Busiest areas'} />
+            <SectionHeader icon="award" title={`${anyEarnings ? 'Top earning areas' : 'Busiest areas'}${filter !== 'all' ? ` · ${TIME_FILTERS.find(f => f.key === filter)?.label}` : ''}`} />
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               {zones.slice(0, 6).map((z, i, arr) => (
                 <View key={z.zone} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
@@ -111,7 +124,13 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   title: { ...type.screenTitle },
-  sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.xl },
+  sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.lg },
+
+  filterScroll: { marginBottom: spacing.lg, marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard },
+  filterChipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  filterText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
+  filterTextOn: { color: '#fff' },
 
   legend: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.md, paddingHorizontal: spacing.sm },
   legendText: { ...type.small },

@@ -87,7 +87,7 @@ export default function HomeScreen() {
     <Modal visible={newAch !== null} transparent animationType="fade" onRequestClose={() => setNewAch(null)}>
       <Pressable style={s.modalBg} onPress={() => setNewAch(null)}>
         <View style={s.modalCard}>
-          {newAch && <Medal emoji={newAch.emoji} tier={newAch.tier} unlocked size={104} />}
+          {newAch && <Medal emoji={newAch.emoji} category={newAch.category} tier={newAch.tier} unlocked size={104} />}
           <Text style={s.achKicker}>Medal unlocked</Text>
           <Text style={s.modalTitle}>{newAch?.label}</Text>
           <Text style={s.modalBody}>{newAch?.desc}</Text>
@@ -271,7 +271,7 @@ export default function HomeScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg, marginHorizontal: -4 }} contentContainerStyle={{ paddingHorizontal: 4, gap: 14 }}>
                 {achievementPreview.map(a => (
                   <View key={a.key} style={s.badge}>
-                    <Medal emoji={a.emoji} tier={a.tier} unlocked={a.unlocked} size={54} />
+                    <Medal emoji={a.emoji} category={a.category} tier={a.tier} unlocked={a.unlocked} size={54} />
                     <Text style={[s.badgeLabel, !a.unlocked && { color: colors.textTertiary }]} numberOfLines={2}>{a.label}</Text>
                     {!a.unlocked && a.progress > 0 && (
                       <View style={s.badgeTrack}><View style={[s.badgeFill, { width: `${Math.round(a.progress * 100)}%` }]} /></View>

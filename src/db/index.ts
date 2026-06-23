@@ -785,12 +785,38 @@ export function achievementCount(): number { return getAchievements().length; }
 
 export type ZoneStat = { zone: string; trips: number; miles: number; earnings: number; deduction: number };
 
-// Ranked "where you work" zones (reverse-geocoded area names saved per trip).
-export function getZoneStats(): ZoneStat[] {
-  const rows = db.getAllSync<{ zone: string | null; miles: number; earnings: number | null; deduction: number }>(
-    `SELECT zone, miles, earnings, deduction FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
+// Time-of-day filters used by the Insights screen so people can compare where
+// they earn at different parts of the day.
+export type TimeFilter = 'all' | 'morning' | 'lunch' | 'afternoon' | 'dinner' | 'late';
+export const TIME_FILTERS: { key: TimeFilter; label: string }[] = [
+  { key: 'all', label: 'All day' },
+  { key: 'morning', label: 'Morning' },
+  { key: 'lunch', label: 'Lunch' },
+  { key: 'afternoon', label: 'Afternoon' },
+  { key: 'dinner', label: 'Dinner' },
+  { key: 'late', label: 'Late' },
+];
+
+// Does a trip's start hour fall in the given filter? (local time)
+function hourInFilter(startedAt: string, f: TimeFilter): boolean {
+  if (f === 'all') return true;
+  const h = new Date(startedAt).getHours();
+  switch (f) {
+    case 'morning': return h >= 6 && h < 11;
+    case 'lunch': return h >= 11 && h < 14;
+    case 'afternoon': return h >= 14 && h < 17;
+    case 'dinner': return h >= 17 && h < 21;
+    case 'late': return h >= 21 || h < 6;
+  }
+}
+
+// Ranked "where you work" zones, optionally restricted to a time of day.
+export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
+  const rows = db.getAllSync<{ zone: string | null; miles: number; earnings: number | null; deduction: number; started_at: string }>(
+    `SELECT zone, miles, earnings, deduction, started_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
   const agg: { [z: string]: ZoneStat } = {};
   for (const r of rows) {
+    if (!hourInFilter(r.started_at, filter)) continue;
     const z = r.zone as string;
     if (!agg[z]) agg[z] = { zone: z, trips: 0, miles: 0, earnings: 0, deduction: 0 };
     agg[z].trips += 1;
@@ -804,13 +830,14 @@ export function getZoneStats(): ZoneStat[] {
 
 export type HeatPoint = { lat: number; lng: number; w: number };
 
-// All saved GPS breadcrumb points, each weighted (earnings/point when known,
-// else 1). Feeds the location heatmap.
-export function getHeatPoints(): HeatPoint[] {
-  const rows = db.getAllSync<{ route_json: string | null; earnings: number | null }>(
-    `SELECT route_json, earnings FROM trips WHERE route_json IS NOT NULL`);
+// All saved GPS breadcrumb points, optionally restricted to a time of day, each
+// weighted (earnings/point when known, else 1). Feeds the location heatmap.
+export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
+  const rows = db.getAllSync<{ route_json: string | null; earnings: number | null; started_at: string }>(
+    `SELECT route_json, earnings, started_at FROM trips WHERE route_json IS NOT NULL`);
   const out: HeatPoint[] = [];
   for (const r of rows) {
+    if (!hourInFilter(r.started_at, filter)) continue;
     let pts: { lat: number; lng: number }[] = [];
     try { pts = JSON.parse(r.route_json as string); } catch { continue; }
     if (!Array.isArray(pts) || pts.length === 0) continue;

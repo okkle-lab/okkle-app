@@ -317,7 +317,7 @@ export default function TripScreen() {
         </View>
         {nextMedal && (
           <Pressable onPress={() => router.push('/medals')} style={s.nextMedal}>
-            <Medal emoji={nextMedal.emoji} tier={nextMedal.tier} unlocked={false} size={40} />
+            <Medal emoji={nextMedal.emoji} category={nextMedal.category} tier={nextMedal.tier} unlocked={false} size={40} />
             <View style={{ flex: 1 }}>
               <Text style={s.nextMedalLabel}>Next medal · {nextMedal.label}</Text>
               <View style={s.nextMedalTrack}><View style={[s.nextMedalFill, { width: `${Math.round(nextMedal.progress * 100)}%` }]} /></View>
