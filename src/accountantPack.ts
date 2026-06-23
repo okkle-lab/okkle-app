@@ -148,7 +148,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
   </style></head><body>
 
   <div class="cover">
-    <h1>Self Assessment — Accountant Pack</h1>
+    <h1>Self Assessment — Income &amp; Expenses Summary</h1>
     <p class="sub">${esc(user?.name ?? 'Courier')} · Sole trader (delivery courier)</p>
     <div class="coverkv">
       <span>Accounting period</span><b>${ukDate(start)} to ${ukDate(periodEnd)} (${taxYearLabel()})</b>
@@ -227,6 +227,6 @@ export async function shareAccountantPack(): Promise<void> {
   const html = await buildAccountantPackHtml();
   const { uri } = await Print.printToFileAsync({ html });
   kvSet('pack_exported', 1); // unlocks the "Audit-ready" achievement
-  // Re-share under a clear, dated filename instead of the random print name.
-  await shareFileAs(uri, 'Accountant-Pack', 'pdf');
+  // Re-share under a clear, dated, accountant-friendly filename.
+  await shareFileAs(uri, 'Self-Assessment-Summary', 'pdf');
 }

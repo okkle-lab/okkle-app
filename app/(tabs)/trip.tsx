@@ -303,12 +303,14 @@ export default function TripScreen() {
       {/* Gamified goal card — daily goal ring + streak + next medal */}
       <View style={s.goalCard}>
         <View style={s.goalTop}>
-          <ProgressRing size={62} strokeWidth={7} progress={goalProgress} color={colors.brand}>
+          <ProgressRing size={64} strokeWidth={7} progress={goalProgress} color={colors.brand}>
             <Text style={s.goalRingPct}>{Math.round(goalProgress * 100)}%</Text>
           </ProgressRing>
           <View style={{ flex: 1 }}>
-            <Text style={s.goalTitle}>Today's goal</Text>
-            <Text style={s.goalSub}>{today.miles.toFixed(1)} of {DAILY_GOAL_MILES} mi</Text>
+            <Text style={s.goalValue}>
+              {today.miles.toFixed(1)}<Text style={s.goalValueUnit}> / {DAILY_GOAL_MILES} mi</Text>
+            </Text>
+            <Text style={s.goalSub}>Daily mileage goal — keeps your streak alive</Text>
           </View>
           <View style={[s.streakPill, streak > 0 ? s.streakPillOn : s.streakPillOff]}>
             <Text style={{ fontSize: 14 }}>{streak > 0 ? '🔥' : '✨'}</Text>
@@ -385,8 +387,9 @@ const s = StyleSheet.create({
   goalCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, marginBottom: spacing.lg },
   goalTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   goalRingPct: { ...tabular, fontSize: 15, fontWeight: font.bold, color: colors.brandDeep },
-  goalTitle: { ...type.bodyMedium, fontSize: 16 },
-  goalSub: { ...type.caption, ...tabular, marginTop: 2 },
+  goalValue: { ...tabular, fontSize: 24, fontWeight: font.bold, color: colors.textPrimary, letterSpacing: -0.5 },
+  goalValueUnit: { fontSize: 15, fontWeight: font.medium, color: colors.textSecondary, letterSpacing: 0 },
+  goalSub: { ...type.caption, marginTop: 3 },
   streakPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.full },
   streakPillOn: { backgroundColor: colors.amberLight },
   streakPillOff: { backgroundColor: colors.bgSoft },

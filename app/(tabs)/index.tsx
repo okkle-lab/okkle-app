@@ -18,6 +18,29 @@ import { tabular } from '../../src/theme';
 
 const THRESHOLD = 10000;
 
+// Named rank for a level — status/identity, so the number means something.
+function rankFor(level: number): string {
+  if (level >= 15) return `Legend · Level ${level}`;
+  if (level >= 10) return `Veteran · Level ${level}`;
+  if (level >= 6) return `Pro · Level ${level}`;
+  if (level >= 3) return `Regular · Level ${level}`;
+  return `Rookie · Level ${level}`;
+}
+
+// A clear date range under the period switcher (e.g. "Mon 17 – Sun 23 Jun").
+function fmtPeriodRange(period: Period, startIso: string, endIso: string): string {
+  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' };
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (period === 'today') return start.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  if (period === 'month') return start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  if (period === 'year') {
+    const y = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${y(start)} – ${y(end)}`;
+  }
+  return `${start.toLocaleDateString('en-GB', opts)} – ${end.toLocaleDateString('en-GB', opts)}`;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const [period, setPeriod] = React.useState<Period>('week');
@@ -145,12 +168,13 @@ export default function HomeScreen() {
             <View style={s.levelBadge}><Text style={s.levelBadgeText}>Lv {xp.level}</Text></View>
             <View style={{ flex: 1 }}>
               <View style={s.levelTop}>
-                <Text style={s.levelTitle}>Level {xp.level}</Text>
+                <Text style={s.levelTitle}>{rankFor(xp.level)}</Text>
                 <Text style={s.levelXp}>{xp.into} / {xp.span} XP</Text>
               </View>
               <View style={s.xpTrack}><View style={[s.xpFill, { width: `${Math.round(xp.progress * 100)}%` }]} /></View>
             </View>
           </View>
+          <Text style={s.levelHint}>You climb ranks by staying consistent — every trip, expense and streak day earns XP.</Text>
         </Card>
       )}
       {challenges.length > 0 && (
@@ -192,7 +216,7 @@ export default function HomeScreen() {
           </Pressable>
         ))}
       </View>
-      <Text style={s.periodLabel}>{periodData?.label ?? ''}</Text>
+      <Text style={s.periodLabel}>{periodData ? fmtPeriodRange(period, periodData.rangeStart, periodData.rangeEnd) : ''}</Text>
       <View style={s.metricsRow}>
         <MetricCard icon="home" label="Take-home" value={fmtGbp(periodData?.takeHome ?? 0)} accent style={{ marginRight: 8 }} />
         <MetricCard icon="map" label="Miles" value={fmtMiles(periodData?.miles ?? 0)} sub={fmtGbp(periodData?.deduction ?? 0)} />
@@ -435,6 +459,7 @@ const s = StyleSheet.create({
   levelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   levelTitle: { ...type.bodyMedium, fontSize: 15 },
   levelXp: { ...type.caption, ...tabular },
+  levelHint: { ...type.small, lineHeight: 17, marginTop: spacing.md },
   xpTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
   xpFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
 

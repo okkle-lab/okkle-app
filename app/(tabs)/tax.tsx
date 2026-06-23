@@ -78,7 +78,7 @@ export default function TaxScreen() {
 
       {/* Mileage method — clean summary, comparison lives in its own tool */}
       <SectionHeader icon="navigation" title="Mileage method" />
-      <Card style={{ gap: spacing.md }}>
+      <Card style={{ gap: spacing.md, marginBottom: spacing.xl }}>
         <View style={s.methodRow}>
           <View style={{ flex: 1, paddingRight: spacing.md }}>
             <Text style={s.methodName}>
@@ -99,7 +99,7 @@ export default function TaxScreen() {
 
       {/* Self Assessment summary */}
       <SectionHeader icon="file-text" title="Self Assessment summary" />
-      <Card>
+      <Card style={{ marginBottom: spacing.xl }}>
         <Row label="Turnover (income)" value={fmtGbp(pos.turnover)} />
         <Row label="Allowable expenses" value={fmtGbp(pos.expenses)} />
         <Row label="Net profit" value={fmtGbp(pos.profit)} bold />
@@ -110,7 +110,7 @@ export default function TaxScreen() {
 
       {/* Other income — for marginal-rate accuracy */}
       <SectionHeader icon="briefcase" title="Other income (for accuracy)" />
-      <Card>
+      <Card style={{ marginBottom: spacing.xl }}>
         <Text style={s.inputLabel}>Wages or other income this tax year</Text>
         <TextInput
           style={s.input}
@@ -128,7 +128,7 @@ export default function TaxScreen() {
 
       {/* Tax & NIC */}
       <SectionHeader icon="percent" title="Estimated tax & National Insurance" />
-      <Card>
+      <Card style={{ marginBottom: spacing.xl }}>
         <Row label="Income Tax" value={fmtGbp(pos.incomeTax)} />
         <Row label="Class 4 NIC" value={fmtGbp(pos.class4)} />
         <Row label="Total estimated due" value={fmtGbp(pos.totalDue)} bold accent />
@@ -146,7 +146,7 @@ export default function TaxScreen() {
 
       {/* Insights — your business as a P&L */}
       <SectionHeader icon="bar-chart-2" title="Business insights" />
-      <Card>
+      <Card style={{ marginBottom: spacing.xl }}>
         <Row label="Effective net pay / hour" value={hours > 0 ? fmtPerHour((pos.profit - pos.totalDue) / hours) : '—'} bold accent />
         <Row label="Gross pay / hour" value={hours > 0 ? fmtPerHour(year.earnings / hours) : '—'} />
         <Row label="Gross earnings / mile" value={fmtPerMile(grossPerMile)} />
@@ -162,7 +162,7 @@ export default function TaxScreen() {
       {platforms.some(p => p.perHour > 0) && (
         <>
           <SectionHeader icon="award" title="Which platform pays best?" />
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <Card style={{ padding: 0, overflow: 'hidden', marginBottom: spacing.xl }}>
             {platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour).map((p, i, arr) => (
               <View key={p.platform} style={[s.qRow, i < arr.length - 1 && s.qBorder]}>
                 <View style={{ flex: 1 }}>
@@ -181,7 +181,7 @@ export default function TaxScreen() {
 
       {/* MTD quarterly updates */}
       <SectionHeader icon="calendar" title="Making Tax Digital — quarterly updates" />
-      <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <Card style={{ padding: 0, overflow: 'hidden', marginBottom: spacing.xl }}>
         {quarters.map((q, i) => (
           <View key={q.label} style={[s.qRow, i < quarters.length - 1 && s.qBorder, q.isCurrent && s.qCurrent]}>
             <View style={{ flex: 1 }}>

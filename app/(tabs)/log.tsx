@@ -34,7 +34,9 @@ type Tab = 'mileage' | 'income' | 'expense';
 
 export default function LogScreen() {
   const user = getUser();
-  const [tab, setTab] = useState<Tab>('mileage');
+  // Expense first, then earnings; manual mileage last so GPS tracking is the
+  // encouraged way to record miles.
+  const [tab, setTab] = useState<Tab>('expense');
 
   const [miles, setMiles] = useState('');
   const [vehicle, setVehicle] = useState(user?.vehicle ?? 'car');
@@ -82,9 +84,9 @@ export default function LogScreen() {
 
       <View style={s.tabs}>
         {([
-          ['mileage', 'Mileage', 'map'],
-          ['income', 'Earnings', 'dollar-sign'],
           ['expense', 'Expense', 'file-text'],
+          ['income', 'Earnings', 'dollar-sign'],
+          ['mileage', 'Mileage', 'map'],
         ] as [Tab, string, React.ComponentProps<typeof Feather>['name']][]).map(([t, label, icon]) => (
           <Pressable key={t} onPress={() => setTab(t)} style={[s.tab, tab === t && s.tabActive]}>
             <Feather name={icon} size={16} color={tab === t ? colors.textPrimary : colors.textSecondary} />
@@ -95,6 +97,10 @@ export default function LogScreen() {
 
       {tab === 'mileage' && (
         <Card style={{ gap: spacing.md }}>
+          <View style={s.gpsHint}>
+            <Feather name="navigation" size={14} color={colors.brandDeep} />
+            <Text style={s.gpsHintText}>Tip: tracking a trip with GPS records miles automatically and more accurately.</Text>
+          </View>
           <View>
             <SectionHeader title="Miles driven" />
             <TextInput
@@ -259,6 +265,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
   },
   receiptRemoveText: { color: '#fff', fontSize: 13, fontWeight: font.medium },
+  gpsHint: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md },
+  gpsHintText: { ...type.caption, color: colors.brandDeep, flex: 1, lineHeight: 18 },
   catChip: {
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full,
     borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bg,
