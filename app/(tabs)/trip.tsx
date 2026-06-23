@@ -7,11 +7,11 @@ import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, Medal } from '../../src/components';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, Medal, CoachMarks, type CoachStep } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, getStreak, getAchievements, type DailyStats, type Achievement } from '../../src/db';
+import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, getStreak, getAchievements, kvGet, kvSet, type DailyStats, type Achievement } from '../../src/db';
 
 type Phase = 'setup' | 'live' | 'summary' | 'logpay';
 
@@ -42,6 +42,23 @@ export default function TripScreen() {
   const [payAmount, setPayAmount] = useState('');
   const [payPlatform, setPayPlatform] = useState('');
   const { trip, start, pause, resume, end } = useTrip();
+
+  // First-run tour for the Trip tab — only the two things that matter to a
+  // courier: start tracking (tax-free miles) and log weekly pay (accurate £/h).
+  const [showCoach, setShowCoach] = useState(false);
+  const startTripRef = React.useRef<View>(null);
+  const logPayRef = React.useRef<View>(null);
+  useFocusEffect(React.useCallback(() => {
+    if (phase === 'setup' && getUser()?.onboarded && !kvGet('coach_trip_seen')) {
+      const t = setTimeout(() => setShowCoach(true), 650);
+      return () => clearTimeout(t);
+    }
+  }, [phase]));
+  const coachSteps: CoachStep[] = [
+    { ref: startTripRef, title: 'This is where the money is', body: 'Tap Start when you set off. Okkle logs every mile as tax-free money back — automatically, no notes or spreadsheet.' },
+    { ref: logPayRef, title: 'Add your weekly pay', body: 'Paid weekly by Uber Eats or Deliveroo? Log it here. It keeps your real earnings — and your £/hour — accurate.' },
+  ];
+  function dismissCoach() { kvSet('coach_trip_seen', 1); setShowCoach(false); }
 
   useEffect(() => {
     setToday(getDailyStats());
@@ -296,6 +313,8 @@ export default function TripScreen() {
   const todayHasData = today.trips > 0 || today.earnings > 0;
   const goalProgress = Math.min(1, today.miles / DAILY_GOAL_MILES);
   return (
+    <>
+    <CoachMarks steps={coachSteps} visible={showCoach} onDone={dismissCoach} />
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <Text style={s.heading}>Start a trip</Text>
       <Text style={s.sub}>Tap start and ride — GPS measures your distance for you.</Text>
@@ -359,19 +378,20 @@ export default function TripScreen() {
       </View>
 
       {/* Oversized start button — easy to hit one-handed on a mounted phone */}
-      <Pressable onPress={handleStart} style={({ pressed }) => [s.startBtn, pressed && { opacity: 0.85 }]}>
+      <Pressable ref={startTripRef} onPress={handleStart} style={({ pressed }) => [s.startBtn, pressed && { opacity: 0.85 }]}>
         <Feather name="navigation" size={24} color="#fff" />
         <Text style={s.startBtnLabel}>Start trip</Text>
       </Pressable>
 
       {/* Log weekly pay — couriers are paid weekly by bank transfer, not per trip */}
-      <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={s.logPayBtn}>
+      <Pressable ref={logPayRef} onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={s.logPayBtn}>
         <Feather name="dollar-sign" size={16} color={colors.brandDeep} />
         <Text style={s.logPayText}>Log weekly pay</Text>
       </Pressable>
 
       <Text style={s.gpsNote}>Keep Okkle open during your ride. Your screen will stay awake automatically.</Text>
     </ScrollView>
+    </>
   );
 }
 

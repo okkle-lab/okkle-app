@@ -202,7 +202,7 @@ export default function Settings() {
 
       <SectionHeader title="Help" />
       <Card style={{ gap: spacing.md }}>
-        <Pressable onPress={() => { kvSet('coach_seen', ''); router.back(); }} style={s.actionRow}>
+        <Pressable onPress={() => { kvSet('coach_seen', ''); kvSet('coach_trip_seen', ''); router.back(); }} style={s.actionRow}>
           <IconBadge icon="help-circle" tone="mint" />
           <Text style={s.actionText}>Replay the app tour</Text>
           <Feather name="chevron-right" size={18} color={colors.textTertiary} />
