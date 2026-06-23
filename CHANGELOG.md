@@ -2,6 +2,14 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (trip route map + records filter)
+
+### Premium trip detail
+- Tapping a GPS trip now shows a **route map** of the journey (drawn on-device from the GPS breadcrumb, with start/finish markers) plus a stat strip — distance · time · tax saved — and the area. Real Google Maps can drop in on a dev build.
+
+### Records categorisation
+- A **filter** above the entries list (All / GPS trips / Earnings / Expenses / Manual miles) makes a long mixed list scannable — the right Starling-style pattern for slicing the same data.
+
 ## 2026-06-23 (premium icons, Starling-inspired)
 
 ### Richer icons, less flat
