@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TextInput, Pressable } from 'react-
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, PrimaryButton, IconBadge } from '../../src/components';
+import { Card, SectionHeader } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries, getHoursWorked, getPlatformStats,
@@ -65,6 +65,16 @@ export default function TaxScreen() {
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <Text style={s.heading}>Tax</Text>
       <Text style={s.sub}>Your estimated position for {taxYearLabel()}</Text>
+
+      {/* Headline: what to set aside — the number that matters on this tab */}
+      <View style={s.setAside}>
+        <View style={s.setAsideIcon}><Feather name="shield" size={20} color="#fff" /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.setAsideLabel}>Set aside for tax</Text>
+          <Text style={s.setAsideSub}>Estimated bill for {taxYearLabel()} so far</Text>
+        </View>
+        <Text style={s.setAsideValue}>{fmtGbp(pos.totalDue)}</Text>
+      </View>
 
       {/* Mileage method — clean summary, comparison lives in its own tool */}
       <SectionHeader icon="navigation" title="Mileage method" />
@@ -209,27 +219,16 @@ export default function TaxScreen() {
         ))}
       </Card>
 
-      {/* Insights + Export now live in their own focused subscreens */}
-      <SectionHeader icon="compass" title="Explore" />
-      <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <Pressable onPress={() => router.push('/insights')} style={({ pressed }) => [s.linkRow, pressed && { backgroundColor: colors.bgSoft }]}>
-          <IconBadge icon="map" tone="mint" size={36} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.linkTitle}>Insights</Text>
-            <Text style={s.linkSub}>Your hotspots, top areas &amp; best hours</Text>
-          </View>
-          <Feather name="chevron-right" size={20} color={colors.textTertiary} />
-        </Pressable>
-        <View style={s.linkDivider} />
-        <Pressable onPress={() => router.push('/export')} style={({ pressed }) => [s.linkRow, pressed && { backgroundColor: colors.bgSoft }]}>
-          <IconBadge icon="send" tone="green" size={36} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.linkTitle}>Export &amp; share</Text>
-            <Text style={s.linkSub}>Accountant Pack, FreeAgent, mileage log, CSV</Text>
-          </View>
-          <Feather name="chevron-right" size={20} color={colors.textTertiary} />
-        </Pressable>
-      </Card>
+      {/* Export — send everything to your accountant */}
+      <SectionHeader icon="send" title="Send to your accountant" />
+      <Pressable onPress={() => router.push('/export')} style={({ pressed }) => [s.exportCard, pressed && { opacity: 0.9 }]}>
+        <View style={s.exportIcon}><Feather name="file-text" size={22} color="#fff" /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.exportCardTitle}>Export &amp; share</Text>
+          <Text style={s.exportCardSub}>Accountant Pack, FreeAgent, mileage log, CSV</Text>
+        </View>
+        <Feather name="chevron-right" size={22} color="#fff" />
+      </Pressable>
 
       <View style={s.disclaimer}>
         <Feather name="shield" size={14} color={colors.textTertiary} />
@@ -259,6 +258,12 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   heading: { ...type.screenTitle, marginBottom: 6 },
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.xl },
+
+  setAside: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.amber, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.xl },
+  setAsideIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
+  setAsideLabel: { ...type.bodyMedium, fontSize: 16, color: '#fff' },
+  setAsideSub: { ...type.caption, color: 'rgba(255,255,255,0.9)', marginTop: 1 },
+  setAsideValue: { ...tabular, fontSize: 26, fontWeight: font.bold, color: '#fff', letterSpacing: -0.5 },
 
   methodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   methodName: { ...type.bodyMedium, fontSize: 16 },
@@ -290,10 +295,10 @@ const s = StyleSheet.create({
   qProfitLabel: { ...type.small },
   mtdNote: { ...type.small, lineHeight: 18, marginTop: spacing.md },
 
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.lg },
-  linkDivider: { height: 1, backgroundColor: colors.border, marginLeft: 62 },
-  linkTitle: { ...type.bodyMedium, fontSize: 15 },
-  linkSub: { ...type.caption, marginTop: 1 },
+  exportCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, padding: spacing.lg },
+  exportIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
+  exportCardTitle: { color: '#fff', fontSize: 16, fontWeight: font.bold },
+  exportCardSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
 
   disclaimer: { marginTop: spacing.xl, padding: spacing.lg, backgroundColor: colors.bgSoft, borderRadius: radius.md, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   disclaimerText: { ...type.small, lineHeight: 18, flex: 1 },

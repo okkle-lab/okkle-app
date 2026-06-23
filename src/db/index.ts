@@ -828,6 +828,38 @@ export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
   return Object.values(agg).sort((a, b) => anyEarnings ? b.earnings - a.earnings : b.miles - a.miles);
 }
 
+// The single best "where + when" combination by £/hour — the headline tip.
+export type BestSpot = { zone: string; timeLabel: string; perHour: number; earnings: number; hours: number; trips: number };
+
+function bucketLabel(hour: number): string {
+  if (hour >= 6 && hour < 11) return 'mornings';
+  if (hour >= 11 && hour < 14) return 'lunchtimes';
+  if (hour >= 14 && hour < 17) return 'afternoons';
+  if (hour >= 17 && hour < 21) return 'evenings';
+  return 'late nights';
+}
+
+export function getBestSpot(): BestSpot | null {
+  const rows = db.getAllSync<{ zone: string | null; earnings: number | null; started_at: string; ended_at: string }>(
+    `SELECT zone, earnings, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> '' AND earnings > 0`);
+  const agg: { [k: string]: BestSpot } = {};
+  for (const r of rows) {
+    const d = new Date(r.started_at);
+    const time = bucketLabel(d.getHours());
+    const key = `${r.zone}|${time}`;
+    if (!agg[key]) agg[key] = { zone: r.zone as string, timeLabel: time, perHour: 0, earnings: 0, hours: 0, trips: 0 };
+    const ms = new Date(r.ended_at).getTime() - d.getTime();
+    agg[key].earnings += r.earnings ?? 0;
+    agg[key].hours += ms > 0 ? ms / 3600000 : 0;
+    agg[key].trips += 1;
+  }
+  const candidates = Object.values(agg)
+    .filter(s => s.hours > 0.1)
+    .map(s => ({ ...s, perHour: s.earnings / s.hours }))
+    .sort((a, b) => b.perHour - a.perHour);
+  return candidates[0] ?? null;
+}
+
 export type HeatPoint = { lat: number; lng: number; w: number };
 
 // All saved GPS breadcrumb points, optionally restricted to a time of day, each

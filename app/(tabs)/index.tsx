@@ -6,16 +6,15 @@ import { colors, font, spacing, radius, type } from '../../src/theme';
 import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView } from '../../src/components';
 import {
   getTrips, getUser, getTaxYearMiles,
-  getTaxYearSummary, getTaxYearExpenses, getEarningsByTimeOfDay,
+  getTaxYearSummary, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
   getStreak, getAchievements, popNewAchievements, getXp, getWeeklyChallenges, creditCompletedChallenges,
-  getHeatPoints,
-  kvGetNum, type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
-  type XpInfo, type Challenge, type HeatPoint,
+  getHeatPoints, getBestSpot,
+  type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
+  type XpInfo, type Challenge, type HeatPoint, type BestSpot,
 } from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
+import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
-import { taxPosition } from '../../src/db/taxcalc';
 
 const THRESHOLD = 10000;
 
@@ -28,7 +27,6 @@ export default function HomeScreen() {
   const [trips, setTrips] = React.useState<ReturnType<typeof getTrips>>([]);
   const [user, setUser] = React.useState(getUser());
   const [yearMiles, setYearMiles] = React.useState(0);
-  const [setAside, setSetAside] = React.useState(0);
   const [streak, setStreak] = React.useState(0);
   const [achievements, setAchievements] = React.useState<Achievement[]>([]);
   const [newAch, setNewAch] = React.useState<Achievement | null>(null);
@@ -36,6 +34,7 @@ export default function HomeScreen() {
   const [challenges, setChallenges] = React.useState<Challenge[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
   const [heatPoints, setHeatPoints] = React.useState<HeatPoint[]>([]);
+  const [bestSpot, setBestSpot] = React.useState<BestSpot | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
 
   function loadPeriod(p: Period) {
@@ -52,11 +51,8 @@ export default function HomeScreen() {
     setYearMiles(getTaxYearMiles());
     setBuckets(getEarningsByTimeOfDay());
     setHeatPoints(getHeatPoints());
+    setBestSpot(getBestSpot());
     loadPeriod(period);
-
-    // "Set aside for tax" estimate.
-    const pos = taxPosition(y.earnings, y.deduction + getTaxYearExpenses(), u?.region ?? 'ruk', kvGetNum('other_income'));
-    setSetAside(pos.totalDue);
 
     // Gamification: streak, badges, and a celebration for anything new.
     setStreak(getStreak());
@@ -234,18 +230,6 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Set aside for tax — practical guidance, after the fun stuff */}
-      <Card style={{ marginTop: spacing.xl }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={s.piggy}><Feather name="shield" size={18} color={colors.amber} /></View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.setAsideLabel}>Set aside for tax</Text>
-            <Text style={s.setAsideSub}>Estimated bill so far this year</Text>
-          </View>
-          <Text style={s.setAsideValue}>{fmtGbp(setAside)}</Text>
-        </View>
-      </Card>
-
       {/* Gamification — medal collection */}
       {achievements.length > 0 && (
         <View style={{ marginTop: spacing.xl }}>
@@ -345,7 +329,9 @@ export default function HomeScreen() {
           <Card style={{ padding: spacing.sm }}>
             <HeatMapView points={heatPoints} height={160} />
             <View style={s.insightsCaptionRow}>
-              <Text style={s.insightsCaption}>Your hotspots, top areas &amp; best hours</Text>
+              <Text style={s.insightsCaption} numberOfLines={1}>
+                {bestSpot ? `Best: ${bestSpot.zone}, ${bestSpot.timeLabel} · ${fmtPerHour(bestSpot.perHour)}` : 'Your hotspots, top areas & best hours'}
+              </Text>
               <Feather name="arrow-right" size={16} color={colors.brandDeep} />
             </View>
           </Card>
@@ -390,12 +376,12 @@ const s = StyleSheet.create({
   quickStart: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: colors.brand, borderRadius: radius.lg,
-    paddingVertical: 18, paddingHorizontal: spacing.xl, marginBottom: spacing.xl,
+    paddingVertical: 18, paddingHorizontal: spacing.xl,
   },
   quickStartTitle: { color: '#fff', fontSize: 18, fontWeight: font.bold },
   quickStartSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 1 },
 
-  segment: { flexDirection: 'row', backgroundColor: colors.bgSoft, borderRadius: radius.lg, padding: 4, marginBottom: spacing.sm },
+  segment: { flexDirection: 'row', backgroundColor: colors.bgSoft, borderRadius: radius.lg, padding: 4, marginBottom: spacing.sm, marginTop: spacing.xl },
   segItem: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: radius.md },
   segItemActive: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   segText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
@@ -420,11 +406,6 @@ const s = StyleSheet.create({
   disclaimer: { marginTop: spacing.xl, padding: spacing.lg, backgroundColor: colors.bgSoft, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', gap: 8 },
   disclaimerText: { ...type.small, lineHeight: 18, flex: 1 },
 
-  setAside: { marginBottom: spacing.lg },
-  piggy: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.amberLight, alignItems: 'center', justifyContent: 'center' },
-  setAsideLabel: { ...type.bodyMedium, fontSize: 15 },
-  setAsideSub: { ...type.caption, marginTop: 1 },
-  setAsideValue: { ...tabular, fontSize: 20, fontWeight: font.bold, color: colors.amber },
 
   heatRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, gap: 10 },
   heatLabel: { ...type.caption, color: colors.textSecondary, width: 70 },

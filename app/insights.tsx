@@ -4,8 +4,8 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, HeatMapView } from '../src/components';
-import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter } from '../src/db';
-import { fmtGbp, fmtMiles } from '../src/db/tax';
+import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot } from '../src/db';
+import { fmtGbp, fmtMiles, fmtPerHour } from '../src/db/tax';
 
 export default function InsightsScreen() {
   const router = useRouter();
@@ -13,13 +13,17 @@ export default function InsightsScreen() {
   const [zones, setZones] = React.useState<ZoneStat[]>([]);
   const [points, setPoints] = React.useState<HeatPoint[]>([]);
   const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
+  const [best, setBest] = React.useState<BestSpot | null>(null);
 
   React.useEffect(() => {
     setZones(getZoneStats(filter));
     setPoints(getHeatPoints(filter));
   }, [filter]);
 
-  React.useEffect(() => { setBuckets(getEarningsByTimeOfDay()); }, []);
+  React.useEffect(() => {
+    setBuckets(getEarningsByTimeOfDay());
+    setBest(getBestSpot());
+  }, []);
 
   const anyEarnings = zones.some(z => z.earnings > 0);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
@@ -34,6 +38,19 @@ export default function InsightsScreen() {
           <View style={{ width: 26 }} />
         </View>
         <Text style={s.sub}>Where and when your work pays off best.</Text>
+
+        {/* Headline tip — best zone × best time by £/hour */}
+        {best && (
+          <View style={s.tip}>
+            <Text style={s.tipEmoji}>💡</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.tipText}>
+                You earn most around <Text style={s.tipStrong}>{best.zone}</Text> on <Text style={s.tipStrong}>{best.timeLabel}</Text>
+              </Text>
+              <Text style={s.tipRate}>{fmtPerHour(best.perHour)} · {best.trips} {best.trips === 1 ? 'trip' : 'trips'}</Text>
+            </View>
+          </View>
+        )}
 
         {/* Time-of-day filter — compare where you earn at different times */}
         {buckets.some(b => b.trips > 0) && (
@@ -125,6 +142,12 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   title: { ...type.screenTitle },
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.lg },
+
+  tip: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.brandLight, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xl },
+  tipEmoji: { fontSize: 26 },
+  tipText: { ...type.body, fontSize: 15, color: colors.textPrimary, lineHeight: 21 },
+  tipStrong: { fontWeight: font.bold, color: colors.brandDeep },
+  tipRate: { ...type.bodyMedium, ...tabular, color: colors.brandDeep, marginTop: 3 },
 
   filterScroll: { marginBottom: spacing.lg, marginHorizontal: -spacing.xl, paddingHorizontal: spacing.xl },
   filterChip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard },
