@@ -73,6 +73,30 @@ export default function TaxScreen() {
         <Text style={s.setAsideValue}>{fmtGbp(pos.totalDue)}</Text>
       </View>
 
+      {/* How "tax saved" is worked out — the chain from miles to money back */}
+      {year.miles > 0 && (
+        <Card style={{ marginBottom: spacing.xl, padding: spacing.lg }}>
+          <Text style={s.savedHead}>How your tax saved is worked out</Text>
+          <View style={s.savedFlow}>
+            <View style={s.savedCell}>
+              <Text style={s.savedVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{fmtMiles(year.miles)}</Text>
+              <Text style={s.savedLbl}>miles tracked</Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={colors.textTertiary} />
+            <View style={s.savedCell}>
+              <Text style={s.savedVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{fmtGbp(year.deduction)}</Text>
+              <Text style={s.savedLbl}>deduction</Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={colors.textTertiary} />
+            <View style={s.savedCell}>
+              <Text style={[s.savedVal, { color: colors.brandDeep }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{fmtGbp(year.taxSaved)}</Text>
+              <Text style={s.savedLbl}>tax saved</Text>
+            </View>
+          </View>
+          <Text style={s.savedNote}>HMRC mileage rate turns your miles into an allowable deduction; at your ~{Math.round((year.taxRate ?? 0.2) * 100)}% tax + NIC band that deduction is money you don't pay.</Text>
+        </Card>
+      )}
+
       {/* Mileage method — clean summary, comparison lives in its own tool */}
       <SectionHeader icon="navigation" title="Mileage method" />
       <Card style={{ gap: spacing.md, marginBottom: spacing.xl }}>
@@ -231,6 +255,12 @@ const s = StyleSheet.create({
   setAsideLabel: { ...type.bodyMedium, fontSize: 16, color: '#fff' },
   setAsideSub: { ...type.caption, color: 'rgba(255,255,255,0.9)', marginTop: 1 },
   setAsideValue: { ...tabular, fontSize: 26, fontWeight: font.bold, color: '#fff', letterSpacing: -0.5 },
+  savedHead: { ...type.label, color: colors.textSecondary, fontWeight: font.semibold, marginBottom: spacing.md },
+  savedFlow: { flexDirection: 'row', alignItems: 'center' },
+  savedCell: { flex: 1, alignItems: 'center' },
+  savedVal: { ...tabular, fontSize: 17, fontWeight: font.bold, color: colors.textPrimary },
+  savedLbl: { ...type.small, fontSize: 11, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  savedNote: { ...type.small, lineHeight: 17, marginTop: spacing.md },
 
   methodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   methodName: { ...type.bodyMedium, fontSize: 16 },
