@@ -3,15 +3,15 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, CoachMarks, type CoachStep } from '../../src/components';
+import { MetricCard, Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, CoachMarks, type CoachStep } from '../../src/components';
 import {
   getTrips, getUser, getTaxYearMiles,
   getTaxYearSummary, getEarningsByTimeOfDay,
   getPeriodSummary, getPlatformStatsForPeriod,
   getStreak, getAchievements, popNewAchievements, getXp, getWeeklyChallenges, creditCompletedChallenges,
-  getHeatPoints, getBestSpot, kvGet, kvSet,
+  getHeatPoints, getBestSpot, getPeriodSeries, kvGet, kvSet,
   type PlatformStat, type TimeBucket, type Period, type PeriodSummary, type Achievement,
-  type XpInfo, type Challenge, type HeatPoint, type BestSpot,
+  type XpInfo, type Challenge, type HeatPoint, type BestSpot, type SeriesPoint,
 } from '../../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
@@ -58,6 +58,7 @@ export default function HomeScreen() {
   const [periodData, setPeriodData] = React.useState<PeriodSummary | null>(null);
   const [periodPlatforms, setPeriodPlatforms] = React.useState<PlatformStat[]>([]);
   const [prevData, setPrevData] = React.useState<PeriodSummary | null>(null);
+  const [series, setSeries] = React.useState<SeriesPoint[]>([]);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [trips, setTrips] = React.useState<ReturnType<typeof getTrips>>([]);
   const [user, setUser] = React.useState(getUser());
@@ -96,6 +97,7 @@ export default function HomeScreen() {
     setPeriodData(getPeriodSummary(p));
     setPeriodPlatforms(getPlatformStatsForPeriod(p));
     setPrevData(getPeriodSummary(p, prevRef(p)));
+    setSeries(getPeriodSeries(p));
   }
 
   function load() {
@@ -300,6 +302,16 @@ export default function HomeScreen() {
           value={period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0)}
         />
       </View>
+
+      {/* Earnings over time — week (daily), month (weekly), year (monthly) */}
+      {period !== 'today' && series.length > 0 && (
+        <View style={{ marginTop: spacing.lg }}>
+          <SectionHeader icon="bar-chart-2" title={`Earnings · ${period === 'week' ? 'by day' : period === 'month' ? 'by week' : 'by month'}`} />
+          <Card>
+            <BarChart data={series} height={150} />
+          </Card>
+        </View>
+      )}
 
       {/* Per-platform breakdown for the selected period — multi-platform couriers */}
       {periodPlatforms.length > 0 && (

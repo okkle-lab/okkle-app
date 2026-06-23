@@ -306,6 +306,59 @@ export function getPeriodSummary(period: Period, ref = new Date()): PeriodSummar
   };
 }
 
+// Earnings time-series for the period chart: 7 days (week), ~weekly buckets
+// (month), or 12 months (year). Today returns [] (no chart needed).
+export type SeriesPoint = { label: string; value: number };
+
+export function getPeriodSeries(period: Period, ref = new Date()): SeriesPoint[] {
+  if (period === 'today') return [];
+  const { start, end } = periodRange(period, ref);
+  const byDay: { [d: string]: number } = {};
+  for (const t of db.getAllSync<{ started_at: string; earnings: number | null }>(
+    `SELECT started_at, earnings FROM trips WHERE date(started_at) BETWEEN ? AND ?`, start, end)) {
+    const k = t.started_at.slice(0, 10); byDay[k] = (byDay[k] ?? 0) + (t.earnings ?? 0);
+  }
+  for (const r of db.getAllSync<{ created_at: string; amount: number | null }>(
+    `SELECT created_at, amount FROM records WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, start, end)) {
+    const k = r.created_at.slice(0, 10); byDay[k] = (byDay[k] ?? 0) + (r.amount ?? 0);
+  }
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+  if (period === 'week') {
+    const s = new Date(start);
+    const L = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(s); d.setDate(s.getDate() + i);
+      return { label: L[i], value: byDay[iso(d)] ?? 0 };
+    });
+  }
+
+  if (period === 'month') {
+    const s = new Date(start), e = new Date(end);
+    const buckets: SeriesPoint[] = [];
+    let cur = new Date(s);
+    while (cur <= e) {
+      const wkEnd = new Date(cur); wkEnd.setDate(cur.getDate() + 6);
+      const last = wkEnd > e ? e : wkEnd;
+      let sum = 0;
+      for (let d = new Date(cur); d <= last; d.setDate(d.getDate() + 1)) sum += byDay[iso(d)] ?? 0;
+      buckets.push({ label: `${cur.getDate()}–${last.getDate()}`, value: sum });
+      cur = new Date(wkEnd); cur.setDate(wkEnd.getDate() + 1);
+    }
+    return buckets;
+  }
+
+  // year: 12 calendar months from the tax-year start (Apr → Mar)
+  const byMonth: { [m: string]: number } = {};
+  for (const [k, v] of Object.entries(byDay)) byMonth[k.slice(0, 7)] = (byMonth[k.slice(0, 7)] ?? 0) + v;
+  const s = new Date(start);
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(s.getFullYear(), s.getMonth() + i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return { label: d.toLocaleDateString('en-GB', { month: 'short' })[0], value: byMonth[key] ?? 0 };
+  });
+}
+
 // Per-platform breakdown for a given period — answers "which platform won this month?"
 export function getPlatformStatsForPeriod(period: Period, ref = new Date()): PlatformStat[] {
   const { start, end } = periodRange(period, ref);
