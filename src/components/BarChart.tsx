@@ -5,9 +5,9 @@ import { colors, font, type } from '../theme';
 import type { SeriesPoint } from '../db';
 import { fmtGbp } from '../db/tax';
 
-// A clean earnings bar chart for the period view. Tallest bar is brand-coloured
-// and labelled; the rest are muted. Pure SVG — works in Expo Go.
-export function BarChart({ data, height = 150 }: { data: SeriesPoint[]; height?: number }) {
+// A clean bar chart for the period view. Tallest bar is brand-coloured and
+// labelled; the rest are muted. Pure SVG — works in Expo Go.
+export function BarChart({ data, height = 150, format = fmtGbp, emptyLabel = 'No earnings logged in this period yet.' }: { data: SeriesPoint[]; height?: number; format?: (n: number) => string; emptyLabel?: string }) {
   if (data.length === 0) return null;
   const max = Math.max(...data.map(d => d.value), 1);
   const total = data.reduce((s, d) => s + d.value, 0);
@@ -22,7 +22,7 @@ export function BarChart({ data, height = 150 }: { data: SeriesPoint[]; height?:
   if (total <= 0) {
     return (
       <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ ...type.caption, textAlign: 'center' }}>No earnings logged in this period yet.</Text>
+        <Text style={{ ...type.caption, textAlign: 'center' }}>{emptyLabel}</Text>
       </View>
     );
   }
@@ -66,7 +66,7 @@ export function BarChart({ data, height = 150 }: { data: SeriesPoint[]; height?:
         ))}
       </View>
       <Text style={{ ...type.caption, textAlign: 'center', marginTop: 8 }}>
-        Best: {data[maxIdx].label} · {fmtGbp(data[maxIdx].value)}
+        Best: {data[maxIdx].label} · {format(data[maxIdx].value)}
       </Text>
     </View>
   );

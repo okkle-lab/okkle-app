@@ -3,19 +3,13 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable } from 'r
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { Card, SectionHeader, VehicleIcon, ScreenHeader } from '../../src/components';
+import { Card, SectionHeader, VehicleIcon, ScreenHeader, IconBadge } from '../../src/components';
 import { getTrips, getRecords, getVehicleStats, type VehicleStat } from '../../src/db';
 import { fmtGbp, fmtMiles, vehicleLabel } from '../../src/db/tax';
 import type { Trip, Record as OkkleRecord } from '../../src/db';
 
 type Item = { kind: 'trip'; data: Trip } | { kind: 'record'; data: OkkleRecord };
 
-const TYPE_STYLE: { [key: string]: { bg: string; text: string; label: string } } = {
-  mileage: { bg: colors.brandLight, text: colors.brandDeep, label: 'Miles' },
-  income: { bg: colors.greenLight, text: colors.green, label: 'Income' },
-  expense: { bg: colors.amberLight, text: colors.amber, label: 'Expense' },
-  trip: { bg: colors.brandLight, text: colors.brandDeep, label: 'GPS trip' },
-};
 
 export default function RecordsScreen() {
   const router = useRouter();
@@ -45,49 +39,36 @@ export default function RecordsScreen() {
 
   function renderItem(item: Item, i: number, arr: Item[]) {
     const isLast = i === arr.length - 1;
+    type Cfg = { id: string; edit: () => void; icon: any; tone: any; title: string; source: 'GPS' | 'Manual' | null; meta: string; amount: string; amountColor: string; amountSub: string | null };
+    let c: Cfg;
     if (item.kind === 'trip') {
       const t = item.data;
-      const style = TYPE_STYLE.trip;
-      return (
-        <Pressable key={`t${t.id}`} onPress={() => openEdit('trip', t.id)} style={({ pressed }) => [row.container, !isLast && row.border, pressed && row.pressed]}>
-          <View style={[row.badge, { backgroundColor: style.bg }]}>
-            <Text style={[row.badgeText, { color: style.text }]}>{style.label}</Text>
-          </View>
-          <View style={row.mid}>
-            <Text style={row.title}>{t.platform}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
-              <VehicleIcon vehicle={t.vehicle} size={13} color={colors.textTertiary} />
-              <Text style={row.sub}>{fmtMiles(t.miles)} · {fmtDate(t.started_at)}</Text>
-            </View>
-          </View>
-          <View style={row.right}>
-            <Text style={[row.amount, { color: colors.brandDeep }]}>{fmtGbp(t.deduction)}</Text>
-            {t.earnings ? <Text style={row.amountSub}>{fmtGbp(t.earnings)} earned</Text> : null}
-          </View>
-          <Feather name="chevron-right" size={18} color={colors.textTertiary} style={{ marginLeft: 6 }} />
-        </Pressable>
-      );
+      c = { id: `t${t.id}`, edit: () => openEdit('trip', t.id), icon: 'navigation', tone: 'mint', title: t.platform, source: 'GPS', meta: `${fmtMiles(t.miles)} · ${fmtDate(t.started_at)}`, amount: fmtGbp(t.deduction), amountColor: colors.brandDeep, amountSub: t.earnings ? `${fmtGbp(t.earnings)} earned` : null };
+    } else {
+      const r = item.data;
+      if (r.record_type === 'mileage') {
+        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'map', tone: 'neutral', title: r.platform ?? 'Mileage', source: 'Manual', meta: `${fmtMiles(r.miles ?? 0)} · ${fmtDate(r.created_at)}`, amount: fmtGbp(r.deduction ?? 0), amountColor: colors.brandDeep, amountSub: null };
+      } else if (r.record_type === 'income') {
+        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'dollar-sign', tone: 'green', title: r.platform ?? 'Earnings', source: null, meta: `Earnings · ${fmtDate(r.created_at)}`, amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
+      } else {
+        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'file-text', tone: 'amber', title: r.category ?? r.notes ?? 'Expense', source: null, meta: fmtDate(r.created_at), amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
+      }
     }
-    const r = item.data;
-    const style = TYPE_STYLE[r.record_type] ?? TYPE_STYLE.expense;
     return (
-      <Pressable key={`r${r.id}`} onPress={() => openEdit('record', r.id)} style={({ pressed }) => [row.container, !isLast && row.border, pressed && row.pressed]}>
-        <View style={[row.badge, { backgroundColor: style.bg }]}>
-          <Text style={[row.badgeText, { color: style.text }]}>{style.label}</Text>
-        </View>
+      <Pressable key={c.id} onPress={c.edit} style={({ pressed }) => [row.container, !isLast && row.border, pressed && row.pressed]}>
+        <IconBadge icon={c.icon} tone={c.tone} size={40} />
         <View style={row.mid}>
-          <Text style={row.title}>{r.platform ?? r.category ?? r.record_type}</Text>
-          <Text style={[row.sub, { marginTop: 2 }]}>{fmtDate(r.created_at)}</Text>
+          <Text style={row.title} numberOfLines={1}>{c.title}</Text>
+          <View style={row.metaRow}>
+            {c.source && <Text style={[row.srcTag, c.source === 'GPS' ? row.srcGps : row.srcManual]}>{c.source}</Text>}
+            <Text style={row.sub} numberOfLines={1}>{c.meta}</Text>
+          </View>
         </View>
         <View style={row.right}>
-          <Text style={row.amount}>
-            {r.record_type === 'mileage' ? fmtGbp(r.deduction ?? 0) : fmtGbp(r.amount ?? 0)}
-          </Text>
-          {r.record_type === 'mileage' && r.miles ? (
-            <Text style={row.amountSub}>{fmtMiles(r.miles)}</Text>
-          ) : null}
+          <Text style={[row.amount, { color: c.amountColor }]} numberOfLines={1}>{c.amount}</Text>
+          {c.amountSub ? <Text style={row.amountSub} numberOfLines={1}>{c.amountSub}</Text> : null}
         </View>
-        <Feather name="chevron-right" size={18} color={colors.textTertiary} style={{ marginLeft: 6 }} />
+        <Feather name="chevron-right" size={18} color={colors.textTertiary} style={{ marginLeft: 4 }} />
       </Pressable>
     );
   }
@@ -152,12 +133,14 @@ const row = StyleSheet.create({
   container: { flexDirection: 'row', alignItems: 'center', padding: spacing.lg, gap: spacing.md },
   border: { borderBottomWidth: 1, borderBottomColor: colors.border },
   pressed: { backgroundColor: colors.bgSoft },
-  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.sm },
-  badgeText: { fontSize: 12, fontWeight: font.semibold },
   mid: { flex: 1 },
-  title: { fontSize: 15, fontWeight: font.medium, color: colors.textPrimary },
-  sub: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
-  right: { alignItems: 'flex-end' },
-  amount: { ...tabular, fontSize: 15, fontWeight: font.semibold, color: colors.textPrimary },
-  amountSub: { ...tabular, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  title: { fontSize: 15, fontWeight: font.semibold, color: colors.textPrimary },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  srcTag: { fontSize: 10, fontWeight: font.bold, paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.sm, overflow: 'hidden', letterSpacing: 0.2 },
+  srcGps: { backgroundColor: colors.brandLight, color: colors.brandDeep },
+  srcManual: { backgroundColor: colors.bgSoft, color: colors.textSecondary },
+  sub: { fontSize: 13, color: colors.textSecondary, flexShrink: 1 },
+  right: { alignItems: 'flex-end', marginLeft: 8, maxWidth: 120 },
+  amount: { ...tabular, fontSize: 15, fontWeight: font.bold, color: colors.textPrimary },
+  amountSub: { ...tabular, fontSize: 11, color: colors.green, marginTop: 2 },
 });

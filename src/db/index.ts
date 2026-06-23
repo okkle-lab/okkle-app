@@ -308,21 +308,34 @@ export function getPeriodSummary(period: Period, ref = new Date()): PeriodSummar
   };
 }
 
-// Earnings time-series for the period chart: 7 days (week), ~weekly buckets
-// (month), or 12 months (year). Today returns [] (no chart needed).
+// Time-series for the period chart: 7 days (week), ~weekly buckets (month), or
+// 12 months (year). Supports earnings / miles / hours. Today returns [].
 export type SeriesPoint = { label: string; value: number };
+export type SeriesMetric = 'earnings' | 'miles' | 'hours';
 
-export function getPeriodSeries(period: Period, ref = new Date()): SeriesPoint[] {
+export function getPeriodSeries(period: Period, metric: SeriesMetric = 'earnings', ref = new Date()): SeriesPoint[] {
   if (period === 'today') return [];
   const { start, end } = periodRange(period, ref);
   const byDay: { [d: string]: number } = {};
-  for (const t of db.getAllSync<{ started_at: string; earnings: number | null }>(
-    `SELECT started_at, earnings FROM trips WHERE date(started_at) BETWEEN ? AND ?`, start, end)) {
-    const k = t.started_at.slice(0, 10); byDay[k] = (byDay[k] ?? 0) + (t.earnings ?? 0);
+  const add = (k: string, v: number) => { byDay[k] = (byDay[k] ?? 0) + v; };
+
+  for (const t of db.getAllSync<{ started_at: string; ended_at: string; earnings: number | null; miles: number }>(
+    `SELECT started_at, ended_at, earnings, miles FROM trips WHERE date(started_at) BETWEEN ? AND ?`, start, end)) {
+    const k = t.started_at.slice(0, 10);
+    if (metric === 'earnings') add(k, t.earnings ?? 0);
+    else if (metric === 'miles') add(k, t.miles);
+    else { const ms = new Date(t.ended_at).getTime() - new Date(t.started_at).getTime(); add(k, ms > 0 ? ms / 3600000 : 0); }
   }
-  for (const r of db.getAllSync<{ created_at: string; amount: number | null }>(
-    `SELECT created_at, amount FROM records WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, start, end)) {
-    const k = r.created_at.slice(0, 10); byDay[k] = (byDay[k] ?? 0) + (r.amount ?? 0);
+  if (metric === 'earnings') {
+    for (const r of db.getAllSync<{ created_at: string; amount: number | null }>(
+      `SELECT created_at, amount FROM records WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, start, end)) {
+      add(r.created_at.slice(0, 10), r.amount ?? 0);
+    }
+  } else if (metric === 'miles') {
+    for (const r of db.getAllSync<{ created_at: string; miles: number | null }>(
+      `SELECT created_at, miles FROM records WHERE record_type='mileage' AND date(created_at) BETWEEN ? AND ?`, start, end)) {
+      add(r.created_at.slice(0, 10), r.miles ?? 0);
+    }
   }
   const iso = (d: Date) => d.toISOString().slice(0, 10);
 

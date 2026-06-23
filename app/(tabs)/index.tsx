@@ -48,7 +48,9 @@ export default function HomeScreen() {
   const [periodData, setPeriodData] = React.useState<PeriodSummary | null>(null);
   const [periodPlatforms, setPeriodPlatforms] = React.useState<PlatformStat[]>([]);
   const [prevData, setPrevData] = React.useState<PeriodSummary | null>(null);
-  const [series, setSeries] = React.useState<SeriesPoint[]>([]);
+  const [seriesEarn, setSeriesEarn] = React.useState<SeriesPoint[]>([]);
+  const [seriesMiles, setSeriesMiles] = React.useState<SeriesPoint[]>([]);
+  const [seriesHours, setSeriesHours] = React.useState<SeriesPoint[]>([]);
   const [metricPage, setMetricPage] = React.useState(0);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [user, setUser] = React.useState(getUser());
@@ -86,7 +88,9 @@ export default function HomeScreen() {
     setPeriodData(getPeriodSummary(p));
     setPeriodPlatforms(getPlatformStatsForPeriod(p));
     setPrevData(getPeriodSummary(p, prevRef(p)));
-    setSeries(getPeriodSeries(p));
+    setSeriesEarn(getPeriodSeries(p, 'earnings'));
+    setSeriesMiles(getPeriodSeries(p, 'miles'));
+    setSeriesHours(getPeriodSeries(p, 'hours'));
   }
 
   function load() {
@@ -190,82 +194,84 @@ export default function HomeScreen() {
       </View>
       <Text style={s.periodLabel}>{periodData ? fmtPeriodRange(period, periodData.rangeStart, periodData.rangeEnd) : ''}</Text>
 
-      {/* Swipeable metric carousel — one card, swipe through the figures that matter. */}
+      {/* £/hour — the hero KPI, its own prominent card */}
       {(() => {
         const hrs = periodData?.hours ?? 0;
         const perHour = hrs > 0 ? periodData!.earnings / hrs : 0;
         const netPerHour = hrs > 0 ? Math.max(0, periodData!.takeHome - periodData!.expenses) / hrs : 0;
         const prevHrs = prevData?.hours ?? 0;
         const prevPerHour = prevHrs > 0 ? prevData!.earnings / prevHrs : null;
-        const rateDelta = prevPerHour != null && hrs > 0 ? perHour - prevPerHour : null;
-        const earnDelta = prevData ? (periodData?.earnings ?? 0) - prevData.earnings : null;
+        const d = prevPerHour != null && hrs > 0 ? perHour - prevPerHour : null;
+        return (
+          <View style={s.kpi}>
+            <View style={s.kpiHead}>
+              <Feather name="clock" size={15} color="#fff" />
+              <Text style={s.kpiLabel}>Earned per hour</Text>
+            </View>
+            {hrs > 0 ? (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                  <Text style={s.kpiValue}>£{perHour.toFixed(2)}</Text><Text style={s.kpiUnit}>/hr</Text>
+                </View>
+                <Text style={s.kpiNet}>£{netPerHour.toFixed(2)}/hr after tax &amp; costs · take-home {fmtGbp(periodData?.takeHome ?? 0)}</Text>
+                {d != null && Math.abs(d) >= 0.05 && (
+                  <View style={[s.kpiTrend, { backgroundColor: d >= 0 ? 'rgba(255,255,255,0.22)' : 'rgba(226,96,74,0.30)' }]}>
+                    <Feather name={d >= 0 ? 'arrow-up-right' : 'arrow-down-right'} size={13} color="#fff" />
+                    <Text style={s.kpiTrendText}>£{Math.abs(d).toFixed(2)}/hr vs {PREV_WORD[period]}</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <Text style={s.kpiEmpty}>Track a trip with GPS and log your pay to see what you really make per hour.</Text>
+            )}
+          </View>
+        );
+      })()}
 
-        const pages: { icon: any; label: string; value: string; sub?: string; trend?: string; up?: boolean }[] = [
-          {
-            icon: 'clock', label: 'Earned per hour',
-            value: hrs > 0 ? `£${perHour.toFixed(2)}/hr` : '—',
-            sub: hrs > 0 ? `£${netPerHour.toFixed(2)}/hr after tax & costs` : 'Track a trip + log pay to see this',
-            ...(rateDelta != null && Math.abs(rateDelta) >= 0.05 ? { trend: `£${Math.abs(rateDelta).toFixed(2)}/hr vs ${PREV_WORD[period]}`, up: rateDelta >= 0 } : {}),
-          },
-          {
-            icon: 'home', label: 'Take-home', value: fmtGbp(periodData?.takeHome ?? 0),
-            sub: 'after estimated tax',
-          },
-          {
-            icon: 'dollar-sign', label: 'Earnings', value: fmtGbp(periodData?.earnings ?? 0),
-            ...(earnDelta != null && Math.abs(earnDelta) >= 1 ? { trend: `${fmtGbp(Math.abs(earnDelta))} vs ${PREV_WORD[period]}`, up: earnDelta >= 0 } : { sub: 'money in' }),
-          },
-          {
-            icon: 'map', label: 'Miles', value: fmtMiles(periodData?.miles ?? 0),
-            sub: `${fmtGbp(periodData?.deduction ?? 0)} tax deduction`,
-          },
-          {
-            icon: 'navigation', label: period === 'today' ? 'Trips' : 'Hours worked',
-            value: period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0),
-            sub: period === 'today' ? 'today' : `${periodData?.trips ?? 0} trips`,
-          },
+      {/* Swipeable carousel — each page combines the value with its own chart. */}
+      {(() => {
+        const earnDelta = prevData ? (periodData?.earnings ?? 0) - prevData.earnings : null;
+        const cards = [
+          { icon: 'dollar-sign' as const, label: 'Earnings', value: fmtGbp(periodData?.earnings ?? 0), series: seriesEarn, fmt: fmtGbp, empty: 'No earnings logged in this period.', trend: earnDelta != null && Math.abs(earnDelta) >= 1 ? { text: `${fmtGbp(Math.abs(earnDelta))} vs ${PREV_WORD[period]}`, up: earnDelta >= 0 } : null, sub: 'money in' },
+          { icon: 'map' as const, label: 'Miles', value: fmtMiles(periodData?.miles ?? 0), series: seriesMiles, fmt: fmtMiles, empty: 'No miles in this period.', trend: null, sub: `${fmtGbp(periodData?.deduction ?? 0)} tax deduction` },
+          { icon: 'navigation' as const, label: period === 'today' ? 'Trips' : 'Hours', value: period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0), series: seriesHours, fmt: fmtHours, empty: 'No hours in this period.', trend: null, sub: `${periodData?.trips ?? 0} trips` },
         ];
         return (
-          <View>
+          <View style={{ marginTop: spacing.md }}>
             <ScrollView
               horizontal pagingEnabled showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={e => setMetricPage(Math.round(e.nativeEvent.contentOffset.x / win.width))}
               style={{ marginHorizontal: -spacing.xl }}
             >
-              {pages.map((p, i) => (
+              {cards.map((c, i) => (
                 <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
-                  <View style={s.mc}>
+                  <View style={[s.mc, period !== 'today' && { minHeight: 256 }]}>
                     <View style={s.mcHead}>
-                      <View style={s.mcIcon}><Feather name={p.icon} size={15} color={colors.brandDeep} /></View>
-                      <Text style={s.mcLabel}>{p.label}</Text>
+                      <View style={s.mcIcon}><Feather name={c.icon} size={15} color={colors.brandDeep} /></View>
+                      <Text style={s.mcLabel}>{c.label}</Text>
                     </View>
-                    <Text style={s.mcValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{p.value}</Text>
-                    {p.trend ? (
-                      <View style={[s.mcTrend, { backgroundColor: p.up ? colors.greenLight : colors.redLight }]}>
-                        <Feather name={p.up ? 'arrow-up-right' : 'arrow-down-right'} size={13} color={p.up ? colors.green : colors.red} />
-                        <Text style={[s.mcTrendText, { color: p.up ? colors.green : colors.red }]}>{p.trend}</Text>
+                    <Text style={s.mcValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{c.value}</Text>
+                    {c.trend ? (
+                      <View style={[s.mcTrend, { backgroundColor: c.trend.up ? colors.greenLight : colors.redLight }]}>
+                        <Feather name={c.trend.up ? 'arrow-up-right' : 'arrow-down-right'} size={13} color={c.trend.up ? colors.green : colors.red} />
+                        <Text style={[s.mcTrendText, { color: c.trend.up ? colors.green : colors.red }]}>{c.trend.text}</Text>
                       </View>
-                    ) : p.sub ? <Text style={s.mcSub}>{p.sub}</Text> : null}
+                    ) : <Text style={s.mcSub}>{c.sub}</Text>}
+                    {period !== 'today' && (
+                      <View style={{ marginTop: spacing.lg }}>
+                        <BarChart data={c.series} format={c.fmt} emptyLabel={c.empty} height={118} />
+                      </View>
+                    )}
                   </View>
                 </View>
               ))}
             </ScrollView>
             <View style={s.dots}>
-              {pages.map((_, i) => <View key={i} style={[s.cdot, i === metricPage && s.cdotOn]} />)}
+              {cards.map((_, i) => <View key={i} style={[s.cdot, i === metricPage && s.cdotOn]} />)}
             </View>
           </View>
         );
       })()}
-
-      {/* Earnings over time — week (daily), month (weekly), year (monthly) */}
-      {period !== 'today' && series.length > 0 && (
-        <View style={{ marginTop: spacing.sm }}>
-          <SectionHeader icon="bar-chart-2" title={`Earnings · ${period === 'week' ? 'by day' : period === 'month' ? 'by week' : 'by month'}`} />
-          <Card>
-            <BarChart data={series} height={150} />
-          </Card>
-        </View>
-      )}
 
       {/* Per-platform breakdown for the selected period — multi-platform couriers */}
       {periodPlatforms.length > 0 && (
@@ -447,6 +453,15 @@ const s = StyleSheet.create({
   segText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
   segTextActive: { color: colors.textPrimary, fontWeight: font.semibold },
   periodLabel: { ...type.label, color: colors.textSecondary, marginBottom: spacing.md, fontWeight: font.semibold },
+  kpi: { backgroundColor: colors.brandDeep, borderRadius: radius.lg, padding: spacing.lg },
+  kpiHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  kpiLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: font.medium },
+  kpiValue: { ...tabular, color: '#fff', fontSize: 38, fontWeight: font.bold, letterSpacing: -1 },
+  kpiUnit: { color: 'rgba(255,255,255,0.85)', fontSize: 17, fontWeight: font.semibold },
+  kpiNet: { ...tabular, color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 },
+  kpiTrend: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, marginTop: spacing.md },
+  kpiTrendText: { ...tabular, color: '#fff', fontSize: 12, fontWeight: font.semibold },
+  kpiEmpty: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 20, marginTop: 2 },
   mc: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, minHeight: 124 },
   mcHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   mcIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.brandLight, alignItems: 'center', justifyContent: 'center' },
