@@ -2,6 +2,17 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (colourful medals + time-based insights)
+
+### Medals get their own colours
+- Each medal category now has a **distinct colour** (Trips blue, Miles teal, Tax saved green, Earnings gold, Streaks fire-orange, Hours indigo, Active days pink, Big days red, Long trips bronze, Platforms violet, Special mint) — so they no longer all look the same. Tier still adds the "fancy" (gold gets a starburst + sparkles).
+
+### Insights by time of day
+- A horizontal **time-of-day filter** (All / Morning / Lunch / Afternoon / Dinner / Late) on the Insights screen — scroll and tap to compare where your hotspots and top areas are at each part of the day.
+
+### Polish
+- Redesigned the weekly-challenge rows (no more wrapping "+100 XP"), bigger Home greeting, and a hotspots heatmap preview promoted onto the Home screen.
+
 ## 2026-06-23 (location heatmap + subscreens)
 
 ### Where you earn most

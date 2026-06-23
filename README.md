@@ -62,7 +62,8 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 
 ### Insights — where & when you earn most
 - Trips capture an on-device GPS breadcrumb and a reverse-geocoded **area name**.
-- **Hotspots heatmap** drawn on-device (works in Expo Go; real Google Maps can drop in on a dev build), a ranked **top earning / busiest areas** list, and a **best-hours** chart — all in a dedicated Insights screen.
+- **Hotspots heatmap** drawn on-device (works in Expo Go; real Google Maps can drop in on a dev build), a ranked **top earning / busiest areas** list, and a **best-hours** chart — all in a dedicated Insights screen (also previewed on Home).
+- **Time-of-day filter** (All / Morning / Lunch / Afternoon / Dinner / Late) — compare where you earn most at each part of the day.
 
 ### Business insights
 - Net pay per hour, gross pay per hour, earnings per mile, net margin (% kept after tax), hours tracked.
@@ -78,7 +79,7 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 
 ### Gamification
 - **Activity streak** — counts consecutive days you log a trip or entry; holds if you haven't logged yet today.
-- **26 3D-style medals** — a glossy metallic disc with ribbon and a playful emoji centre (bronze / silver / gold / special) — across Trips, Miles, Tax saved, Earnings, Streaks and Special habits (night owl, early bird, multi-platform, receipt keeper…).
+- **~99 3D-style medals** — a glossy disc with ribbon and a playful emoji centre. Each **category has its own colour** (Trips blue, Miles teal, Tax saved green, Earnings gold, Streaks fire, Hours indigo, Active days pink, Big days red, Long trips bronze, Platforms violet, Special mint), and tier adds the flair (gold gets a starburst + sparkles).
 - **Streak header chip** on the dashboard (🔥 N) keeps the daily-return hook above the fold; tap it (or the "Your progress" card) to open the Medals screen.
 - **Medals screen** — an Apple-Fitness-style grid grouped by category, with an earned/total ring, locked vs unlocked medals, per-medal progress and a tap-through detail card.
 - **Gamified Trip tab** — the setup screen shows a daily-goal ring, streak pill and a "next medal" progress row.
