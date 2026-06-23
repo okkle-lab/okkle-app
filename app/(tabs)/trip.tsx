@@ -80,7 +80,11 @@ export default function TripScreen() {
       try {
         const places = await Location.reverseGeocodeAsync({ latitude: mid.lat, longitude: mid.lng });
         const p = places[0];
-        zone = p?.subregion ?? p?.city ?? p?.district ?? p?.region ?? null;
+        // Prefer the most *local* name (neighbourhood/district), then add the
+        // town for context — "Shoreditch, London" beats a bare "London".
+        const local = p?.district ?? p?.street ?? null;
+        const town = p?.city ?? p?.subregion ?? p?.region ?? null;
+        zone = local && town && local !== town ? `${local}, ${town}` : (local ?? town);
       } catch { /* offline or denied — leave zone null */ }
     }
 

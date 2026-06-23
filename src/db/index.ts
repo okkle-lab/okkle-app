@@ -313,8 +313,37 @@ export function getPeriodSummary(period: Period, ref = new Date()): PeriodSummar
 export type SeriesPoint = { label: string; value: number };
 export type SeriesMetric = 'earnings' | 'miles' | 'hours';
 
+// Which part of the day an hour falls into (matches the Insights time buckets).
+function dayPartIndex(h: number): number {
+  if (h >= 5 && h < 11) return 0;   // Morning
+  if (h < 14) return 1;             // Lunch
+  if (h < 17) return 2;             // Afternoon
+  if (h < 21) return 3;            // Evening
+  return 4;                         // Late (21:00–05:00)
+}
+const DAY_PARTS = ['Morn', 'Lunch', 'Aft', 'Eve', 'Late'];
+
 export function getPeriodSeries(period: Period, metric: SeriesMetric = 'earnings', ref = new Date()): SeriesPoint[] {
-  if (period === 'today') return [];
+  if (period === 'today') {
+    // Today has no day-by-day shape, so break it down by part of the day —
+    // turns a blank card into a useful "when did I earn today" view.
+    const sums = [0, 0, 0, 0, 0];
+    const { start, end } = periodRange('today', ref);
+    for (const t of db.getAllSync<{ started_at: string; ended_at: string; earnings: number | null; miles: number }>(
+      `SELECT started_at, ended_at, earnings, miles FROM trips WHERE date(started_at) BETWEEN ? AND ?`, start, end)) {
+      const idx = dayPartIndex(new Date(t.started_at).getHours());
+      if (metric === 'earnings') sums[idx] += t.earnings ?? 0;
+      else if (metric === 'miles') sums[idx] += t.miles;
+      else { const ms = new Date(t.ended_at).getTime() - new Date(t.started_at).getTime(); sums[idx] += ms > 0 ? ms / 3600000 : 0; }
+    }
+    if (metric === 'earnings') {
+      for (const r of db.getAllSync<{ created_at: string; amount: number | null }>(
+        `SELECT created_at, amount FROM records WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, start, end)) {
+        sums[dayPartIndex(new Date(r.created_at).getHours())] += r.amount ?? 0;
+      }
+    }
+    return DAY_PARTS.map((label, i) => ({ label, value: sums[i] }));
+  }
   const { start, end } = periodRange(period, ref);
   const byDay: { [d: string]: number } = {};
   const add = (k: string, v: number) => { byDay[k] = (byDay[k] ?? 0) + v; };

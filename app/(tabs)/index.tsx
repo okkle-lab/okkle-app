@@ -53,6 +53,7 @@ export default function HomeScreen() {
   const period = PERIODS[periodIndex];
   const scrollX = React.useRef(new Animated.Value(win.width)).current; // start on Week
   const pagerRef = React.useRef<ScrollView>(null);
+  const didInitPager = React.useRef(false);
   const [gamePage, setGamePage] = React.useState(0);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [user, setUser] = React.useState(getUser());
@@ -177,11 +178,10 @@ export default function HomeScreen() {
           <Text style={s.earnNet}>£{netPerHour.toFixed(2)}/hr after tax &amp; costs · take-home {fmtGbp(b.data.takeHome)}</Text>
         )}
 
-        {p !== 'today' && (
-          <View style={{ marginTop: spacing.lg }}>
-            <BarChart data={b.series} format={fmtGbp} emptyLabel="No earnings logged in this period." height={120} />
-          </View>
-        )}
+        <View style={{ marginTop: spacing.lg }}>
+          {p === 'today' && <Text style={s.chartCaption}>When you earned today</Text>}
+          <BarChart data={b.series} format={fmtGbp} emptyLabel={p === 'today' ? 'No earnings logged yet today.' : 'No earnings logged in this period.'} height={120} />
+        </View>
 
         {tops.length > 0 && (
           <View style={s.platWrap}>
@@ -261,8 +261,8 @@ export default function HomeScreen() {
         <Animated.ScrollView
           ref={pagerRef as any}
           horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-          contentOffset={{ x: periodIndex * win.width, y: 0 }}
           scrollEventThrottle={16}
+          onLayout={() => { if (!didInitPager.current) { pagerRef.current?.scrollTo({ x: periodIndex * win.width, animated: false }); didInitPager.current = true; } }}
           onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
           onMomentumScrollEnd={e => setPeriodIndex(Math.round(e.nativeEvent.contentOffset.x / win.width))}
           style={{ marginHorizontal: -spacing.xl, marginTop: spacing.md }}
@@ -458,6 +458,7 @@ const s = StyleSheet.create({
   earnLabel: { ...type.label, fontSize: 14, color: colors.textSecondary, fontWeight: font.medium },
   earnValue: { ...tabular, fontSize: 40, fontWeight: font.bold, color: colors.textPrimary, letterSpacing: -1 },
   earnNet: { ...tabular, ...type.caption, color: colors.textSecondary, marginTop: spacing.sm },
+  chartCaption: { ...type.label, color: colors.textSecondary, fontWeight: font.semibold, marginBottom: spacing.sm },
   statRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, backgroundColor: colors.bgSoft, borderRadius: radius.md, paddingVertical: 12 },
   statCell: { flex: 1, alignItems: 'center' },
   statDivider: { width: 1, alignSelf: 'stretch', marginVertical: 6, backgroundColor: colors.border },

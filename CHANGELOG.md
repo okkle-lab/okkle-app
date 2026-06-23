@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Today chart, period-swipe fix, finer areas)
+
+- **Today earnings is no longer blank** — it now shows a "when you earned today" chart broken into Morning / Lunch / Afternoon / Evening / Late.
+- **Fixed the period switcher** jumping to the wrong period (tapping Week landed on Month) — removed a controlled scroll offset that fought the animated scroll.
+- **Finer area names** in "Where you earn most": trips now prefer the neighbourhood/street and add the town for context ("Shoreditch, London" instead of a bare "London"). Applies to newly tracked trips.
+
 ## 2026-06-23 (Swipeable earnings, tappable tax, categorised Insights)
 
 ### Home
