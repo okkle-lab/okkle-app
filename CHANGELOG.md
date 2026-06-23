@@ -8,6 +8,13 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - The Insights areas list ranks your zones by **£/hour** (the number that matters), showing it as the headline figure with trips · miles · total earnings underneath.
 - The headline tip now ties location to your KPI: **"You earn most around Wimbledon on evenings — £14.20/h · £4.10/h above your average."**
 
+## 2026-06-23 (Home information-architecture overhaul)
+
+### Shorter, ordered Home
+- The £/hour KPI and the four metric cards are now **one swipeable carousel** — swipe through £/hour → Take-home → Earnings → Miles → Hours, each with a vs-last-period trend and page dots.
+- **Moved off Home:** the 10,000-mile threshold now lives on the **Tax tab** (it's a tax detail); "Recent trips" removed (Records already lists them).
+- **Reordered** into one coherent flow: tax saved → start a trip → period performance (carousel + graph + platform) → gamification (bests, goals, medals) → insights. No more random order.
+
 ## 2026-06-23 (graphs + gamification rethink)
 
 ### Period graphs
