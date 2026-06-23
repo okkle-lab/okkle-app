@@ -2,6 +2,14 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Trip flow + Records month filter)
+
+### Trip — start without scrolling
+- The **Start a trip** button now sits right under the platform/vehicle pickers (the goal ring and today's summary moved below it). No more scrolling past gamification to begin a trip.
+
+### Records — filter by month
+- Added a **month filter** (All time / Jun 2026 / May 2026 …) above the type filter, Starling-style — slice a long history by month and type together.
+
 ## 2026-06-23 (trip route map + records filter)
 
 ### Premium trip detail
