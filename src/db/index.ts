@@ -321,7 +321,7 @@ function dayPartIndex(h: number): number {
   if (h < 21) return 3;            // Evening
   return 4;                         // Late (21:00–05:00)
 }
-const DAY_PARTS = ['Morn', 'Lunch', 'Aft', 'Eve', 'Late'];
+const DAY_PARTS = ['6–11a', '11–2p', '2–5p', '5–9p', '9p+'];
 
 export function getPeriodSeries(period: Period, metric: SeriesMetric = 'earnings', ref = new Date()): SeriesPoint[] {
   if (period === 'today') {

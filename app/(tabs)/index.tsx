@@ -9,11 +9,11 @@ import {
   getTaxYearSummary,
   getPeriodSummary, getPlatformStatsForPeriod,
   getStreak, getAchievements, popNewAchievements, getWeeklyChallenges,
-  getBestSpot, getZoneStats, getPeriodSeries, kvGet, kvSet,
+  getBestSpot, getZoneStats, getEarningsByTimeOfDay, getPlatformStats, getPeriodSeries, kvGet, kvSet,
   type PlatformStat, type Period, type PeriodSummary, type Achievement,
-  type Challenge, type BestSpot, type SeriesPoint, type ZoneStat,
+  type Challenge, type BestSpot, type SeriesPoint, type ZoneStat, type TimeBucket,
 } from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtHours } from '../../src/db/tax';
+import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
 
 
@@ -62,7 +62,10 @@ export default function HomeScreen() {
   const [newAch, setNewAch] = React.useState<Achievement | null>(null);
   const [challenges, setChallenges] = React.useState<Challenge[]>([]);
   const [zones, setZones] = React.useState<ZoneStat[]>([]);
+  const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
+  const [platformsAll, setPlatformsAll] = React.useState<PlatformStat[]>([]);
   const [bestSpot, setBestSpot] = React.useState<BestSpot | null>(null);
+  const [insightPage, setInsightPage] = React.useState(0);
   const [refreshing, setRefreshing] = React.useState(false);
 
   // First-run tour — a quick walk across the five tabs so people know what each does.
@@ -89,6 +92,8 @@ export default function HomeScreen() {
     setUser(getUser());
     setBestSpot(getBestSpot());
     setZones(getZoneStats('all'));
+    setBuckets(getEarningsByTimeOfDay());
+    setPlatformsAll(getPlatformStats());
 
     // Preload all four periods so swiping between them is instant & smooth.
     setBundles(PERIODS.map(p => ({
@@ -258,21 +263,26 @@ export default function HomeScreen() {
 
       {/* Swipe sideways to move between Today · Week · Month · Year */}
       {bundles && (
-        <Animated.ScrollView
-          ref={pagerRef as any}
-          horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onLayout={() => { if (!didInitPager.current) { pagerRef.current?.scrollTo({ x: periodIndex * win.width, animated: false }); didInitPager.current = true; } }}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-          onMomentumScrollEnd={e => setPeriodIndex(Math.round(e.nativeEvent.contentOffset.x / win.width))}
-          style={{ marginHorizontal: -spacing.xl, marginTop: spacing.md }}
-        >
-          {bundles.map((b, i) => (
-            <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
-              {renderEarnings(b, PERIODS[i])}
-            </View>
-          ))}
-        </Animated.ScrollView>
+        <>
+          <Animated.ScrollView
+            ref={pagerRef as any}
+            horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onLayout={() => { if (!didInitPager.current) { pagerRef.current?.scrollTo({ x: periodIndex * win.width, animated: false }); didInitPager.current = true; } }}
+            onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+            onMomentumScrollEnd={e => setPeriodIndex(Math.round(e.nativeEvent.contentOffset.x / win.width))}
+            style={{ marginHorizontal: -spacing.xl, marginTop: spacing.md }}
+          >
+            {bundles.map((b, i) => (
+              <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
+                {renderEarnings(b, PERIODS[i])}
+              </View>
+            ))}
+          </Animated.ScrollView>
+          <View style={s.dots}>
+            {PERIODS.map((_, i) => <View key={i} style={[s.cdot, i === periodIndex && s.cdotOn]} />)}
+          </View>
+        </>
       )}
 
       {/* Progress — goals + medals combined into one swipeable card */}
@@ -346,45 +356,85 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Where you earn most — numbers first (the map lives in Insights) */}
-      {(zones.length > 0 || bestSpot) && (() => {
+      {/* Where & when you earn — a swipeable carousel: Areas · Times · Platforms */}
+      {(zones.length > 0 || buckets.some(b => b.trips > 0) || platformsAll.length > 0) && (() => {
         const anyPerHour = zones.some(z => z.perHour > 0);
-        const ranked = [...zones].sort((a, b) => (anyPerHour ? b.perHour - a.perHour : b.miles - a.miles)).slice(0, 3);
+        const rankedZones = [...zones].sort((a, b) => (anyPerHour ? b.perHour - a.perHour : b.miles - a.miles)).slice(0, 4);
+        const anyBucketEarn = buckets.some(b => b.earnings > 0);
+        const rankedTimes = [...buckets].filter(b => b.trips > 0).sort((a, b) => (anyBucketEarn ? b.perHour - a.perHour : b.trips - a.trips)).slice(0, 4);
+        const anyPlatPerHour = platformsAll.some(p => p.perHour > 0);
+        const rankedPlats = [...platformsAll].sort((a, b) => (anyPlatPerHour ? b.perHour - a.perHour : b.earnings - a.earnings)).slice(0, 4);
+
+        const RankList = ({ rows }: { rows: { key: string; name: string; sub: string; val: string }[] }) => (
+          <>
+            {rows.map((r, i) => (
+              <View key={r.key} style={[s.platRow, i > 0 && s.zoneBorder]}>
+                <View style={[s.rankBadge, i === 0 && s.rankBadgeTop]}>
+                  <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.platName} numberOfLines={1}>{r.name}</Text>
+                  <Text style={s.zoneSub}>{r.sub}</Text>
+                </View>
+                <Text style={[s.platVal, i === 0 && { color: colors.green }]}>{r.val}</Text>
+              </View>
+            ))}
+          </>
+        );
+
+        const pages: { title: string; node: React.ReactNode }[] = [];
+        if (rankedZones.length) pages.push({ title: 'Top areas', node: (
+          <RankList rows={rankedZones.map(z => ({ key: z.zone, name: z.zone, sub: `${z.trips} ${z.trips === 1 ? 'trip' : 'trips'} · ${fmtMiles(z.miles)}`, val: anyPerHour ? fmtPerHour(z.perHour) : z.earnings > 0 ? fmtGbp(z.earnings) : fmtMiles(z.miles) }))} />
+        ) });
+        if (rankedTimes.length) pages.push({ title: 'Best times', node: (
+          <RankList rows={rankedTimes.map(b => ({ key: b.label, name: b.label, sub: `${b.trips} ${b.trips === 1 ? 'trip' : 'trips'}`, val: anyBucketEarn ? fmtPerHour(b.perHour) : `${b.trips}` }))} />
+        ) });
+        if (rankedPlats.length) pages.push({ title: 'Best platforms', node: (
+          <RankList rows={rankedPlats.map(p => ({ key: p.platform, name: p.platform, sub: `${fmtMiles(p.miles)}${p.perMile > 0 ? ` · ${fmtPerMile(p.perMile)}` : ''}`, val: anyPlatPerHour ? fmtPerHour(p.perHour) : fmtGbp(p.earnings) }))} />
+        ) });
+
         return (
           <View style={{ marginTop: spacing.xl }}>
             <View style={s.progressHead}>
-              <SectionHeader icon="map-pin" title="Where you earn most" />
+              <SectionHeader icon="bar-chart-2" title="Where & when you earn" />
               <Pressable onPress={() => router.push('/insights')} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                 <Text style={s.seeAll}>Insights</Text>
                 <Feather name="chevron-right" size={15} color={colors.brandDeep} />
               </Pressable>
             </View>
-            <Pressable onPress={() => router.push('/insights')}>
-              <Card style={{ padding: spacing.lg }}>
-                {bestSpot && (
-                  <View style={s.bestRow}>
-                    <IconBadge icon="award" tone="amber" size={36} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.bestLabel}>Best: {bestSpot.zone} · {bestSpot.timeLabel}</Text>
-                      <Text style={s.bestSub}>your most lucrative spot &amp; time</Text>
-                    </View>
-                    <Text style={s.bestVal}>{fmtPerHour(bestSpot.perHour)}</Text>
+            {bestSpot && (
+              <Pressable onPress={() => router.push('/insights')}>
+                <View style={s.bestBanner}>
+                  <IconBadge icon="award" tone="amber" size={34} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.bestLabel} numberOfLines={1}>Best: {bestSpot.zone} · {bestSpot.timeLabel}</Text>
+                    <Text style={s.bestSub}>your most lucrative spot &amp; time</Text>
                   </View>
-                )}
-                {ranked.map((z, i) => (
-                  <View key={z.zone} style={[s.platRow, (i > 0 || bestSpot) && s.zoneBorder]}>
-                    <View style={[s.rankBadge, i === 0 && s.rankBadgeTop]}>
-                      <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.platName} numberOfLines={1}>{z.zone}</Text>
-                      <Text style={s.zoneSub}>{z.trips} {z.trips === 1 ? 'trip' : 'trips'} · {fmtMiles(z.miles)}</Text>
-                    </View>
-                    <Text style={s.platVal}>{anyPerHour ? fmtPerHour(z.perHour) : z.earnings > 0 ? fmtGbp(z.earnings) : fmtMiles(z.miles)}</Text>
-                  </View>
-                ))}
-              </Card>
-            </Pressable>
+                  <Text style={s.bestVal}>{fmtPerHour(bestSpot.perHour)}</Text>
+                </View>
+              </Pressable>
+            )}
+            <ScrollView
+              horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={e => setInsightPage(Math.round(e.nativeEvent.contentOffset.x / win.width))}
+              style={{ marginHorizontal: -spacing.xl, marginTop: spacing.md }}
+            >
+              {pages.map((pg, i) => (
+                <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
+                  <Pressable onPress={() => router.push('/insights')}>
+                    <Card style={{ padding: spacing.lg, minHeight: 232 }}>
+                      <Text style={s.platHead}>{pg.title}</Text>
+                      {pg.node}
+                    </Card>
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+            {pages.length > 1 && (
+              <View style={s.dots}>
+                {pages.map((_, i) => <View key={i} style={[s.cdot, i === insightPage && s.cdotOn]} />)}
+              </View>
+            )}
           </View>
         );
       })()}
@@ -476,6 +526,7 @@ const s = StyleSheet.create({
   zoneBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   zoneSub: { ...type.caption, color: colors.textTertiary, marginTop: 1 },
   bestRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingBottom: spacing.sm },
+  bestBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.sm },
   bestLabel: { ...type.bodyMedium, fontSize: 15 },
   bestSub: { ...type.caption, color: colors.textTertiary, marginTop: 1 },
   bestVal: { ...tabular, fontSize: 17, fontWeight: font.bold, color: colors.amberDark },

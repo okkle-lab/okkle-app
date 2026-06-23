@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Insights carousel, Tips tab, clearer time labels)
+
+- **"Where & when you earn" is now a swipeable carousel** on Home — Top areas · Best times · Best platforms, each ranked 1·2·3, with the best spot pinned above and dot indicators.
+- **Earnings carousel now shows dot indicators** so it's obvious you can swipe between Today/Week/Month/Year.
+- **New "Tips" tab in Insights** — tactics couriers use to earn more (multi-apping, positioning at your best hotspot, cherry-picking by £/mile, working peak windows, favouring the better-paying app, the 10k-mile rule, quests/bonuses, banking tax). Personalised from your own numbers.
+- **Clearer Today time labels** — the by-time chart now reads 6–11a · 11–2p · 2–5p · 5–9p · 9p+ instead of "Morn/Lunch/Aft".
+
 ## 2026-06-23 (Today chart, period-swipe fix, finer areas)
 
 - **Today earnings is no longer blank** — it now shows a "when you earned today" chart broken into Morning / Lunch / Afternoon / Evening / Late.

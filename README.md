@@ -73,7 +73,8 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - A single **Earnings card** tied to the period switcher: the headline number + week-over-week trend, a three-stat strip (**£/hour** worked · miles & tax back · hours), the earnings trend chart, and a ranked **by-platform** breakdown (1 · 2 · 3) — all in one place, no scrolling between separate blocks.
 - **Swipe sideways** on the card to move between Today · Week · Month · Year; the period switcher has an animated sliding pill that tracks the swipe.
 - **Tax saved this year** taps through to the full Tax breakdown.
-- **"Where you earn most"** leads with numbers — best zone + £/hour and a ranked top-3 of areas; the hotspot map lives in Insights.
+- **"Where & when you earn"** is a swipeable carousel — Top areas · Best times · Best platforms (each ranked 1·2·3), with your single best spot pinned above; the hotspot map lives in Insights.
+- **Tips tab in Insights** — data-driven tactics to earn more (multi-apping, hotspot positioning, cherry-picking by £/mile, peak windows, favouring the better-paying app, the 10k-mile rule, quests, banking tax).
 - The plain **after-tax-&-costs** £/hour figure is right there: the one number couriers optimise, jargon-free.
 - The "Tax saved this year" hero uses a real **gradient** for depth (via a lightweight SVG `GradientCard`, no native build needed).
 
