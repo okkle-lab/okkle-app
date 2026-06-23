@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable } from 'r
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { Card, SectionHeader, VehicleIcon } from '../../src/components';
+import { Card, SectionHeader, VehicleIcon, ScreenHeader } from '../../src/components';
 import { getTrips, getRecords, getVehicleStats, type VehicleStat } from '../../src/db';
 import { fmtGbp, fmtMiles, vehicleLabel } from '../../src/db/tax';
 import type { Trip, Record as OkkleRecord } from '../../src/db';
@@ -98,7 +98,7 @@ export default function RecordsScreen() {
       contentContainerStyle={s.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
-      <Text style={s.heading}>Records</Text>
+      <ScreenHeader title="Records" />
 
       {vehicles.length > 0 && (
         <View style={{ marginBottom: spacing.xl }}>

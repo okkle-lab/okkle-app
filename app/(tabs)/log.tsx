@@ -7,7 +7,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
-import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip, DatePickerField } from '../../src/components';
+import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip, DatePickerField, ScreenHeader } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser } from '../../src/db';
 
@@ -85,7 +85,7 @@ export default function LogScreen() {
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-      <Text style={s.heading}>Log entry</Text>
+      <ScreenHeader title="Log entry" />
 
       <View style={s.tabs}>
         {([

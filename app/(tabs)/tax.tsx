@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TextInput, Pressable, Alert } from 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader } from '../../src/components';
+import { Card, SectionHeader, ScreenHeader } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries,
@@ -79,8 +79,7 @@ export default function TaxScreen() {
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <Text style={s.heading}>Tax</Text>
-      <Text style={s.sub}>Your estimated position for {taxYearLabel()}</Text>
+      <ScreenHeader title="Tax" subtitle={`Your estimated position for ${taxYearLabel()}`} />
 
       {/* Headline: what to set aside — the number that matters on this tab */}
       <View style={s.setAside}>

@@ -8,7 +8,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, Medal } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, Medal, ScreenHeader } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, getStreak, getAchievements, type DailyStats, type Achievement } from '../../src/db';
@@ -297,8 +297,7 @@ export default function TripScreen() {
   const goalProgress = Math.min(1, today.miles / DAILY_GOAL_MILES);
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <Text style={s.heading}>Start a trip</Text>
-      <Text style={s.sub}>Tap start and ride — GPS measures your distance for you.</Text>
+      <ScreenHeader title="Start a trip" subtitle="Tap start and ride — GPS measures your distance for you." />
 
       {/* Gamified goal card — daily goal ring + streak + next medal */}
       <View style={s.goalCard}>
