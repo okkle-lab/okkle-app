@@ -18,6 +18,17 @@ import { tabular } from '../../src/theme';
 
 const THRESHOLD = 10000;
 
+// A reference date inside the *previous* comparable period, for the trend.
+function prevRef(period: Period): Date {
+  const d = new Date();
+  if (period === 'today') d.setDate(d.getDate() - 1);
+  else if (period === 'week') d.setDate(d.getDate() - 7);
+  else if (period === 'month') d.setMonth(d.getMonth() - 1, 15);
+  else d.setFullYear(d.getFullYear() - 1);
+  return d;
+}
+const PREV_WORD: { [k in Period]: string } = { today: 'yesterday', week: 'last week', month: 'last month', year: 'last year' };
+
 // Named rank for a level — status/identity, so the number means something.
 function rankFor(level: number): string {
   if (level >= 15) return `Legend · Level ${level}`;
@@ -46,6 +57,7 @@ export default function HomeScreen() {
   const [period, setPeriod] = React.useState<Period>('week');
   const [periodData, setPeriodData] = React.useState<PeriodSummary | null>(null);
   const [periodPlatforms, setPeriodPlatforms] = React.useState<PlatformStat[]>([]);
+  const [prevData, setPrevData] = React.useState<PeriodSummary | null>(null);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [trips, setTrips] = React.useState<ReturnType<typeof getTrips>>([]);
   const [user, setUser] = React.useState(getUser());
@@ -83,6 +95,7 @@ export default function HomeScreen() {
   function loadPeriod(p: Period) {
     setPeriodData(getPeriodSummary(p));
     setPeriodPlatforms(getPlatformStatsForPeriod(p));
+    setPrevData(getPeriodSummary(p, prevRef(p)));
   }
 
   function load() {
@@ -240,6 +253,43 @@ export default function HomeScreen() {
         ))}
       </View>
       <Text style={s.periodLabel}>{periodData ? fmtPeriodRange(period, periodData.rangeStart, periodData.rangeEnd) : ''}</Text>
+
+      {/* THE number couriers care about: take-home per hour worked. */}
+      {(() => {
+        const hrs = periodData?.hours ?? 0;
+        const perHour = hrs > 0 ? (periodData!.earnings / hrs) : 0;
+        // After tax AND real costs: take-home (earnings - tax) minus actual expenses spent.
+        const netPerHour = hrs > 0 ? Math.max(0, periodData!.takeHome - periodData!.expenses) / hrs : 0;
+        const prevHrs = prevData?.hours ?? 0;
+        const prevPerHour = prevHrs > 0 ? (prevData!.earnings / prevHrs) : null;
+        const delta = prevPerHour != null && hrs > 0 ? perHour - prevPerHour : null;
+        return (
+          <View style={s.kpi}>
+            <View style={s.kpiHead}>
+              <Feather name="clock" size={15} color="#fff" />
+              <Text style={s.kpiLabel}>Earned per hour</Text>
+            </View>
+            {hrs > 0 ? (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                  <Text style={s.kpiValue}>£{perHour.toFixed(2)}</Text>
+                  <Text style={s.kpiUnit}>/hr</Text>
+                </View>
+                <Text style={s.kpiNet}>£{netPerHour.toFixed(2)}/hr after tax &amp; costs</Text>
+                {delta != null && Math.abs(delta) >= 0.05 && (
+                  <View style={[s.kpiTrend, { backgroundColor: delta >= 0 ? 'rgba(255,255,255,0.22)' : 'rgba(226,96,74,0.30)' }]}>
+                    <Feather name={delta >= 0 ? 'arrow-up-right' : 'arrow-down-right'} size={13} color="#fff" />
+                    <Text style={s.kpiTrendText}>£{Math.abs(delta).toFixed(2)}/hr vs {PREV_WORD[period]}</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <Text style={s.kpiEmpty}>Track a trip with GPS and log your pay to see what you really make per hour.</Text>
+            )}
+          </View>
+        );
+      })()}
+
       <View style={s.metricsRow}>
         <MetricCard icon="home" label="Take-home" value={fmtGbp(periodData?.takeHome ?? 0)} accent style={{ marginRight: 8 }} />
         <MetricCard icon="map" label="Miles" value={fmtMiles(periodData?.miles ?? 0)} sub={fmtGbp(periodData?.deduction ?? 0)} />
@@ -250,7 +300,6 @@ export default function HomeScreen() {
           icon="clock"
           label={period === 'today' ? 'Trips' : 'Hours'}
           value={period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0)}
-          sub={(periodData?.hours ?? 0) > 0 ? fmtPerHour((periodData?.earnings ?? 0) / (periodData?.hours || 1)) : undefined}
         />
       </View>
 
@@ -433,7 +482,16 @@ const s = StyleSheet.create({
   segItemActive: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   segText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
   segTextActive: { color: colors.textPrimary, fontWeight: font.semibold },
-  periodLabel: { ...type.label, color: colors.textSecondary, marginBottom: spacing.sm, fontWeight: font.semibold },
+  periodLabel: { ...type.label, color: colors.textSecondary, marginBottom: spacing.md, fontWeight: font.semibold },
+  kpi: { backgroundColor: colors.brandDeep, borderRadius: radius.lg, padding: spacing.lg, marginBottom: 10 },
+  kpiHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  kpiLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: font.medium },
+  kpiValue: { ...tabular, color: '#fff', fontSize: 38, fontWeight: font.bold, letterSpacing: -1 },
+  kpiUnit: { color: 'rgba(255,255,255,0.85)', fontSize: 17, fontWeight: font.semibold },
+  kpiNet: { ...tabular, color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 },
+  kpiTrend: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, marginTop: spacing.md },
+  kpiTrendText: { ...tabular, color: '#fff', fontSize: 12, fontWeight: font.semibold },
+  kpiEmpty: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 20, marginTop: 2 },
   metricsRow: { flexDirection: 'row' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   thresholdMiles: { ...type.bodyMedium, ...tabular, fontSize: 15 },
