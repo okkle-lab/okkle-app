@@ -104,6 +104,9 @@ All exports save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26
 - Dumps entire record (profile, trips, records, settings) to a JSON file in iCloud/Files.
 - Restore on a new or wiped phone. Zero server cost — file goes to the user's own cloud.
 
+### Feedback & support
+- **Report a problem / Suggest an improvement** from Settings — categorised, with an optional screenshot, sent by email with privacy-first diagnostics (never your financial data).
+
 ### Settings & onboarding
 - Value-first onboarding + a **first-run spotlight tour** (coachmarks) that highlights Start-a-trip, Level/XP, your streak and Insights. Onboarding: welcome → name → vehicle → platforms → tax region (GPS auto-detect) → a "what to do first" step (start a trip, log weekly pay, check Insights).
 - Edit everything in Settings: name, vehicle, platforms, tax region, income band, reminder preferences.

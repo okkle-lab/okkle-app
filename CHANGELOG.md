@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (in-app feedback)
+
+### Report a problem / Suggest an improvement
+- New feedback flow in **Settings → Help & feedback** — pick a category (problem mode), describe it, optionally attach a screenshot and your email, and send. Composes an email to support (no backend).
+- **Privacy-first diagnostics** behind a toggle (app version, OS, device, screen, time) — never attaches your earnings, receipts, location or tax records.
+
 ## 2026-06-23 (best zones by £/hour)
 
 ### Where you earn most — now in £/hour
