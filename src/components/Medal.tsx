@@ -75,6 +75,8 @@ export function Medal({ emoji, category, tier, unlocked, size = 64 }: Props) {
           </>
         )}
 
+        {/* Soft glow halo so the medal lifts off the surface */}
+        {unlocked && <Circle cx={cx} cy={cy} r={r + 4} fill={pal.disc[1]} opacity={0.22} />}
         <Circle cx={cx} cy={cy + 2} r={r} fill={lo} />
         <Circle cx={cx} cy={cy} r={r} fill={`url(#disc-${id})`} />
         <Circle cx={cx} cy={cy} r={r} fill="none" stroke={lo} strokeWidth="2.5" />

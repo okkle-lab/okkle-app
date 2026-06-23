@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, CoachMarks, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, IconBadge, CoachMarks, type CoachStep } from '../../src/components';
 import {
   getUser,
   getTaxYearSummary, getEarningsByTimeOfDay,
@@ -232,9 +232,9 @@ export default function HomeScreen() {
       {(() => {
         const earnDelta = prevData ? (periodData?.earnings ?? 0) - prevData.earnings : null;
         const cards = [
-          { icon: 'dollar-sign' as const, label: 'Earnings', value: fmtGbp(periodData?.earnings ?? 0), series: seriesEarn, fmt: fmtGbp, empty: 'No earnings logged in this period.', trend: earnDelta != null && Math.abs(earnDelta) >= 1 ? { text: `${fmtGbp(Math.abs(earnDelta))} vs ${PREV_WORD[period]}`, up: earnDelta >= 0 } : null, sub: 'money in' },
-          { icon: 'map' as const, label: 'Miles', value: fmtMiles(periodData?.miles ?? 0), series: seriesMiles, fmt: fmtMiles, empty: 'No miles in this period.', trend: null, sub: `${fmtGbp(periodData?.deduction ?? 0)} tax deduction` },
-          { icon: 'navigation' as const, label: period === 'today' ? 'Trips' : 'Hours', value: period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0), series: seriesHours, fmt: fmtHours, empty: 'No hours in this period.', trend: null, sub: `${periodData?.trips ?? 0} trips` },
+          { icon: 'dollar-sign' as const, tone: 'green' as const, label: 'Earnings', value: fmtGbp(periodData?.earnings ?? 0), series: seriesEarn, fmt: fmtGbp, empty: 'No earnings logged in this period.', trend: earnDelta != null && Math.abs(earnDelta) >= 1 ? { text: `${fmtGbp(Math.abs(earnDelta))} vs ${PREV_WORD[period]}`, up: earnDelta >= 0 } : null, sub: 'money in' },
+          { icon: 'map' as const, tone: 'mint' as const, label: 'Miles', value: fmtMiles(periodData?.miles ?? 0), series: seriesMiles, fmt: fmtMiles, empty: 'No miles in this period.', trend: null, sub: `${fmtGbp(periodData?.deduction ?? 0)} tax deduction` },
+          { icon: 'navigation' as const, tone: 'blue' as const, label: period === 'today' ? 'Trips' : 'Hours', value: period === 'today' ? String(periodData?.trips ?? 0) : fmtHours(periodData?.hours ?? 0), series: seriesHours, fmt: fmtHours, empty: 'No hours in this period.', trend: null, sub: `${periodData?.trips ?? 0} trips` },
         ];
         return (
           <View style={{ marginTop: spacing.md }}>
@@ -247,7 +247,7 @@ export default function HomeScreen() {
                 <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
                   <View style={[s.mc, period !== 'today' && { minHeight: 256 }]}>
                     <View style={s.mcHead}>
-                      <View style={s.mcIcon}><Feather name={c.icon} size={15} color={colors.brandDeep} /></View>
+                      <IconBadge icon={c.icon} tone={c.tone} size={30} />
                       <Text style={s.mcLabel}>{c.label}</Text>
                     </View>
                     <Text style={s.mcValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{c.value}</Text>
