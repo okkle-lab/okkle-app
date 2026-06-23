@@ -26,6 +26,7 @@ export default function InsightsScreen() {
   }, []);
 
   const anyEarnings = zones.some(z => z.earnings > 0);
+  const anyPerHour = zones.some(z => z.perHour > 0);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
   const anyBucketEarnings = buckets.some(b => b.earnings > 0);
 
@@ -47,7 +48,10 @@ export default function InsightsScreen() {
               <Text style={s.tipText}>
                 You earn most around <Text style={s.tipStrong}>{best.zone}</Text> on <Text style={s.tipStrong}>{best.timeLabel}</Text>
               </Text>
-              <Text style={s.tipRate}>{fmtPerHour(best.perHour)} · {best.trips} {best.trips === 1 ? 'trip' : 'trips'}</Text>
+              <Text style={s.tipRate}>
+                {fmtPerHour(best.perHour)}
+                {best.vsAverage >= 0.5 ? ` · £${best.vsAverage.toFixed(2)}/h above your average` : ` · ${best.trips} ${best.trips === 1 ? 'trip' : 'trips'}`}
+              </Text>
             </View>
           </View>
         )}
@@ -82,7 +86,7 @@ export default function InsightsScreen() {
         {/* WHERE — ranked zones */}
         {zones.length > 0 && (
           <View style={{ marginTop: spacing.xl }}>
-            <SectionHeader icon="award" title={`${anyEarnings ? 'Top earning areas' : 'Busiest areas'}${filter !== 'all' ? ` · ${TIME_FILTERS.find(f => f.key === filter)?.label}` : ''}`} />
+            <SectionHeader icon="award" title={`${anyPerHour ? 'Best-paying areas (£/hr)' : anyEarnings ? 'Top earning areas' : 'Busiest areas'}${filter !== 'all' ? ` · ${TIME_FILTERS.find(f => f.key === filter)?.label}` : ''}`} />
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               {zones.slice(0, 6).map((z, i, arr) => (
                 <View key={z.zone} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
@@ -91,13 +95,15 @@ export default function InsightsScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={s.zoneName}>{z.zone}</Text>
-                    <Text style={s.zoneSub}>{z.trips} {z.trips === 1 ? 'trip' : 'trips'} · {fmtMiles(z.miles)}</Text>
+                    <Text style={s.zoneSub}>
+                      {z.trips} {z.trips === 1 ? 'trip' : 'trips'} · {fmtMiles(z.miles)}{z.earnings > 0 ? ` · ${fmtGbp(z.earnings)}` : ''}
+                    </Text>
                   </View>
-                  <Text style={s.zoneVal}>{anyEarnings ? fmtGbp(z.earnings) : fmtMiles(z.miles)}</Text>
+                  <Text style={s.zoneVal}>{anyPerHour ? fmtPerHour(z.perHour) : anyEarnings ? fmtGbp(z.earnings) : fmtMiles(z.miles)}</Text>
                 </View>
               ))}
             </Card>
-            {!anyEarnings && <Text style={s.note}>Add earnings to your trips to rank areas by what they actually pay.</Text>}
+            {!anyEarnings && <Text style={s.note}>Add earnings to your trips to rank areas by what they actually pay per hour.</Text>}
           </View>
         )}
 

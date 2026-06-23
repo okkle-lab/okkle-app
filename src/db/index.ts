@@ -783,7 +783,7 @@ export function achievementCount(): number { return getAchievements().length; }
 
 // ---- Location insights: zones + heatmap points -----------------------------
 
-export type ZoneStat = { zone: string; trips: number; miles: number; earnings: number; deduction: number };
+export type ZoneStat = { zone: string; trips: number; miles: number; earnings: number; deduction: number; hours: number; perHour: number };
 
 // Time-of-day filters used by the Insights screen so people can compare where
 // they earn at different parts of the day.
@@ -811,25 +811,34 @@ function hourInFilter(startedAt: string, f: TimeFilter): boolean {
 }
 
 // Ranked "where you work" zones, optionally restricted to a time of day.
+// Ranked by £/hour where we have the data (the actionable metric), else by
+// earnings, else by miles.
 export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
-  const rows = db.getAllSync<{ zone: string | null; miles: number; earnings: number | null; deduction: number; started_at: string }>(
-    `SELECT zone, miles, earnings, deduction, started_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
+  const rows = db.getAllSync<{ zone: string | null; miles: number; earnings: number | null; deduction: number; started_at: string; ended_at: string }>(
+    `SELECT zone, miles, earnings, deduction, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
   const agg: { [z: string]: ZoneStat } = {};
   for (const r of rows) {
     if (!hourInFilter(r.started_at, filter)) continue;
     const z = r.zone as string;
-    if (!agg[z]) agg[z] = { zone: z, trips: 0, miles: 0, earnings: 0, deduction: 0 };
+    if (!agg[z]) agg[z] = { zone: z, trips: 0, miles: 0, earnings: 0, deduction: 0, hours: 0, perHour: 0 };
     agg[z].trips += 1;
     agg[z].miles += r.miles;
     agg[z].earnings += r.earnings ?? 0;
     agg[z].deduction += r.deduction;
+    const ms = new Date(r.ended_at).getTime() - new Date(r.started_at).getTime();
+    agg[z].hours += ms > 0 ? ms / 3600000 : 0;
   }
-  const anyEarnings = Object.values(agg).some(z => z.earnings > 0);
-  return Object.values(agg).sort((a, b) => anyEarnings ? b.earnings - a.earnings : b.miles - a.miles);
+  const list = Object.values(agg);
+  for (const z of list) z.perHour = z.hours > 0 ? z.earnings / z.hours : 0;
+  const anyPerHour = list.some(z => z.perHour > 0);
+  const anyEarnings = list.some(z => z.earnings > 0);
+  return list.sort((a, b) =>
+    anyPerHour ? b.perHour - a.perHour : anyEarnings ? b.earnings - a.earnings : b.miles - a.miles);
 }
 
 // The single best "where + when" combination by £/hour — the headline tip.
-export type BestSpot = { zone: string; timeLabel: string; perHour: number; earnings: number; hours: number; trips: number };
+// vsAverage = how much more £/hour this spot earns than your overall average.
+export type BestSpot = { zone: string; timeLabel: string; perHour: number; earnings: number; hours: number; trips: number; vsAverage: number };
 
 function bucketLabel(hour: number): string {
   if (hour >= 6 && hour < 11) return 'mornings';
@@ -843,19 +852,24 @@ export function getBestSpot(): BestSpot | null {
   const rows = db.getAllSync<{ zone: string | null; earnings: number | null; started_at: string; ended_at: string }>(
     `SELECT zone, earnings, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> '' AND earnings > 0`);
   const agg: { [k: string]: BestSpot } = {};
+  let totalEarnings = 0, totalHours = 0;
   for (const r of rows) {
     const d = new Date(r.started_at);
     const time = bucketLabel(d.getHours());
     const key = `${r.zone}|${time}`;
-    if (!agg[key]) agg[key] = { zone: r.zone as string, timeLabel: time, perHour: 0, earnings: 0, hours: 0, trips: 0 };
+    if (!agg[key]) agg[key] = { zone: r.zone as string, timeLabel: time, perHour: 0, earnings: 0, hours: 0, trips: 0, vsAverage: 0 };
     const ms = new Date(r.ended_at).getTime() - d.getTime();
+    const hrs = ms > 0 ? ms / 3600000 : 0;
     agg[key].earnings += r.earnings ?? 0;
-    agg[key].hours += ms > 0 ? ms / 3600000 : 0;
+    agg[key].hours += hrs;
     agg[key].trips += 1;
+    totalEarnings += r.earnings ?? 0;
+    totalHours += hrs;
   }
+  const avgPerHour = totalHours > 0 ? totalEarnings / totalHours : 0;
   const candidates = Object.values(agg)
     .filter(s => s.hours > 0.1)
-    .map(s => ({ ...s, perHour: s.earnings / s.hours }))
+    .map(s => ({ ...s, perHour: s.earnings / s.hours, vsAverage: s.earnings / s.hours - avgPerHour }))
     .sort((a, b) => b.perHour - a.perHour);
   return candidates[0] ?? null;
 }
