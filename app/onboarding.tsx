@@ -293,7 +293,7 @@ const s = StyleSheet.create({
   doTitle: { ...type.bodyMedium, fontSize: 16 },
   doBody: { ...type.caption, color: colors.textSecondary, lineHeight: 20, marginTop: 2 },
   streakNote: { flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.lg, marginTop: spacing.xl },
-  streakNoteText: { ...type.caption, color: '#8a5510', flex: 1, lineHeight: 19 },
+  streakNoteText: { ...type.caption, color: colors.amberDark, flex: 1, lineHeight: 19 },
 
   footer: { marginTop: 'auto', paddingTop: spacing.xl },
   backText: { ...type.label, color: colors.textSecondary },

@@ -19,6 +19,7 @@ export const colors = {
   greenLight: '#E5F4EC',
   amber: '#E0961F',
   amberLight: '#FBEFD6',
+  amberDark: '#8A5510',   // readable amber text on amberLight backgrounds
   red: '#E2604A',
   redLight: '#FBEAE5',
 

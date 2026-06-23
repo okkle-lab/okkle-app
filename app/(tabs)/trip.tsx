@@ -439,7 +439,7 @@ const s = StyleSheet.create({
   // live
   liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 72 },
   discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
-  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4ade80' },
+  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.green },
   liveStatus: { color: 'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: font.medium },
   ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   ringMiles: { ...tabular, fontSize: 64, fontWeight: font.bold, color: '#fff', letterSpacing: -2 },
