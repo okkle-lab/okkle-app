@@ -8,7 +8,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, ScreenHeader } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, ProgressRing, CollapsingHeader, Icon } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, DAILY_GOAL_MILES } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, type DailyStats } from '../../src/db';
@@ -278,9 +278,15 @@ export default function TripScreen() {
   // ---- Phase 1: setup --------------------------------------------------------
   const todayHasData = today.trips > 0 || today.earnings > 0;
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <ScreenHeader title="Start a trip" subtitle="Tap start and ride — GPS measures your distance for you." />
-
+    <CollapsingHeader
+      title="Start a trip"
+      subtitle="Tap start and ride — GPS measures your distance for you."
+      right={
+        <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
+          <Icon name="settings" size={22} color={colors.textSecondary} />
+        </Pressable>
+      }
+    >
       {/* Primary action FIRST — pick platform/vehicle (remembered) then Start, no scrolling */}
       <SectionHeader icon="grid" title="Platform" />
       <View style={s.chips}>
@@ -312,7 +318,7 @@ export default function TripScreen() {
       )}
 
       <Text style={s.gpsNote}>Keep Okkle open during your ride. Your screen will stay awake automatically.</Text>
-    </ScrollView>
+    </CollapsingHeader>
   );
 }
 

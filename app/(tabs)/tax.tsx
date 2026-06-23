@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TextInput, Pressable, Alert } from 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, ScreenHeader } from '../../src/components';
+import { Card, SectionHeader, CollapsingHeader, Icon } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries,
@@ -55,10 +55,14 @@ export default function TaxScreen() {
   const pos = taxPosition(year.earnings, totalExpenses, region, parseFloat(otherIncome) || 0);
 
 
-  return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <ScreenHeader title="Tax" subtitle={`Your estimated position for ${taxYearLabel()}`} />
+  const gear = (
+    <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
+      <Icon name="settings" size={22} color={colors.textSecondary} />
+    </Pressable>
+  );
 
+  return (
+    <CollapsingHeader title="Tax" subtitle={`Your estimated position for ${taxYearLabel()}`} right={gear}>
       {/* Headline: what to set aside — the number that matters on this tab */}
       <View style={s.setAside}>
         <View style={s.setAsideIcon}><Feather name="shield" size={20} color="#fff" /></View>
@@ -199,7 +203,7 @@ export default function TaxScreen() {
           Estimated using {RATES_YEAR} HMRC rates (allowances frozen to 2027/28) and what you've logged — not tax advice. Your accountant confirms the final figures and files your return.
         </Text>
       </View>
-    </ScrollView>
+    </CollapsingHeader>
   );
 }
 

@@ -7,7 +7,8 @@ import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
-import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip, DatePickerField, ScreenHeader } from '../../src/components';
+import { useRouter } from 'expo-router';
+import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, Icon } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser } from '../../src/db';
 
@@ -34,6 +35,7 @@ const EXPENSE_CATEGORIES = [
 type Tab = 'mileage' | 'income' | 'expense';
 
 export default function LogScreen() {
+  const router = useRouter();
   const user = getUser();
   // Expense first, then earnings; manual mileage last so GPS tracking is the
   // encouraged way to record miles.
@@ -84,8 +86,15 @@ export default function LogScreen() {
   }
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-      <ScreenHeader title="Log entry" />
+    <CollapsingHeader
+      title="Log entry"
+      keyboardShouldPersistTaps="handled"
+      right={
+        <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
+          <Icon name="settings" size={22} color={colors.textSecondary} />
+        </Pressable>
+      }
+    >
 
       <View style={s.tabs}>
         {([
@@ -241,7 +250,7 @@ export default function LogScreen() {
         variant={saved ? 'ghost' : 'primary'}
         style={{ marginTop: spacing.lg }}
       />
-    </ScrollView>
+    </CollapsingHeader>
   );
 }
 

@@ -2,7 +2,17 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
-## 2026-06-23 (Declutter pass 3: compact filters, combined cards, gradients)
+## 2026-06-23 (Starling-style headers + number fixes)
+
+### Animated collapsing headers on every tab
+- New `CollapsingHeader`: the tab title sits large at the top and **slides away as you scroll**, while a compact pinned title + a solid bar fade in (Starling-style, native-driven). Applied to **Home, Trip, Log, Records and Tax** — the title now always stays at the top, and the settings gear stays pinned.
+
+### Home — fixed the broken numbers
+- **£/hour no longer explodes** when there's earnings but almost no tracked time (it was showing things like £1,585,899/hr). Below ~15 min of tracked time it now shows "—". The net-per-hour line follows the same rule.
+- Stat values **auto-shrink to one line** instead of wrapping mid-number, and the "vs last period" trend only shows when there's a real prior period to compare against.
+
+### Records — filters no longer overflow
+- The segmented filter now spans the **full width** (no more "Earnings Expens…" truncation) and the month control collapses to a **compact calendar pill** that only shows the month name once you've picked one.
 
 ### Home — one earnings card instead of three blocks
 - Merged the **Earned-per-hour** card, the **Earnings/Miles/Hours** carousel and the **By-platform** list into a **single Earnings card**: the headline number + trend, a three-stat strip (£/hour · miles & tax back · hours), the earnings chart, and the top-3 platforms — all in one place. Much shorter, one glance.

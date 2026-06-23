@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, IconBadge, GradientCard, CoachMarks, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, Icon, VehicleIcon, CountUp, Medal, HeatMapView, BarChart, IconBadge, GradientCard, CollapsingHeader, CoachMarks, type CoachStep } from '../../src/components';
 import {
   getUser,
   getTaxYearSummary, getEarningsByTimeOfDay,
@@ -131,21 +131,15 @@ export default function HomeScreen() {
         </View>
       </Pressable>
     </Modal>
-    <ScrollView
-      style={s.screen}
-      contentContainerStyle={s.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
-    >
-      <View style={s.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-          <VehicleIcon vehicle={user?.vehicle ?? 'car'} size={22} color={colors.textSecondary} />
-          <Text style={s.hello}>{user?.name || 'Hi'}</Text>
-        </View>
+    <CollapsingHeader
+      title={user?.name || 'Hi'}
+      right={
         <Pressable onPress={() => router.push('/settings')} hitSlop={12} style={s.gear}>
           <Icon name="settings" size={22} color={colors.textSecondary} />
         </Pressable>
-      </View>
-
+      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
+    >
       {/* HERO: tax saved this year — the emotional centrepiece */}
       <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -177,9 +171,13 @@ export default function HomeScreen() {
         const earnings = periodData?.earnings ?? 0;
         const hrs = periodData?.hours ?? 0;
         const miles = periodData?.miles ?? 0;
-        const perHour = hrs > 0 ? earnings / hrs : 0;
-        const netPerHour = hrs > 0 ? Math.max(0, periodData!.takeHome - periodData!.expenses) / hrs : 0;
-        const earnDelta = prevData ? earnings - prevData.earnings : null;
+        // £/hour is only meaningful with real tracked time — below ~15 min it
+        // explodes into nonsense, so treat it as "no hours logged".
+        const hasHours = hrs >= 0.25;
+        const perHour = hasHours ? earnings / hrs : 0;
+        const netPerHour = hasHours ? Math.max(0, periodData!.takeHome - periodData!.expenses) / hrs : 0;
+        // Only show a trend when there's a real prior period to compare against.
+        const earnDelta = prevData && prevData.earnings > 0 ? earnings - prevData.earnings : null;
         const hasTrend = earnDelta != null && Math.abs(earnDelta) >= 1;
         const tops = [...periodPlatforms].sort((a, b) => b.earnings - a.earnings).slice(0, 3);
         return (
@@ -190,9 +188,9 @@ export default function HomeScreen() {
                 <Text style={s.earnLabel}>Earnings</Text>
               </View>
               {hasTrend && (
-                <View style={[s.mcTrend, { backgroundColor: earnDelta! >= 0 ? colors.greenLight : colors.redLight, marginTop: 0 }]}>
+                <View style={[s.mcTrend, { backgroundColor: earnDelta! >= 0 ? colors.greenLight : colors.redLight, marginTop: 0, flexShrink: 1 }]}>
                   <Feather name={earnDelta! >= 0 ? 'arrow-up-right' : 'arrow-down-right'} size={13} color={earnDelta! >= 0 ? colors.green : colors.red} />
-                  <Text style={[s.mcTrendText, { color: earnDelta! >= 0 ? colors.green : colors.red }]}>{fmtGbp(Math.abs(earnDelta!))} vs {PREV_WORD[period]}</Text>
+                  <Text numberOfLines={1} style={[s.mcTrendText, { color: earnDelta! >= 0 ? colors.green : colors.red }]}>{fmtGbp(Math.abs(earnDelta!))} vs {PREV_WORD[period]}</Text>
                 </View>
               )}
             </View>
@@ -201,22 +199,22 @@ export default function HomeScreen() {
             {/* three inline stats */}
             <View style={s.statRow}>
               <View style={s.statCell}>
-                <Text style={s.statVal}>{hrs > 0 ? `£${perHour.toFixed(2)}` : '—'}</Text>
+                <Text style={s.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{hasHours ? `£${perHour.toFixed(2)}` : '—'}</Text>
                 <Text style={s.statLbl}>per hour</Text>
               </View>
               <View style={s.statDivider} />
               <View style={s.statCell}>
-                <Text style={s.statVal}>{fmtMiles(miles)}</Text>
-                <Text style={s.statLbl}>{fmtGbp(periodData?.deduction ?? 0)} tax back</Text>
+                <Text style={s.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{fmtMiles(miles)}</Text>
+                <Text style={s.statLbl} numberOfLines={1}>{fmtGbp(periodData?.deduction ?? 0)} back</Text>
               </View>
               <View style={s.statDivider} />
               <View style={s.statCell}>
-                <Text style={s.statVal}>{period === 'today' ? (periodData?.trips ?? 0) : fmtHours(hrs)}</Text>
+                <Text style={s.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{period === 'today' ? (periodData?.trips ?? 0) : fmtHours(hrs)}</Text>
                 <Text style={s.statLbl}>{period === 'today' ? 'trips' : 'hours'}</Text>
               </View>
             </View>
 
-            {hrs > 0 && (
+            {hasHours && (
               <Text style={s.earnNet}>£{netPerHour.toFixed(2)}/hr after tax &amp; costs · take-home {fmtGbp(periodData?.takeHome ?? 0)}</Text>
             )}
 
@@ -344,7 +342,7 @@ export default function HomeScreen() {
           Estimates only — not tax advice. Share your export with an accountant.
         </Text>
       </View>
-    </ScrollView>
+    </CollapsingHeader>
     </>
   );
 }

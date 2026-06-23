@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Alert } 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { Card, SectionHeader, VehicleIcon, ScreenHeader, IconBadge } from '../../src/components';
+import { Card, SectionHeader, VehicleIcon, CollapsingHeader, IconBadge, Icon } from '../../src/components';
 import { getTrips, getRecords, getVehicleStats, type VehicleStat } from '../../src/db';
 import { fmtGbp, fmtMiles, vehicleLabel } from '../../src/db/tax';
 import type { Trip, Record as OkkleRecord } from '../../src/db';
@@ -104,14 +104,18 @@ export default function RecordsScreen() {
     );
   }
 
+  const gear = (
+    <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
+      <Icon name="settings" size={22} color={colors.textSecondary} />
+    </Pressable>
+  );
+
   return (
-    <ScrollView
-      style={s.screen}
-      contentContainerStyle={s.content}
+    <CollapsingHeader
+      title="Records"
+      right={gear}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
-      <ScreenHeader title="Records" />
-
       {vehicles.length > 0 && (
         <View style={{ marginBottom: spacing.xl }}>
           <SectionHeader icon="truck" title="By vehicle" />
@@ -147,10 +151,9 @@ export default function RecordsScreen() {
               ))}
             </View>
             {months.length > 1 && (
-              <Pressable onPress={pickMonth} style={s.monthBtn} hitSlop={6}>
-                <Feather name="calendar" size={14} color={colors.brandDeep} />
-                <Text style={s.monthBtnText} numberOfLines={1}>{month === 'all' ? 'All time' : monthLabel(month)}</Text>
-                <Feather name="chevron-down" size={14} color={colors.brandDeep} />
+              <Pressable onPress={pickMonth} style={[s.monthBtn, month !== 'all' && s.monthBtnOn]} hitSlop={6}>
+                <Feather name="calendar" size={15} color={month !== 'all' ? '#fff' : colors.brandDeep} />
+                {month !== 'all' && <Text style={s.monthBtnText} numberOfLines={1}>{monthLabel(month)}</Text>}
               </Pressable>
             )}
           </View>
@@ -164,7 +167,7 @@ export default function RecordsScreen() {
           <Text style={s.hint}>Tap any entry to edit or delete it.</Text>
         </>
       )}
-    </ScrollView>
+    </CollapsingHeader>
   );
 }
 
@@ -179,12 +182,13 @@ const s = StyleSheet.create({
   hint: { ...type.small, textAlign: 'center', marginTop: spacing.md },
   filterBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.md },
   segment: { flexDirection: 'row', flex: 1, backgroundColor: colors.bgSoft, borderRadius: radius.md, padding: 3 },
-  segItem: { flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: radius.sm },
+  segItem: { flex: 1, paddingVertical: 7, paddingHorizontal: 2, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
   segItemOn: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  segText: { fontSize: 12.5, fontWeight: font.medium, color: colors.textSecondary },
+  segText: { fontSize: 12, fontWeight: font.medium, color: colors.textSecondary },
   segTextOn: { color: colors.textPrimary, fontWeight: font.semibold },
-  monthBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 10, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.brandLight },
-  monthBtnText: { fontSize: 12.5, fontWeight: font.semibold, color: colors.brandDeep, maxWidth: 72 },
+  monthBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, height: 36, borderRadius: radius.md, backgroundColor: colors.brandLight },
+  monthBtnOn: { backgroundColor: colors.brandDeep },
+  monthBtnText: { fontSize: 12.5, fontWeight: font.semibold, color: '#fff', maxWidth: 72 },
 });
 
 const row = StyleSheet.create({
