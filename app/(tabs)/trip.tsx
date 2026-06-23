@@ -163,7 +163,7 @@ export default function TripScreen() {
         <View style={s.ringWrap}>
           {heroMetric === 'map' ? (
             <View style={s.heroMap}>
-              <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.42)} />
+              <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.36)} />
               <Text style={s.bigMilesUnit}>your route so far</Text>
             </View>
           ) : (
@@ -177,8 +177,8 @@ export default function TripScreen() {
             <Text style={s.moneyChipText}>{fmtGbp(trip.deduction)} earned back so far</Text>
           </View>
 
-          {/* "Earn it back" milestone bar — the gamified hook */}
-          {(() => {
+          {/* "Earn it back" milestone bar — hidden in map view to avoid crowding */}
+          {heroMetric !== 'map' && (() => {
             const nextTarget = (Math.floor(trip.deduction / MILESTONE) + 1) * MILESTONE;
             const into = trip.deduction - (nextTarget - MILESTONE);
             const pct = Math.max(0.02, Math.min(1, into / MILESTONE));
@@ -401,7 +401,7 @@ const s = StyleSheet.create({
   statusPillText: { color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: font.medium },
   discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
   liveDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.green },
-  ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   bigMiles: { ...tabular, fontSize: 96, fontWeight: font.bold, color: '#fff', letterSpacing: -4, lineHeight: 100 },
   bigMilesUnit: { fontSize: 15, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
   moneyChip: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: spacing.lg, backgroundColor: 'rgba(224,150,31,0.16)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
