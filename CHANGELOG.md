@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (spotlight app tour)
+
+### First-run coachmarks
+- A **spotlight tour** runs once after onboarding: it dims the screen and highlights real elements one at a time — **Start a trip → Level/XP → your streak → "there's more below"** (Insights + tabs) — so new users learn exactly where to tap.
+- Added **Settings → Help → "Replay the app tour"** to run it again anytime.
+
 ## 2026-06-23 (onboarding redesign)
 
 ### Onboarding that sells the whole app
