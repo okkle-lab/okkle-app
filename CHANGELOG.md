@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Bigger live map, finer areas, pay logging moved to Log)
+
+- **The live Map view is now much bigger** (~42% of screen height) when you swap it into the hero spot.
+- **More specific area names** in Insights — trips now record the road + outward postcode (e.g. "Kingston Road · SW19") instead of a whole borough like "Merton". Applies to newly tracked trips.
+- **Removed the duplicated weekly-pay flow from Trip.** The Log tab already has an Earnings mode, so the Trip "Log weekly pay" tile now jumps straight to **Log → Earnings** (deep-linked) rather than maintaining a second copy of the same screen.
+
 ## 2026-06-23 (Swappable live metrics, live map, finish scorecard)
 
 - **Tap any live stat to make it the hero** — the big number can now be miles, time, avg mph or miles-today; tapping a cell in the strip swaps it into the big spot.

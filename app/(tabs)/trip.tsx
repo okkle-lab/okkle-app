@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Alert, Pressable, TextInput,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Dimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -12,11 +12,11 @@ import { useRouter } from 'expo-router';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard, RouteMap } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, type DailyStats } from '../../src/db';
+import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, type DailyStats } from '../../src/db';
 
 type LiveMetric = 'miles' | 'time' | 'speed' | 'today' | 'map';
 
-type Phase = 'setup' | 'live' | 'summary' | 'logpay';
+type Phase = 'setup' | 'live' | 'summary';
 
 export default function TripScreen() {
   const router = useRouter();
@@ -30,8 +30,6 @@ export default function TripScreen() {
   const [earnings, setEarnings] = useState('');
   const [todayBase, setTodayBase] = useState(0);
   const [today, setToday] = useState<DailyStats>({ miles: 0, deduction: 0, earnings: 0, trips: 0, hours: 0 });
-  const [payAmount, setPayAmount] = useState('');
-  const [payPlatform, setPayPlatform] = useState('');
   const [flash, setFlash] = useState<string | null>(null); // milestone celebration
   const [heroMetric, setHeroMetric] = useState<LiveMetric>('miles');
   const [prevBestTrip, setPrevBestTrip] = useState(0);
@@ -105,11 +103,12 @@ export default function TripScreen() {
       try {
         const places = await Location.reverseGeocodeAsync({ latitude: mid.lat, longitude: mid.lng });
         const p = places[0];
-        // Prefer the most *local* name (neighbourhood/district), then add the
-        // town for context — "Shoreditch, London" beats a bare "London".
-        const local = p?.district ?? p?.street ?? null;
-        const town = p?.city ?? p?.subregion ?? p?.region ?? null;
-        zone = local && town && local !== town ? `${local}, ${town}` : (local ?? town);
+        // Couriers think in streets & postcodes, so be specific: the road/area,
+        // plus the outward postcode (e.g. "Kingston Road · SW19") — far more
+        // useful than a whole borough like "Merton".
+        const outward = p?.postalCode ? p.postalCode.split(' ')[0].trim() : null;
+        const local = p?.street ?? p?.district ?? p?.subregion ?? p?.city ?? null;
+        zone = [local, outward].filter(Boolean).join(' · ') || null;
       } catch { /* offline or denied — leave zone null */ }
     }
 
@@ -127,62 +126,6 @@ export default function TripScreen() {
     setFinished(null);
     setEarnings('');
     setPhase('setup');
-  }
-
-  // ---- Phase: log weekly pay -------------------------------------------------
-  if (phase === 'logpay') {
-    return (
-      <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => setPhase('setup')} style={{ marginBottom: spacing.lg }}>
-            <Feather name="arrow-left" size={22} color={colors.textSecondary} />
-          </Pressable>
-          <Text style={s.heading}>Log weekly pay</Text>
-          <Text style={s.sub}>Uber Eats, Deliveroo and Just Eat all pay weekly by bank transfer. Log it here to keep your earnings accurate.</Text>
-
-          <SectionHeader icon="grid" title="Platform" />
-          <View style={s.chips}>
-            {PLATFORMS.map(p => (
-              <Chip key={p} label={p} selected={payPlatform === p} onPress={() => setPayPlatform(p)} size="lg" style={s.chip} />
-            ))}
-          </View>
-
-          <SectionHeader icon="dollar-sign" title="Amount received" />
-          <TextInput
-            style={s.earningsInput}
-            placeholder="£0.00"
-            placeholderTextColor={colors.textTertiary}
-            keyboardType="decimal-pad"
-            value={payAmount}
-            onChangeText={setPayAmount}
-            autoFocus
-          />
-          <Text style={s.earningsNote}>This is your gross pay before any Uber Eats / Deliveroo deductions. Check your weekly statement for the exact figure.</Text>
-
-          <PrimaryButton
-            label="Save pay"
-            disabled={!payAmount || !payPlatform}
-            onPress={() => {
-              saveRecord({
-                record_type: 'income',
-                platform: payPlatform,
-                amount: parseFloat(payAmount),
-                miles: null, deduction: null, category: null,
-                period_start: null, period_end: null,
-                receipt_uri: null, notes: 'Weekly pay',
-              });
-              setPayAmount('');
-              setPayPlatform('');
-              setPhase('setup');
-            }}
-            style={{ marginTop: spacing.lg }}
-          />
-          <Pressable onPress={() => { setPayAmount(''); setPayPlatform(''); setPhase('setup'); }} style={{ marginTop: 14, alignItems: 'center' }}>
-            <Text style={s.skip}>Cancel</Text>
-          </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    );
   }
 
   // ---- Phase 2: live tracking ------------------------------------------------
@@ -220,7 +163,7 @@ export default function TripScreen() {
         <View style={s.ringWrap}>
           {heroMetric === 'map' ? (
             <View style={s.heroMap}>
-              <RouteMap route={points ?? []} height={210} />
+              <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.42)} />
               <Text style={s.bigMilesUnit}>your route so far</Text>
             </View>
           ) : (
@@ -409,7 +352,7 @@ export default function TripScreen() {
 
       {/* Secondary actions — clean tiles, not loud buttons */}
       <View style={s.tileRow}>
-        <Pressable onPress={() => { setPayPlatform(platform); setPhase('logpay'); }} style={({ pressed }) => [s.tile, pressed && { backgroundColor: colors.bgSoft }]}>
+        <Pressable onPress={() => router.push({ pathname: '/(tabs)/log', params: { tab: 'income' } })} style={({ pressed }) => [s.tile, pressed && { backgroundColor: colors.bgSoft }]}>
           <IconBadge icon="dollar-sign" tone="green" size={34} />
           <Text style={s.tileLabel}>Log weekly pay</Text>
         </Pressable>
@@ -471,7 +414,7 @@ const s = StyleSheet.create({
   liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginBottom: spacing.xl },
   liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
   liveStatBorder: { borderLeftWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-  heroMap: { width: '100%', paddingHorizontal: spacing.xl, alignItems: 'center', gap: 8 },
+  heroMap: { width: '100%', paddingHorizontal: spacing.md, alignItems: 'center', gap: 10 },
   liveStatLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
   liveStatValue: { ...tabular, fontSize: 19, fontWeight: font.semibold, color: '#fff' },
   liveActions: { paddingHorizontal: spacing.xl, paddingBottom: 44, gap: spacing.md },

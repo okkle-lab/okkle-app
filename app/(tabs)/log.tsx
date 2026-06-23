@@ -7,7 +7,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Chip, PrimaryButton, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, Icon } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser } from '../../src/db';
@@ -38,8 +38,12 @@ export default function LogScreen() {
   const router = useRouter();
   const user = getUser();
   // Expense first, then earnings; manual mileage last so GPS tracking is the
-  // encouraged way to record miles.
-  const [tab, setTab] = useState<Tab>('expense');
+  // encouraged way to record miles. Other screens can deep-link a tab (?tab=income).
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<Tab>((params.tab === 'income' || params.tab === 'mileage') ? params.tab : 'expense');
+  React.useEffect(() => {
+    if (params.tab === 'income' || params.tab === 'mileage' || params.tab === 'expense') setTab(params.tab);
+  }, [params.tab]);
 
   const [miles, setMiles] = useState('');
   const [vehicle, setVehicle] = useState(user?.vehicle ?? 'car');
