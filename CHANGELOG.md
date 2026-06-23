@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (Swappable live metrics, live map, finish scorecard)
+
+- **Tap any live stat to make it the hero** — the big number can now be miles, time, avg mph or miles-today; tapping a cell in the strip swaps it into the big spot.
+- **Live route map** — one of the swappable views is a **Map** that draws your GPS breadcrumb as you ride (the breadcrumb is now exposed live from the trip hook).
+- **Celebratory finish scorecard** — ending a trip now opens a motivational summary: a headline ("New personal best!" / "Nice ride!"), how much you earned back, and **gamification hooks** — a **new-longest-trip** record banner (beats your old best) and a **streak** nudge.
+- Replaced the route-map placeholder emoji with a Feather icon.
+
 ## 2026-06-23 (Live "earn it back" gamification)
 
 - The live trip screen now has an **"earn it back" milestone bar**: it fills toward the next £5 of mileage money earned back, and each time you cross a milestone it fires a **success haptic** and a brief **"£X earned back!" celebration**. Turns the money figure into a live, motivating game instead of a static number.

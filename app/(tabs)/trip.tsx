@@ -9,10 +9,12 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard, RouteMap } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, type DailyStats } from '../../src/db';
+import { saveTrip, saveRecord, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, type DailyStats } from '../../src/db';
+
+type LiveMetric = 'miles' | 'time' | 'speed' | 'today' | 'map';
 
 type Phase = 'setup' | 'live' | 'summary' | 'logpay';
 
@@ -31,8 +33,10 @@ export default function TripScreen() {
   const [payAmount, setPayAmount] = useState('');
   const [payPlatform, setPayPlatform] = useState('');
   const [flash, setFlash] = useState<string | null>(null); // milestone celebration
+  const [heroMetric, setHeroMetric] = useState<LiveMetric>('miles');
+  const [prevBestTrip, setPrevBestTrip] = useState(0);
   const milestoneRef = React.useRef(0);
-  const { trip, start, pause, resume, end } = useTrip();
+  const { trip, points, start, pause, resume, end } = useTrip();
 
   useEffect(() => { setToday(getDailyStats()); }, [phase]);
 
@@ -70,6 +74,8 @@ export default function TripScreen() {
   }
 
   function handleEnd() {
+    // Capture the previous best BEFORE saving, so we can celebrate a new record.
+    setPrevBestTrip(getLongestTrip());
     const final = end();
     setFinished(final);
     setEarnings('');
@@ -187,6 +193,16 @@ export default function TripScreen() {
     const avgMph = trip.elapsedSeconds > 0 ? trip.miles / (trip.elapsedSeconds / 3600) : 0;
     const statusText = isPaused ? 'Paused' : waiting ? 'Waiting for movement' : 'Recording';
     const statusColor = isPaused ? colors.amber : waiting ? colors.amber : colors.brand;
+
+    // Swappable live metrics — tap a stat to promote it to the big hero spot.
+    const METRICS: Record<LiveMetric, { value: string; heroLabel: string; chip: string; label: string; icon: string }> = {
+      miles: { value: trip.miles.toFixed(1), heroLabel: 'miles this trip', chip: trip.miles.toFixed(1), label: 'miles', icon: 'navigation' },
+      time: { value: fmtDuration(trip.elapsedSeconds), heroLabel: 'on this trip', chip: fmtDuration(trip.elapsedSeconds), label: 'time', icon: 'clock' },
+      speed: { value: avgMph.toFixed(0), heroLabel: 'average mph', chip: avgMph.toFixed(0), label: 'avg mph', icon: 'zap' },
+      today: { value: dayMiles.toFixed(1), heroLabel: 'miles today', chip: dayMiles.toFixed(1), label: 'today', icon: 'sunrise' },
+      map: { value: '', heroLabel: 'your route', chip: '', label: 'map', icon: 'map' },
+    };
+    const stripMetrics = (['miles', 'time', 'speed', 'today', 'map'] as LiveMetric[]).filter(m => m !== heroMetric);
     return (
       <GradientCard colors={[colors.dark, '#103029']} radius={0} diagonal={false} style={{ flex: 1 }}>
         {/* Status pill (live/waiting/paused) + discard */}
@@ -200,10 +216,19 @@ export default function TripScreen() {
           <Feather name="x" size={24} color="rgba(255,255,255,0.7)" />
         </Pressable>
 
-        {/* Hero: distance — the thing being measured, big and satisfying */}
+        {/* Hero — tap any stat below to make it the big number (or the map) */}
         <View style={s.ringWrap}>
-          <Text style={s.bigMiles}>{trip.miles.toFixed(1)}</Text>
-          <Text style={s.bigMilesUnit}>miles this trip</Text>
+          {heroMetric === 'map' ? (
+            <View style={s.heroMap}>
+              <RouteMap route={points ?? []} height={210} />
+              <Text style={s.bigMilesUnit}>your route so far</Text>
+            </View>
+          ) : (
+            <>
+              <Text style={s.bigMiles} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{METRICS[heroMetric].value}</Text>
+              <Text style={s.bigMilesUnit}>{METRICS[heroMetric].heroLabel}</Text>
+            </>
+          )}
           <View style={s.moneyChip}>
             <Feather name="trending-up" size={15} color={colors.amber} />
             <Text style={s.moneyChipText}>{fmtGbp(trip.deduction)} earned back so far</Text>
@@ -229,23 +254,17 @@ export default function TripScreen() {
           })()}
         </View>
 
-        {/* Glass stat strip — time, pace, day total */}
+        {/* Glass stat strip — tap a cell to swap it into the hero spot */}
         <View style={s.liveStats}>
-          <View style={s.liveStat}>
-            <Feather name="clock" size={16} color="rgba(255,255,255,0.5)" />
-            <Text style={s.liveStatValue}>{fmtDuration(trip.elapsedSeconds)}</Text>
-            <Text style={s.liveStatLabel}>time</Text>
-          </View>
-          <View style={[s.liveStat, s.liveStatBorder]}>
-            <Feather name="zap" size={16} color="rgba(255,255,255,0.5)" />
-            <Text style={s.liveStatValue}>{avgMph.toFixed(0)}</Text>
-            <Text style={s.liveStatLabel}>avg mph</Text>
-          </View>
-          <View style={s.liveStat}>
-            <Feather name="map" size={16} color="rgba(255,255,255,0.5)" />
-            <Text style={s.liveStatValue}>{dayMiles.toFixed(1)}</Text>
-            <Text style={s.liveStatLabel}>today</Text>
-          </View>
+          {stripMetrics.map((m, i) => (
+            <Pressable key={m} onPress={() => setHeroMetric(m)} style={({ pressed }) => [s.liveStat, i > 0 && s.liveStatBorder, pressed && { opacity: 0.6 }]}>
+              <Feather name={METRICS[m].icon as any} size={15} color="rgba(255,255,255,0.5)" />
+              {m === 'map'
+                ? <Text style={[s.liveStatValue, { fontSize: 15, marginTop: 4 }]}>Map</Text>
+                : <Text style={s.liveStatValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{METRICS[m].chip}</Text>}
+              <Text style={s.liveStatLabel}>{METRICS[m].label}</Text>
+            </Pressable>
+          ))}
         </View>
 
         <View style={s.liveActions}>
@@ -263,16 +282,21 @@ export default function TripScreen() {
     );
   }
 
-  // ---- Phase 3: quick earnings + save ---------------------------------------
+  // ---- Phase 3: celebratory scorecard + quick earnings + save ----------------
   if (phase === 'summary' && finished) {
+    const isRecord = prevBestTrip > 0 && finished.miles > prevBestTrip;
+    const streak = getStreak();
+    const headline = isRecord ? 'New personal best!' : finished.miles >= 1 ? 'Nice ride!' : 'Trip saved';
     return (
       <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-          <GradientCard colors={['#3BC07E', colors.green, '#1C7048']} radius={32} style={s.checkCircle}>
-            <Feather name="check" size={36} color="#fff" />
+          <GradientCard colors={isRecord ? ['#FCD34D', colors.amber, '#9E5E08'] : ['#3BC07E', colors.green, '#1C7048']} radius={36} style={s.checkCircle}>
+            <Feather name={isRecord ? 'award' : 'check'} size={36} color="#fff" />
           </GradientCard>
-          <Text style={[s.heading, { textAlign: 'center' }]}>Trip saved</Text>
-          <Text style={[s.sub, { textAlign: 'center' }]}>{fmtMiles(finished.miles)} · {fmtGbp(finished.deduction)} saved · {finished.platform}</Text>
+          <Text style={[s.heading, { textAlign: 'center' }]}>{headline}</Text>
+          <Text style={[s.sub, { textAlign: 'center', marginBottom: spacing.lg }]}>
+            You earned {fmtGbp(finished.deduction)} back in tax relief · {fmtMiles(finished.miles)}
+          </Text>
 
           <View style={s.summaryStats}>
             <View style={s.summaryStat}>
@@ -288,6 +312,22 @@ export default function TripScreen() {
               <Text style={s.summaryStatLabel}>time</Text>
             </View>
           </View>
+
+          {/* Motivational hooks */}
+          {isRecord && (
+            <View style={[s.hookBanner, { backgroundColor: colors.amberLight }]}>
+              <IconBadge icon="award" tone="amber" size={34} />
+              <Text style={s.hookText}>Your longest trip yet — beat your old best of {fmtMiles(prevBestTrip)}.</Text>
+            </View>
+          )}
+          {streak > 0 && (
+            <View style={[s.hookBanner, { backgroundColor: colors.brandLight }]}>
+              <IconBadge icon="zap" tone="green" size={34} />
+              <Text style={s.hookText}>
+                {streak === 1 ? 'Streak started — come back tomorrow to keep it going.' : `Day ${streak} streak — keep the run alive.`}
+              </Text>
+            </View>
+          )}
 
           <SectionHeader icon="dollar-sign" title="Add earnings for this trip (optional)" />
           <TextInput
@@ -430,7 +470,8 @@ const s = StyleSheet.create({
   mileFill: { height: '100%', borderRadius: radius.full },
   liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginBottom: spacing.xl },
   liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
-  liveStatBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  liveStatBorder: { borderLeftWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  heroMap: { width: '100%', paddingHorizontal: spacing.xl, alignItems: 'center', gap: 8 },
   liveStatLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
   liveStatValue: { ...tabular, fontSize: 19, fontWeight: font.semibold, color: '#fff' },
   liveActions: { paddingHorizontal: spacing.xl, paddingBottom: 44, gap: spacing.md },
@@ -449,6 +490,8 @@ const s = StyleSheet.create({
     flexDirection: 'row', backgroundColor: colors.bgCard, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border, marginVertical: spacing.xl,
   },
+  hookBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md },
+  hookText: { ...type.bodyMedium, fontSize: 14, flex: 1, lineHeight: 19 },
   summaryStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg },
   summaryStatValue: { ...tabular, fontSize: 20, fontWeight: font.bold, color: colors.textPrimary },
   summaryStatLabel: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },

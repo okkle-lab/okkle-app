@@ -706,6 +706,14 @@ export function getQuarterlySummaries(): QuarterSummary[] {
 
 // ---- Gamification: streak + achievements -----------------------------------
 
+// The longest single trip recorded so far (miles). Used to detect a new
+// personal-best trip on the post-trip scorecard — call BEFORE saving the new
+// trip so it returns the previous best.
+export function getLongestTrip(): number {
+  const r = db.getFirstSync<{ m: number }>(`SELECT COALESCE(MAX(miles),0) AS m FROM trips`);
+  return r?.m ?? 0;
+}
+
 // Consecutive-day activity streak (any trip or logged entry counts).
 export function getStreak(): number {
   const rows = db.getAllSync<{ d: string }>(`

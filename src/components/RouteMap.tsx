@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import Svg, { Defs, LinearGradient, Stop, Polyline, Circle, Rect } from 'react-native-svg';
 import { colors, radius, type } from '../theme';
 
@@ -15,9 +16,9 @@ export function RouteMap({ route, height = 180 }: { route: Pt[]; height?: number
 
   if (distinct < 2) {
     return (
-      <View style={{ height, borderRadius: radius.lg, backgroundColor: colors.bgSoft, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 30, marginBottom: 6 }}>🛰️</Text>
-        <Text style={[type.caption, { textAlign: 'center' }]}>No route recorded for this trip.</Text>
+      <View style={{ height, borderRadius: radius.lg, borderWidth: 1, borderColor: 'rgba(128,128,128,0.25)', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <Feather name="navigation" size={26} color={colors.textTertiary} />
+        <Text style={[type.caption, { textAlign: 'center' }]}>Move a little to start your route…</Text>
       </View>
     );
   }

@@ -155,7 +155,9 @@ export function useTrip() {
     return final;
   }
 
-  return { trip, start, pause, resume, end };
+  // pointsRef is the live breadcrumb (kept off render state for perf). Expose it
+  // for the live map — the trip re-renders ~1/sec so it stays current enough.
+  return { trip, points: pointsRef.current, start, pause, resume, end };
 }
 
 function haversineKm(
