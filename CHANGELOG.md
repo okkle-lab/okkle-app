@@ -2,6 +2,16 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-23 (UX pass: clarity & flow)
+
+### Clearer & more intentional
+- **Log page** now leads with **Expense → Earnings → Mileage** (manual mileage last, with a GPS nudge) so GPS tracking is the encouraged way to record miles.
+- **Period switcher** shows the **actual date range** underneath (e.g. "Mon 17 – Sun 23 Jun") instead of a vague repeated label.
+- **Trip "Today's goal"** is bigger and explained — it's your daily mileage goal that keeps your streak alive.
+- **XP & levels now mean something**: named ranks (Rookie → Regular → Pro → Veteran → Legend) and a one-line explainer of how you earn XP.
+- **Tax tab spacing** evened out between every section.
+- **Accountant Pack** document renamed to *"Self Assessment — Income & Expenses Summary"* so accountants understand it (the app button stays "Accountant Pack").
+
 ## 2026-06-23 (best-spot tip, Home/Tax split, spacing)
 
 ### Best zone × best time
