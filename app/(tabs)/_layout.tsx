@@ -1,58 +1,41 @@
+import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { DynamicColorIOS, Platform } from 'react-native';
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import type { ComponentProps } from 'react';
-import type { SFSymbol } from 'sf-symbols-typescript';
 import { colors, font } from '../../src/theme';
 
 type FeatherName = ComponentProps<typeof Feather>['name'];
 
-type TabItem = {
-  name: string;
-  label: string;
-  feather: FeatherName;
-  sf: {
-    default: SFSymbol;
-    selected: SFSymbol;
-  };
-};
-
-const tabTint = Platform.OS === 'ios'
-  ? DynamicColorIOS({ light: '#0E8E78', dark: '#7FD6C5' })
-  : colors.brandDeep;
-
-const tabLabel = Platform.OS === 'ios'
-  ? DynamicColorIOS({ light: '#22302C', dark: '#EEF5F1' })
-  : colors.textSecondary;
-
-const tabs: TabItem[] = [
-  { name: 'index', label: 'Home', feather: 'home', sf: { default: 'house', selected: 'house.fill' } },
-  { name: 'trip', label: 'Trip', feather: 'navigation', sf: { default: 'location.north', selected: 'location.north.fill' } },
-  { name: 'log', label: 'Log', feather: 'edit-3', sf: { default: 'square.and.pencil', selected: 'square.and.pencil' } },
-  { name: 'records', label: 'Records', feather: 'list', sf: { default: 'list.bullet.rectangle', selected: 'list.bullet.rectangle.fill' } },
-  { name: 'tax', label: 'Tax', feather: 'pie-chart', sf: { default: 'chart.pie', selected: 'chart.pie.fill' } },
+// Classic JS tab bar (SDK 54 / Expo Go compatible). The master branch uses the
+// native tab bar; this branch keeps it simple so it runs in Expo Go.
+const tabs: { name: string; label: string; icon: FeatherName }[] = [
+  { name: 'index', label: 'Home', icon: 'home' },
+  { name: 'trip', label: 'Trip', icon: 'navigation' },
+  { name: 'log', label: 'Log', icon: 'edit-3' },
+  { name: 'records', label: 'Records', icon: 'list' },
+  { name: 'tax', label: 'Tax', icon: 'pie-chart' },
 ];
 
 export default function TabLayout() {
   return (
-    <NativeTabs
-      backgroundColor="transparent"
-      blurEffect="systemChromeMaterial"
-      iconColor={{ default: tabLabel, selected: tabTint }}
-      labelStyle={{ color: tabLabel, fontSize: 11, fontWeight: font.semibold }}
-      minimizeBehavior="onScrollDown"
-      shadowColor="transparent"
-      tintColor={tabTint}
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.brandDeep,
+        tabBarInactiveTintColor: colors.textTertiary,
+        tabBarStyle: { backgroundColor: colors.bgCard, borderTopColor: colors.border },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: font.semibold },
+      }}
     >
       {tabs.map(tab => (
-        <NativeTabs.Trigger key={tab.name} name={tab.name}>
-          <NativeTabs.Trigger.Icon
-            sf={tab.sf}
-            src={<NativeTabs.Trigger.VectorIcon family={Feather} name={tab.feather} />}
-          />
-          <NativeTabs.Trigger.Label>{tab.label}</NativeTabs.Trigger.Label>
-        </NativeTabs.Trigger>
+        <Tabs.Screen
+          key={tab.name}
+          name={tab.name}
+          options={{
+            title: tab.label,
+            tabBarIcon: ({ color, size }) => <Feather name={tab.icon} size={size ?? 22} color={color} />,
+          }}
+        />
       ))}
-    </NativeTabs>
+    </Tabs>
   );
 }
