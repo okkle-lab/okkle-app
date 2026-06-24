@@ -7,7 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
+import { buttonDepth, colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard, RouteMap, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
@@ -339,8 +339,9 @@ export default function TripScreen() {
       </Card>
 
       {/* Start — the hero action, gradient like Home */}
-      <Pressable onPress={handleStart} style={({ pressed }) => pressed && { opacity: 0.9 }}>
+      <Pressable onPress={handleStart} style={({ pressed }) => pressed && buttonDepth.pressed}>
         <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.startHero}>
+          <View pointerEvents="none" style={[s.heroGloss, buttonDepth.gloss]} />
           <View style={{ flex: 1 }}>
             <Text style={s.startKicker}>GPS TRIP</Text>
             <Text style={s.startTitle}>Start trip</Text>
@@ -354,11 +355,13 @@ export default function TripScreen() {
 
       {/* Secondary actions — clean tiles, not loud buttons */}
       <View style={s.tileRow}>
-        <Pressable onPress={() => router.push({ pathname: '/(tabs)/log', params: { tab: 'income' } })} style={({ pressed }) => [s.tile, pressed && { backgroundColor: colors.bgSoft }]}>
+        <Pressable onPress={() => router.push({ pathname: '/(tabs)/log', params: { tab: 'income' } })} style={({ pressed }) => [s.tile, buttonDepth.raised, pressed && buttonDepth.pressed]}>
+          <View pointerEvents="none" style={[s.tileGloss, buttonDepth.glossMuted]} />
           <IconBadge icon="dollar-sign" tone="green" size={34} />
           <Text style={s.tileLabel}>Log weekly pay</Text>
         </Pressable>
-        <Pressable onPress={() => router.push('/order-check')} style={({ pressed }) => [s.tile, pressed && { backgroundColor: colors.bgSoft }]}>
+        <Pressable onPress={() => router.push('/order-check')} style={({ pressed }) => [s.tile, buttonDepth.raised, pressed && buttonDepth.pressed]}>
+          <View pointerEvents="none" style={[s.tileGloss, buttonDepth.glossMuted]} />
           <IconBadge icon="check-circle" tone="violet" size={34} />
           <Text style={s.tileLabel}>Accept or skip?</Text>
         </Pressable>
@@ -388,14 +391,16 @@ const s = StyleSheet.create({
   setupDivider: { height: 1, backgroundColor: colors.border },
   setupLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
   setupLabel: { ...type.bodyMedium, fontSize: 15 },
-  startHero: { flexDirection: 'row', alignItems: 'center', padding: spacing.xl, marginTop: spacing.lg },
+  startHero: { flexDirection: 'row', alignItems: 'center', padding: spacing.xl, marginTop: spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', ...buttonDepth.raisedStrong },
   startKicker: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: font.semibold, letterSpacing: 1 },
   startTitle: { color: '#fff', fontSize: 28, fontWeight: font.bold, letterSpacing: -0.5, marginTop: 2 },
   startSub: { color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 4 },
-  startCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  startCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.7)' },
   tileRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
-  tile: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.lg, paddingHorizontal: spacing.md, alignItems: 'center', gap: 8 },
+  tile: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.lg, paddingHorizontal: spacing.md, alignItems: 'center', gap: 8, borderCurve: 'continuous', overflow: 'hidden' },
   tileLabel: { ...type.bodyMedium, fontSize: 14, textAlign: 'center' },
+  heroGloss: { borderRadius: radius.full, height: 1.5, left: 20, position: 'absolute', right: 20, top: 1 },
+  tileGloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
 
   // live
   liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 72 },

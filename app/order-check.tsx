@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, radius, type, tabular } from '../src/theme';
+import { buttonDepth, colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, IconBadge, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { getYearPnL, kvGetNum, kvSet } from '../src/db';
 
@@ -108,9 +108,15 @@ export default function OrderCheck() {
           <Text style={s.fieldLabel}>Your minimum £/mile</Text>
           <Text style={s.targetNote}>Orders at or above this count as worth it. {avgPerMile > 0 ? `Your historical average is £${avgPerMile.toFixed(2)}/mi.` : 'A common rule of thumb is £1.00–£1.50 per mile.'}</Text>
           <View style={s.stepper}>
-            <Pressable onPress={() => setTargetPersist(target - 0.1)} style={s.stepBtn} hitSlop={6}><Feather name="minus" size={20} color={colors.brandDeep} /></Pressable>
+            <Pressable onPress={() => setTargetPersist(target - 0.1)} style={({ pressed }) => [s.stepBtn, buttonDepth.raised, pressed && buttonDepth.pressed]} hitSlop={6}>
+              <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.gloss]} />
+              <Feather name="minus" size={20} color={colors.brandDeep} />
+            </Pressable>
             <Text style={s.stepVal}>£{target.toFixed(2)}</Text>
-            <Pressable onPress={() => setTargetPersist(target + 0.1)} style={s.stepBtn} hitSlop={6}><Feather name="plus" size={20} color={colors.brandDeep} /></Pressable>
+            <Pressable onPress={() => setTargetPersist(target + 0.1)} style={({ pressed }) => [s.stepBtn, buttonDepth.raised, pressed && buttonDepth.pressed]} hitSlop={6}>
+              <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.gloss]} />
+              <Feather name="plus" size={20} color={colors.brandDeep} />
+            </Pressable>
           </View>
         </Card>
 
@@ -152,8 +158,9 @@ const s = StyleSheet.create({
 
   targetNote: { ...type.caption, lineHeight: 18, marginTop: 2, marginBottom: spacing.md },
   stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  stepBtn: { width: 48, height: 48, borderRadius: radius.md, backgroundColor: colors.brandLight, alignItems: 'center', justifyContent: 'center' },
+  stepBtn: { width: 48, height: 48, borderRadius: radius.md, backgroundColor: colors.brandLight, borderWidth: 1.5, borderColor: colors.brand, alignItems: 'center', justifyContent: 'center', borderCurve: 'continuous', overflow: 'hidden' },
   stepVal: { ...tabular, fontSize: 26, fontWeight: font.bold, color: colors.textPrimary },
+  buttonGloss: { borderRadius: radius.full, height: 1, left: 10, position: 'absolute', right: 10, top: 1 },
 
   footnote: { ...type.small, lineHeight: 18, textAlign: 'center', marginTop: spacing.xl },
 });

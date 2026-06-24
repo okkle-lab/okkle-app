@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, radius, type } from '../src/theme';
+import { buttonDepth, colors, font, spacing, radius, type } from '../src/theme';
 import { Card, PrimaryButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { Chip } from '../src/components';
 import { getTaxYearSummary, getTaxYearMiles, kvGet, kvGetNum, kvSet } from '../src/db';
@@ -94,7 +94,8 @@ export default function Compare() {
           {CAPITAL_ALLOWANCE_BASES.map(b => {
             const on = caBasis === b.key;
             return (
-              <Pressable key={b.key} onPress={() => setCaBasis(b.key)} style={[s.basis, on && s.basisOn]}>
+              <Pressable key={b.key} onPress={() => setCaBasis(b.key)} style={({ pressed }) => [s.basis, buttonDepth.raised, on && s.basisOn, pressed && buttonDepth.pressed]}>
+                <View pointerEvents="none" style={[s.buttonGloss, on ? buttonDepth.gloss : buttonDepth.glossMuted]} />
                 <Text style={[s.basisLabel, on && { color: colors.brandDeep }]}>{b.label}</Text>
                 <Text style={[s.basisSub, on && { color: colors.brandDeep }]}>{b.sub}</Text>
               </Pressable>
@@ -154,7 +155,7 @@ const s = StyleSheet.create({
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bgCard },
   hint: { ...type.small, marginTop: 6 },
   basisGrid: { gap: spacing.sm },
-  basis: { borderWidth: 1.5, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgCard },
+  basis: { borderWidth: 1.5, borderColor: colors.borderStrong, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bgCard, borderCurve: 'continuous', overflow: 'hidden' },
   basisOn: { borderColor: colors.brand, backgroundColor: colors.brandLight },
   basisLabel: { ...type.bodyMedium, fontSize: 15, color: colors.textSecondary },
   basisSub: { ...type.small, color: colors.textTertiary, marginTop: 2 },
@@ -168,4 +169,5 @@ const s = StyleSheet.create({
   resultText: { ...type.caption, color: colors.brandDeep, flex: 1, fontWeight: font.medium, lineHeight: 19 },
   warnBox: { flexDirection: 'row', gap: 8, backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.xl },
   warnText: { ...type.caption, color: colors.amber, flex: 1, lineHeight: 19 },
+  buttonGloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
 });

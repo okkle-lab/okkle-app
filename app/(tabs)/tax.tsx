@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TextInput, Pressable, Alert } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, radius, type } from '../../src/theme';
+import { buttonDepth, colors, font, spacing, radius, type } from '../../src/theme';
 import { Card, SectionHeader, CollapsingHeader, Icon, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
@@ -110,7 +110,8 @@ export default function TaxScreen() {
           </View>
           <Text style={s.methodValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{fmtGbp(chosenDeduction)}</Text>
         </View>
-        <Pressable onPress={() => router.push('/compare')} style={s.compareCta}>
+        <Pressable onPress={() => router.push('/compare')} style={({ pressed }) => [s.compareCta, buttonDepth.raised, pressed && buttonDepth.pressed]}>
+          <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.gloss]} />
           <Feather name="trending-up" size={16} color={colors.brandDeep} />
           <Text style={s.compareCtaText}>
             {usingActual ? 'Review method comparison' : 'Could actual costs save you more?'}
@@ -214,7 +215,8 @@ export default function TaxScreen() {
 
       {/* Export — send everything to your accountant */}
       <SectionHeader icon="send" title="Send to your accountant" />
-      <Pressable onPress={() => router.push('/export')} style={({ pressed }) => [s.exportCard, pressed && { opacity: 0.9 }]}>
+      <Pressable onPress={() => router.push('/export')} style={({ pressed }) => [s.exportCard, buttonDepth.raisedStrong, pressed && buttonDepth.pressed]}>
+        <View pointerEvents="none" style={[s.exportGloss, buttonDepth.gloss]} />
         <View style={s.exportIcon}><Feather name="file-text" size={22} color="#fff" /></View>
         <View style={{ flex: 1 }}>
           <Text style={s.exportCardTitle}>Export &amp; share</Text>
@@ -270,7 +272,7 @@ const s = StyleSheet.create({
   methodName: { ...type.bodyMedium, fontSize: 16 },
   methodSub: { ...type.caption, marginTop: 2 },
   methodValue: { ...tabular, fontSize: 22, fontWeight: font.bold, color: colors.brandDeep, letterSpacing: -0.5, flexShrink: 1, maxWidth: '55%', textAlign: 'right' },
-  compareCta: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md },
+  compareCta: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.brandLight, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.brand, padding: spacing.md, borderCurve: 'continuous', overflow: 'hidden' },
   compareCtaText: { ...type.caption, color: colors.brandDeep, flex: 1, fontWeight: font.medium },
   inputLabel: { ...type.caption, color: colors.textSecondary, marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg },
@@ -296,11 +298,13 @@ const s = StyleSheet.create({
   qProfitLabel: { ...type.small },
   mtdNote: { ...type.small, lineHeight: 18, marginTop: spacing.md },
 
-  exportCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, padding: spacing.lg },
+  exportCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)', padding: spacing.lg, borderCurve: 'continuous', overflow: 'hidden' },
   exportIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
   exportCardTitle: { color: '#fff', fontSize: 16, fontWeight: font.bold },
   exportCardSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
 
   disclaimer: { marginTop: spacing.xl, padding: spacing.lg, backgroundColor: colors.bgSoft, borderRadius: radius.md, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   disclaimerText: { ...type.small, lineHeight: 18, flex: 1 },
+  buttonGloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
+  exportGloss: { borderRadius: radius.full, height: 1.5, left: 16, position: 'absolute', right: 16, top: 1 },
 });

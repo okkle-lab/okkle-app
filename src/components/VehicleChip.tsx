@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, Text, ViewStyle } from 'react-native';
-import { colors, radius, font } from '../theme';
+import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { buttonDepth, colors, radius, font } from '../theme';
 import { VehicleIcon } from './Icon';
 
 type Props = {
@@ -16,14 +16,18 @@ export function VehicleChip({ vehicle, label, selected, onPress, suffix, style }
   return (
     <Pressable
       onPress={onPress}
-      style={[{
-        flexDirection: 'row', alignItems: 'center', gap: 8,
-        paddingHorizontal: 16, paddingVertical: 12, borderRadius: radius.full,
-        borderWidth: 1.5,
-        borderColor: selected ? colors.brand : colors.borderStrong,
-        backgroundColor: selected ? colors.brandLight : colors.bgCard,
-      }, style]}
+      style={({ pressed }) => [
+        s.chip,
+        buttonDepth.raised,
+        {
+          borderColor: selected ? colors.brand : colors.borderStrong,
+          backgroundColor: selected ? colors.brandLight : colors.bgCard,
+        },
+        pressed && buttonDepth.pressed,
+        style,
+      ]}
     >
+      <View pointerEvents="none" style={[s.gloss, selected ? buttonDepth.gloss : buttonDepth.glossMuted]} />
       <VehicleIcon vehicle={vehicle} size={20} color={selected ? colors.brandDeep : colors.textSecondary} />
       <Text style={{
         fontSize: 15,
@@ -35,3 +39,25 @@ export function VehicleChip({ vehicle, label, selected, onPress, suffix, style }
     </Pressable>
   );
 }
+
+const s = StyleSheet.create({
+  chip: {
+    alignItems: 'center',
+    borderCurve: 'continuous',
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 8,
+    overflow: 'hidden',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  gloss: {
+    borderRadius: radius.full,
+    height: 1,
+    left: 14,
+    position: 'absolute',
+    right: 14,
+    top: 1,
+  },
+});

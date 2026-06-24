@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, Platform, StyleSheet } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, radius, type } from '../theme';
+import { buttonDepth, colors, font, spacing, radius, type } from '../theme';
 
 // Pick a date for an entry (defaults to today; can't be in the future).
 // Quick "Today/Yesterday" chips cover the common cases; the calendar covers the
@@ -31,7 +31,16 @@ export function DatePickerField({ value, onChange, quickChips = true }: { value:
             accentColor={colors.brand}
           />
         ) : (
-          <Pressable onPress={() => setShowAndroid(true)} style={[s.chip, !isSameDay(value, today) && !isSameDay(value, yesterday) && s.chipOn]}>
+          <Pressable
+            onPress={() => setShowAndroid(true)}
+            style={({ pressed }) => [
+              s.chip,
+              buttonDepth.raised,
+              !isSameDay(value, today) && !isSameDay(value, yesterday) && s.chipOn,
+              pressed && buttonDepth.pressed,
+            ]}
+          >
+            <View pointerEvents="none" style={[s.gloss, buttonDepth.glossMuted]} />
             <Feather name="calendar" size={14} color={colors.brandDeep} />
             <Text style={s.chipText}>{value.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Text>
           </Pressable>
@@ -51,7 +60,16 @@ export function DatePickerField({ value, onChange, quickChips = true }: { value:
 
 function Quick({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[s.chip, active && s.chipOn]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.chip,
+        buttonDepth.raised,
+        active && s.chipOn,
+        pressed && buttonDepth.pressed,
+      ]}
+    >
+      <View pointerEvents="none" style={[s.gloss, active ? buttonDepth.gloss : buttonDepth.glossMuted]} />
       <Text style={[s.chipText, active && s.chipTextOn]}>{label}</Text>
     </Pressable>
   );
@@ -63,8 +81,9 @@ function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDat
 
 const s = StyleSheet.create({
   chips: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard, borderCurve: 'continuous', overflow: 'hidden' },
   chipOn: { borderColor: colors.brand, backgroundColor: colors.brandLight },
   chipText: { ...type.bodyMedium, fontSize: 14, color: colors.textSecondary },
   chipTextOn: { color: colors.brandDeep },
+  gloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
 });

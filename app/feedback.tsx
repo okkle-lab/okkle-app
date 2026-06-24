@@ -6,7 +6,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, font, spacing, radius, type } from '../src/theme';
+import { buttonDepth, colors, font, spacing, radius, type } from '../src/theme';
 import { Chip, PrimaryButton, Card, SectionHeader } from '../src/components';
 import { sendFeedback } from '../src/feedback';
 
@@ -100,7 +100,8 @@ export default function FeedbackScreen() {
             <Pressable onPress={() => setShot(null)} style={s.shotRemove}><Text style={s.shotRemoveText}>Remove</Text></Pressable>
           </View>
         ) : (
-          <Pressable onPress={pickShot} style={s.attachBtn}>
+          <Pressable onPress={pickShot} style={({ pressed }) => [s.attachBtn, buttonDepth.raised, pressed && buttonDepth.pressed]}>
+            <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.glossMuted]} />
             <Feather name="image" size={16} color={colors.textPrimary} />
             <Text style={s.attachText}>Attach a screenshot</Text>
           </Pressable>
@@ -147,7 +148,7 @@ const s = StyleSheet.create({
     padding: spacing.lg, fontSize: 16, color: colors.textPrimary, backgroundColor: colors.bgCard,
     minHeight: 110, textAlignVertical: 'top',
   },
-  attachBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 14, backgroundColor: colors.bgCard },
+  attachBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 14, backgroundColor: colors.bgCard, borderCurve: 'continuous', overflow: 'hidden' },
   attachText: { ...type.bodyMedium, fontSize: 15 },
   shotWrap: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   shot: { width: 70, height: 70, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
@@ -157,4 +158,5 @@ const s = StyleSheet.create({
   diagTitle: { ...type.bodyMedium, fontSize: 15 },
   diagSub: { ...type.caption, marginTop: 2, lineHeight: 18 },
   privacy: { ...type.small, lineHeight: 17, color: colors.textTertiary },
+  buttonGloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
 });
