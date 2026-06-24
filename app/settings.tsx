@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { Platform, View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, IconBadge, VehicleIcon } from '../src/components';
@@ -58,7 +58,7 @@ export default function Settings() {
 }
 
 const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+  screen: { flex: 1, backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.bg },
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 60 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   heading: { ...type.screenTitle },

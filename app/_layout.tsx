@@ -4,6 +4,12 @@ import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 
+const glassSheetOptions = {
+  presentation: 'formSheet' as const,
+  sheetGrabberVisible: true,
+  contentStyle: { backgroundColor: 'transparent' },
+};
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -21,11 +27,11 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-account" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-reminders" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-data" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-about" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="settings" options={glassSheetOptions} />
+        <Stack.Screen name="settings-account" options={glassSheetOptions} />
+        <Stack.Screen name="settings-reminders" options={glassSheetOptions} />
+        <Stack.Screen name="settings-data" options={glassSheetOptions} />
+        <Stack.Screen name="settings-about" options={glassSheetOptions} />
         <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compare" options={{ presentation: 'modal' }} />
         <Stack.Screen name="medals" options={{ presentation: 'modal' }} />

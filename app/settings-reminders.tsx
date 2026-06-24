@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Switch, Pressable } from 'react-native';
+import { Platform, View, Text, ScrollView, StyleSheet, Switch, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, Chip, SectionHeader, PrimaryButton } from '../src/components';
@@ -73,7 +73,7 @@ export default function SettingsReminders() {
 }
 
 const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+  screen: { flex: 1, backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.bg },
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 60 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   heading: { ...type.heading, fontSize: 18 },
