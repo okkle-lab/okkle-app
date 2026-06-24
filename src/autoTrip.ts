@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import { kvGet, kvGetNum, kvSet } from './db';
+import { recentActivity, hasMotionModule, type MotionActivity } from '../modules/okkle-motion';
 
 // Movement-based trip *suggestion* (Feature 1).
 //
@@ -25,11 +26,20 @@ TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
   const locations: Location.LocationObject[] = data?.locations ?? [];
   if (!locations.length) return;
 
-  const topSpeed = locations.reduce((m, l) => Math.max(m, l.coords.speed ?? 0), 0);
-  if (topSpeed < DRIVING_MPS) return;                 // not fast enough to be a drive
   if (kvGet('trip_active') === '1') return;           // already tracking a trip
   if (kvGet('auto_trip') !== '1') return;             // feature turned off
   if (Date.now() - kvGetNum('auto_trip_last_prompt', 0) < PROMPT_COOLDOWN_MS) return;
+
+  // Decide if this is really a *drive*. Prefer Core Motion (accurate — won't fire
+  // for a bus/train/passenger); fall back to a GPS-speed heuristic when the native
+  // module isn't present (Expo Go / pre-dev-build).
+  const topSpeed = locations.reduce((m, l) => Math.max(m, l.coords.speed ?? 0), 0);
+  let driving = topSpeed >= DRIVING_MPS;
+  const act = await recentActivity(180).catch((): MotionActivity => ({ available: false }));
+  if (act.available) {
+    driving = (act.automotive === true || act.cycling === true) && (act.confidence ?? 0) >= 1;
+  }
+  if (!driving) return;
 
   kvSet('auto_trip_last_prompt', Date.now());
   await Notifications.scheduleNotificationAsync({
@@ -53,6 +63,9 @@ export async function enableAutoTrip(): Promise<{ ok: boolean; reason?: 'foregro
     if (fg.status !== 'granted') return { ok: false, reason: 'foreground' };
     const bg = await Location.requestBackgroundPermissionsAsync();
     if (bg.status !== 'granted') return { ok: false, reason: 'background' };
+    // Trigger the Motion & Fitness permission prompt now (in context), so Core
+    // Motion detection is ready. Harmless if the native module isn't present.
+    if (hasMotionModule) { await recentActivity(60).catch(() => {}); }
 
     const already = await Location.hasStartedLocationUpdatesAsync(AUTO_TRIP_TASK).catch(() => false);
     if (!already) {

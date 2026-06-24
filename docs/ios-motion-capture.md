@@ -8,7 +8,23 @@ recorded automatically.
 This is a **dev-build / TestFlight feature** — it relies on "Always" location and
 background execution, which **do not work in Expo Go**.
 
-## What ships now (v1 — Expo-only, no custom native module)
+## Status: Core Motion (v2) is wired, with a speed fallback (v1)
+
+A local Expo module **`modules/okkle-motion`** wraps **`CMMotionActivityManager`**
+(Swift, `OkkleMotionModule.swift`). `src/autoTrip.ts` now **prefers Core Motion**
+— it only suggests a trip when the recent activity is `automotive`/`cycling` with
+medium-or-higher confidence, so a bus/train/passenger ride won't trigger it. When
+the native module isn't present (Expo Go, or before `expo prebuild`), it
+**falls back to the GPS-speed heuristic** so the JS app still runs.
+
+> ⚠️ The native module compiles only in a **dev build** (`npx expo prebuild` +
+> EAS/dev build). It can't be exercised in Expo Go, and this Swift hasn't been
+> compiled in this environment — validate it in the first dev build, and it may
+> need the official `npx create-expo-module --local` scaffold tweaks if Expo's
+> autolinking is fussy. It also adds a **Motion & Fitness** permission
+> (`NSMotionUsageDescription`, already in `app.json`).
+
+## How v1 (the fallback) works
 
 Implemented in `src/autoTrip.ts`, wired through `app/_layout.tsx`,
 `app/settings-auto-trip.tsx`, and the trip hook:
