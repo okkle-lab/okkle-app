@@ -240,13 +240,11 @@ export default function HomeScreen() {
       {/* HERO: tax saved — tap through to the full Tax breakdown */}
       <Pressable onPress={() => router.push('/(tabs)/tax')} style={({ pressed }) => [s.heroPressable, pressed && { opacity: 0.94 }]}>
         <GradientCard colors={['#FFFFFF', '#E9FAF6', '#BDEFE5']} radius={radius.xl} style={s.hero}>
-          <View pointerEvents="none" style={s.heroGlass} />
           <View style={s.heroTop}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Feather name="trending-up" size={15} color={colors.brandDeep} />
               <Text style={s.heroLabel}>Tax saved this year</Text>
             </View>
-            <Feather name="chevron-right" size={20} color={colors.brandDeep} />
           </View>
           <CountUp value={year.taxSaved} prefix="£" style={s.heroValue} />
           <Text style={s.heroSub}>
@@ -494,8 +492,7 @@ const s = StyleSheet.create({
     boxShadow: '0 18px 34px rgba(14,142,120,0.14), 0 7px 14px rgba(21,33,29,0.08), -8px -8px 18px rgba(255,255,255,0.92)',
   },
   hero: { padding: spacing.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
-  heroGlass: { position: 'absolute', left: 14, right: 14, top: 10, height: 56, borderRadius: radius.xl, backgroundColor: 'rgba(255,255,255,0.5)' },
-  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heroTop: { flexDirection: 'row', alignItems: 'center' },
   heroLabel: { color: colors.brandDeep, fontSize: 14, fontWeight: font.semibold },
   heroValue: { ...tabular, color: colors.textPrimary, fontSize: 44, fontWeight: font.bold, letterSpacing: 0, marginTop: 8 },
   heroSub: { color: colors.textSecondary, fontSize: 13, marginTop: 4 },
