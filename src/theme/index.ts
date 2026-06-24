@@ -1,27 +1,34 @@
+import { DynamicColorIOS, Platform } from 'react-native';
+
+function adaptive(light: string, dark: string): string {
+  if (Platform.OS !== 'ios') return light;
+  return DynamicColorIOS({ light, dark }) as unknown as string;
+}
+
 export const colors = {
   brand: '#1FB89A',
   brandDeep: '#0E8E78',
-  brandLight: '#E2F6F1',
+  brandLight: adaptive('#E2F6F1', '#123B34'),
   brandMid: '#7FD6C5',
 
-  bg: '#FBF9F6',
-  bgSoft: '#F1EFEA',
-  bgCard: '#FFFFFF',
+  bg: adaptive('#FBF9F6', '#101816'),
+  bgSoft: adaptive('#F1EFEA', '#1A2420'),
+  bgCard: adaptive('#FFFFFF', '#17201D'),
 
-  textPrimary: '#22302C',
-  textSecondary: '#6B756F',
-  textTertiary: '#A2ABA5',
+  textPrimary: adaptive('#22302C', '#EEF5F1'),
+  textSecondary: adaptive('#6B756F', '#B2BDB7'),
+  textTertiary: adaptive('#A2ABA5', '#7E8B85'),
 
-  border: '#E8E6E0',
-  borderStrong: '#D3D1C9',
+  border: adaptive('#E8E6E0', '#2A3631'),
+  borderStrong: adaptive('#D3D1C9', '#3A4640'),
 
   green: '#2FA36B',
-  greenLight: '#E5F4EC',
+  greenLight: adaptive('#E5F4EC', '#173A29'),
   amber: '#E0961F',
-  amberLight: '#FBEFD6',
-  amberDark: '#8A5510',   // readable amber text on amberLight backgrounds
+  amberLight: adaptive('#FBEFD6', '#3D2B13'),
+  amberDark: adaptive('#8A5510', '#F0BD63'),   // readable amber text on amberLight backgrounds
   red: '#E2604A',
-  redLight: '#FBEAE5',
+  redLight: adaptive('#FBEAE5', '#3F211D'),
 
   dark: '#15211D',
   darkSoft: '#26332E',
