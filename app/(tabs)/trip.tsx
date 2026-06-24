@@ -419,7 +419,7 @@ const s = StyleSheet.create({
   heroMap: { width: '100%', paddingHorizontal: spacing.sm, alignItems: 'stretch', gap: 10 },
   liveStatLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
   liveStatValue: { ...tabular, fontSize: 19, fontWeight: font.semibold, color: '#fff' },
-  liveActions: { paddingHorizontal: spacing.xl, paddingBottom: 44, gap: spacing.md },
+  liveActions: { paddingHorizontal: spacing.xl, paddingBottom: Platform.OS === 'ios' ? 132 : 44, gap: spacing.md },
   pauseBtn: {
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', borderRadius: radius.full,
     paddingVertical: 18, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8,

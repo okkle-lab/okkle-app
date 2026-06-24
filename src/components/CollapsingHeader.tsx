@@ -1,11 +1,12 @@
 import React from 'react';
-import { Animated, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, font, spacing, type } from '../theme';
 
 const STATUS = 54;        // space above the bar row (status bar / notch)
 const ROW = 46;           // height of the pinned title/actions row
 const HEADER = STATUS + ROW;
 const THRESH = 40;        // px of scroll over which the large title hands off
+const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 132 : 40;
 
 type Props = {
   title: string;
@@ -36,8 +37,9 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-        contentContainerStyle={[{ paddingTop: HEADER, paddingHorizontal: spacing.xl, paddingBottom: 40 }, contentStyle]}
+        contentContainerStyle={[{ paddingTop: HEADER, paddingHorizontal: spacing.xl, paddingBottom: TAB_BAR_CLEARANCE }, contentStyle]}
       >
         <Animated.Text style={[s.big, !subtitle && { marginBottom: spacing.lg }, { opacity: bigOpacity, transform: [{ translateY: bigTranslate }] }]}>{title}</Animated.Text>
         {subtitle ? <Animated.Text style={[s.sub, { opacity: bigOpacity }]}>{subtitle}</Animated.Text> : null}
