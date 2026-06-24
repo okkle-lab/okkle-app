@@ -1,34 +1,58 @@
-import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors } from '../../src/theme';
+import { DynamicColorIOS, Platform } from 'react-native';
+import { Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
+import type { ComponentProps } from 'react';
+import type { SFSymbol } from 'sf-symbols-typescript';
+import { colors, font } from '../../src/theme';
 
-type FeatherName = React.ComponentProps<typeof Feather>['name'];
+type FeatherName = ComponentProps<typeof Feather>['name'];
 
-function tabIcon(name: FeatherName) {
-  return ({ color }: { color: string }) => <Feather name={name} size={22} color={color} />;
-}
+type TabItem = {
+  name: string;
+  label: string;
+  feather: FeatherName;
+  sf: {
+    default: SFSymbol;
+    selected: SFSymbol;
+  };
+};
+
+const tabTint = Platform.OS === 'ios'
+  ? DynamicColorIOS({ light: '#0E8E78', dark: '#7FD6C5' })
+  : colors.brandDeep;
+
+const tabLabel = Platform.OS === 'ios'
+  ? DynamicColorIOS({ light: '#22302C', dark: '#EEF5F1' })
+  : colors.textSecondary;
+
+const tabs: TabItem[] = [
+  { name: 'index', label: 'Home', feather: 'home', sf: { default: 'house', selected: 'house.fill' } },
+  { name: 'trip', label: 'Trip', feather: 'navigation', sf: { default: 'location.north', selected: 'location.north.fill' } },
+  { name: 'log', label: 'Log', feather: 'edit-3', sf: { default: 'square.and.pencil', selected: 'square.and.pencil' } },
+  { name: 'records', label: 'Records', feather: 'list', sf: { default: 'list.bullet.rectangle', selected: 'list.bullet.rectangle.fill' } },
+  { name: 'tax', label: 'Tax', feather: 'pie-chart', sf: { default: 'chart.pie', selected: 'chart.pie.fill' } },
+];
 
 export default function TabLayout() {
   return (
-    <Tabs screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: colors.brand,
-      tabBarInactiveTintColor: colors.textTertiary,
-      tabBarStyle: {
-        borderTopColor: colors.border,
-        borderTopWidth: 1,
-        backgroundColor: colors.bg,
-        height: 84,
-        paddingBottom: 24,
-        paddingTop: 8,
-      },
-      tabBarLabelStyle: { fontSize: 11 },
-    }}>
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: tabIcon('home') }} />
-      <Tabs.Screen name="trip" options={{ title: 'Trip', tabBarIcon: tabIcon('navigation') }} />
-      <Tabs.Screen name="log" options={{ title: 'Log', tabBarIcon: tabIcon('edit-3') }} />
-      <Tabs.Screen name="records" options={{ title: 'Records', tabBarIcon: tabIcon('list') }} />
-      <Tabs.Screen name="tax" options={{ title: 'Tax', tabBarIcon: tabIcon('pie-chart') }} />
-    </Tabs>
+    <NativeTabs
+      backgroundColor={null}
+      blurEffect="systemChromeMaterial"
+      iconColor={{ default: tabLabel, selected: tabTint }}
+      labelStyle={{ color: tabLabel, fontSize: 11, fontWeight: font.semibold }}
+      minimizeBehavior="onScrollDown"
+      shadowColor="transparent"
+      tintColor={tabTint}
+    >
+      {tabs.map(tab => (
+        <NativeTabs.Trigger key={tab.name} name={tab.name}>
+          <Icon
+            sf={tab.sf}
+            androidSrc={<VectorIcon family={Feather} name={tab.feather} />}
+          />
+          <Label>{tab.label}</Label>
+        </NativeTabs.Trigger>
+      ))}
+    </NativeTabs>
   );
 }
