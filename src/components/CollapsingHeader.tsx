@@ -1,18 +1,20 @@
 import React from 'react';
+import { BlurView } from 'expo-blur';
 import { Animated, DynamicColorIOS, Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, font, spacing, type } from '../theme';
 
-const STATUS = 42;        // space above the bar row (status bar / notch)
+const STATUS = 54;        // space above the bar row (status bar / notch)
 const ROW = 46;           // height of the pinned title/actions row
 const HEADER = STATUS + ROW;
 const THRESH = 40;        // px of scroll over which the large title hands off
 const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 132 : 40;
-const HEADER_BG = Platform.OS === 'ios'
-  ? DynamicColorIOS({ light: 'rgba(255,255,255,0.78)', dark: 'rgba(16,24,22,0.78)' }) as unknown as string
-  : 'rgba(255,255,255,0.9)';
+const HEADER_BLUR_TINT: React.ComponentProps<typeof BlurView>['tint'] = Platform.OS === 'ios' ? 'systemChromeMaterial' : 'light';
+const HEADER_TINT = Platform.OS === 'ios'
+  ? DynamicColorIOS({ light: 'rgba(255,255,255,0.22)', dark: 'rgba(16,24,22,0.18)' }) as unknown as string
+  : 'rgba(255,255,255,0.22)';
 const HEADER_BORDER = Platform.OS === 'ios'
-  ? DynamicColorIOS({ light: 'rgba(227,232,229,0.72)', dark: 'rgba(42,54,49,0.72)' }) as unknown as string
-  : 'rgba(227,232,229,0.72)';
+  ? DynamicColorIOS({ light: 'rgba(203,213,208,0.48)', dark: 'rgba(42,54,49,0.48)' }) as unknown as string
+  : 'rgba(203,213,208,0.48)';
 
 type Props = {
   title: string;
@@ -43,7 +45,7 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior="never"
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
         contentContainerStyle={[{ paddingTop: HEADER, paddingHorizontal: spacing.xl, paddingBottom: TAB_BAR_CLEARANCE }, contentStyle]}
       >
@@ -52,9 +54,12 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
         {children}
       </Animated.ScrollView>
 
-      {/* Pinned bar — transparent until you scroll, then a solid masking bar. */}
+      {/* Pinned bar — transparent until you scroll, then a blurred context layer. */}
       <View style={s.bar} pointerEvents="box-none">
-        <Animated.View pointerEvents="none" style={[s.barBg, { opacity: barOpacity }]} />
+        <Animated.View pointerEvents="none" style={[s.barBg, { opacity: barOpacity }]}>
+          <BlurView intensity={78} tint={HEADER_BLUR_TINT} style={StyleSheet.absoluteFill} />
+          <View style={s.barTint} />
+        </Animated.View>
         <View style={s.row} pointerEvents="box-none">
           <Animated.Text pointerEvents="none" numberOfLines={1} style={[s.small, { opacity: smallOpacity, transform: [{ translateY: smallTranslate }] }]}>{title}</Animated.Text>
           {right ? <View style={s.right}>{right}</View> : null}
@@ -67,7 +72,8 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER },
-  barBg: { ...StyleSheet.absoluteFillObject, backgroundColor: HEADER_BG, borderBottomWidth: 1, borderBottomColor: HEADER_BORDER },
+  barBg: { ...StyleSheet.absoluteFillObject, borderBottomWidth: 1, borderBottomColor: HEADER_BORDER, overflow: 'hidden' },
+  barTint: { ...StyleSheet.absoluteFillObject, backgroundColor: HEADER_TINT },
   row: { position: 'absolute', left: spacing.xl, right: spacing.xl, bottom: 0, height: ROW, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   small: { ...type.heading, fontSize: 18, flex: 1, paddingRight: spacing.md },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },
