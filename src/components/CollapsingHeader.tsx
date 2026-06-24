@@ -7,7 +7,7 @@ import { colors, font, spacing, type } from '../theme';
 const STATUS = 54;        // space above the bar row (status bar / notch)
 const ROW = 46;           // height of the pinned title/actions row
 const HEADER = STATUS + ROW;
-const FADE = HEADER + 58;
+const FADE = HEADER + 18;
 const THRESH = 40;        // px of scroll over which the large title hands off
 const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 132 : 40;
 
@@ -28,13 +28,13 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const isDark = useColorScheme() === 'dark';
   const blurTint: React.ComponentProps<typeof BlurView>['tint'] = Platform.OS === 'ios' ? 'systemChromeMaterial' : isDark ? 'dark' : 'light';
-  const fadeTop = isDark ? 'rgba(16,24,22,0.96)' : 'rgba(255,255,255,0.96)';
-  const fadeMid = isDark ? 'rgba(16,24,22,0.74)' : 'rgba(255,255,255,0.74)';
+  const fadeTop = isDark ? 'rgba(16,24,22,0.72)' : 'rgba(255,255,255,0.82)';
+  const fadeMid = isDark ? 'rgba(16,24,22,0.28)' : 'rgba(255,255,255,0.34)';
   const fadeEnd = isDark ? 'rgba(16,24,22,0)' : 'rgba(255,255,255,0)';
-  const tint = isDark ? 'rgba(5,12,10,0.22)' : 'rgba(255,255,255,0.18)';
+  const tint = isDark ? 'rgba(5,12,10,0.04)' : 'rgba(255,255,255,0.06)';
 
-  const barOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.4, THRESH], outputRange: [0, 1], extrapolate: 'clamp' });
-  const smallOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.5, THRESH], outputRange: [0, 1], extrapolate: 'clamp' });
+  const barOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.75, THRESH * 2.4], outputRange: [0, 0.92], extrapolate: 'clamp' });
+  const smallOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.75, THRESH * 1.8], outputRange: [0, 1], extrapolate: 'clamp' });
   const smallTranslate = scrollY.interpolate({ inputRange: [0, THRESH], outputRange: [8, 0], extrapolate: 'clamp' });
   const bigOpacity = scrollY.interpolate({ inputRange: [0, THRESH * 0.8], outputRange: [1, 0], extrapolate: 'clamp' });
   const bigTranslate = scrollY.interpolate({ inputRange: [0, THRESH], outputRange: [0, -10], extrapolate: 'clamp' });
@@ -58,7 +58,7 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
       {/* Pinned bar — transparent until you scroll, then a blurred context layer. */}
       <View style={s.bar} pointerEvents="box-none">
         <Animated.View pointerEvents="none" style={[s.fadeBg, { opacity: barOpacity }]}>
-          <BlurView intensity={88} tint={blurTint} style={StyleSheet.absoluteFill} />
+          <BlurView intensity={58} tint={blurTint} style={StyleSheet.absoluteFill} />
           <View style={[s.barTint, { backgroundColor: tint }]} />
           <Svg width="100%" height="100%" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
             <Defs>
