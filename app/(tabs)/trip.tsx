@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, Alert, Pressable, TextInput,
   KeyboardAvoidingView, Platform, Dimensions,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
@@ -147,81 +148,84 @@ export default function TripScreen() {
     };
     const stripMetrics = (['miles', 'time', 'speed', 'today', 'map'] as LiveMetric[]).filter(m => m !== heroMetric);
     return (
-      <GradientCard colors={[colors.dark, '#103029']} radius={0} diagonal={false} style={{ flex: 1 }}>
-        {/* Status pill (live/waiting/paused) + discard */}
-        <View style={s.liveHeader}>
-          <View style={s.statusPill}>
-            <View style={[s.liveDot, { backgroundColor: statusColor }]} />
-            <Text style={s.statusPillText}>{statusText} · {trip.platform}</Text>
-          </View>
-        </View>
-        <Pressable onPress={handleDiscard} hitSlop={12} style={s.discardX}>
-          <Feather name="x" size={24} color="rgba(255,255,255,0.7)" />
-        </Pressable>
-
-        {/* Hero — tap any stat below to make it the big number (or the map) */}
-        <View style={s.ringWrap}>
-          {heroMetric === 'map' ? (
-            <View style={s.heroMap}>
-              <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.36)} />
-              <Text style={s.bigMilesUnit}>your route so far</Text>
+      <>
+        <StatusBar style="light" />
+        <View style={s.liveScreen}>
+          {/* Status pill (live/waiting/paused) + discard */}
+          <View style={s.liveHeader}>
+            <View style={s.statusPill}>
+              <View style={[s.liveDot, { backgroundColor: statusColor }]} />
+              <Text style={s.statusPillText}>{statusText} · {trip.platform}</Text>
             </View>
-          ) : (
-            <>
-              <Text style={s.bigMiles} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{METRICS[heroMetric].value}</Text>
-              <Text style={s.bigMilesUnit}>{METRICS[heroMetric].heroLabel}</Text>
-            </>
-          )}
-          <View style={s.moneyChip}>
-            <Feather name="trending-up" size={15} color={colors.amber} />
-            <Text style={s.moneyChipText}>{fmtGbp(trip.deduction)} earned back so far</Text>
           </View>
-
-          {/* "Earn it back" milestone bar — hidden in map view to avoid crowding */}
-          {heroMetric !== 'map' && (() => {
-            const nextTarget = (Math.floor(trip.deduction / MILESTONE) + 1) * MILESTONE;
-            const into = trip.deduction - (nextTarget - MILESTONE);
-            const pct = Math.max(0.02, Math.min(1, into / MILESTONE));
-            return (
-              <View style={s.mileWrap}>
-                {flash ? (
-                  <Text style={s.flashText}>{flash}</Text>
-                ) : (
-                  <Text style={s.mileLabel}>{fmtGbp(nextTarget - trip.deduction)} more to {fmtGbp(nextTarget)} back</Text>
-                )}
-                <View style={s.mileTrack}>
-                  <View style={[s.mileFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: flash ? colors.green : colors.brand }]} />
-                </View>
-              </View>
-            );
-          })()}
-        </View>
-
-        {/* Glass stat strip — tap a cell to swap it into the hero spot */}
-        <View style={s.liveStats}>
-          {stripMetrics.map((m, i) => (
-            <Pressable key={m} onPress={() => setHeroMetric(m)} style={({ pressed }) => [s.liveStat, i > 0 && s.liveStatBorder, pressed && { opacity: 0.6 }]}>
-              <Feather name={METRICS[m].icon as any} size={15} color="rgba(255,255,255,0.5)" />
-              {m === 'map'
-                ? <Text style={[s.liveStatValue, { fontSize: 15, marginTop: 4 }]}>Map</Text>
-                : <Text style={s.liveStatValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{METRICS[m].chip}</Text>}
-              <Text style={s.liveStatLabel}>{METRICS[m].label}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={s.liveActions}>
-          <Pressable
-            onPress={isPaused ? resume : pause}
-            style={({ pressed }) => [s.pauseBtn, pressed && { opacity: 0.7 }]}
-          >
-            <Feather name={isPaused ? 'play' : 'pause'} size={20} color="#fff" />
-            <Text style={s.pauseBtnText}>{isPaused ? 'Resume tracking' : 'Pause'}</Text>
+          <Pressable onPress={handleDiscard} hitSlop={12} style={s.discardX}>
+            <Feather name="x" size={24} color="rgba(255,255,255,0.7)" />
           </Pressable>
 
-          <SlideToConfirm label="Slide to end trip" onConfirm={handleEnd} color={colors.red} />
+          {/* Hero — tap any stat below to make it the big number (or the map) */}
+          <View style={s.ringWrap}>
+            {heroMetric === 'map' ? (
+              <View style={s.heroMap}>
+                <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.36)} />
+                <Text style={s.bigMilesUnit}>your route so far</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={[s.bigMiles, heroMetric === 'miles' && s.bigTripMiles]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.45}>{METRICS[heroMetric].value}</Text>
+                <Text style={s.bigMilesUnit}>{METRICS[heroMetric].heroLabel}</Text>
+              </>
+            )}
+            <View style={s.moneyChip}>
+              <Feather name="trending-up" size={15} color={colors.amber} />
+              <Text style={s.moneyChipText}>{fmtGbp(trip.deduction)} earned back so far</Text>
+            </View>
+
+            {/* "Earn it back" milestone bar — hidden in map view to avoid crowding */}
+            {heroMetric !== 'map' && (() => {
+              const nextTarget = (Math.floor(trip.deduction / MILESTONE) + 1) * MILESTONE;
+              const into = trip.deduction - (nextTarget - MILESTONE);
+              const pct = Math.max(0.02, Math.min(1, into / MILESTONE));
+              return (
+                <View style={s.mileWrap}>
+                  {flash ? (
+                    <Text style={s.flashText}>{flash}</Text>
+                  ) : (
+                    <Text style={s.mileLabel}>{fmtGbp(nextTarget - trip.deduction)} more to {fmtGbp(nextTarget)} back</Text>
+                  )}
+                  <View style={s.mileTrack}>
+                    <View style={[s.mileFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: flash ? colors.green : colors.brand }]} />
+                  </View>
+                </View>
+              );
+            })()}
+          </View>
+
+          {/* Glass stat strip — tap a cell to swap it into the hero spot */}
+          <View style={s.liveStats}>
+            {stripMetrics.map((m, i) => (
+              <Pressable key={m} onPress={() => setHeroMetric(m)} style={({ pressed }) => [s.liveStat, i > 0 && s.liveStatBorder, pressed && { opacity: 0.6 }]}>
+                <Feather name={METRICS[m].icon as any} size={15} color="rgba(255,255,255,0.5)" />
+                {m === 'map'
+                  ? <Text style={[s.liveStatValue, { fontSize: 15, marginTop: 4 }]}>Map</Text>
+                  : <Text style={s.liveStatValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{METRICS[m].chip}</Text>}
+                <Text style={s.liveStatLabel}>{METRICS[m].label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={s.liveActions}>
+            <Pressable
+              onPress={isPaused ? resume : pause}
+              style={({ pressed }) => [s.pauseBtn, pressed && { opacity: 0.7 }]}
+            >
+              <Feather name={isPaused ? 'play' : 'pause'} size={20} color="#fff" />
+              <Text style={s.pauseBtnText}>{isPaused ? 'Resume tracking' : 'Pause'}</Text>
+            </Pressable>
+
+            <SlideToConfirm label="Slide to end trip" onConfirm={handleEnd} color={colors.red} />
+          </View>
         </View>
-      </GradientCard>
+      </>
     );
   }
 
@@ -398,13 +402,15 @@ const s = StyleSheet.create({
   tileLabel: { ...type.bodyMedium, fontSize: 14, textAlign: 'center' },
 
   // live
+  liveScreen: { flex: 1, backgroundColor: '#000' },
   liveHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 72 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.10)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
   statusPillText: { color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: font.medium },
   discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
   liveDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.green },
   ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  bigMiles: { ...tabular, fontSize: 96, fontWeight: font.bold, color: '#fff', letterSpacing: -4, lineHeight: 100 },
+  bigMiles: { ...tabular, fontSize: 108, fontWeight: font.bold, color: '#fff', letterSpacing: -4, lineHeight: 114 },
+  bigTripMiles: { fontSize: 148, lineHeight: 154, letterSpacing: -5 },
   bigMilesUnit: { fontSize: 15, color: 'rgba(255,255,255,0.55)', marginTop: 2, textAlign: 'center' },
   moneyChip: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: spacing.lg, backgroundColor: 'rgba(224,150,31,0.16)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
   moneyChipText: { ...tabular, color: '#F5C97A', fontSize: 14, fontWeight: font.semibold },
