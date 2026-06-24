@@ -84,7 +84,7 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER },
   fadeBg: { position: 'absolute', top: 0, left: 0, right: 0, height: FADE, overflow: 'hidden' },
-  barTint: { ...StyleSheet.absoluteFillObject },
+  barTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   row: { position: 'absolute', left: spacing.xl, right: spacing.xl, bottom: 0, height: ROW, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   small: { ...type.heading, fontSize: 18, flex: 1, paddingRight: spacing.md },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },

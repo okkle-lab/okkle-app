@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { DynamicColorIOS, Platform } from 'react-native';
-import { Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import type { ComponentProps } from 'react';
 import type { SFSymbol } from 'sf-symbols-typescript';
 import { colors, font } from '../../src/theme';
@@ -36,7 +36,7 @@ const tabs: TabItem[] = [
 export default function TabLayout() {
   return (
     <NativeTabs
-      backgroundColor={null}
+      backgroundColor="transparent"
       blurEffect="systemChromeMaterial"
       iconColor={{ default: tabLabel, selected: tabTint }}
       labelStyle={{ color: tabLabel, fontSize: 11, fontWeight: font.semibold }}
@@ -46,11 +46,11 @@ export default function TabLayout() {
     >
       {tabs.map(tab => (
         <NativeTabs.Trigger key={tab.name} name={tab.name}>
-          <Icon
+          <NativeTabs.Trigger.Icon
             sf={tab.sf}
-            androidSrc={<VectorIcon family={Feather} name={tab.feather} />}
+            src={<NativeTabs.Trigger.VectorIcon family={Feather} name={tab.feather} />}
           />
-          <Label>{tab.label}</Label>
+          <NativeTabs.Trigger.Label>{tab.label}</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
       ))}
     </NativeTabs>
