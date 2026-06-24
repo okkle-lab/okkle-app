@@ -12,12 +12,10 @@ const SHORTCUT_ICLOUD_URL = '';
 
 export default function EarningsShortcut() {
   const router = useRouter();
+  const ready = SHORTCUT_ICLOUD_URL.length > 0;
 
   function addShortcut() {
-    if (!SHORTCUT_ICLOUD_URL) {
-      Alert.alert('Almost ready', 'The one-tap shortcut link will be added in an upcoming update. For now you can set it up manually from the guide.');
-      return;
-    }
+    if (!ready) return;
     Linking.openURL(SHORTCUT_ICLOUD_URL).catch(() => Alert.alert("Couldn't open", 'Open the Shortcuts app and try again.'));
   }
 
@@ -52,7 +50,10 @@ export default function EarningsShortcut() {
 
       {/* What it does */}
       <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
-        <Feather name="camera" size={22} color="#fff" />
+        <View style={s.heroTopRow}>
+          <Feather name="camera" size={22} color="#fff" />
+          {!ready && <View style={s.soonPill}><Text style={s.soonPillText}>COMING SOON</Text></View>}
+        </View>
         <Text style={s.heroTitle}>Screenshot → earnings</Text>
         <Text style={s.heroSub}>
           Take a screenshot of your pay screen in any delivery app and Okkle pops up with the
@@ -63,13 +64,25 @@ export default function EarningsShortcut() {
       <Text style={s.sectionLabel}>One-time setup (~1 minute)</Text>
       <Card style={{ gap: spacing.lg }}>
         <Step n={1} title="Add the Okkle shortcut">
-          <Text style={s.stepBody}>Tap below, then tap “Add Shortcut”. This installs the little helper that reads the figure.</Text>
-          <Pressable onPress={addShortcut} style={({ pressed }) => [pressed && { opacity: 0.9 }]}>
-            <GradientCard colors={[colors.brand, colors.brandDeep]} radius={radius.md} style={s.cta}>
-              <Feather name="download" size={16} color="#fff" />
-              <Text style={s.ctaText}>Add Okkle shortcut</Text>
-            </GradientCard>
-          </Pressable>
+          {ready ? (
+            <>
+              <Text style={s.stepBody}>Tap below, then tap “Add Shortcut”. This installs the little helper that reads the figure.</Text>
+              <Pressable onPress={addShortcut} style={({ pressed }) => [pressed && { opacity: 0.9 }]}>
+                <GradientCard colors={[colors.brand, colors.brandDeep]} radius={radius.md} style={s.cta}>
+                  <Feather name="download" size={16} color="#fff" />
+                  <Text style={s.ctaText}>Add Okkle shortcut</Text>
+                </GradientCard>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={s.stepBody}>The one-tap shortcut is on its way — it'll appear here in an update, so you can add it without leaving the app.</Text>
+              <View style={s.ctaDisabled}>
+                <Feather name="clock" size={16} color={colors.textTertiary} />
+                <Text style={s.ctaDisabledText}>Add shortcut · coming soon</Text>
+              </View>
+            </>
+          )}
         </Step>
 
         <Step n={2} title="Make it run on screenshots">
@@ -120,6 +133,9 @@ const s = StyleSheet.create({
   title: { ...type.screenTitle },
 
   hero: { padding: spacing.xl, gap: 6 },
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  soonPill: { backgroundColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full },
+  soonPillText: { color: '#fff', fontSize: 11, fontWeight: font.bold, letterSpacing: 0.5 },
   heroTitle: { color: '#fff', fontSize: 22, fontWeight: font.bold, letterSpacing: -0.4, marginTop: 4 },
   heroSub: { color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 20 },
 
@@ -134,6 +150,8 @@ const s = StyleSheet.create({
 
   cta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginTop: spacing.sm },
   ctaText: { color: '#fff', fontSize: 15, fontWeight: font.bold },
+  ctaDisabled: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginTop: spacing.sm, borderRadius: radius.md, backgroundColor: colors.bgSoft },
+  ctaDisabledText: { color: colors.textTertiary, fontSize: 15, fontWeight: font.semibold },
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm },
   linkText: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
 
