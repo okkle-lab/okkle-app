@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Modal, Pressable, StyleSheet, Dimensions, type View as RNView } from 'react-native';
-import { buttonDepth, colors, font, spacing, radius, type } from '../theme';
+import { colors, font, spacing, radius, type } from '../theme';
 
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -77,10 +77,7 @@ export function CoachMarks({ steps, visible, onDone }: { steps: CoachStep[]; vis
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                 {!isLast && <Pressable onPress={onDone} hitSlop={8}><Text style={s.skip}>Skip</Text></Pressable>}
-                <Pressable onPress={next} style={({ pressed }) => [s.btn, buttonDepth.raisedStrong, pressed && buttonDepth.pressed]}>
-                  <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.gloss]} />
-                  <Text style={s.btnText}>{isLast ? 'Got it' : 'Next'}</Text>
-                </Pressable>
+                <Pressable onPress={next} style={s.btn}><Text style={s.btnText}>{isLast ? 'Got it' : 'Next'}</Text></Pressable>
               </View>
             </View>
           </View>
@@ -102,7 +99,6 @@ const s = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   dotOn: { backgroundColor: colors.brand, width: 18 },
   skip: { ...type.label, color: colors.textSecondary },
-  btn: { backgroundColor: colors.brand, borderRadius: radius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)', paddingVertical: 9, paddingHorizontal: 20, borderCurve: 'continuous', overflow: 'hidden' },
+  btn: { backgroundColor: colors.brand, borderRadius: radius.full, paddingVertical: 9, paddingHorizontal: 20 },
   btnText: { color: '#fff', fontSize: 15, fontWeight: font.semibold },
-  buttonGloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
 });

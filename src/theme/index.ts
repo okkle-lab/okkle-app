@@ -66,25 +66,6 @@ export const type = {
 // jitter between values (tabular/monospaced figures).
 export const tabular = { fontVariant: ['tabular-nums' as const] };
 
-export const buttonDepth = {
-  raised: {
-    boxShadow: '0 7px 15px rgba(21,33,29,0.12), inset 0 1px 0 rgba(255,255,255,0.55)',
-  },
-  raisedStrong: {
-    boxShadow: '0 10px 22px rgba(21,33,29,0.18), inset 0 1px 0 rgba(255,255,255,0.42)',
-  },
-  pressed: {
-    transform: [{ translateY: 1 }],
-    boxShadow: '0 3px 7px rgba(21,33,29,0.10), inset 0 1px 0 rgba(255,255,255,0.32)',
-  },
-  gloss: {
-    backgroundColor: 'rgba(255,255,255,0.24)',
-  },
-  glossMuted: {
-    backgroundColor: 'rgba(255,255,255,0.16)',
-  },
-} as const;
-
 export const spacing = {
   xs: 4,
   sm: 8,

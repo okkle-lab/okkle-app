@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { buttonDepth, colors, font, spacing, radius, type } from '../src/theme';
+import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, IconBadge } from '../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTrips, getRecords, getUser,
@@ -90,8 +90,7 @@ export default function ExportScreen() {
         </View>
         <Text style={s.sub}>Everything your accountant needs, {taxYearLabel()}.</Text>
 
-        <Pressable onPress={makePack} disabled={packBusy} style={({ pressed }) => [s.packBtn, buttonDepth.raisedStrong, pressed && buttonDepth.pressed, packBusy && { opacity: 0.65 }]}>
-          <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.gloss]} />
+        <Pressable onPress={makePack} disabled={packBusy} style={({ pressed }) => [s.packBtn, pressed && { opacity: 0.9 }]}>
           <Feather name="file-text" size={22} color="#fff" />
           <View style={{ flex: 1 }}>
             <Text style={s.packTitle}>{packBusy ? 'Preparing…' : 'Accountant Pack (PDF)'}</Text>
@@ -118,8 +117,7 @@ export default function ExportScreen() {
 
 function Row({ icon, tone, title, subtitle, onPress }: { icon: any; tone: any; title: string; subtitle?: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [s.exportBtn, buttonDepth.raised, pressed && buttonDepth.pressed]}>
-      <View pointerEvents="none" style={[s.rowGloss, buttonDepth.glossMuted]} />
+    <Pressable onPress={onPress} style={s.exportBtn}>
       <IconBadge icon={icon} tone={tone} size={34} />
       <View style={{ flex: 1 }}>
         <Text style={s.exportText}>{title}</Text>
@@ -136,14 +134,12 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   title: { ...type.screenTitle },
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.xl },
-  packBtn: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)', padding: spacing.lg, borderCurve: 'continuous', overflow: 'hidden' },
+  packBtn: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, padding: spacing.lg },
   packTitle: { color: '#fff', fontSize: 16, fontWeight: font.bold },
   packSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgCard, borderCurve: 'continuous', overflow: 'hidden' },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
   exportText: { ...type.bodyMedium, fontSize: 15 },
   exportSub: { ...type.caption, marginTop: 1 },
   disclaimer: { marginTop: spacing.xl, padding: spacing.lg, backgroundColor: colors.bgSoft, borderRadius: radius.md, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   disclaimerText: { ...type.small, lineHeight: 18, flex: 1 },
-  buttonGloss: { borderRadius: radius.full, height: 1.5, left: 16, position: 'absolute', right: 16, top: 1 },
-  rowGloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
 });

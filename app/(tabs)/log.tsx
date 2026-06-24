@@ -5,7 +5,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
-import { buttonDepth, colors, font, spacing, radius, type, tabular } from '../../src/theme';
+import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, Icon, IconBadge, GradientCard, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
@@ -174,7 +174,7 @@ export default function LogScreen() {
         {TABS.map(t => {
           const on = tab === t.key;
           return (
-            <Pressable key={t.key} onPress={() => setTab(t.key)} style={({ pressed }) => [s.tab, pressed && buttonDepth.pressed]}>
+            <Pressable key={t.key} onPress={() => setTab(t.key)} style={s.tab}>
               <Feather name={t.icon} size={16} color={on ? colors.textPrimary : colors.textSecondary} />
               <Text style={[s.tabText, on && s.tabTextActive]}>{t.label}</Text>
             </Pressable>
@@ -243,12 +243,7 @@ export default function LogScreen() {
                   {sortedCats.map(cat => {
                     const on = description === cat.name;
                     return (
-                      <Pressable
-                        key={cat.name}
-                        onPress={() => setDescription(cat.name)}
-                        style={({ pressed }) => [s.catChip, buttonDepth.raised, on && s.catChipActive, pressed && buttonDepth.pressed]}
-                      >
-                        <View pointerEvents="none" style={[s.buttonGloss, on ? buttonDepth.gloss : buttonDepth.glossMuted]} />
+                      <Pressable key={cat.name} onPress={() => setDescription(cat.name)} style={[s.catChip, on && s.catChipActive]}>
                         <Feather name={cat.icon} size={14} color={on ? colors.brandDeep : colors.textSecondary} />
                         <Text style={[s.catChipText, on && s.catChipTextActive]}>{cat.name}</Text>
                       </Pressable>
@@ -274,13 +269,11 @@ export default function LogScreen() {
                   </View>
                 ) : (
                   <View style={s.receiptButtons}>
-                    <Pressable onPress={() => pickReceipt(true)} style={({ pressed }) => [s.receiptBtn, buttonDepth.raised, pressed && buttonDepth.pressed]}>
-                      <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.glossMuted]} />
+                    <Pressable onPress={() => pickReceipt(true)} style={s.receiptBtn}>
                       <Feather name="camera" size={16} color={colors.textPrimary} />
                       <Text style={s.receiptBtnText}>Take photo</Text>
                     </Pressable>
-                    <Pressable onPress={() => pickReceipt(false)} style={({ pressed }) => [s.receiptBtn, buttonDepth.raised, pressed && buttonDepth.pressed]}>
-                      <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.glossMuted]} />
+                    <Pressable onPress={() => pickReceipt(false)} style={s.receiptBtn}>
                       <Feather name="image" size={16} color={colors.textPrimary} />
                       <Text style={s.receiptBtnText}>Choose</Text>
                     </Pressable>
@@ -349,8 +342,7 @@ export default function LogScreen() {
                   {([['This week', 0], ['Last week', -7]] as [string, number][]).map(([label, off]) => {
                     const on = isSameDay(weekBounds(date).start, weekBounds(dayAt(off)).start);
                     return (
-                      <Pressable key={label} onPress={() => setDate(dayAt(off))} style={({ pressed }) => [s.quickChip, buttonDepth.raised, on && s.quickChipOn, pressed && buttonDepth.pressed]}>
-                        <View pointerEvents="none" style={[s.buttonGloss, on ? buttonDepth.gloss : buttonDepth.glossMuted]} />
+                      <Pressable key={label} onPress={() => setDate(dayAt(off))} style={[s.quickChip, on && s.quickChipOn]}>
                         <Text style={[s.quickChipText, on && s.quickChipTextOn]}>{label}</Text>
                       </Pressable>
                     );
@@ -364,7 +356,7 @@ export default function LogScreen() {
         </Card>
 
         {/* Gradient save action */}
-        <Pressable onPress={handleSave} disabled={!canSave && !saved} style={({ pressed }) => [{ marginTop: spacing.lg }, pressed && buttonDepth.pressed]}>
+        <Pressable onPress={handleSave} disabled={!canSave && !saved} style={({ pressed }) => [pressed && { opacity: 0.9 }, { marginTop: spacing.lg }]}>
           <GradientCard
             colors={saved ? ['#3BC07E', colors.green, '#1C7048'] : canSave ? [colors.brand, colors.brandDeep] : ['#B8C2BC', '#8F9C95']}
             radius={radius.lg}
@@ -383,7 +375,7 @@ export default function LogScreen() {
 
 const s = StyleSheet.create({
   tabs: { flexDirection: 'row', backgroundColor: colors.bgSoft, borderRadius: radius.lg, padding: 4, marginBottom: spacing.lg },
-  tabPill: { position: 'absolute', top: 4, bottom: 4, left: 0, backgroundColor: colors.bgCard, borderRadius: radius.md, ...buttonDepth.raised },
+  tabPill: { position: 'absolute', top: 4, bottom: 4, left: 0, backgroundColor: colors.bgCard, borderRadius: radius.md, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tab: { flex: 1, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: radius.md },
   tabText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
   tabTextActive: { color: colors.textPrimary, fontWeight: font.semibold },
@@ -416,7 +408,7 @@ const s = StyleSheet.create({
   periodTextOn: { color: colors.textPrimary, fontWeight: font.semibold },
   weekCaption: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
   quickDates: { flexDirection: 'row', gap: 6 },
-  quickChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bgSoft, borderWidth: 1, borderColor: colors.border, borderCurve: 'continuous', overflow: 'hidden' },
+  quickChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bgSoft },
   quickChipOn: { backgroundColor: colors.brandDeep },
   quickChipText: { fontSize: 12.5, fontWeight: font.semibold, color: colors.textSecondary },
   quickChipTextOn: { color: '#fff' },
@@ -427,7 +419,6 @@ const s = StyleSheet.create({
   receiptBtn: {
     flex: 1, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
     paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.bg,
-    borderCurve: 'continuous', overflow: 'hidden',
   },
   receiptBtnText: { ...type.bodyMedium, fontSize: 14 },
   receiptWrap: { position: 'relative' },
@@ -441,13 +432,11 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full,
     borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bg,
-    borderCurve: 'continuous', overflow: 'hidden',
   },
   catChipActive: { borderColor: colors.brand, backgroundColor: colors.brandLight },
   catChipText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
   catChipTextActive: { color: colors.brandDeep },
 
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', ...buttonDepth.raisedStrong },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 18 },
   saveText: { color: '#fff', fontSize: 17, fontWeight: font.bold },
-  buttonGloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
 });

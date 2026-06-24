@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { buttonDepth, colors, font, spacing, radius, type } from '../src/theme';
+import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, SectionHeader, IconBadge } from '../src/components';
 import { resetAllData } from '../src/db';
 import { backupNow, restoreFromFile } from '../src/backup';
@@ -49,15 +49,13 @@ export default function SettingsData() {
       <SectionHeader title="Backup & restore" />
       <Card style={{ gap: spacing.md }}>
         <Text style={s.aboutText}>Your data lives only on this phone. Back it up to your own iCloud or Files so you don't lose your records — HMRC expects records kept for at least 5 years.</Text>
-        <Pressable onPress={doBackup} disabled={busy} style={({ pressed }) => [s.actionRow, buttonDepth.raised, pressed && buttonDepth.pressed, busy && { opacity: 0.6 }]}>
-          <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.glossMuted]} />
+        <Pressable onPress={doBackup} disabled={busy} style={s.actionRow}>
           <IconBadge icon="upload-cloud" tone="mint" />
           <Text style={s.actionText}>Back up my data</Text>
           <Feather name="chevron-right" size={18} color={colors.textTertiary} />
         </Pressable>
         <View style={s.divider} />
-        <Pressable onPress={doRestore} disabled={busy} style={({ pressed }) => [s.actionRow, buttonDepth.raised, pressed && buttonDepth.pressed, busy && { opacity: 0.6 }]}>
-          <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.glossMuted]} />
+        <Pressable onPress={doRestore} disabled={busy} style={s.actionRow}>
           <IconBadge icon="download-cloud" tone="green" />
           <Text style={s.actionText}>Restore from a backup</Text>
           <Feather name="chevron-right" size={18} color={colors.textTertiary} />
@@ -78,10 +76,9 @@ const s = StyleSheet.create({
   heading: { ...type.heading, fontSize: 18 },
   close: { ...type.bodyMedium, color: colors.textSecondary },
   aboutText: { ...type.caption, color: colors.textSecondary, lineHeight: 20 },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgCard, borderCurve: 'continuous', overflow: 'hidden' },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
   actionText: { ...type.bodyMedium, fontSize: 15, flex: 1 },
   divider: { height: 1, backgroundColor: colors.border },
   resetBtn: { marginTop: spacing.xl, alignItems: 'center', paddingVertical: spacing.md },
   resetText: { ...type.label, color: colors.red },
-  buttonGloss: { borderRadius: radius.full, height: 1, left: 12, position: 'absolute', right: 12, top: 1 },
 });

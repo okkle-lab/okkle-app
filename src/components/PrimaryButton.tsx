@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { buttonDepth, colors, radius, font } from '../theme';
+import { Pressable, Text, ViewStyle } from 'react-native';
+import { colors, radius, font } from '../theme';
 
 type Props = {
   label: string;
@@ -11,10 +11,10 @@ type Props = {
 };
 
 const VARIANTS = {
-  primary: { bg: colors.brand, text: '#fff', border: colors.brand, gloss: buttonDepth.gloss },
-  danger: { bg: colors.red, text: '#fff', border: colors.red, gloss: buttonDepth.gloss },
-  warning: { bg: colors.amber, text: '#fff', border: colors.amber, gloss: buttonDepth.gloss },
-  ghost: { bg: colors.bgCard, text: colors.brandDeep, border: colors.brand, gloss: buttonDepth.glossMuted },
+  primary: { bg: colors.brand, text: '#fff', border: colors.brand },
+  danger: { bg: colors.red, text: '#fff', border: colors.red },
+  warning: { bg: colors.amber, text: '#fff', border: colors.amber },
+  ghost: { bg: 'transparent', text: colors.brand, border: colors.brand },
 };
 
 export function PrimaryButton({ label, onPress, variant = 'primary', disabled, style }: Props) {
@@ -23,41 +23,19 @@ export function PrimaryButton({ label, onPress, variant = 'primary', disabled, s
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [
-        s.button,
-        buttonDepth.raisedStrong,
-        {
-          backgroundColor: v.bg,
-          borderColor: v.border,
-          opacity: disabled ? 0.55 : 1,
-        },
-        pressed && !disabled && buttonDepth.pressed,
-        style,
-      ]}
+      style={({ pressed }) => [{
+        backgroundColor: v.bg,
+        borderRadius: radius.lg,
+        borderWidth: 1.5,
+        borderColor: v.border,
+        paddingVertical: 15,
+        alignItems: 'center',
+        opacity: pressed || disabled ? 0.7 : 1,
+      }, style]}
     >
-      <View pointerEvents="none" style={[s.gloss, v.gloss]} />
       <Text style={{ color: v.text, fontSize: 15, fontWeight: font.semibold }}>
         {label}
       </Text>
     </Pressable>
   );
 }
-
-const s = StyleSheet.create({
-  button: {
-    alignItems: 'center',
-    borderCurve: 'continuous',
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    overflow: 'hidden',
-    paddingVertical: 15,
-  },
-  gloss: {
-    borderRadius: radius.full,
-    height: 1.5,
-    left: 16,
-    position: 'absolute',
-    right: 16,
-    top: 1,
-  },
-});

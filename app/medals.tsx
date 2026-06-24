@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { buttonDepth, colors, font, spacing, radius, type, tabular } from '../src/theme';
+import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Medal, Card, SectionHeader, IconBadge } from '../src/components';
 import { getAchievements, getStreak, getPersonalRecords, type Achievement } from '../src/db';
 
@@ -98,10 +98,7 @@ export default function MedalsScreen() {
                 <View style={[s.modalFill, { width: `${Math.round((selected?.progress ?? 0) * 100)}%` }]} />
               </View>
             )}
-            <Pressable onPress={() => setSelected(null)} style={({ pressed }) => [s.modalBtn, buttonDepth.raisedStrong, pressed && buttonDepth.pressed]}>
-              <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.gloss]} />
-              <Text style={s.modalBtnText}>Done</Text>
-            </Pressable>
+            <Pressable onPress={() => setSelected(null)} style={s.modalBtn}><Text style={s.modalBtnText}>Done</Text></Pressable>
           </View>
         </Pressable>
       </Modal>
@@ -142,7 +139,6 @@ const s = StyleSheet.create({
   modalDesc: { ...type.body, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg },
   modalTrack: { height: 6, width: '100%', borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden', marginBottom: spacing.lg },
   modalFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
-  modalBtn: { backgroundColor: colors.brand, borderRadius: radius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)', paddingVertical: 14, alignSelf: 'stretch', alignItems: 'center', borderCurve: 'continuous', overflow: 'hidden' },
+  modalBtn: { backgroundColor: colors.brand, borderRadius: radius.lg, paddingVertical: 14, alignSelf: 'stretch', alignItems: 'center' },
   modalBtnText: { color: '#fff', fontSize: 16, fontWeight: font.semibold },
-  buttonGloss: { borderRadius: radius.full, height: 1.5, left: 16, position: 'absolute', right: 16, top: 1 },
 });

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { buttonDepth, colors, font, spacing, radius, type, tabular } from '../src/theme';
+import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader } from '../src/components';
 import { addDeadlineToCalendar } from '../src/calendar';
 
@@ -61,10 +61,9 @@ export default function KeyDatesScreen() {
                       Alert.alert(ok ? 'Added to your calendar' : 'Couldn’t add it', ok ? `${d.title} — ${next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.` : 'Please allow calendar access and try again.');
                     } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
                   }}
-                  style={({ pressed }) => [s.calBtn, buttonDepth.raised, pressed && buttonDepth.pressed]}
+                  style={s.calBtn}
                   hitSlop={6}
                 >
-                  <View pointerEvents="none" style={[s.buttonGloss, buttonDepth.gloss]} />
                   <Feather name="calendar" size={15} color={colors.brandDeep} />
                   <Text style={s.calBtnText}>Add</Text>
                 </Pressable>
@@ -89,8 +88,7 @@ const s = StyleSheet.create({
   deadlineDate: { ...type.caption, ...tabular, color: colors.brandDeep, fontWeight: font.medium, marginTop: 2 },
   deadlineNote: { ...type.small, lineHeight: 17, marginTop: 3 },
   qBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  calBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full, borderWidth: 1, borderColor: colors.brand, backgroundColor: colors.brandLight, borderCurve: 'continuous', overflow: 'hidden' },
+  calBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full, backgroundColor: colors.brandLight },
   calBtnText: { ...type.caption, color: colors.brandDeep, fontWeight: font.semibold },
   note: { ...type.small, lineHeight: 18, marginTop: spacing.md },
-  buttonGloss: { borderRadius: radius.full, height: 1, left: 9, position: 'absolute', right: 9, top: 1 },
 });
