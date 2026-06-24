@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, Icon, IconBadge, GradientCard, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
+import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser, kvGet, kvSet } from '../../src/db';
 
@@ -169,9 +169,7 @@ export default function LogScreen() {
         title="Log entry"
         keyboardShouldPersistTaps="handled"
         right={
-          <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
-            <Icon name="settings" size={22} color={colors.textSecondary} />
-          </Pressable>
+          <SettingsGlassButton onPress={() => router.push('/settings')} />
         }
       >
       {/* Animated segmented type switcher */}

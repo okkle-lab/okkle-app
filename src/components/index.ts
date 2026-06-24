@@ -19,4 +19,5 @@ export { RouteMap } from './RouteMap';
 export { GradientCard } from './GradientCard';
 export { CollapsingHeader } from './CollapsingHeader';
 export { AnimatedDots } from './AnimatedDots';
+export { SettingsGlassButton } from './SettingsGlassButton';
 export { KeyboardDoneAccessory, numberKeyboardDoneProps } from './KeyboardDoneAccessory';

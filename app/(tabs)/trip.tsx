@@ -10,7 +10,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard, RouteMap, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, type DailyStats } from '../../src/db';
@@ -310,9 +310,7 @@ export default function TripScreen() {
       title="Start a trip"
       subtitle="Tap start and ride — GPS measures your distance for you."
       right={
-        <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
-          <Icon name="settings" size={22} color={colors.textSecondary} />
-        </Pressable>
+        <SettingsGlassButton onPress={() => router.push('/settings')} />
       }
     >
       {/* Your setup — platform + vehicle in one calm card */}

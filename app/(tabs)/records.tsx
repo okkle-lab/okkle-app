@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Alert } 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { Card, SectionHeader, VehicleIcon, CollapsingHeader, IconBadge, Icon } from '../../src/components';
+import { Card, SectionHeader, VehicleIcon, CollapsingHeader, IconBadge, SettingsGlassButton } from '../../src/components';
 import { getTrips, getRecords, getVehicleStats, type VehicleStat } from '../../src/db';
 import { fmtGbp, fmtMiles, vehicleLabel } from '../../src/db/tax';
 import type { Trip, Record as OkkleRecord } from '../../src/db';
@@ -106,9 +106,7 @@ export default function RecordsScreen() {
   }
 
   const gear = (
-    <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
-      <Icon name="settings" size={22} color={colors.textSecondary} />
-    </Pressable>
+    <SettingsGlassButton onPress={() => router.push('/settings')} />
   );
 
   return (

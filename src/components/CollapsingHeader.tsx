@@ -1,20 +1,15 @@
 import React from 'react';
 import { BlurView } from 'expo-blur';
-import { Animated, DynamicColorIOS, Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, Platform, View, StyleSheet, useColorScheme, type StyleProp, type ViewStyle } from 'react-native';
+import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { colors, font, spacing, type } from '../theme';
 
 const STATUS = 54;        // space above the bar row (status bar / notch)
 const ROW = 46;           // height of the pinned title/actions row
 const HEADER = STATUS + ROW;
+const FADE = HEADER + 58;
 const THRESH = 40;        // px of scroll over which the large title hands off
 const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 132 : 40;
-const HEADER_BLUR_TINT: React.ComponentProps<typeof BlurView>['tint'] = Platform.OS === 'ios' ? 'systemChromeMaterial' : 'light';
-const HEADER_TINT = Platform.OS === 'ios'
-  ? DynamicColorIOS({ light: 'rgba(255,255,255,0.22)', dark: 'rgba(16,24,22,0.18)' }) as unknown as string
-  : 'rgba(255,255,255,0.22)';
-const HEADER_BORDER = Platform.OS === 'ios'
-  ? DynamicColorIOS({ light: 'rgba(203,213,208,0.48)', dark: 'rgba(42,54,49,0.48)' }) as unknown as string
-  : 'rgba(203,213,208,0.48)';
 
 type Props = {
   title: string;
@@ -31,6 +26,12 @@ type Props = {
 // native-driven movement; right-hand actions stay put the whole time.
 export function CollapsingHeader({ title, subtitle, right, children, refreshControl, keyboardShouldPersistTaps, contentStyle }: Props) {
   const scrollY = React.useRef(new Animated.Value(0)).current;
+  const isDark = useColorScheme() === 'dark';
+  const blurTint: React.ComponentProps<typeof BlurView>['tint'] = Platform.OS === 'ios' ? 'systemChromeMaterial' : isDark ? 'dark' : 'light';
+  const fadeTop = isDark ? 'rgba(16,24,22,0.96)' : 'rgba(255,255,255,0.96)';
+  const fadeMid = isDark ? 'rgba(16,24,22,0.74)' : 'rgba(255,255,255,0.74)';
+  const fadeEnd = isDark ? 'rgba(16,24,22,0)' : 'rgba(255,255,255,0)';
+  const tint = isDark ? 'rgba(5,12,10,0.22)' : 'rgba(255,255,255,0.18)';
 
   const barOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.4, THRESH], outputRange: [0, 1], extrapolate: 'clamp' });
   const smallOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.5, THRESH], outputRange: [0, 1], extrapolate: 'clamp' });
@@ -56,9 +57,19 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
 
       {/* Pinned bar — transparent until you scroll, then a blurred context layer. */}
       <View style={s.bar} pointerEvents="box-none">
-        <Animated.View pointerEvents="none" style={[s.barBg, { opacity: barOpacity }]}>
-          <BlurView intensity={78} tint={HEADER_BLUR_TINT} style={StyleSheet.absoluteFill} />
-          <View style={s.barTint} />
+        <Animated.View pointerEvents="none" style={[s.fadeBg, { opacity: barOpacity }]}>
+          <BlurView intensity={88} tint={blurTint} style={StyleSheet.absoluteFill} />
+          <View style={[s.barTint, { backgroundColor: tint }]} />
+          <Svg width="100%" height="100%" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
+            <Defs>
+              <LinearGradient id="headerFade" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0%" stopColor={fadeTop} />
+                <Stop offset="58%" stopColor={fadeMid} />
+                <Stop offset="100%" stopColor={fadeEnd} />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#headerFade)" />
+          </Svg>
         </Animated.View>
         <View style={s.row} pointerEvents="box-none">
           <Animated.Text pointerEvents="none" numberOfLines={1} style={[s.small, { opacity: smallOpacity, transform: [{ translateY: smallTranslate }] }]}>{title}</Animated.Text>
@@ -72,8 +83,8 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER },
-  barBg: { ...StyleSheet.absoluteFillObject, borderBottomWidth: 1, borderBottomColor: HEADER_BORDER, overflow: 'hidden' },
-  barTint: { ...StyleSheet.absoluteFillObject, backgroundColor: HEADER_TINT },
+  fadeBg: { position: 'absolute', top: 0, left: 0, right: 0, height: FADE, overflow: 'hidden' },
+  barTint: { ...StyleSheet.absoluteFillObject },
   row: { position: 'absolute', left: spacing.xl, right: spacing.xl, bottom: 0, height: ROW, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   small: { ...type.heading, fontSize: 18, flex: 1, paddingRight: spacing.md },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, Icon, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, HeatMapView, CoachMarks, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, HeatMapView, CoachMarks, SettingsGlassButton, type CoachStep } from '../../src/components';
 import {
   getUser,
   getTaxYearSummary,
@@ -236,9 +236,7 @@ export default function HomeScreen() {
     <CollapsingHeader
       title={user?.name || 'Hi'}
       right={
-        <Pressable onPress={() => router.push('/settings')} hitSlop={12} style={s.gear}>
-          <Icon name="settings" size={22} color={colors.textSecondary} />
-        </Pressable>
+        <SettingsGlassButton onPress={() => router.push('/settings')} />
       }
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
@@ -485,7 +483,6 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   hello: { ...type.heading, fontSize: 22, letterSpacing: -0.4 },
-  gear: { padding: 4 },
   streakChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full, marginRight: 6 },
   streakChipOn: { backgroundColor: colors.amberLight },
   streakChipOff: { backgroundColor: colors.bgSoft },
