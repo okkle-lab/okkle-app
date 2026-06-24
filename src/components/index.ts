@@ -21,3 +21,4 @@ export { CollapsingHeader } from './CollapsingHeader';
 export { AnimatedDots } from './AnimatedDots';
 export { SettingsGlassButton } from './SettingsGlassButton';
 export { KeyboardDoneAccessory, numberKeyboardDoneProps } from './KeyboardDoneAccessory';
+export { ChipScroll } from './ChipScroll';

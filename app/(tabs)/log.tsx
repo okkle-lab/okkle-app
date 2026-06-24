@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert, Image, Animated, Dimensions,
+  View, Text, TextInput, StyleSheet, Pressable, Alert, Image, Animated, Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
+import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser, kvGet, kvSet } from '../../src/db';
 
@@ -87,6 +87,18 @@ export default function LogScreen() {
   const [period, setPeriod] = useState<'day' | 'week'>('day');
   const [saved, setSaved] = useState(false);
   const [catCounts, setCatCounts] = useState(getCatCounts);
+  const [descFocus, setDescFocus] = useState(false);
+
+  // Predictive suggestions while typing a description: everything you've used
+  // before (most-used first) plus the standard categories, matched by substring.
+  const suggestionPool = React.useMemo(() => {
+    const used = Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    return Array.from(new Set([...used, ...EXPENSE_CATEGORIES.map(c => c.name)]));
+  }, [catCounts]);
+  const q = description.trim().toLowerCase();
+  const suggestions = q.length > 0
+    ? suggestionPool.filter(sg => sg.toLowerCase().includes(q) && sg.toLowerCase() !== q).slice(0, 6)
+    : [];
 
   // The Mon–Sun week the chosen date falls in (pay weeks run Monday–Sunday).
   const weekBounds = (d: Date) => {
@@ -232,7 +244,7 @@ export default function LogScreen() {
               />
             </View>
             <Text style={s.amountHeroSub}>
-              {tab === 'income' ? 'Gross pay before platform deductions' : description || 'Pick a category below'}
+              {tab === 'income' ? 'Gross pay before platform deductions' : description || 'Choose or search a category below'}
             </Text>
           </GradientCard>
         )}
@@ -242,8 +254,8 @@ export default function LogScreen() {
           {tab === 'expense' && (
             <>
               <View>
-                <SectionHeader title="Category" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
+                <SectionHeader title="What did you spend on?" />
+                <ChipScroll>
                   {sortedCats.map(cat => {
                     const on = description === cat.name;
                     return (
@@ -253,14 +265,32 @@ export default function LogScreen() {
                       </Pressable>
                     );
                   })}
-                </ScrollView>
-                <TextInput
-                  style={[s.input, { marginTop: spacing.sm }]}
-                  placeholder="Or type your own description"
-                  placeholderTextColor={colors.textTertiary}
-                  value={description}
-                  onChangeText={setDescription}
-                />
+                </ChipScroll>
+                <View style={s.searchWrap}>
+                  <Feather name="search" size={16} color={colors.textTertiary} />
+                  <TextInput
+                    style={s.searchInput}
+                    placeholder="Search or type your own"
+                    placeholderTextColor={colors.textTertiary}
+                    value={description}
+                    onChangeText={setDescription}
+                    onFocus={() => setDescFocus(true)}
+                    onBlur={() => setDescFocus(false)}
+                  />
+                </View>
+                {descFocus && suggestions.length > 0 && (
+                  <View style={s.suggestBox}>
+                    {suggestions.map((sg, i) => {
+                      const known = EXPENSE_CATEGORIES.find(c => c.name === sg);
+                      return (
+                        <Pressable key={sg} onPress={() => { setDescription(sg); setDescFocus(false); }} style={[s.suggestRow, i < suggestions.length - 1 && s.suggestBorder]}>
+                          <Feather name={known?.icon ?? 'corner-down-left'} size={15} color={colors.textSecondary} />
+                          <Text style={s.suggestText}>{sg}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
               <View>
                 <SectionHeader title="Receipt (optional)" />
@@ -295,11 +325,11 @@ export default function LogScreen() {
           {tab === 'income' && (
             <View>
               <SectionHeader title="Platform" />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
+              <ChipScroll>
                 {PLATFORMS.map(p => (
                   <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
                 ))}
-              </ScrollView>
+              </ChipScroll>
             </View>
           )}
 
@@ -307,19 +337,19 @@ export default function LogScreen() {
             <>
               <View>
                 <SectionHeader title="Vehicle" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
+                <ChipScroll>
                   {VEHICLES.map(v => (
                     <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
                   ))}
-                </ScrollView>
+                </ChipScroll>
               </View>
               <View>
                 <SectionHeader title="Platform" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
+                <ChipScroll>
                   {PLATFORMS.map(p => (
                     <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
                   ))}
-                </ScrollView>
+                </ChipScroll>
               </View>
             </>
           )}
@@ -401,6 +431,12 @@ const s = StyleSheet.create({
     padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg,
   },
   chipRow: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.lg },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.sm, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, backgroundColor: colors.bg },
+  searchInput: { flex: 1, fontSize: 16, color: colors.textPrimary, paddingVertical: 12 },
+  suggestBox: { marginTop: spacing.sm, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' },
+  suggestRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: spacing.md },
+  suggestBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  suggestText: { ...type.bodyMedium, fontSize: 15 },
 
   dateBlock: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg, gap: spacing.md },
   dateHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
