@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Chip, SectionHeader, PrimaryButton, VehicleChip, DatePickerField, RouteMap } from '../src/components';
+import { Chip, SectionHeader, PrimaryButton, VehicleChip, DatePickerField, RouteMap, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { PLATFORMS, VEHICLES, calcDeduction, fmtGbp, fmtMiles } from '../src/db/tax';
 import {
   getTrip, updateTrip, deleteTrip, getRecord, updateRecord, deleteRecord,
@@ -171,7 +171,7 @@ export default function EditEntry() {
         {showMiles && (
           <>
             <SectionHeader title="Miles" />
-            <TextInput style={s.input} value={miles} onChangeText={setMiles} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.textTertiary} />
+            <TextInput style={s.input} value={miles} onChangeText={setMiles} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
             {milesNum > 0 ? <Text style={s.preview}>Deduction: {fmtGbp(previewDeduction)}</Text> : null}
           </>
         )}
@@ -186,7 +186,7 @@ export default function EditEntry() {
         {showAmount && (
           <>
             <SectionHeader title={kind === 'trip' ? 'Earnings (optional)' : 'Amount (£)'} />
-            <TextInput style={s.input} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textTertiary} />
+            <TextInput style={s.input} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
           </>
         )}
 
@@ -202,6 +202,7 @@ export default function EditEntry() {
           <Text style={s.deleteText}>Delete entry</Text>
         </Pressable>
       </ScrollView>
+      <KeyboardDoneAccessory />
     </KeyboardAvoidingView>
   );
 }

@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, PrimaryButton } from '../src/components';
+import { Card, PrimaryButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { Chip } from '../src/components';
 import { getTaxYearSummary, getTaxYearMiles, kvGet, kvGetNum, kvSet } from '../src/db';
 import { compareMethods, caRate, CAPITAL_ALLOWANCE_BASES } from '../src/db/taxcalc';
@@ -70,7 +70,7 @@ export default function Compare() {
           <Text style={s.hint}>Using your {fmtMiles(trackedMiles)} of tracked business miles.</Text>
         ) : (
           <>
-            <TextInput style={s.input} value={businessMiles} onChangeText={setBusinessMiles} keyboardType="decimal-pad" placeholder="e.g. 9000 (try last year's total)" placeholderTextColor={colors.textTertiary} />
+            <TextInput style={s.input} value={businessMiles} onChangeText={setBusinessMiles} keyboardType="decimal-pad" placeholder="e.g. 9000 (try last year's total)" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
             <Text style={s.label}>Vehicle</Text>
             <View style={[s.basisGrid, { flexDirection: 'row', flexWrap: 'wrap' }]}>
               {VEHICLES.map(v => (
@@ -81,13 +81,13 @@ export default function Compare() {
         )}
 
         <Text style={s.label}>Total personal (non-work) miles</Text>
-        <TextInput style={s.input} value={personalMiles} onChangeText={setPersonalMiles} keyboardType="decimal-pad" placeholder="e.g. 3000" placeholderTextColor={colors.textTertiary} />
+        <TextInput style={s.input} value={personalMiles} onChangeText={setPersonalMiles} keyboardType="decimal-pad" placeholder="e.g. 3000" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
 
         <Text style={s.label}>Annual running costs</Text>
-        <TextInput style={s.input} value={runningCosts} onChangeText={setRunningCosts} keyboardType="decimal-pad" placeholder="Fuel, insurance, tax, repairs…" placeholderTextColor={colors.textTertiary} />
+        <TextInput style={s.input} value={runningCosts} onChangeText={setRunningCosts} keyboardType="decimal-pad" placeholder="Fuel, insurance, tax, repairs…" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
 
         <Text style={s.label}>Vehicle value (for capital allowances)</Text>
-        <TextInput style={s.input} value={vehicleValue} onChangeText={setVehicleValue} keyboardType="decimal-pad" placeholder="What the car is worth" placeholderTextColor={colors.textTertiary} />
+        <TextInput style={s.input} value={vehicleValue} onChangeText={setVehicleValue} keyboardType="decimal-pad" placeholder="What the car is worth" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
 
         <Text style={s.label}>Vehicle type (sets the allowance rate)</Text>
         <View style={s.basisGrid}>
@@ -138,6 +138,7 @@ export default function Compare() {
 
         <PrimaryButton label="Save" onPress={save} style={{ marginTop: spacing.lg }} />
       </ScrollView>
+      <KeyboardDoneAccessory />
     </KeyboardAvoidingView>
   );
 }

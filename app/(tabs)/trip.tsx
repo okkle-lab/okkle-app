@@ -9,7 +9,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard, RouteMap } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Icon, Card, IconBadge, GradientCard, RouteMap, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, type DailyStats } from '../../src/db';
@@ -280,6 +280,7 @@ export default function TripScreen() {
             keyboardType="decimal-pad"
             value={earnings}
             onChangeText={setEarnings}
+            {...numberKeyboardDoneProps}
           />
           <Text style={s.earningsNote}>
             Most couriers are paid weekly, so you can skip this and log earnings in one go later from the Log tab.
@@ -293,6 +294,7 @@ export default function TripScreen() {
             <Text style={s.discardText}>Discard this trip</Text>
           </Pressable>
         </ScrollView>
+        <KeyboardDoneAccessory />
       </KeyboardAvoidingView>
     );
   }

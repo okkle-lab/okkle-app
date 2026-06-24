@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, KeyboardAvoid
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Card, IconBadge } from '../src/components';
+import { Card, IconBadge, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { getYearPnL, kvGetNum, kvSet } from '../src/db';
 
 // "Accept or skip?" — the call couriers make on every offer. Enter the pay and
@@ -56,13 +56,13 @@ export default function OrderCheck() {
               <Text style={s.fieldLabel}>Offer pay</Text>
               <View style={s.inputWrap}>
                 <Text style={s.prefix}>£</Text>
-                <TextInput style={s.input} value={pay} onChangeText={setPay} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textTertiary} />
+                <TextInput style={s.input} value={pay} onChangeText={setPay} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
               </View>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.fieldLabel}>Distance</Text>
               <View style={s.inputWrap}>
-                <TextInput style={s.input} value={miles} onChangeText={setMiles} keyboardType="decimal-pad" placeholder="0.0" placeholderTextColor={colors.textTertiary} />
+                <TextInput style={s.input} value={miles} onChangeText={setMiles} keyboardType="decimal-pad" placeholder="0.0" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
                 <Text style={s.suffix}>mi</Text>
               </View>
             </View>
@@ -70,7 +70,7 @@ export default function OrderCheck() {
           <View>
             <Text style={s.fieldLabel}>Time estimate (optional)</Text>
             <View style={s.inputWrap}>
-              <TextInput style={s.input} value={mins} onChangeText={setMins} keyboardType="number-pad" placeholder="0" placeholderTextColor={colors.textTertiary} />
+              <TextInput style={s.input} value={mins} onChangeText={setMins} keyboardType="number-pad" placeholder="0" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
               <Text style={s.suffix}>min</Text>
             </View>
           </View>
@@ -116,6 +116,7 @@ export default function OrderCheck() {
 
         <Text style={s.footnote}>A guide, not a rule — busy areas, stacked orders and tips can make a lower £/mile worth taking.</Text>
       </ScrollView>
+      <KeyboardDoneAccessory />
     </KeyboardAvoidingView>
   );
 }
