@@ -366,7 +366,7 @@ export default function LogScreen() {
         {/* Gradient save action */}
         <Pressable onPress={handleSave} disabled={!canSave && !saved} style={({ pressed }) => [{ marginTop: spacing.lg }, pressed && buttonDepth.pressed]}>
           <GradientCard
-            colors={saved ? ['#3BC07E', colors.green, '#1C7048'] : canSave ? [colors.brand, colors.brandDeep] : [colors.borderStrong, colors.borderStrong]}
+            colors={saved ? ['#3BC07E', colors.green, '#1C7048'] : canSave ? [colors.brand, colors.brandDeep] : ['#B8C2BC', '#8F9C95']}
             radius={radius.lg}
             style={s.saveBtn}
           >

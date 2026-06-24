@@ -16,7 +16,7 @@ type Props = {
 export function GradientCard({ colors, style, radius = 20, diagonal = true, children }: Props) {
   const [size, setSize] = React.useState({ w: 0, h: 0 });
   const stops = colors.length === 3 ? colors : [colors[0], colors[1]];
-  const offsets = stops.length === 3 ? ['0', '0.55', '1'] : ['0', '1'];
+  const offsets = stops.length === 3 ? ['0%', '55%', '100%'] : ['0%', '100%'];
   return (
     <View
       style={[{ borderRadius: radius, overflow: 'hidden' }, style]}

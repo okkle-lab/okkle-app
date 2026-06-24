@@ -58,13 +58,13 @@ export function Medal({ icon, category, tier, unlocked, size = 64 }: Props) {
       <Svg width={size} height={h} viewBox="0 0 100 132">
         <Defs>
           <RadialGradient id={`disc-${id}`} cx="38%" cy="30%" r="78%">
-            <Stop offset="0" stopColor={hi} />
-            <Stop offset="0.5" stopColor={mid} />
-            <Stop offset="1" stopColor={lo} />
+            <Stop offset="0%" stopColor={hi} />
+            <Stop offset="50%" stopColor={mid} />
+            <Stop offset="100%" stopColor={lo} />
           </RadialGradient>
           <LinearGradient id={`rib-${id}`} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={rib1} />
-            <Stop offset="1" stopColor={rib2} />
+            <Stop offset="0%" stopColor={rib1} />
+            <Stop offset="100%" stopColor={rib2} />
           </LinearGradient>
         </Defs>
 
