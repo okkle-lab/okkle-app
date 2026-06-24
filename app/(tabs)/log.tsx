@@ -54,11 +54,17 @@ function bumpCat(name: string) {
 }
 
 type Tab = 'mileage' | 'income' | 'expense';
-const TABS: { key: Tab; label: string; icon: React.ComponentProps<typeof Feather>['name']; tone: 'amber' | 'green' | 'mint'; title: string; sub: string }[] = [
-  { key: 'expense', label: 'Expense', icon: 'file-text', tone: 'amber', title: 'Add an expense', sub: 'A cost you can claim against tax' },
+const TABS: { key: Tab; label: string; icon: React.ComponentProps<typeof Feather>['name']; tone: 'red' | 'green' | 'blue'; title: string; sub: string }[] = [
+  { key: 'expense', label: 'Expense', icon: 'file-text', tone: 'red', title: 'Add an expense', sub: 'A cost you can claim against tax' },
   { key: 'income', label: 'Earnings', icon: 'dollar-sign', tone: 'green', title: 'Log earnings', sub: 'A day or a week of pay — set the date below' },
-  { key: 'mileage', label: 'Mileage', icon: 'map', tone: 'mint', title: 'Add mileage', sub: 'Miles you drove without GPS tracking' },
+  { key: 'mileage', label: 'Mileage', icon: 'map', tone: 'blue', title: 'Add mileage', sub: 'Miles you drove without GPS tracking' },
 ];
+
+const LOG_PANEL_COLORS: Record<Tab, [string, string, string]> = {
+  expense: ['#F38A78', colors.red, '#A8301E'],
+  income: ['#3BC07E', colors.green, '#1C7048'],
+  mileage: ['#74B6F8', '#2F80ED', '#1559B7'],
+};
 
 export default function LogScreen() {
   const router = useRouter();
@@ -194,7 +200,7 @@ export default function LogScreen() {
 
         {/* The headline input — amount (or miles), big and front-and-centre */}
         {tab === 'mileage' ? (
-          <GradientCard colors={[colors.brand, colors.brandDeep]} radius={radius.lg} style={s.amountHero}>
+          <GradientCard colors={LOG_PANEL_COLORS.mileage} radius={radius.lg} style={s.amountHero}>
             <Text style={s.amountHeroLabel}>Miles driven</Text>
             <View style={s.amountHeroRow}>
               <TextInput
@@ -213,7 +219,7 @@ export default function LogScreen() {
             </Text>
           </GradientCard>
         ) : (
-          <GradientCard colors={tab === 'income' ? ['#3BC07E', colors.green, '#1C7048'] : [colors.amber, '#B5740F']} radius={radius.lg} style={s.amountHero}>
+          <GradientCard colors={LOG_PANEL_COLORS[tab]} radius={radius.lg} style={s.amountHero}>
             <Text style={s.amountHeroLabel}>{tab === 'income' ? 'Amount received' : 'Amount spent'}</Text>
             <View style={s.amountHeroRow}>
               <Text style={s.amountHeroPrefix}>£</Text>
