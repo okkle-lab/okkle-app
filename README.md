@@ -2,7 +2,7 @@
 
 A React Native / Expo iPhone app for UK gig-economy delivery couriers (Uber Eats, Deliveroo, Just Eat, Stuart, Amazon Flex). Tracks mileage via GPS, estimates your HMRC Self Assessment bill in real time, and produces a one-tap Accountant Pack PDF — all on-device, zero server cost.
 
-**Stack:** React Native · Expo SDK 54 · expo-router · expo-sqlite · expo-location · expo-print · expo-sharing · expo-notifications · TypeScript
+**Stack:** React Native · Expo SDK 56 · expo-router · expo-sqlite · expo-location · expo-print · expo-sharing · expo-notifications · TypeScript
 
 ---
 
@@ -177,20 +177,63 @@ src/
 
 ---
 
-## Run locally (Expo Go)
+## Run locally in Xcode
 
-**Easiest — double-click the launcher:** in Finder, open `launch.command` (first time: right-click → Open). It detects your WiFi IP, opens a QR page, and starts the server. Scan the QR with the iPhone Camera or Expo Go.
+The recommended local workflow is a native iOS development build in Xcode. This repo uses Expo Continuous Native Generation: `ios/` and `android/` are generated from `app.json`, config plugins, and npm packages, then ignored by git.
+
+### Prerequisites
+
+- macOS with Xcode 26.4 or newer and an iOS 16.4+ simulator
+- Node.js 22.13 or newer
+- CocoaPods (`brew install cocoapods` if `pod --version` is missing)
+
+### One-command setup
+
+From the repo root:
+
+```bash
+npm run xcode
+```
+
+You can also double-click `xcode.command` in Finder.
+
+This command:
+
+- installs npm dependencies if needed
+- applies the local iOS build patches needed for paths with spaces
+- regenerates the ignored `ios/` project with `npx expo prebuild --platform ios --clean`
+- starts Metro in a separate Terminal window
+- opens `ios/Okkle.xcworkspace` in Xcode
+
+In Xcode, select the **Okkle** scheme, choose an iPhone simulator, and press **Run**. Keep the Metro Terminal window open while testing. If the app shows "No script URL provided", Metro is not running; start it with:
+
+```bash
+npm run metro
+```
+
+Useful commands:
+
+```bash
+npm run xcode:prepare   # regenerate ios/ and validate the workspace without opening Xcode
+npm run metro           # start the Metro packager for the Xcode build
+npm run ios             # build and launch from the terminal instead of Xcode
+```
+
+## Run locally in Expo Go (limited)
+
+Expo Go can be useful for quick UI checks, but it does not match the native Xcode build for background GPS and development-client behavior.
+
+**Easiest:** double-click `launch.command` in Finder (first time: right-click -> Open). It detects your WiFi IP, opens a QR page, and starts the server. Scan the QR with the iPhone Camera or Expo Go.
 
 **Or manually:**
 
 ```bash
-cd ~/Documents/okkle
 npx expo start
 ```
 
-Scan the QR with **Expo Go** on iPhone (same WiFi). Background GPS is not active in Expo Go — foreground tracking only.
+Scan the QR with **Expo Go** on iPhone on the same WiFi. Background GPS is not active in Expo Go; foreground tracking only.
 
-## EAS dev build (background GPS + full features)
+## EAS dev build (physical iPhone + full features)
 
 ```bash
 npm install -g eas-cli
