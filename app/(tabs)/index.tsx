@@ -30,6 +30,35 @@ const PREV_WORD: { [k in Period]: string } = { today: 'yesterday', week: 'last w
 const PERIODS: Period[] = ['today', 'week', 'month', 'year'];
 const PERIOD_LABELS = ['Today', 'Week', 'Month', 'Year'];
 type Bundle = { data: PeriodSummary; platforms: PlatformStat[]; prev: PeriodSummary; series: SeriesPoint[] };
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
+
+function flatGoalTone(tone: string, isDark: boolean) {
+  switch (tone) {
+    case 'green':
+      return { bg: colors.greenLight, fg: colors.green };
+    case 'amber':
+      return { bg: colors.amberLight, fg: colors.amberDark };
+    case 'blue':
+      return { bg: isDark ? '#14233A' : '#E8F1FF', fg: isDark ? '#8DB7F1' : '#2563EB' };
+    case 'red':
+      return { bg: colors.redLight, fg: colors.red };
+    case 'violet':
+      return { bg: isDark ? '#2B1D3F' : '#F1E8FF', fg: isDark ? '#C29CF0' : '#7C3AED' };
+    case 'mint':
+      return { bg: colors.brandLight, fg: colors.brandDeep };
+    default:
+      return { bg: colors.bgSoft, fg: colors.textSecondary };
+  }
+}
+
+function FlatGoalIcon({ icon, tone, isDark, size = 36 }: { icon: FeatherName; tone: string; isDark: boolean; size?: number }) {
+  const t = flatGoalTone(tone, isDark);
+  return (
+    <View style={[s.flatGoalIcon, { width: size, height: size, borderRadius: size / 2, backgroundColor: t.bg }]}>
+      <Feather name={icon} size={size * 0.48} color={t.fg} />
+    </View>
+  );
+}
 
 // A clear date range under the period switcher (e.g. "Mon 17 – Sun 23 Jun").
 function fmtPeriodRange(period: Period, startIso: string, endIso: string): string {
@@ -320,7 +349,7 @@ export default function HomeScreen() {
                 </View>
                 {challenges.map((c, i) => (
                   <View key={c.key} style={[s.challRow, i < challenges.length - 1 && s.challRowBorder]}>
-                    <IconBadge icon={c.done ? 'check' : (c.icon as any)} tone={c.done ? 'green' : (c.tone as any)} size={36} />
+                    <FlatGoalIcon icon={c.done ? 'check' : (c.icon as FeatherName)} tone={c.done ? 'green' : c.tone} isDark={isDark} />
                     <View style={{ flex: 1, gap: 7 }}>
                       <View style={s.challTop}>
                         <Text style={[s.challLabel, c.done && { color: colors.textTertiary }]} numberOfLines={1}>{c.label}</Text>
@@ -624,6 +653,7 @@ const s = StyleSheet.create({
   challXp: { ...type.caption, ...tabular, color: colors.brandDeep, fontWeight: font.semibold },
   challRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   challRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  flatGoalIcon: { alignItems: 'center', justifyContent: 'center' },
   challEmoji: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.bgSoft, alignItems: 'center', justifyContent: 'center' },
   challTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   challLabel: { ...type.bodyMedium, fontSize: 14, flex: 1 },
