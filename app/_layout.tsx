@@ -1,8 +1,9 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
+import '../src/autoTrip'; // registers the background trip-detection task at load
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -14,7 +15,20 @@ Notifications.setNotificationHandler({
 });
 
 export default function RootLayout() {
+  const router = useRouter();
   useEffect(() => { initDb(); }, []);
+
+  // Tapping the "On the move — track this trip?" suggestion opens the Trip tab,
+  // where the user confirms by hitting Start (we never auto-record).
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(res => {
+      if ((res.notification.request.content.data as any)?.type === 'autotrip') {
+        router.push('/(tabs)/trip');
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <>
       <StatusBar style="auto" />
@@ -36,6 +50,7 @@ export default function RootLayout() {
         <Stack.Screen name="order-check" options={{ presentation: 'modal' }} />
         <Stack.Screen name="log-earnings" options={{ presentation: 'modal' }} />
         <Stack.Screen name="settings-earnings-shortcut" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="settings-auto-trip" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   );

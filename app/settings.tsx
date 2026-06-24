@@ -44,6 +44,7 @@ export default function Settings() {
         <Row icon="user" tone="mint" title="Profile & tax" sub="Name, vehicle, platforms, tax region" onPress={go('/settings-account')} />
         <Row icon="bell" tone="blue" title="Reminders" sub="Logging nudges & tax deadlines" onPress={go('/settings-reminders')} />
         <Row icon="calendar" tone="amber" title="Key tax dates" sub="HMRC deadlines & add to calendar" onPress={go('/key-dates')} />
+        <Row icon="navigation" tone="mint" title="Auto-detect trips" sub="Suggest tracking when you start driving" onPress={go('/settings-auto-trip')} />
         <Row icon="camera" tone="violet" title="Auto-log earnings" sub="Screenshot a pay screen → log it" onPress={go('/settings-earnings-shortcut')} />
         <Row icon="shield" tone="green" title="Data & backup" sub="Back up, restore or delete your data" onPress={go('/settings-data')} last />
       </Card>
