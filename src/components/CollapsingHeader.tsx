@@ -1,12 +1,18 @@
 import React from 'react';
-import { Animated, Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, DynamicColorIOS, Platform, View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, font, spacing, type } from '../theme';
 
-const STATUS = 54;        // space above the bar row (status bar / notch)
+const STATUS = 42;        // space above the bar row (status bar / notch)
 const ROW = 46;           // height of the pinned title/actions row
 const HEADER = STATUS + ROW;
 const THRESH = 40;        // px of scroll over which the large title hands off
 const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 132 : 40;
+const HEADER_BG = Platform.OS === 'ios'
+  ? DynamicColorIOS({ light: 'rgba(255,255,255,0.78)', dark: 'rgba(16,24,22,0.78)' }) as unknown as string
+  : 'rgba(255,255,255,0.9)';
+const HEADER_BORDER = Platform.OS === 'ios'
+  ? DynamicColorIOS({ light: 'rgba(227,232,229,0.72)', dark: 'rgba(42,54,49,0.72)' }) as unknown as string
+  : 'rgba(227,232,229,0.72)';
 
 type Props = {
   title: string;
@@ -19,7 +25,7 @@ type Props = {
 };
 
 // Starling-style header: a big title sits in the scroll content and slides away
-// as you scroll, while a compact pinned title + a solid bar fade in. Smooth,
+// as you scroll, while a compact pinned title + a translucent bar fade in. Smooth,
 // native-driven movement; right-hand actions stay put the whole time.
 export function CollapsingHeader({ title, subtitle, right, children, refreshControl, keyboardShouldPersistTaps, contentStyle }: Props) {
   const scrollY = React.useRef(new Animated.Value(0)).current;
@@ -61,7 +67,7 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER },
-  barBg: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border },
+  barBg: { ...StyleSheet.absoluteFillObject, backgroundColor: HEADER_BG, borderBottomWidth: 1, borderBottomColor: HEADER_BORDER },
   row: { position: 'absolute', left: spacing.xl, right: spacing.xl, bottom: 0, height: ROW, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   small: { ...type.heading, fontSize: 18, flex: 1, paddingRight: spacing.md },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },

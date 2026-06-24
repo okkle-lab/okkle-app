@@ -238,14 +238,15 @@ export default function HomeScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
       {/* HERO: tax saved — tap through to the full Tax breakdown */}
-      <Pressable onPress={() => router.push('/(tabs)/tax')}>
-        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
+      <Pressable onPress={() => router.push('/(tabs)/tax')} style={({ pressed }) => [s.heroPressable, pressed && { opacity: 0.94 }]}>
+        <GradientCard colors={['#FFFFFF', '#E9FAF6', '#BDEFE5']} radius={radius.xl} style={s.hero}>
+          <View pointerEvents="none" style={s.heroGlass} />
           <View style={s.heroTop}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="trending-up" size={15} color="#fff" />
+              <Feather name="trending-up" size={15} color={colors.brandDeep} />
               <Text style={s.heroLabel}>Tax saved this year</Text>
             </View>
-            <Feather name="chevron-right" size={20} color="rgba(255,255,255,0.85)" />
+            <Feather name="chevron-right" size={20} color={colors.brandDeep} />
           </View>
           <CountUp value={year.taxSaved} prefix="£" style={s.heroValue} />
           <Text style={s.heroSub}>
@@ -487,16 +488,22 @@ const s = StyleSheet.create({
   streakChipOff: { backgroundColor: colors.bgSoft },
   streakChipText: { ...tabular, fontSize: 14, fontWeight: font.bold, color: colors.amber },
 
-  hero: { padding: spacing.xl, marginBottom: spacing.lg },
+  heroPressable: {
+    marginBottom: spacing.lg,
+    borderRadius: radius.xl,
+    boxShadow: '0 18px 34px rgba(14,142,120,0.14), 0 7px 14px rgba(21,33,29,0.08), -8px -8px 18px rgba(255,255,255,0.92)',
+  },
+  hero: { padding: spacing.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
+  heroGlass: { position: 'absolute', left: 14, right: 14, top: 10, height: 56, borderRadius: radius.xl, backgroundColor: 'rgba(255,255,255,0.5)' },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heroLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: font.medium },
-  heroValue: { ...tabular, color: '#fff', fontSize: 44, fontWeight: font.bold, letterSpacing: -1, marginTop: 8 },
-  heroSub: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4 },
+  heroLabel: { color: colors.brandDeep, fontSize: 14, fontWeight: font.semibold },
+  heroValue: { ...tabular, color: colors.textPrimary, fontSize: 44, fontWeight: font.bold, letterSpacing: 0, marginTop: 8 },
+  heroSub: { color: colors.textSecondary, fontSize: 13, marginTop: 4 },
   heroChip: {
-    alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.18)',
+    alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.64)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.86)',
     paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.full, marginTop: spacing.md,
   },
-  heroChipText: { color: '#fff', fontSize: 12, fontWeight: font.medium },
+  heroChipText: { color: colors.brandDeep, fontSize: 12, fontWeight: font.semibold },
 
   quickStart: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
