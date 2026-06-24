@@ -1,5 +1,4 @@
 import React from 'react';
-import { BlurView } from 'expo-blur';
 import { Animated, Platform, View, StyleSheet, useColorScheme, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { colors, font, spacing, type } from '../theme';
@@ -27,13 +26,7 @@ type Props = {
 export function CollapsingHeader({ title, subtitle, right, children, refreshControl, keyboardShouldPersistTaps, contentStyle }: Props) {
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const isDark = useColorScheme() === 'dark';
-  const blurTint: React.ComponentProps<typeof BlurView>['tint'] = Platform.OS === 'ios' ? 'systemChromeMaterial' : isDark ? 'dark' : 'light';
-  const fadeTop = isDark ? 'rgba(16,24,22,0.92)' : 'rgba(255,255,255,0.92)';
-  const fadeHold = isDark ? 'rgba(16,24,22,0.72)' : 'rgba(255,255,255,0.74)';
-  const fadeMid = isDark ? 'rgba(16,24,22,0.26)' : 'rgba(255,255,255,0.30)';
-  const fadeLow = isDark ? 'rgba(16,24,22,0.04)' : 'rgba(255,255,255,0.05)';
-  const fadeEnd = isDark ? 'rgba(16,24,22,0)' : 'rgba(255,255,255,0)';
-  const tint = isDark ? 'rgba(5,12,10,0.04)' : 'rgba(255,255,255,0.06)';
+  const fadeColor = isDark ? '#101816' : '#FFFFFF';
 
   const barOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.12, THRESH * 0.95], outputRange: [0, 1], extrapolate: 'clamp' });
   const smallOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.45, THRESH * 1.08], outputRange: [0, 1], extrapolate: 'clamp' });
@@ -57,19 +50,16 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
         {children}
       </Animated.ScrollView>
 
-      {/* Pinned bar — transparent until you scroll, then a blurred context layer. */}
+      {/* Pinned bar — transparent until you scroll, then a compact top-to-clear fade. */}
       <View style={s.bar} pointerEvents="box-none">
         <Animated.View pointerEvents="none" style={[s.fadeBg, { opacity: barOpacity }]}>
-          <BlurView intensity={42} tint={blurTint} style={StyleSheet.absoluteFill} />
-          <View style={[s.barTint, { backgroundColor: tint }]} />
           <Svg width="100%" height="100%" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
             <Defs>
               <LinearGradient id="headerFade" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={fadeTop} />
-                <Stop offset="36%" stopColor={fadeHold} />
-                <Stop offset="68%" stopColor={fadeMid} />
-                <Stop offset="88%" stopColor={fadeLow} />
-                <Stop offset="100%" stopColor={fadeEnd} />
+                <Stop offset="0%" stopColor={fadeColor} stopOpacity={1} />
+                <Stop offset="46%" stopColor={fadeColor} stopOpacity={0.86} />
+                <Stop offset="78%" stopColor={fadeColor} stopOpacity={0.34} />
+                <Stop offset="100%" stopColor={fadeColor} stopOpacity={0} />
               </LinearGradient>
             </Defs>
             <Rect x="0" y="0" width="100%" height="100%" fill="url(#headerFade)" />
@@ -88,7 +78,6 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER },
   fadeBg: { position: 'absolute', top: 0, left: 0, right: 0, height: FADE, overflow: 'hidden' },
-  barTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   row: { position: 'absolute', left: spacing.xl, right: spacing.xl, bottom: 0, height: ROW, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   small: { ...type.heading, fontSize: 18, flex: 1, paddingRight: spacing.md },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },
