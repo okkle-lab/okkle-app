@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TextInput, Pressable, Alert } from 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, CollapsingHeader, Icon, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
+import { Card, SectionHeader, CollapsingHeader, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries,
@@ -56,9 +56,7 @@ export default function TaxScreen() {
 
 
   const gear = (
-    <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
-      <Icon name="settings" size={22} color={colors.textSecondary} />
-    </Pressable>
+    <SettingsGlassButton onPress={() => router.push('/settings')} />
   );
 
   return (

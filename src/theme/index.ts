@@ -11,16 +11,16 @@ export const colors = {
   brandLight: adaptive('#E2F6F1', '#123B34'),
   brandMid: '#7FD6C5',
 
-  bg: adaptive('#FBF9F6', '#101816'),
-  bgSoft: adaptive('#F1EFEA', '#1A2420'),
+  bg: adaptive('#FFFFFF', '#101816'),
+  bgSoft: adaptive('#F4F6F5', '#1A2420'),
   bgCard: adaptive('#FFFFFF', '#17201D'),
 
   textPrimary: adaptive('#22302C', '#EEF5F1'),
   textSecondary: adaptive('#6B756F', '#B2BDB7'),
   textTertiary: adaptive('#A2ABA5', '#7E8B85'),
 
-  border: adaptive('#E8E6E0', '#2A3631'),
-  borderStrong: adaptive('#D3D1C9', '#3A4640'),
+  border: adaptive('#E3E8E5', '#2A3631'),
+  borderStrong: adaptive('#CBD5D0', '#3A4640'),
 
   green: '#2FA36B',
   greenLight: adaptive('#E5F4EC', '#173A29'),

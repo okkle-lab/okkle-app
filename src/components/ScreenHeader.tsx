@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, spacing, type } from '../theme';
-import { Icon } from './Icon';
+import { SettingsGlassButton } from './SettingsGlassButton';
 
 // One consistent header for every screen: title (left), optional extras + the
 // settings gear pinned top-right. Keeps navigation predictable (Trading 212 /
@@ -15,9 +15,7 @@ export function ScreenHeader({ title, subtitle, right }: { title: string; subtit
         <Text style={s.title} numberOfLines={1}>{title}</Text>
         <View style={s.actions}>
           {right}
-          <Pressable onPress={() => router.push('/settings')} hitSlop={10} style={s.gear}>
-            <Icon name="settings" size={22} color={colors.textSecondary} />
-          </Pressable>
+          <SettingsGlassButton onPress={() => router.push('/settings')} size={42} />
         </View>
       </View>
       {subtitle ? <Text style={s.sub}>{subtitle}</Text> : null}
@@ -30,6 +28,5 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { ...type.screenTitle, flex: 1 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  gear: { padding: 2 },
   sub: { ...type.body, color: colors.textSecondary, marginTop: 6 },
 });

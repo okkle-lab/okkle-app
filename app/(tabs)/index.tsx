@@ -1,9 +1,9 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, Dimensions, Animated } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, Dimensions, Animated, useColorScheme } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, Icon, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, HeatMapView, CoachMarks, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, HeatMapView, CoachMarks, SettingsGlassButton, type CoachStep } from '../../src/components';
 import {
   getUser,
   getTaxYearSummary,
@@ -48,6 +48,11 @@ function fmtPeriodRange(period: Period, startIso: string, endIso: string): strin
 export default function HomeScreen() {
   const router = useRouter();
   const win = Dimensions.get('window');
+  const isDark = useColorScheme() === 'dark';
+  const heroColors: [string, string, string] = isDark
+    ? ['#1A2420', '#123B34', '#071310']
+    : ['#FFFFFF', '#E9FAF6', '#BDEFE5'];
+  const heroAccent = isDark ? colors.brandMid : colors.brandDeep;
   const [periodIndex, setPeriodIndex] = React.useState(1); // default: Week
   const [bundles, setBundles] = React.useState<Bundle[] | null>(null);
   const period = PERIODS[periodIndex];
@@ -231,28 +236,25 @@ export default function HomeScreen() {
     <CollapsingHeader
       title={user?.name || 'Hi'}
       right={
-        <Pressable onPress={() => router.push('/settings')} hitSlop={12} style={s.gear}>
-          <Icon name="settings" size={22} color={colors.textSecondary} />
-        </Pressable>
+        <SettingsGlassButton onPress={() => router.push('/settings')} />
       }
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
       {/* HERO: tax saved — tap through to the full Tax breakdown */}
-      <Pressable onPress={() => router.push('/(tabs)/tax')}>
-        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
+      <Pressable onPress={() => router.push('/(tabs)/tax')} style={({ pressed }) => [s.heroPressable, isDark && s.heroPressableDark, pressed && { opacity: 0.94 }]}>
+        <GradientCard colors={heroColors} radius={radius.xl} style={[s.hero, isDark && s.heroDark]}>
           <View style={s.heroTop}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Feather name="trending-up" size={15} color="#fff" />
-              <Text style={s.heroLabel}>Tax saved this year</Text>
+              <Feather name="trending-up" size={15} color={heroAccent} />
+              <Text style={[s.heroLabel, isDark && s.heroLabelDark]}>Tax saved this year</Text>
             </View>
-            <Feather name="chevron-right" size={20} color="rgba(255,255,255,0.85)" />
           </View>
           <CountUp value={year.taxSaved} prefix="£" style={s.heroValue} />
           <Text style={s.heroSub}>
             from {fmtMiles(year.miles)} · {fmtGbp(year.deduction)} mileage deduction
           </Text>
-          <View style={s.heroChip}>
-            <Text style={s.heroChipText}>Tax year {taxYearLabel()} · see breakdown</Text>
+          <View style={[s.heroChip, isDark && s.heroChipDark]}>
+            <Text style={[s.heroChipText, isDark && s.heroChipTextDark]}>Tax year {taxYearLabel()} · see breakdown</Text>
           </View>
         </GradientCard>
       </Pressable>
@@ -481,22 +483,33 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   hello: { ...type.heading, fontSize: 22, letterSpacing: -0.4 },
-  gear: { padding: 4 },
   streakChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full, marginRight: 6 },
   streakChipOn: { backgroundColor: colors.amberLight },
   streakChipOff: { backgroundColor: colors.bgSoft },
   streakChipText: { ...tabular, fontSize: 14, fontWeight: font.bold, color: colors.amber },
 
-  hero: { padding: spacing.xl, marginBottom: spacing.lg },
-  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heroLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: font.medium },
-  heroValue: { ...tabular, color: '#fff', fontSize: 44, fontWeight: font.bold, letterSpacing: -1, marginTop: 8 },
-  heroSub: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4 },
+  heroPressable: {
+    marginBottom: spacing.lg,
+    borderRadius: radius.xl,
+    boxShadow: '0 18px 34px rgba(14,142,120,0.14), 0 7px 14px rgba(21,33,29,0.08), -8px -8px 18px rgba(255,255,255,0.92)',
+  },
+  heroPressableDark: {
+    boxShadow: '0 18px 34px rgba(0,0,0,0.34), 0 7px 14px rgba(0,0,0,0.26)',
+  },
+  hero: { padding: spacing.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' },
+  heroDark: { borderColor: 'rgba(127,214,197,0.28)' },
+  heroTop: { flexDirection: 'row', alignItems: 'center' },
+  heroLabel: { color: colors.brandDeep, fontSize: 14, fontWeight: font.semibold },
+  heroLabelDark: { color: colors.brandMid },
+  heroValue: { ...tabular, color: colors.textPrimary, fontSize: 44, fontWeight: font.bold, letterSpacing: 0, marginTop: 8 },
+  heroSub: { color: colors.textSecondary, fontSize: 13, marginTop: 4 },
   heroChip: {
-    alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.18)',
+    alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.64)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.86)',
     paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.full, marginTop: spacing.md,
   },
-  heroChipText: { color: '#fff', fontSize: 12, fontWeight: font.medium },
+  heroChipDark: { backgroundColor: 'rgba(127,214,197,0.12)', borderColor: 'rgba(127,214,197,0.24)' },
+  heroChipText: { color: colors.brandDeep, fontSize: 12, fontWeight: font.semibold },
+  heroChipTextDark: { color: colors.brandMid },
 
   quickStart: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

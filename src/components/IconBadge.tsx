@@ -34,8 +34,8 @@ export function IconBadge({ icon, tone = 'mint', size = 38 }: {
       <Svg width={size} height={size} viewBox="0 0 40 40">
         <Defs>
           <RadialGradient id={id} cx="35%" cy="28%" r="80%">
-            <Stop offset="0" stopColor={t.grad[0]} />
-            <Stop offset="1" stopColor={t.grad[1]} />
+            <Stop offset="0%" stopColor={t.grad[0]} />
+            <Stop offset="100%" stopColor={t.grad[1]} />
           </RadialGradient>
         </Defs>
         <Circle cx="20" cy="20" r="20" fill={`url(#${id})`} />

@@ -21,33 +21,59 @@ export function SlideToConfirm({ label, onConfirm, color = colors.red }: Props) 
   const [done, setDone] = useState(false);
   const x = useRef(new Animated.Value(0)).current;
   const maxX = Math.max(0, trackW - THUMB - 8);
+  const dragStart = useRef(0);
+  const latestX = useRef(0);
+  const didDrag = useRef(false);
 
-  const responder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); },
-      onPanResponderMove: (_, g) => {
-        const nx = Math.min(Math.max(0, g.dx), maxX);
-        x.setValue(nx);
+  function clamp(value: number) {
+    return Math.min(Math.max(0, value), maxX);
+  }
+
+  function setThumb(value: number) {
+    const next = clamp(value);
+    latestX.current = next;
+    x.setValue(next);
+  }
+
+  const responder = React.useMemo(
+    () => PanResponder.create({
+      onStartShouldSetPanResponder: () => !done,
+      onMoveShouldSetPanResponder: () => !done,
+      onPanResponderGrant: e => {
+        didDrag.current = false;
+        const start = clamp(e.nativeEvent.locationX - THUMB / 2);
+        dragStart.current = start;
+        setThumb(start);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       },
-      onPanResponderRelease: (_, g) => {
-        if (g.dx >= maxX * 0.85) {
+      onPanResponderMove: (_, g) => {
+        didDrag.current = didDrag.current || Math.abs(g.dx) > 6;
+        setThumb(dragStart.current + g.dx);
+      },
+      onPanResponderRelease: () => {
+        if (didDrag.current && latestX.current >= maxX * 0.85) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           setDone(true);
           Animated.timing(x, { toValue: maxX, duration: 140, useNativeDriver: false }).start(() => {
             setTimeout(() => {
               onConfirm();
+              latestX.current = 0;
               x.setValue(0);
               setDone(false);
             }, 220);
           });
         } else {
+          latestX.current = 0;
           Animated.spring(x, { toValue: 0, useNativeDriver: false, bounciness: 8 }).start();
         }
       },
+      onPanResponderTerminate: () => {
+        latestX.current = 0;
+        Animated.spring(x, { toValue: 0, useNativeDriver: false, bounciness: 8 }).start();
+      },
     }),
-  ).current;
+    [done, maxX, onConfirm, x],
+  );
 
   function onLayout(e: LayoutChangeEvent) {
     setTrackW(e.nativeEvent.layout.width);
@@ -58,15 +84,15 @@ export function SlideToConfirm({ label, onConfirm, color = colors.red }: Props) 
   const fillW = Animated.add(x, new Animated.Value(THUMB + 8));
 
   return (
-    <View style={s.track} onLayout={onLayout}>
+    <View style={s.track} onLayout={onLayout} {...responder.panHandlers}>
       <Animated.View style={[s.fill, { width: fillW, backgroundColor: color, opacity: 0.28 }]} pointerEvents="none" />
       {done ? (
-        <Text style={s.doneLabel}>Ending…</Text>
+        <Text pointerEvents="none" style={s.doneLabel}>Ending…</Text>
       ) : (
-        <Animated.Text style={[s.label, { opacity: labelOpacity }]}>{label}</Animated.Text>
+        <Animated.Text pointerEvents="none" style={[s.label, { opacity: labelOpacity }]}>{label}</Animated.Text>
       )}
       <Animated.View
-        {...responder.panHandlers}
+        pointerEvents="none"
         style={[s.thumb, { backgroundColor: color, transform: [{ translateX: x }] }]}
       >
         <Text style={s.arrow}>{done ? '✓' : '→'}</Text>
