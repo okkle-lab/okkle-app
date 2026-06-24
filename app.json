@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "scheme": "okkle",
     "ios": {
       "supportsTablet": false,
@@ -18,13 +18,14 @@
         "NSCalendarsUsageDescription": "Okkle adds your HMRC tax deadlines to your calendar so you don't miss them.",
         "UIBackgroundModes": [
           "location"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/adaptive-icon.png"
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -61,8 +62,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8d4fc276-a589-4340-bcde-0263c4a1b51d"
+        "projectId": "b6fffded-a938-4183-9753-f5bccf749033"
       }
-    }
+    },
+    "owner": "henryhikaru93"
   }
 }
