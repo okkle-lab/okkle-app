@@ -35,6 +35,7 @@ export default function RootLayout() {
         <Stack.Screen name="key-dates" options={{ presentation: 'modal' }} />
         <Stack.Screen name="order-check" options={{ presentation: 'modal' }} />
         <Stack.Screen name="log-earnings" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="settings-earnings-shortcut" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   );
