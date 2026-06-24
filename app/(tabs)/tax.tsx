@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TextInput, Pressable, Alert } from 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, CollapsingHeader, Icon } from '../../src/components';
+import { Card, SectionHeader, CollapsingHeader, Icon, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries,
@@ -62,7 +62,8 @@ export default function TaxScreen() {
   );
 
   return (
-    <CollapsingHeader title="Tax" subtitle={`Your estimated position for ${taxYearLabel()}`} right={gear}>
+    <View style={{ flex: 1 }}>
+      <CollapsingHeader title="Tax" subtitle={`Your estimated position for ${taxYearLabel()}`} right={gear}>
       {/* Headline: what to set aside — the number that matters on this tab */}
       <View style={s.setAside}>
         <View style={s.setAsideIcon}><Feather name="shield" size={20} color="#fff" /></View>
@@ -162,6 +163,7 @@ export default function TaxScreen() {
           keyboardType="decimal-pad"
           placeholder="£0 if courier work is your only income"
           placeholderTextColor={colors.textTertiary}
+          {...numberKeyboardDoneProps}
         />
         <Text style={s.smallNote}>
           If you have another job, your courier profit is taxed on top of it — so this makes your estimate accurate.
@@ -227,7 +229,9 @@ export default function TaxScreen() {
           Estimated using {RATES_YEAR} HMRC rates (allowances frozen to 2027/28) and what you've logged — not tax advice. Your accountant confirms the final figures and files your return.
         </Text>
       </View>
-    </CollapsingHeader>
+      </CollapsingHeader>
+      <KeyboardDoneAccessory />
+    </View>
   );
 }
 

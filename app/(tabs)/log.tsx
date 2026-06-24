@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, Icon, IconBadge, GradientCard } from '../../src/components';
+import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, Icon, IconBadge, GradientCard, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser, kvGet, kvSet } from '../../src/db';
 
@@ -158,15 +158,16 @@ export default function LogScreen() {
   const canSave = tab === 'mileage' ? !!miles : tab === 'income' ? !!amount : (!!amount && !!description);
 
   return (
-    <CollapsingHeader
-      title="Log entry"
-      keyboardShouldPersistTaps="handled"
-      right={
-        <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
-          <Icon name="settings" size={22} color={colors.textSecondary} />
-        </Pressable>
-      }
-    >
+    <View style={{ flex: 1 }}>
+      <CollapsingHeader
+        title="Log entry"
+        keyboardShouldPersistTaps="handled"
+        right={
+          <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
+            <Icon name="settings" size={22} color={colors.textSecondary} />
+          </Pressable>
+        }
+      >
       {/* Animated segmented type switcher */}
       <View style={s.tabs}>
         <Animated.View style={[s.tabPill, { width: itemW, transform: [{ translateX: pillX }] }]} />
@@ -203,6 +204,7 @@ export default function LogScreen() {
                 keyboardType="decimal-pad"
                 value={miles}
                 onChangeText={setMiles}
+                {...numberKeyboardDoneProps}
               />
               <Text style={s.amountHeroUnit}>mi</Text>
             </View>
@@ -222,6 +224,7 @@ export default function LogScreen() {
                 keyboardType="decimal-pad"
                 value={amount}
                 onChangeText={setAmount}
+                {...numberKeyboardDoneProps}
               />
             </View>
             <Text style={s.amountHeroSub}>
@@ -364,7 +367,9 @@ export default function LogScreen() {
           </GradientCard>
         </Pressable>
       </Animated.View>
-    </CollapsingHeader>
+      </CollapsingHeader>
+      <KeyboardDoneAccessory />
+    </View>
   );
 }
 
