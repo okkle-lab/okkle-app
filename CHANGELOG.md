@@ -2,6 +2,14 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0.1 - 2026-06-23 (iOS 26 polish, dark mode and native testing)
+
+- **Upgraded to Expo SDK 56** and aligned the app for native iPhone simulator/TestFlight development.
+- **Added system dark mode support**, including a dark-aware Tax saved hero card and cleaner light-mode white app background.
+- **Polished the iOS 26-style interface** with a floating liquid-glass tab bar, glass settings button, and a collapsing header whose fade now lives inside the header chrome instead of covering page content.
+- **Improved core controls and readability**: numeric keyboards now have a Done accessory, the active trip screen has a darker driving-focused treatment, and live mileage is easier to read.
+- **Refined visual hierarchy** across buttons, medals, log panels and summary cards, including clearer income/expense/mileage colour treatment.
+
 ## 2026-06-23 (Real weekly entries)
 
 - **Weekly logging is now a real feature**, not just a lump on one day. The Log tab has a **Day / Week** toggle for earnings, mileage and expenses. A weekly entry stores its Mon–Sun range (`period_start`/`period_end`).
