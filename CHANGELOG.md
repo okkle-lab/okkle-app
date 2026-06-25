@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Verified 2026/27 tax bands; fixed Scottish bands)
+
+- **Confirmed and relabelled the income-tax/NI basis to 2026/27** after checking GOV.UK: the UK personal allowance (£12,570) and basic-rate limit (£37,700) are frozen to 2027/28, and Class 4 NIC is unchanged (6% / 2% at £12,570 / £50,270) — so the existing figures were correct; only the year label was stale.
+- **Fixed the Scottish income-tax bands.** The table was missing the "advanced" 45% band (£75,001–£125,140) introduced in 2024/25 and used stale thresholds, which under-estimated tax for some Scottish higher earners. Updated to the verified gov.scot 2026/27 bands: starter 19%, basic 20%, intermediate 21% (thresholds raised to £16,537 / £29,526), higher 42%, advanced 45%, top 48%.
+- Updated the Class 2 Small Profits Threshold note to the 2026/27 figure (£7,105).
+
 ## 2026-06-25 (Tax-year bucketing, payment-on-account, settings sync)
 
 - **Platforms/vehicles added in Settings now appear immediately** in the Trip and Log tabs. Those tabs re-read your chosen lists whenever they regain focus, so a platform or vehicle added in Settings shows up without restarting the app.

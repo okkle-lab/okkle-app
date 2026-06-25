@@ -1,22 +1,23 @@
-// UK tax estimates for self-employed couriers — 2025/26 figures.
+// UK tax estimates for self-employed couriers — 2026/27 figures.
 // These are ESTIMATES to help users understand their position, not tax advice.
 
-// The tax year these rates/allowances are confirmed for. The personal allowance
-// and higher-rate threshold are frozen to 2027/28, and Class 4 NIC is unchanged,
-// so these remain a sound basis for the current year — but we label them honestly.
-export const RATES_YEAR = '2025/26';
+// The tax year these rates/allowances are confirmed for. The UK personal
+// allowance (£12,570) and basic-rate limit (£37,700) are frozen 6 Apr 2026 to
+// 5 Apr 2028, and Class 4 NIC is unchanged (6%/2% at £12,570/£50,270) — verified
+// against gov.uk. Scottish bands below are the 2026/27 set from gov.scot.
+export const RATES_YEAR = '2026/27';
 
 export const PERSONAL_ALLOWANCE = 12570;
 export const TRADING_ALLOWANCE = 1000;
 
-// Class 4 NIC (2025/26): 6% between LPL and UPL, 2% above.
+// Class 4 NIC (2026/27): 6% between LPL and UPL, 2% above.
 const CLASS4_LOWER = 12570;
 const CLASS4_UPPER = 50270;
 const CLASS4_MAIN = 0.06;
 const CLASS4_UPPER_RATE = 0.02;
-// Class 2 is no longer payable by most self-employed (profits >= this get the
-// NI benefit without paying) since 2024/25.
-const CLASS2_SMALL_PROFITS = 6725;
+// Class 2 is no longer payable by most self-employed (profits >= the Small
+// Profits Threshold get the NI benefit without paying). 2026/27 SPT = £7,105.
+const CLASS2_SMALL_PROFITS = 7105;
 
 // Capital allowance bases (HMRC). Cars use writing-down allowances by CO2;
 // new zero-emission cars get a 100% first-year allowance; vans and motorbikes
@@ -43,12 +44,21 @@ const RUK_BANDS: Band[] = [
   { upTo: Infinity, rate: 0.45 },
 ];
 
-// Scotland 2025/26 (taxable income after personal allowance).
+// Scotland 2026/27 (bands expressed on TAXABLE income, i.e. after the £12,570
+// personal allowance). Source: gov.scot "Scottish Income Tax: rates and bands
+// 2026 to 2027". Income-band edges → taxable `upTo`:
+//   Starter 19%      £12,571–£16,537  → 3,967
+//   Basic 20%        £16,538–£29,526  → 16,956
+//   Intermediate 21% £29,527–£43,662  → 31,092
+//   Higher 42%       £43,663–£75,000  → 62,430
+//   Advanced 45%     £75,001–£125,140 → 112,570
+//   Top 48%          over £125,140
 const SCOT_BANDS: Band[] = [
-  { upTo: 2827, rate: 0.19 },
-  { upTo: 2827 + 12094, rate: 0.20 },
-  { upTo: 2827 + 12094 + 16170, rate: 0.21 },
-  { upTo: 125140 - PERSONAL_ALLOWANCE, rate: 0.42 },
+  { upTo: 3967, rate: 0.19 },
+  { upTo: 16956, rate: 0.20 },
+  { upTo: 31092, rate: 0.21 },
+  { upTo: 62430, rate: 0.42 },
+  { upTo: 125140 - PERSONAL_ALLOWANCE, rate: 0.45 },
   { upTo: Infinity, rate: 0.48 },
 ];
 
