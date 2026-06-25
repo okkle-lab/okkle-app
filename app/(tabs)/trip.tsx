@@ -349,11 +349,6 @@ export default function TripScreen() {
         </>
       )}
 
-      {todayHasData && (
-        <Text style={s.todayLine}>Today: {today.miles.toFixed(1)} mi · {fmtGbpRound(today.deduction)} tax saved</Text>
-      )}
-      <Text style={s.gpsNote}>No need to watch the screen — switch to your delivery app and Okkle keeps counting in the background. You’ll get a nudge to start, and another when you’re done.</Text>
-
       {/* Spacer drops the button right down to the bottom thumb zone */}
       <View style={s.startSpacer} />
 
