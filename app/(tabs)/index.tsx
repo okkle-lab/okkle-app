@@ -88,6 +88,10 @@ export default function HomeScreen() {
   const scrollX = React.useRef(new Animated.Value(win.width)).current; // start on Week
   const pagerRef = React.useRef<ScrollView>(null);
   const didInitPager = React.useRef(false);
+  // Spotlight targets for the first-run tour (on-screen Home elements only — the
+  // native tab bar can't be measured, so those steps stay as centred cards).
+  const taxHeroRef = React.useRef<View>(null);
+  const earningsRef = React.useRef<View>(null);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [user, setUser] = React.useState(getUser());
   const [streak, setStreak] = React.useState(0);
@@ -103,8 +107,9 @@ export default function HomeScreen() {
   const gameScrollX = React.useRef(new Animated.Value(0)).current;
   const insightScrollX = React.useRef(new Animated.Value(0)).current;
 
-  // First-run tour — short, value-first cards (no tab spotlights; the native tab
-  // bar's positions can't be measured reliably, so we explain rather than point).
+  // First-run tour — hybrid: spotlights the on-screen Home elements it can measure
+  // (tax-saved hero, earnings), and uses centred cards for steps about other tabs
+  // (the native tab bar can't be measured reliably, so we explain rather than point).
   const [showCoach, setShowCoach] = React.useState(false);
   useFocusEffect(useCallback(() => {
     if (getUser()?.onboarded && !kvGet('coach_seen')) {
@@ -114,10 +119,14 @@ export default function HomeScreen() {
   }, []));
   const coachSteps: CoachStep[] = [
     { title: 'Welcome to Okkle 👋', body: 'Track your delivery miles and money in one place — and see exactly what you keep after tax. Here’s the 20-second tour.' },
+    // Spotlights real, on-screen Home elements.
+    { ref: taxHeroRef, title: 'Your tax saved, live', body: 'This headline is the tax you’re saving from your mileage this year. Tap it any time for the full breakdown.' },
+    { ref: earningsRef, title: 'See what really pays', body: 'Swipe Today · Week · Month · Year to see your earnings, your real £/hour and where you earn most. The more you track, the clearer it gets.' },
+    // These point at other tabs (native tab bar can’t be measured), so they stay
+    // as centred cards rather than mis-placed spotlights.
     { title: 'Track every mile', body: 'On the Trip tab, tap Start before you set off. GPS turns your distance into a tax-free mileage deduction — automatically, nothing to write down.' },
     { title: 'Log pay & expenses', body: 'Use the Log tab for your weekly pay and any costs — fuel, parking, phone. Snap a receipt and Okkle reads the amount for you.' },
     { title: 'No January surprises', body: 'The Tax tab shows what to set aside and your estimated bill as you go, plus a one-tap summary you can hand your accountant.' },
-    { title: 'See what really pays', body: 'Home shows your earnings, your real £/hour and where you earn most. The more you track, the clearer your take-home gets.' },
   ];
   function dismissCoach() { kvSet('coach_seen', 1); setShowCoach(false); }
 
@@ -269,6 +278,7 @@ export default function HomeScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
       {/* HERO: tax saved — tap through to the full Tax breakdown */}
+      <View ref={taxHeroRef} collapsable={false}>
       <Pressable onPress={() => router.push('/(tabs)/tax')} style={({ pressed }) => [s.heroPressable, isDark && s.heroPressableDark, pressed && { opacity: 0.94 }]}>
         <GradientCard colors={heroColors} radius={radius.xl} style={[s.hero, isDark && s.heroDark]}>
           <View style={s.heroTop}>
@@ -286,8 +296,10 @@ export default function HomeScreen() {
           </View>
         </GradientCard>
       </Pressable>
+      </View>
 
       {/* Period switcher with an animated sliding pill, synced to the pager */}
+      <View ref={earningsRef} collapsable={false}>
       <View style={s.segment}>
         <Animated.View style={[s.segIndicator, { width: ITEM_W, transform: [{ translateX: indicatorX }] }]} />
         {PERIOD_LABELS.map((label, i) => (
@@ -319,6 +331,7 @@ export default function HomeScreen() {
           <AnimatedDots scrollX={scrollX} count={PERIODS.length} pageWidth={win.width} />
         </>
       )}
+      </View>
 
       {/* Progress — goals + medals combined into one swipeable card */}
       {(achievements.length > 0 || challenges.length > 0) && (

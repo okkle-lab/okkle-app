@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Hybrid spotlight tour)
+
+- **Brought back the spotlight in the first-run tour, where it can work.** Steps about on-screen Home elements now dim the screen and highlight the real element — the "Tax saved this year" hero and the Earnings card. Steps about other tabs (Trip / Log / Tax) stay as centred cards, because the native tab bar can't be measured from JavaScript to spotlight reliably. Reordered so the two spotlight steps come first.
+
 ## 2026-06-25 (Full-screen settings/forms; fix Replay tour)
 
 - **Settings sub-screens and the feedback form are now full-screen** instead of the iOS half-sheet that peeked the parent and wasted ~180px of height. Profile & tax now fits without scrolling; Report a problem is much shorter (also tightened spacing and the message box). Opaque backgrounds set for the full-screen presentation.
