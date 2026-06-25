@@ -37,6 +37,11 @@ export default function TripScreen() {
     }, []),
   );
 
+  useEffect(() => {
+    if (!myVehicles.length) return;
+    if (!myVehicles.some(v => v.key === vehicle)) setVehicle(myVehicles[0].key);
+  }, [myVehicles, vehicle]);
+
   const [phase, setPhase] = useState<Phase>('setup');
   const [finished, setFinished] = useState<LiveTrip | null>(null);
   const [earnings, setEarnings] = useState('');
@@ -182,7 +187,7 @@ export default function TripScreen() {
               </View>
             ) : (
               <>
-                <Text style={[s.bigMiles, heroMetric === 'miles' && s.bigTripMiles]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.45}>{METRICS[heroMetric].value}</Text>
+                <Text style={s.bigMiles} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.45}>{METRICS[heroMetric].value}</Text>
                 <Text style={s.bigMilesUnit}>{METRICS[heroMetric].heroLabel}</Text>
               </>
             )}
@@ -201,7 +206,7 @@ export default function TripScreen() {
                   {flash ? (
                     <Text style={s.flashText}>{flash}</Text>
                   ) : (
-                    <Text style={s.mileLabel}>{fmtGbp(trip.deduction)} of {fmtGbp(nextTarget)} tax back</Text>
+                    <Text style={s.mileLabel}>{fmtGbp(trip.deduction)} tax back · next reward at {fmtGbp(nextTarget)}</Text>
                   )}
                   <View style={s.mileTrack}>
                     <View style={[s.mileFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: flash ? colors.green : colors.brand }]} />
@@ -316,6 +321,7 @@ export default function TripScreen() {
 
   // ---- Phase 1: setup --------------------------------------------------------
   const todayHasData = today.trips > 0 || today.earnings > 0;
+  const showVehiclePicker = myVehicles.length > 1;
   return (
     <CollapsingHeader
       title="Start a trip"
@@ -337,18 +343,22 @@ export default function TripScreen() {
             ))}
           </View>
         </View>
-        <View style={s.setupDivider} />
-        <View style={s.setupSection}>
-          <View style={s.setupLabelRow}>
-            <IconBadge icon="truck" tone="blue" size={28} />
-            <Text style={s.setupLabel}>Vehicle</Text>
-          </View>
-          <View style={[s.chips, { marginBottom: 0 }]}>
-            {myVehicles.map(v => (
-              <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-            ))}
-          </View>
-        </View>
+        {showVehiclePicker && (
+          <>
+            <View style={s.setupDivider} />
+            <View style={s.setupSection}>
+              <View style={s.setupLabelRow}>
+                <IconBadge icon="truck" tone="blue" size={28} />
+                <Text style={s.setupLabel}>Vehicle</Text>
+              </View>
+              <View style={[s.chips, { marginBottom: 0 }]}>
+                {myVehicles.map(v => (
+                  <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+                ))}
+              </View>
+            </View>
+          </>
+        )}
       </Card>
 
       {/* Start — the hero action, gradient like Home */}
@@ -418,7 +428,6 @@ const s = StyleSheet.create({
   // NOTE: no explicit lineHeight — it conflicts with adjustsFontSizeToFit on iOS
   // and collapses the number to a tiny size. Let the font size drive the height.
   bigMiles: { ...tabular, alignSelf: 'stretch', textAlign: 'center', paddingHorizontal: spacing.lg, fontSize: 108, fontWeight: font.bold, color: '#fff', letterSpacing: -4 },
-  bigTripMiles: { fontSize: 148, letterSpacing: -5 },
   bigMilesUnit: { fontSize: 15, color: 'rgba(255,255,255,0.55)', marginTop: 2, textAlign: 'center' },
   moneyChip: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: spacing.lg, backgroundColor: 'rgba(224,150,31,0.16)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
   moneyChipText: { ...tabular, color: '#F5C97A', fontSize: 14, fontWeight: font.semibold },

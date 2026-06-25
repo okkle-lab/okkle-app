@@ -81,16 +81,16 @@ export default function AutoTripSettings() {
         <Pressable onPress={() => router.back()} hitSlop={12} style={s.back}>
           <Feather name="chevron-left" size={26} color={colors.textPrimary} />
         </Pressable>
-        <Text style={s.title}>Auto-detect trips</Text>
+        <Text style={s.title}>Work mode</Text>
         <View style={{ width: 26 }} />
       </View>
 
       <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
         <Feather name="navigation" size={22} color="#fff" />
-        <Text style={s.heroTitle}>Track your whole shift, hands-free</Text>
+        <Text style={s.heroTitle}>Track your shift in work mode</Text>
         <Text style={s.heroSub}>
-          Just drive. Okkle quietly counts every business mile in the background — to the restaurant, to the customer,
-          and the miles between jobs — then logs your shift for you to confirm. No tapping mid-delivery.
+          Turn this on when you are actively working deliveries. Okkle counts miles in the background when it thinks you are
+          driving or cycling for work, then saves the shift as a draft for you to review.
         </Text>
       </GradientCard>
 
@@ -98,7 +98,7 @@ export default function AutoTripSettings() {
       <Card style={s.toggleCard}>
         <View style={{ flex: 1 }}>
           <Text style={s.toggleTitle}>Track my shift automatically</Text>
-          <Text style={s.toggleSub}>{shiftOn ? 'On — miles are counted in the background while you work.' : 'Off — you track trips yourself.'}</Text>
+          <Text style={s.toggleSub}>{shiftOn ? 'On — use this while you are on shift. Miles are counted in the background and saved as a draft to review.' : 'Off — turn this on only during work hours. Personal driving can be picked up too.'}</Text>
         </View>
         <Switch value={shiftOn} onValueChange={toggleShift} disabled={busy} trackColor={{ true: colors.brand }} />
       </Card>
@@ -112,16 +112,17 @@ export default function AutoTripSettings() {
         <Switch value={on} onValueChange={toggle} disabled={busy} trackColor={{ true: colors.brand }} />
       </Card>
 
-      <Text style={s.sectionLabel}>Why “Always” location?</Text>
+      <Text style={s.sectionLabel}>What to expect</Text>
       <Card style={{ gap: spacing.lg }}>
-        <Point icon="navigation" title="Only to spot the start of a trip" body="iOS wakes Okkle when you move a meaningful distance so it can check if you’re driving — that’s the only reason it needs background location." />
-        <Point icon="battery-charging" title="Built to sip battery" body="It uses low-power location and pauses when you’re still. The precise GPS trail only runs once you actually start a trip." />
-        <Point icon="check-circle" title="You’re always in control" body="It only ever suggests — nothing is recorded until you tap Start, and you can switch this off any time." />
+        <Point icon="briefcase" title="Use this only while working" body="This mode is meant for delivery hours. If you leave it on for personal driving, Okkle may treat that movement as shift mileage." />
+        <Point icon="navigation" title="It starts from movement, not intent" body="Okkle looks for driving or cycling patterns in the background. It cannot truly know whether you meant a journey to be for work." />
+        <Point icon="check-circle" title="Auto-logged shifts are drafts" body="Nothing is silently finalized. When a shift ends, Okkle saves a draft mileage entry for you to review before relying on it." />
+        <Point icon="battery-charging" title="Built to sip battery" body="It uses low-power location and pauses when you are still, so it stays lightweight during a work day." />
         <Point icon="lock" title="Stays on your phone" body="Your location is used on-device to estimate mileage. Nothing is uploaded." />
       </Card>
 
       <Text style={s.footnote}>
-        Detection isn’t perfect — a bus or train ride might trigger a nudge, and the odd short trip may be missed. It’s a helpful prompt, not a replacement for starting a trip yourself.
+        Prefer more control? Leave work mode off and use “Just nudge me instead” so Okkle prompts you when it thinks a trip is starting.
       </Text>
     </ScrollView>
   );

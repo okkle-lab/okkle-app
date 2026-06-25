@@ -14,13 +14,15 @@ export default function SettingsAccount() {
   const [vehicles, setVehicles] = useState<string[]>(
     u?.vehicles?.split(',').map(s => s.trim()).filter(Boolean) ?? (u?.vehicle ? [u.vehicle] : ['car']),
   );
-  const [platforms, setPlatforms] = useState<string[]>(u?.platforms?.split(',').filter(Boolean) ?? ['Uber Eats']);
+  const [platforms, setPlatforms] = useState<string[]>(
+    u?.platforms?.split(',').map(s => s.trim()).filter(p => p && p.toLowerCase() !== 'other') ?? ['Uber Eats'],
+  );
   const [region, setRegion] = useState(u?.region ?? 'ruk');
   const [band, setBand] = useState<'basic' | 'higher'>((u?.tax_rate ?? 0.2) >= 0.4 ? 'higher' : 'basic');
 
   const toggle = (p: string) => setPlatforms(prev => (prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]));
   const toggleVehicle = (k: string) => setVehicles(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
-  const allOptions = Array.from(new Set([...PLATFORMS, ...platforms]));
+  const allOptions = Array.from(new Set([...PLATFORMS, ...platforms])).filter(p => p.toLowerCase() !== 'other');
 
   function addCustom() {
     Alert.prompt('Add platform', 'Name of the delivery platform you work for', [
@@ -34,7 +36,8 @@ export default function SettingsAccount() {
 
   function save() {
     const v = vehicles.length ? vehicles : ['car'];
-    saveUser({ name, vehicle: v[0], vehicles: v.join(','), platforms: platforms.join(','), region, tax_rate: regionRate(region, band) });
+    const cleanedPlatforms = platforms.filter(p => p.trim() && p.toLowerCase() !== 'other');
+    saveUser({ name, vehicle: v[0], vehicles: v.join(','), platforms: cleanedPlatforms.join(','), region, tax_rate: regionRate(region, band) });
     router.back();
   }
 
