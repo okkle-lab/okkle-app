@@ -641,14 +641,42 @@ const TIME_BUCKETS: { label: string; from: number; to: number }[] = [
   { label: 'Late', from: 21, to: 30 }, // wraps past midnight (handled below)
 ];
 
+// Estimate £ earned per trip by spreading each income record across the trips in
+// its period, weighted by trip duration. Earnings are entered as period lumps
+// (daily/weekly/monthly) and trips are platform-agnostic, so any per-trip / zone
+// / hour £ figure is necessarily an ESTIMATE — surface it as such in the UI.
+function estimatedTripEarnings(): Map<number, number> {
+  const result = new Map<number, number>();
+  const trips = db.getAllSync<{ id: number; started_at: string; ended_at: string }>('SELECT id, started_at, ended_at FROM trips');
+  if (!trips.length) return result;
+  const incomes = db.getAllSync<Record>(`SELECT * FROM records WHERE record_type='income'`);
+  const dur = (t: { started_at: string; ended_at: string }) => {
+    const ms = new Date(t.ended_at).getTime() - new Date(t.started_at).getTime();
+    return ms > 0 ? ms / 3600000 : 0;
+  };
+  for (const inc of incomes) {
+    const ws = (inc.period_start ?? inc.created_at ?? '').slice(0, 10);
+    const we = (inc.period_end ?? inc.created_at ?? '').slice(0, 10);
+    if (!ws || !we) continue;
+    const inWin = trips.filter(t => { const d = t.started_at.slice(0, 10); return d >= ws && d <= we; });
+    const totalH = inWin.reduce((s, t) => s + dur(t), 0);
+    if (totalH <= 0) continue;
+    for (const t of inWin) {
+      result.set(t.id, (result.get(t.id) ?? 0) + (inc.amount ?? 0) * (dur(t) / totalH));
+    }
+  }
+  return result;
+}
+
 export function getEarningsByTimeOfDay(): TimeBucket[] {
+  const est = estimatedTripEarnings();
   const acc = TIME_BUCKETS.map(b => ({ ...b, earnings: 0, hours: 0, trips: 0 }));
   for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
     const h = new Date(t.started_at).getHours();
     const hourNorm = h < 6 ? h + 24 : h; // group 0-5am into the Late bucket (21-30)
     const idx = acc.findIndex(b => hourNorm >= b.from && hourNorm < b.to);
     if (idx >= 0) {
-      acc[idx].earnings += t.earnings ?? 0;
+      acc[idx].earnings += est.get(t.id) ?? 0;
       acc[idx].hours += tripHours(t);
       acc[idx].trips += 1;
     }
@@ -1042,8 +1070,9 @@ function hourInFilter(startedAt: string, f: TimeFilter): boolean {
 // Ranked by £/hour where we have the data (the actionable metric), else by
 // earnings, else by miles.
 export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
-  const rows = db.getAllSync<{ zone: string | null; miles: number; earnings: number | null; deduction: number; started_at: string; ended_at: string }>(
-    `SELECT zone, miles, earnings, deduction, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
+  const est = estimatedTripEarnings(); // apportioned £ per trip (estimate)
+  const rows = db.getAllSync<{ id: number; zone: string | null; miles: number; deduction: number; started_at: string; ended_at: string }>(
+    `SELECT id, zone, miles, deduction, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
   const agg: { [z: string]: ZoneStat } = {};
   for (const r of rows) {
     if (!hourInFilter(r.started_at, filter)) continue;
@@ -1051,7 +1080,7 @@ export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
     if (!agg[z]) agg[z] = { zone: z, trips: 0, miles: 0, earnings: 0, deduction: 0, hours: 0, perHour: 0 };
     agg[z].trips += 1;
     agg[z].miles += r.miles;
-    agg[z].earnings += r.earnings ?? 0;
+    agg[z].earnings += est.get(r.id) ?? 0;
     agg[z].deduction += r.deduction;
     const ms = new Date(r.ended_at).getTime() - new Date(r.started_at).getTime();
     agg[z].hours += ms > 0 ? ms / 3600000 : 0;
@@ -1079,21 +1108,24 @@ function bucketLabel(hour: number): string {
 }
 
 export function getBestSpot(): BestSpot | null {
-  const rows = db.getAllSync<{ zone: string | null; earnings: number | null; started_at: string; ended_at: string }>(
-    `SELECT zone, earnings, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> '' AND earnings > 0`);
+  const est = estimatedTripEarnings();
+  const rows = db.getAllSync<{ id: number; zone: string | null; started_at: string; ended_at: string }>(
+    `SELECT id, zone, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
   const agg: { [k: string]: BestSpot } = {};
   let totalEarnings = 0, totalHours = 0;
   for (const r of rows) {
+    const e = est.get(r.id) ?? 0;
+    if (e <= 0) continue;
     const d = new Date(r.started_at);
     const time = bucketLabel(d.getHours());
     const key = `${r.zone}|${time}`;
     if (!agg[key]) agg[key] = { zone: r.zone as string, timeLabel: time, perHour: 0, earnings: 0, hours: 0, trips: 0, vsAverage: 0 };
     const ms = new Date(r.ended_at).getTime() - d.getTime();
     const hrs = ms > 0 ? ms / 3600000 : 0;
-    agg[key].earnings += r.earnings ?? 0;
+    agg[key].earnings += e;
     agg[key].hours += hrs;
     agg[key].trips += 1;
-    totalEarnings += r.earnings ?? 0;
+    totalEarnings += e;
     totalHours += hrs;
   }
   const avgPerHour = totalHours > 0 ? totalEarnings / totalHours : 0;
@@ -1109,15 +1141,17 @@ export type HeatPoint = { lat: number; lng: number; w: number };
 // All saved GPS breadcrumb points, optionally restricted to a time of day, each
 // weighted (earnings/point when known, else 1). Feeds the location heatmap.
 export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
-  const rows = db.getAllSync<{ route_json: string | null; earnings: number | null; started_at: string }>(
-    `SELECT route_json, earnings, started_at FROM trips WHERE route_json IS NOT NULL`);
+  const est = estimatedTripEarnings(); // £-weight the map by apportioned earnings
+  const rows = db.getAllSync<{ id: number; route_json: string | null; started_at: string }>(
+    `SELECT id, route_json, started_at FROM trips WHERE route_json IS NOT NULL`);
   const out: HeatPoint[] = [];
   for (const r of rows) {
     if (!hourInFilter(r.started_at, filter)) continue;
     let pts: { lat: number; lng: number }[] = [];
     try { pts = JSON.parse(r.route_json as string); } catch { continue; }
     if (!Array.isArray(pts) || pts.length === 0) continue;
-    const w = (r.earnings && r.earnings > 0) ? r.earnings / pts.length : 1;
+    const e = est.get(r.id) ?? 0;
+    const w = e > 0 ? e / pts.length : 1;
     for (const p of pts) {
       if (typeof p?.lat === 'number' && typeof p?.lng === 'number') out.push({ lat: p.lat, lng: p.lng, w });
     }

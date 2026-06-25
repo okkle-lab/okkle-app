@@ -41,7 +41,7 @@ export default function InsightsScreen() {
   const anyPerHour = zones.some(z => z.perHour > 0);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
   const anyBucketEarnings = buckets.some(b => b.earnings > 0);
-  const hasData = zones.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.perHour > 0) || !!pnl?.hasData;
+  const hasData = zones.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.earnings > 0) || !!pnl?.hasData;
 
   return (
     <View style={s.screen}>
@@ -124,7 +124,7 @@ export default function InsightsScreen() {
                   </View>
                   <Text style={s.legendText}>Busier</Text>
                 </View>
-                <Text style={s.note}>Built on-device from your GPS trips. Nothing leaves your phone.</Text>
+                <Text style={s.note}>Where you drive, from your GPS trips. £ shading is estimated by spreading your logged pay across your trips. Built on-device — nothing leaves your phone.</Text>
               </Card>
             </View>
           </>
@@ -147,27 +147,30 @@ export default function InsightsScreen() {
             }) : <Text style={s.emptyInline}>Track a few trips and your best hours will appear here.</Text>}
           </Card>
         )}
+        {hasData && tab === 'when' && anyBucketEarnings && (
+          <Text style={s.note}>£/hour is estimated by spreading your logged pay across the hours you tracked.</Text>
+        )}
 
         {/* MONEY — platform ranking + business P&L */}
         {hasData && tab === 'money' && (
           <>
-            {platforms.some(p => p.perHour > 0) && (
+            {platforms.some(p => p.earnings > 0) && (
               <View>
-                <SectionHeader icon="award" title="Which platform pays best?" />
+                <SectionHeader icon="award" title="Which platform pays most?" />
                 <Card style={{ padding: 0, overflow: 'hidden' }}>
-                  {platforms.filter(p => p.perHour > 0).sort((a, b) => b.perHour - a.perHour).map((p, i, arr) => (
+                  {platforms.filter(p => p.earnings > 0).sort((a, b) => b.earnings - a.earnings).map((p, i, arr) => (
                     <View key={p.platform} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
                       <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
                         <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={s.zoneName}>{p.platform}</Text>
-                        <Text style={s.zoneSub}>{fmtPerMile(p.perMile)} · {fmtHours(p.hours)}</Text>
                       </View>
-                      <Text style={[s.zoneVal, i === 0 && { color: colors.green }]}>{fmtPerHour(p.perHour)}</Text>
+                      <Text style={[s.zoneVal, i === 0 && { color: colors.green }]}>{fmtGbp(p.earnings)}</Text>
                     </View>
                   ))}
                 </Card>
+                <Text style={s.note}>Total pay you’ve logged per app. £/hour can’t be split per app when you multi-app, so it’s shown across all apps below.</Text>
               </View>
             )}
             {pnl?.hasData && (
@@ -182,8 +185,8 @@ export default function InsightsScreen() {
                 </Card>
               </View>
             )}
-            {!platforms.some(p => p.perHour > 0) && !pnl?.hasData && (
-              <Card><Text style={s.emptyInline}>Log your pay against trips to see which platform pays best and your business stats.</Text></Card>
+            {!platforms.some(p => p.earnings > 0) && !pnl?.hasData && (
+              <Card><Text style={s.emptyInline}>Log your pay per platform in the Log tab to see which app pays most and your business stats.</Text></Card>
             )}
           </>
         )}
