@@ -18,8 +18,9 @@ export default function SettingsAbout() {
 
       <Card style={{ gap: spacing.md }}>
         <Text style={s.aboutText}>Okkle keeps a record of your delivery mileage and earnings so you (or your accountant) have what you need at tax time.</Text>
-        <Text style={s.aboutText}>Mileage deductions use HMRC's approved simplified rates: 45p/mile for cars and vans (25p after 10,000 miles in a tax year), 24p for motorbikes and 20p for bicycles. These rates are the same across the whole UK.</Text>
-        <Text style={s.aboutText}>All your data is stored only on this phone — nothing is sent to a server. Okkle is a record-keeping tool and does not provide tax advice or file your return.</Text>
+        <Text style={s.aboutText}>Mileage deductions use HMRC's simplified flat rates, which are set per tax year. From 6 April 2026 cars and vans are 55p/mile for the first 10,000 business miles in a tax year (25p after); motorbikes are 24p. Earlier years used 45p for the first 10,000 miles, and Okkle values each trip at the rate that applied on its date. These rates are the same across the whole UK.</Text>
+        <Text style={s.aboutText}>The simplified flat-rate scheme formally covers cars, goods vehicles and motorcycles. The cycle (e-bike / bicycle) figure follows the employee mileage rate — if you ride for work as self-employed you may instead need to claim actual costs, so treat the cycle figure as an estimate.</Text>
+        <Text style={s.aboutText}>All figures are estimates to help your record-keeping — always check the current HMRC rates and your own circumstances before filing. Your data is stored only on this phone; nothing is sent to a server. Okkle is a record-keeping tool and does not provide tax advice or file your return.</Text>
       </Card>
 
       <Text style={s.version}>Version {version}</Text>

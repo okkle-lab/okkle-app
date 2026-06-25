@@ -100,9 +100,9 @@ export default function ExportScreen() {
         </Pressable>
 
         <Card style={{ gap: spacing.md, marginTop: spacing.md }}>
-          <Row icon="upload-cloud" tone="mint" title="FreeAgent import (CSV)" subtitle="Earnings & expenses, ready to upload" onPress={shareFreeAgentCsv} />
+          <Row icon="upload-cloud" tone="mint" title="FreeAgent bank-import CSV" subtitle="Income & expenses only — skip rows that already arrive via your bank feed" onPress={shareFreeAgentCsv} />
           <Row icon="file-text" tone="mint" title="Self Assessment summary" onPress={shareSA} />
-          <Row icon="map" tone="green" title="HMRC mileage log" onPress={shareMileageLog} />
+          <Row icon="map" tone="green" title="HMRC mileage log (CSV)" subtitle="Mileage claims only — keep these out of the bank-import file" onPress={shareMileageLog} />
           <Row icon="database" tone="neutral" title="All data (CSV)" onPress={shareCsv} />
         </Card>
 

@@ -130,9 +130,11 @@ export default function Compare() {
         <View style={s.warnBox}>
           <Feather name="alert-triangle" size={15} color={colors.amber} />
           <Text style={s.warnText}>
-            Important: once you claim actual costs and capital allowances on a vehicle,
-            you can't switch back to the simplified method for it. This choice is
-            effectively permanent per vehicle — confirm with your accountant first.
+            Important: HMRC rule — once you claim actual costs and capital allowances on a
+            vehicle, you can't switch back to the simplified method for it, so the choice is
+            effectively permanent per vehicle. Note: this comparison uses one set of figures
+            and does not track the method separately for each vehicle you own, so if you run
+            more than one vehicle, confirm the per-vehicle treatment with your accountant.
           </Text>
         </View>
 

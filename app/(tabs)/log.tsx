@@ -190,7 +190,8 @@ export default function LogScreen() {
     }
   }
 
-  const deduction = miles ? calcDeduction(parseFloat(miles) || 0, vehicle) : 0;
+  // Pass the record's date so a back-dated entry uses that tax year's rate.
+  const deduction = miles ? calcDeduction(parseFloat(miles) || 0, vehicle, 0, date) : 0;
 
   function handleSave() {
     const createdAt = date.toISOString();

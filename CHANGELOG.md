@@ -2,6 +2,15 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Compliance pass — mileage rates & honest wording)
+
+- **Mileage rates are now versioned by tax year and updated for 2026/27.** HMRC raised the car & van first-10,000-mile simplified/AMAP rate from 45p to 55p (25p after, unchanged) effective 6 April 2026; motorcycles stay 24p. `calcDeduction`/`mileageRate` now pick the rate schedule by the record's date, so back-dated entries keep the old rate while current trips use 55p. (Source: gov.uk "Increasing mileage rates".) Previously the app hard-coded 45p and under-claimed for the current year.
+- **Cycle treatment clarified.** The simplified flat-rate scheme formally covers cars, goods vehicles and motorcycles; the e-bike/bicycle figure follows the employee rate and self-employed cyclists may need actual costs — now flagged as an estimate to verify.
+- **Disclaimers added** ("estimates — verify current HMRC rates before filing") in About.
+- **Softened over-claiming wording:** the Accountant Pack is now framed as an "Accountant Review Pack — not a final filing pack"; GPS language no longer implies it "satisfies" HMRC (now: supports a contemporaneous log, still needs review).
+- **Actual-cost honesty:** the method comparison now states it uses one set of figures and does not track the method per individual vehicle, so multi-vehicle users are told to confirm per-vehicle treatment.
+- **Exports clarified:** "FreeAgent bank-import CSV" (income & expenses only — skip rows already on your bank feed) is clearly separated from the "HMRC mileage log (CSV)" so mileage stays out of the bank-import stream.
+
 ## 2026-06-25 (Hotspot map, live-trip numbers, tidier Settings)
 
 - **Real Apple Maps hotspot.** On iOS, Insights → Hotspot map now renders on an actual Apple Maps street map with a native weighted heatmap overlay (via the already-bundled `react-native-maps`, same as the live trip route). The SVG density grid stays as the Android / Expo Go fallback. No new native dependency.

@@ -148,8 +148,9 @@ export async function buildAccountantPackHtml(): Promise<string> {
   </style></head><body>
 
   <div class="cover">
-    <h1>Self Assessment — Income &amp; Expenses Summary</h1>
+    <h1>Accountant Review Pack — Income &amp; Expenses Summary</h1>
     <p class="sub">${esc(user?.name ?? 'Courier')} · Sole trader (delivery courier)</p>
+    <p class="sub">A review/evidence pack to support your accountant — not a final filing pack. Figures are estimates and need confirming before submission.</p>
     <div class="coverkv">
       <span>Accounting period</span><b>${ukDate(start)} to ${ukDate(periodEnd)} (${taxYearLabel()})</b>
       <span>Reference</span><b>${esc(ref)}</b>
@@ -194,7 +195,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
   </table>
 
   <h2>Mileage log</h2>
-  <p class="sub">${fmtMiles(mileageMilesTotal)} business miles across ${trips.length} trips. Distances are GPS-measured from each trip (HMRC accepts a contemporaneous mileage record; GPS satisfies this).</p>
+  <p class="sub">${fmtMiles(mileageMilesTotal)} business miles across ${trips.length} trips. Distances are GPS-measured from each trip, which helps support a contemporaneous mileage log. The client should review and confirm the trips; this does not by itself guarantee HMRC acceptance.</p>
   <table>
     <thead><tr><th>Date</th><th>Vehicle</th><th>Purpose</th><th class="num">Miles</th><th class="num">Deduction</th></tr></thead>
     <tbody>${mileageRows || '<tr><td colspan="5" class="muted">No trips recorded.</td></tr>'}</tbody>
@@ -216,8 +217,9 @@ export async function buildAccountantPackHtml(): Promise<string> {
     using ${RATES_YEAR} HMRC rates (allowances frozen to 2027/28). Figures are estimates derived solely from data the client logged; they have
     not been independently verified or reconciled to bank records, and do not constitute tax advice.
     The mileage deduction and the actual-cost figures are mutually exclusive — only one method applies per vehicle,
-    and a vehicle on the actual-cost basis cannot revert to simplified. Please confirm completeness and all
-    figures before submission.
+    and a vehicle on the actual-cost basis cannot revert to simplified. Actual-cost figures here use a single set of
+    inputs and are not tracked separately per vehicle, so for multi-vehicle clients please confirm the per-vehicle
+    treatment. Please confirm completeness and all figures before submission.
   </div>
 
   </body></html>`;

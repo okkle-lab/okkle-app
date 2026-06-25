@@ -1,11 +1,51 @@
+// NOTE: the `rate`/`rateAfter10k` below are the CURRENT tax year's rates, used
+// only for at-a-glance display (e.g. onboarding chips). The source of truth for
+// every actual calculation is RATE_SCHEDULES, which is versioned by tax year so
+// back-dated records use the rate that applied on their date.
 export const VEHICLES = [
-  { key: 'car', label: 'Car', rate: 0.45, rateAfter10k: 0.25, icon: '🚗' },
+  { key: 'car', label: 'Car', rate: 0.55, rateAfter10k: 0.25, icon: '🚗' },
   { key: 'motorbike', label: 'Motorbike', rate: 0.24, rateAfter10k: 0.24, icon: '🏍️' },
   { key: 'bike', label: 'E-bike / Bicycle', rate: 0.20, rateAfter10k: 0.20, icon: '🚲' },
-  { key: 'van', label: 'Van', rate: 0.45, rateAfter10k: 0.25, icon: '🚐' },
+  { key: 'van', label: 'Van', rate: 0.55, rateAfter10k: 0.25, icon: '🚐' },
 ] as const;
 
 export type VehicleKey = typeof VEHICLES[number]['key'];
+
+// HMRC simplified-expenses / AMAP mileage rates, versioned by tax year.
+// From 6 April 2026 the car & van first-10,000-mile rate rose from 45p to 55p
+// (25p after is unchanged); motorcycles stay 24p. Each record is valued at the
+// rate that applied on its date, so historical entries stay correct.
+//   Source: gov.uk "Increasing mileage rates" (effective 6 April 2026).
+// HMRC's simplified flat-rate scheme formally covers cars, goods vehicles and
+// motorcycles; cycle (bike/e-bike) flat rates follow the employee AMAP figure
+// and self-employed cyclists may instead need the actual-cost method — treat the
+// cycle figure as an estimate and verify before filing.
+export const MILEAGE_THRESHOLD = 10000;
+
+type RateBand = { first: number; after: number };
+type RateSchedule = { from: string; rates: Record<string, RateBand> };
+
+const RATE_SCHEDULES: RateSchedule[] = [
+  { from: '2026-04-06', rates: {
+    car: { first: 0.55, after: 0.25 }, van: { first: 0.55, after: 0.25 },
+    motorbike: { first: 0.24, after: 0.24 }, bike: { first: 0.20, after: 0.20 },
+  } },
+  { from: '1900-01-01', rates: {
+    car: { first: 0.45, after: 0.25 }, van: { first: 0.45, after: 0.25 },
+    motorbike: { first: 0.24, after: 0.24 }, bike: { first: 0.20, after: 0.20 },
+  } },
+];
+
+function isoDate(d: Date): string {
+  // Guard against invalid dates → treat as today.
+  return (isNaN(d.getTime()) ? new Date() : d).toISOString().slice(0, 10);
+}
+
+function rateBand(vehicle: string, date: Date): RateBand {
+  const iso = isoDate(date);
+  const sched = RATE_SCHEDULES.find(s => iso >= s.from) ?? RATE_SCHEDULES[RATE_SCHEDULES.length - 1];
+  return sched.rates[vehicle] ?? sched.rates.car;
+}
 
 export const PLATFORMS = ['Uber Eats', 'Deliveroo', 'Just Eat', 'Stuart', 'Amazon Flex', 'Other'];
 
@@ -36,17 +76,19 @@ export function regionFromArea(area: string | null | undefined): RegionKey {
   return /scotland/i.test(area) ? 'scotland' : 'ruk';
 }
 
-export function mileageRate(vehicle: string, totalMilesSoFar = 0): number {
-  const v = VEHICLES.find(x => x.key === vehicle) ?? VEHICLES[0];
-  return totalMilesSoFar >= 10000 ? v.rateAfter10k : v.rate;
+export function mileageRate(vehicle: string, totalMilesSoFar = 0, date: Date = new Date()): number {
+  const b = rateBand(vehicle, date);
+  return totalMilesSoFar >= MILEAGE_THRESHOLD ? b.after : b.first;
 }
 
-export function calcDeduction(miles: number, vehicle: string, totalBefore = 0): number {
-  const v = VEHICLES.find(x => x.key === vehicle) ?? VEHICLES[0];
-  if (totalBefore >= 10000) return miles * v.rateAfter10k;
-  const firstBracket = Math.max(0, Math.min(miles, 10000 - totalBefore));
+// `date` selects the tax-year rate schedule (defaults to today). Pass the
+// record's own date for back-dated entries so they use the rate from that year.
+export function calcDeduction(miles: number, vehicle: string, totalBefore = 0, date: Date = new Date()): number {
+  const b = rateBand(vehicle, date);
+  if (totalBefore >= MILEAGE_THRESHOLD) return miles * b.after;
+  const firstBracket = Math.max(0, Math.min(miles, MILEAGE_THRESHOLD - totalBefore));
   const secondBracket = miles - firstBracket;
-  return firstBracket * v.rate + secondBracket * v.rateAfter10k;
+  return firstBracket * b.first + secondBracket * b.after;
 }
 
 export function vehicleEmoji(vehicle: string): string {

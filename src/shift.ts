@@ -113,7 +113,7 @@ function endShift() {
   if (miles < MIN_SHIFT_MILES) return;
 
   const vehicle = shiftVehicle();
-  const deduction = calcDeduction(miles, vehicle);
+  const deduction = calcDeduction(miles, vehicle, 0, new Date(startedAt));
   const day = startedAt.slice(0, 10);
   // Logged as an unconfirmed draft the driver reviews — never silently final.
   saveRecord(
