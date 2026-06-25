@@ -532,16 +532,25 @@ export function taxYearStart(ref = new Date()): string {
   return `${y}-04-06`;
 }
 
+// ...and ends 5 April the following year.
+export function taxYearEnd(ref = new Date()): string {
+  const startY = parseInt(taxYearStart(ref).slice(0, 4), 10);
+  return `${startY + 1}-04-05`;
+}
+
 // Cumulative business miles this tax year — drives the 10,000-mile threshold.
 export function getTaxYearMiles(): number {
-  const start = taxYearStart();
+  const start = taxYearStart(), end = taxYearEnd();
   const trips = db.getFirstSync<{ m: number }>(
-    `SELECT COALESCE(SUM(miles),0) AS m FROM trips WHERE date(started_at) >= ?`, start,
+    `SELECT COALESCE(SUM(miles),0) AS m FROM trips WHERE date(started_at) BETWEEN ? AND ?`, start, end,
   );
-  const recs = db.getFirstSync<{ m: number }>(
-    `SELECT COALESCE(SUM(miles),0) AS m FROM records WHERE record_type='mileage' AND date(created_at) >= ?`, start,
-  );
-  return (trips?.m ?? 0) + (recs?.m ?? 0);
+  // Records use period-overlap so a weekly entry spanning 6 April is split
+  // correctly between tax years (not bucketed wholesale by created_at).
+  let recMiles = 0;
+  for (const r of recordsOverlapping('mileage', start, end)) {
+    recMiles += spreadValue(r.miles ?? 0, r.ps, r.pe, r.created_at, start, end);
+  }
+  return (trips?.m ?? 0) + recMiles;
 }
 
 export type TaxYearSummary = {
@@ -556,25 +565,27 @@ export type TaxYearSummary = {
 export function getTaxYearSummary(): TaxYearSummary {
   const user = getUser();
   const taxRate = user?.tax_rate ?? 0.20;
-  const start = taxYearStart();
+  const start = taxYearStart(), end = taxYearEnd();
 
   const trips = db.getFirstSync<{ miles: number; deduction: number; earnings: number }>(
     `SELECT COALESCE(SUM(miles),0) AS miles, COALESCE(SUM(deduction),0) AS deduction,
             COALESCE(SUM(earnings),0) AS earnings
-     FROM trips WHERE date(started_at) >= ?`, start,
+     FROM trips WHERE date(started_at) BETWEEN ? AND ?`, start, end,
   );
-  const mil = db.getFirstSync<{ miles: number; deduction: number }>(
-    `SELECT COALESCE(SUM(miles),0) AS miles, COALESCE(SUM(deduction),0) AS deduction
-     FROM records WHERE record_type='mileage' AND date(created_at) >= ?`, start,
-  );
-  const inc = db.getFirstSync<{ earnings: number }>(
-    `SELECT COALESCE(SUM(amount),0) AS earnings
-     FROM records WHERE record_type='income' AND date(created_at) >= ?`, start,
-  );
+  // Records use period-overlap so weekly entries spanning the 6 April boundary
+  // contribute only the portion that falls within this tax year.
+  let recMiles = 0, recDeduction = 0, recEarnings = 0;
+  for (const r of recordsOverlapping('mileage', start, end)) {
+    recMiles += spreadValue(r.miles ?? 0, r.ps, r.pe, r.created_at, start, end);
+    recDeduction += spreadValue(r.deduction ?? 0, r.ps, r.pe, r.created_at, start, end);
+  }
+  for (const r of recordsOverlapping('income', start, end)) {
+    recEarnings += spreadValue(r.amount ?? 0, r.ps, r.pe, r.created_at, start, end);
+  }
 
-  const miles = (trips?.miles ?? 0) + (mil?.miles ?? 0);
-  const deduction = (trips?.deduction ?? 0) + (mil?.deduction ?? 0);
-  const earnings = (trips?.earnings ?? 0) + (inc?.earnings ?? 0);
+  const miles = (trips?.miles ?? 0) + recMiles;
+  const deduction = (trips?.deduction ?? 0) + recDeduction;
+  const earnings = (trips?.earnings ?? 0) + recEarnings;
   // Tax "saved" = the tax you don't pay on the mileage deduction.
   const taxSaved = deduction * taxRate;
   return { miles, deduction, taxSaved, earnings, taxRate };
@@ -648,8 +659,8 @@ export function getEarningsByTimeOfDay(): TimeBucket[] {
 
 // Total hours tracked this tax year (from trip durations).
 export function getHoursWorked(): number {
-  const start = taxYearStart();
-  const trips = db.getAllSync<Trip>('SELECT * FROM trips WHERE date(started_at) >= ?', start);
+  const start = taxYearStart(), end = taxYearEnd();
+  const trips = db.getAllSync<Trip>('SELECT * FROM trips WHERE date(started_at) BETWEEN ? AND ?', start, end);
   return trips.reduce((s, t) => s + tripHours(t), 0);
 }
 
@@ -744,12 +755,12 @@ export function kvSet(key: string, value: string | number) {
 
 // Non-vehicle expense total this tax year (counts toward Self Assessment).
 export function getTaxYearExpenses(): number {
-  const start = taxYearStart();
-  const row = db.getFirstSync<{ t: number }>(
-    `SELECT COALESCE(SUM(amount),0) AS t FROM records
-     WHERE record_type='expense' AND date(created_at) >= ?`, start,
-  );
-  return row?.t ?? 0;
+  const start = taxYearStart(), end = taxYearEnd();
+  let total = 0;
+  for (const r of recordsOverlapping('expense', start, end)) {
+    total += spreadValue(r.amount ?? 0, r.ps, r.pe, r.created_at, start, end);
+  }
+  return total;
 }
 
 export type QuarterSummary = {
@@ -780,18 +791,18 @@ export function getQuarterlySummaries(): QuarterSummary[] {
     const tripInc = db.getFirstSync<{ inc: number; ded: number }>(
       `SELECT COALESCE(SUM(earnings),0) AS inc, COALESCE(SUM(deduction),0) AS ded
        FROM trips WHERE date(started_at) BETWEEN ? AND ?`, q.start, q.end);
-    const recInc = db.getFirstSync<{ inc: number }>(
-      `SELECT COALESCE(SUM(amount),0) AS inc FROM records
-       WHERE record_type='income' AND date(created_at) BETWEEN ? AND ?`, q.start, q.end);
-    const recMileDed = db.getFirstSync<{ ded: number }>(
-      `SELECT COALESCE(SUM(deduction),0) AS ded FROM records
-       WHERE record_type='mileage' AND date(created_at) BETWEEN ? AND ?`, q.start, q.end);
-    const recExp = db.getFirstSync<{ exp: number }>(
-      `SELECT COALESCE(SUM(amount),0) AS exp FROM records
-       WHERE record_type='expense' AND date(created_at) BETWEEN ? AND ?`, q.start, q.end);
+    // Records use period-overlap so weekly entries crossing a quarter boundary
+    // contribute only the portion that falls inside this quarter.
+    let recIncome = 0, recMileDed = 0, recExp = 0;
+    for (const r of recordsOverlapping('income', q.start, q.end))
+      recIncome += spreadValue(r.amount ?? 0, r.ps, r.pe, r.created_at, q.start, q.end);
+    for (const r of recordsOverlapping('mileage', q.start, q.end))
+      recMileDed += spreadValue(r.deduction ?? 0, r.ps, r.pe, r.created_at, q.start, q.end);
+    for (const r of recordsOverlapping('expense', q.start, q.end))
+      recExp += spreadValue(r.amount ?? 0, r.ps, r.pe, r.created_at, q.start, q.end);
 
-    const income = (tripInc?.inc ?? 0) + (recInc?.inc ?? 0);
-    const expenses = (tripInc?.ded ?? 0) + (recMileDed?.ded ?? 0) + (recExp?.exp ?? 0);
+    const income = (tripInc?.inc ?? 0) + recIncome;
+    const expenses = (tripInc?.ded ?? 0) + recMileDed + recExp;
     return {
       label: q.label, start: q.start, end: q.end, deadline: q.deadline,
       income, expenses, profit: income - expenses,

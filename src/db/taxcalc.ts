@@ -145,9 +145,17 @@ export function taxPosition(turnover: number, expenses: number, region: string, 
   // is taxed at the marginal rate — tax on (other + profit) minus tax on other.
   const it = incomeTax(otherIncome + profit, region) - incomeTax(otherIncome, region);
   const c4 = class4Nic(profit);
-  const totalDue = it + c4;
-  // Payments on account apply when the bill exceeds £1,000.
-  const poa = totalDue > 1000 ? totalDue * 0.5 : 0;
+  const totalDue = it + c4; // self-employed tax that is NOT collected at source
+  // Payments on account are due only when BOTH HMRC conditions are met:
+  //   (1) the Self Assessment bill is over £1,000, AND
+  //   (2) less than 80% of your total tax was already collected at source (PAYE/CIS).
+  // For a pure self-employed courier nothing is collected at source, so this is
+  // just the £1,000 test (unchanged). Users with substantial PAYE income whose
+  // tax is mostly collected at source are no longer over-warned.
+  const totalLiability = incomeTax(otherIncome + profit, region) + c4;
+  const taxAtSource = incomeTax(otherIncome, region); // ~tax already withheld via PAYE
+  const collectedAtSourcePct = totalLiability > 0 ? taxAtSource / totalLiability : 0;
+  const poa = totalDue > 1000 && collectedAtSourcePct < 0.8 ? totalDue * 0.5 : 0;
   return {
     turnover, expenses: deductible, profit,
     incomeTax: it, class4: c4, totalDue,

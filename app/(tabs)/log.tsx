@@ -7,7 +7,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser, kvGet, kvSet, getPlatforms, getVehicleKeys, getLearnedCategory, learnCategory } from '../../src/db';
@@ -80,12 +80,19 @@ export default function LogScreen() {
   }, [params.tab]);
 
   const [miles, setMiles] = useState('');
-  // Only the vehicles the user picked at onboarding / in Settings.
-  const myVehicles = VEHICLES.filter(v => getVehicleKeys().includes(v.key));
-  const [vehicle, setVehicle] = useState(user?.vehicle ?? myVehicles[0]?.key ?? 'car');
-  // Platforms are managed in Settings; here we only show the chosen ones.
-  const platformList = getPlatforms();
-  const [platform, setPlatform] = useState(platformList[0]);
+  // Platforms/vehicles are managed in Settings; we only show the chosen ones and
+  // refresh on focus (e.g. after adding one in Settings).
+  const [myVehicles, setMyVehicles] = useState(() => VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
+  const [vehicle, setVehicle] = useState(user?.vehicle ?? VEHICLES.find(v => getVehicleKeys().includes(v.key))?.key ?? 'car');
+  const [platformList, setPlatformList] = useState(getPlatforms);
+  const [platform, setPlatform] = useState(() => getPlatforms()[0]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setPlatformList(getPlatforms());
+      setMyVehicles(VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
+    }, []),
+  );
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);

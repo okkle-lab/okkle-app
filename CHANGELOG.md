@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Tax-year bucketing, payment-on-account, settings sync)
+
+- **Platforms/vehicles added in Settings now appear immediately** in the Trip and Log tabs. Those tabs re-read your chosen lists whenever they regain focus, so a platform or vehicle added in Settings shows up without restarting the app.
+- **Payment on account is no longer over-warned (feedback #3).** It now applies HMRC's *two* conditions — bill over £1,000 **and** less than 80% of tax already collected at source (PAYE/CIS). Pure self-employed couriers are unaffected; mixed PAYE + self-employed users whose tax is mostly collected at source are no longer told to make payments on account.
+- **Tax-year and quarter totals use period-overlap consistently (feedback #4).** Tax-year miles / deduction / earnings / expenses / hours and the MTD quarterly summaries previously bucketed records by `created_at`, so a weekly entry spanning the 6 April (or a quarter) boundary landed wholly in one period. They now split each record by its `period_start`/`period_end`, and trips are bounded to the tax-year window.
+
 ## 2026-06-25 (Platform management lives in Settings)
 
 - Removed the "Add platform" chip from the **Trip** and **Log** tabs. Those tabs now only show the platforms chosen at onboarding; adding or editing your platforms is done in **Settings → Profile & tax**, keeping one clear place to manage them.

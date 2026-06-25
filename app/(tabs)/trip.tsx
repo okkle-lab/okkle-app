@@ -9,7 +9,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import { VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
@@ -23,13 +23,19 @@ export default function TripScreen() {
   const router = useRouter();
   const user = getUser();
   const last = getLastTrip();
-  // Remember the last platform/vehicle so starting is a single tap.
-  // Platforms are managed in Settings; here we only show the chosen ones.
-  const platformList = getPlatforms();
+  // Platforms/vehicles are managed in Settings; we only show the chosen ones, and
+  // refresh them whenever the tab regains focus (e.g. after adding one in Settings).
+  const [platformList, setPlatformList] = useState(getPlatforms);
+  const [myVehicles, setMyVehicles] = useState(() => VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
   const [platform, setPlatform] = useState(last?.platform ?? getPlatforms()[0]);
-  // Only the vehicles the user picked at onboarding / in Settings.
-  const myVehicles = VEHICLES.filter(v => getVehicleKeys().includes(v.key));
-  const [vehicle, setVehicle] = useState(last?.vehicle ?? user?.vehicle ?? myVehicles[0]?.key ?? 'car');
+  const [vehicle, setVehicle] = useState(last?.vehicle ?? user?.vehicle ?? VEHICLES.find(v => getVehicleKeys().includes(v.key))?.key ?? 'car');
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setPlatformList(getPlatforms());
+      setMyVehicles(VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
+    }, []),
+  );
 
   const [phase, setPhase] = useState<Phase>('setup');
   const [finished, setFinished] = useState<LiveTrip | null>(null);
