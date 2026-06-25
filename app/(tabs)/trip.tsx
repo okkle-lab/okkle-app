@@ -423,8 +423,10 @@ const s = StyleSheet.create({
   discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
   liveDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.green },
   ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  bigMiles: { ...tabular, alignSelf: 'stretch', textAlign: 'center', paddingHorizontal: spacing.lg, fontSize: 108, fontWeight: font.bold, color: '#fff', letterSpacing: -4, lineHeight: 114 },
-  bigTripMiles: { fontSize: 148, lineHeight: 154, letterSpacing: -5 },
+  // NOTE: no explicit lineHeight — it conflicts with adjustsFontSizeToFit on iOS
+  // and collapses the number to a tiny size. Let the font size drive the height.
+  bigMiles: { ...tabular, alignSelf: 'stretch', textAlign: 'center', paddingHorizontal: spacing.lg, fontSize: 108, fontWeight: font.bold, color: '#fff', letterSpacing: -4 },
+  bigTripMiles: { fontSize: 148, letterSpacing: -5 },
   bigMilesUnit: { fontSize: 15, color: 'rgba(255,255,255,0.55)', marginTop: 2, textAlign: 'center' },
   moneyChip: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: spacing.lg, backgroundColor: 'rgba(224,150,31,0.16)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
   moneyChipText: { ...tabular, color: '#F5C97A', fontSize: 14, fontWeight: font.semibold },

@@ -1,13 +1,20 @@
-import React from 'react';
-import { View, Text } from 'react-native';
-import Svg, { Rect, Polyline } from 'react-native-svg';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Platform, StyleSheet, View, Text } from 'react-native';
+import MapView, { Heatmap, type LatLng } from 'react-native-maps';
+import Svg, { Rect } from 'react-native-svg';
 import { colors, radius, type } from '../theme';
 import type { HeatPoint } from '../db';
 
-// A self-contained density heatmap that works in Expo Go (no native maps).
-// Points are binned into a grid over their bounding box and coloured by
-// intensity. It shows the SHAPE of where you ride and the hot zones relative
-// to each other — a real street map can drop in later (needs a dev build).
+// Heatmap of where you ride. On iOS it renders on a real Apple Maps street map
+// (react-native-maps, already used by the live trip RouteMap). Elsewhere / in
+// Expo Go it falls back to a self-contained SVG density grid so it always shows
+// something. Both are built on-device from your GPS trips.
+
+const HEAT_GRADIENT = {
+  colors: ['#9BE3D2', '#5FD0BB', '#E7C66B', '#E0961F', '#E2604A'],
+  startPoints: [0.1, 0.3, 0.5, 0.7, 1.0],
+  colorMapSize: 256,
+};
 
 const COLS = 22;
 function heatColor(t: number): { fill: string; opacity: number } {
@@ -30,6 +37,11 @@ export function HeatMapView({ points, height = 220 }: { points: HeatPoint[]; hei
         </Text>
       </View>
     );
+  }
+
+  // Real Apple Maps street map with a native heatmap overlay (dev build / device).
+  if (Platform.OS === 'ios') {
+    return <AppleHeatMap points={points} height={height} />;
   }
 
   let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
@@ -80,6 +92,60 @@ export function HeatMapView({ points, height = 220 }: { points: HeatPoint[]; hei
       <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
         {cells}
       </Svg>
+    </View>
+  );
+}
+
+// Apple Maps street map + native weighted heatmap overlay.
+function AppleHeatMap({ points, height }: { points: HeatPoint[]; height: number }) {
+  const mapRef = useRef<MapView | null>(null);
+  const weighted = useMemo(
+    () => points.map(p => ({ latitude: p.lat, longitude: p.lng, weight: Math.max(0.1, p.w) })),
+    [points],
+  );
+  const region = useMemo(() => {
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const p of points) {
+      minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat);
+      minLng = Math.min(minLng, p.lng); maxLng = Math.max(maxLng, p.lng);
+    }
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.5, 0.01),
+      longitudeDelta: Math.max((maxLng - minLng) * 1.5, 0.01),
+    };
+  }, [points]);
+
+  useEffect(() => {
+    const coords: LatLng[] = points.map(p => ({ latitude: p.lat, longitude: p.lng }));
+    if (coords.length < 2) return;
+    const id = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
+        animated: false,
+      });
+    }, 80);
+    return () => clearTimeout(id);
+  }, [points]);
+
+  return (
+    <View style={{ height, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#EEF3F1' }}>
+      <MapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        initialRegion={region}
+        mapType="standard"
+        rotateEnabled={false}
+        pitchEnabled={false}
+        showsCompass={false}
+        showsScale={false}
+        showsTraffic={false}
+      >
+        {weighted.length > 0 ? (
+          <Heatmap points={weighted} radius={42} opacity={0.7} gradient={HEAT_GRADIENT} />
+        ) : null}
+      </MapView>
     </View>
   );
 }

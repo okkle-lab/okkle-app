@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Hotspot map, live-trip numbers, tidier Settings)
+
+- **Real Apple Maps hotspot.** On iOS, Insights → Hotspot map now renders on an actual Apple Maps street map with a native weighted heatmap overlay (via the already-bundled `react-native-maps`, same as the live trip route). The SVG density grid stays as the Android / Expo Go fallback. No new native dependency.
+- **Fixed tiny live-trip numbers.** The big number on the active-trip screen (miles this trip, average mph, miles today, etc.) was collapsing to a small size — an iOS conflict between an explicit `lineHeight` and `adjustsFontSizeToFit`. Removed the explicit line height so the number renders full-size and only auto-shrinks for long values.
+- **Categorised Settings.** The settings list is now grouped under labelled sections — Account & tax, Tracking & logging, Your data, Help & feedback — so it's easier to scan.
+
 ## 2026-06-25 (Vehicles match platforms — only show what you chose)
 
 - **Vehicles are now multi-select at onboarding** and only the ones you picked appear in the **Log** and **Trip** tabs — exactly like platforms. A courier who only rides a bike no longer wades through car/van/motorbike when logging mileage.

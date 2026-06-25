@@ -115,15 +115,25 @@ export default function Settings() {
             </View>
           </View>
 
+          <Text style={s.groupLabel}>Account & tax</Text>
           <View style={s.group}>
             <Row icon="user" tone="mint" title="Profile & tax" sub="Name, vehicle, platforms, tax region" onPress={go('/settings-account')} />
-            <Row icon="bell" tone="blue" title="Reminders" sub="Logging nudges & tax deadlines" onPress={go('/settings-reminders')} />
-            <Row icon="calendar" tone="amber" title="Key tax dates" sub="HMRC deadlines & add to calendar" onPress={go('/key-dates')} />
-            <Row icon="navigation" tone="mint" title="Auto-detect trips" sub="Suggest tracking when you start driving" onPress={go('/settings-auto-trip')} />
+            <Row icon="calendar" tone="amber" title="Key tax dates" sub="HMRC deadlines & add to calendar" onPress={go('/key-dates')} last />
+          </View>
+
+          <Text style={s.groupLabel}>Tracking & logging</Text>
+          <View style={s.group}>
+            <Row icon="navigation" tone="mint" title="Auto-detect trips" sub="Track your shift hands-free" onPress={go('/settings-auto-trip')} />
             <Row icon="camera" tone="violet" title="Auto-log earnings" sub="Screenshot a pay screen -> log it" onPress={go('/settings-earnings-shortcut')} />
+            <Row icon="bell" tone="blue" title="Reminders" sub="Logging nudges & tax deadlines" onPress={go('/settings-reminders')} last />
+          </View>
+
+          <Text style={s.groupLabel}>Your data</Text>
+          <View style={s.group}>
             <Row icon="shield" tone="green" title="Data & backup" sub="Back up, restore or delete your data" onPress={go('/settings-data')} last />
           </View>
 
+          <Text style={s.groupLabel}>Help & feedback</Text>
           <View style={s.group}>
             <Row icon="alert-triangle" tone="amber" title="Report a problem" onPress={go('/feedback', { mode: 'problem', screen: 'Settings' })} />
             <Row icon="message-circle" tone="violet" title="Suggest an improvement" onPress={go('/feedback', { mode: 'suggestion', screen: 'Settings' })} />
@@ -224,6 +234,13 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
     paddingVertical: spacing.md,
+  },
+  groupLabel: {
+    ...type.label,
+    color: colors.textSecondary,
+    marginLeft: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: -spacing.sm,
   },
   group: {
     overflow: 'hidden',
