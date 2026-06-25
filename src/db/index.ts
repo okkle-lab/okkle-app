@@ -10,6 +10,7 @@ export function initDb() {
       id INTEGER PRIMARY KEY,
       name TEXT,
       vehicle TEXT DEFAULT 'car',
+      vehicles TEXT,
       tax_rate REAL DEFAULT 0.20,
       region TEXT DEFAULT 'ruk',
       platforms TEXT DEFAULT 'Uber Eats',
@@ -60,6 +61,7 @@ export function initDb() {
     `ALTER TABLE user ADD COLUMN reminder_day TEXT DEFAULT 'sun'`,
     `ALTER TABLE user ADD COLUMN log_frequency TEXT DEFAULT 'weekly'`,
     `ALTER TABLE trips ADD COLUMN zone TEXT`,
+    `ALTER TABLE user ADD COLUMN vehicles TEXT`,
   ];
   for (const sql of migrations) {
     try { db.execSync(sql); } catch { /* column already present */ }
@@ -69,7 +71,8 @@ export function initDb() {
 export type User = {
   id: number;
   name: string;
-  vehicle: string;
+  vehicle: string;        // primary/default vehicle (used to prefill selections)
+  vehicles: string | null; // comma-separated list the user actually owns/uses
   tax_rate: number;
   region: string;
   platforms: string;
@@ -116,10 +119,11 @@ export function saveUser(u: Partial<User>) {
   const existing = getUser();
   if (existing) {
     db.runSync(
-      `UPDATE user SET name=?, vehicle=?, tax_rate=?, region=?, platforms=?,
+      `UPDATE user SET name=?, vehicle=?, vehicles=?, tax_rate=?, region=?, platforms=?,
         reminder_enabled=?, reminder_day=?, log_frequency=?, onboarded=? WHERE id=?`,
       u.name ?? existing.name,
       u.vehicle ?? existing.vehicle,
+      u.vehicles ?? existing.vehicles,
       u.tax_rate ?? existing.tax_rate,
       u.region ?? existing.region,
       u.platforms ?? existing.platforms,
@@ -131,11 +135,12 @@ export function saveUser(u: Partial<User>) {
     );
   } else {
     db.runSync(
-      `INSERT INTO user (name, vehicle, tax_rate, region, platforms,
+      `INSERT INTO user (name, vehicle, vehicles, tax_rate, region, platforms,
         reminder_enabled, reminder_day, log_frequency, onboarded)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
       u.name ?? '',
       u.vehicle ?? 'car',
+      u.vehicles ?? null,
       u.tax_rate ?? 0.20,
       u.region ?? 'ruk',
       u.platforms ?? 'Uber Eats',
@@ -153,6 +158,16 @@ export function getPlatforms(): string[] {
   const raw = getUser()?.platforms ?? 'Uber Eats';
   const list = raw.split(',').map(s => s.trim()).filter(Boolean);
   return list.length ? Array.from(new Set(list)) : ['Uber Eats'];
+}
+
+// The vehicle(s) the user actually uses (chosen at onboarding / in Settings).
+// Logging and trip screens show only these — not the full master list. Falls back
+// to the single primary vehicle for users created before multi-vehicle support.
+export function getVehicleKeys(): string[] {
+  const u = getUser();
+  const raw = (u?.vehicles && u.vehicles.trim()) ? u.vehicles : (u?.vehicle ?? 'car');
+  const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+  return list.length ? Array.from(new Set(list)) : ['car'];
 }
 
 // Add a custom platform (e.g. via "Other") and persist it. Returns the new list.
@@ -1312,7 +1327,8 @@ export function restoreData(p: BackupPayload) {
 
     if (p.user) {
       saveUser({
-        name: p.user.name, vehicle: p.user.vehicle, tax_rate: p.user.tax_rate,
+        name: p.user.name, vehicle: p.user.vehicle, vehicles: p.user.vehicles,
+        tax_rate: p.user.tax_rate,
         region: p.user.region, platforms: p.user.platforms,
         reminder_enabled: p.user.reminder_enabled, reminder_day: p.user.reminder_day,
         log_frequency: p.user.log_frequency, onboarded: p.user.onboarded,

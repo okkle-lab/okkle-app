@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Vehicles match platforms — only show what you chose)
+
+- **Vehicles are now multi-select at onboarding** and only the ones you picked appear in the **Log** and **Trip** tabs — exactly like platforms. A courier who only rides a bike no longer wades through car/van/motorbike when logging mileage.
+- New `vehicles` column (comma-separated) with a `getVehicleKeys()` helper; the existing single `vehicle` stays as the primary/default used to pre-fill selections. Backward-compatible: users created before this fall back to their single vehicle.
+- **Settings → Profile & tax** now manages your vehicles as a multi-select ("Vehicles you use"), mirroring platform management. Backup/restore carries the list.
+- Comparison and the trip-edit screens still show the full vehicle list (comparison needs every rate; editing an old trip may reference a vehicle you no longer use).
+
 ## 2026-06-25 (Passive whole-shift mileage tracking)
 
 - **Added hands-free shift tracking** (`src/shift.ts`): Okkle now counts every business mile of a delivery shift in the background — driving to the restaurant, to the customer, and the "dead" miles cruising between offers — without the courier tapping anything mid-delivery. This matches the UK simplified-expenses model, where all of those are simply business miles (no per-leg split needed).

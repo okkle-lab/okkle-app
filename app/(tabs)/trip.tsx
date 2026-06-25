@@ -13,7 +13,7 @@ import { useRouter } from 'expo-router';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
 import { VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, getPlatforms, addPlatform, type DailyStats } from '../../src/db';
+import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, getPlatforms, addPlatform, getVehicleKeys, type DailyStats } from '../../src/db';
 
 type LiveMetric = 'miles' | 'time' | 'speed' | 'today' | 'map';
 
@@ -26,7 +26,9 @@ export default function TripScreen() {
   // Remember the last platform/vehicle so starting is a single tap.
   const [platformList, setPlatformList] = useState(getPlatforms);
   const [platform, setPlatform] = useState(last?.platform ?? getPlatforms()[0]);
-  const [vehicle, setVehicle] = useState(last?.vehicle ?? user?.vehicle ?? 'car');
+  // Only the vehicles the user picked at onboarding / in Settings.
+  const myVehicles = VEHICLES.filter(v => getVehicleKeys().includes(v.key));
+  const [vehicle, setVehicle] = useState(last?.vehicle ?? user?.vehicle ?? myVehicles[0]?.key ?? 'car');
 
   function addCustomPlatform() {
     Alert.prompt('Add platform', 'Name of the delivery platform you work for', [
@@ -350,7 +352,7 @@ export default function TripScreen() {
             <Text style={s.setupLabel}>Vehicle</Text>
           </View>
           <View style={[s.chips, { marginBottom: 0 }]}>
-            {VEHICLES.map(v => (
+            {myVehicles.map(v => (
               <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
             ))}
           </View>

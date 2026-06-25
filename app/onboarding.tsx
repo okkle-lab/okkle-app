@@ -18,7 +18,7 @@ export default function Onboarding() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [name, setName] = useState('');
-  const [vehicle, setVehicle] = useState('car');
+  const [vehicles, setVehicles] = useState<string[]>(['car']);
   const [platforms, setPlatforms] = useState<string[]>(['Uber Eats']);
   const [region, setRegion] = useState('ruk');
   const [band, setBand] = useState<'basic' | 'higher'>('basic');
@@ -26,7 +26,8 @@ export default function Onboarding() {
 
   function persist() {
     saveUser({
-      name, vehicle, platforms: platforms.join(','), region,
+      name, vehicle: vehicles[0] ?? 'car', vehicles: vehicles.join(','),
+      platforms: platforms.join(','), region,
       tax_rate: regionRate(region, band), onboarded: 1,
     });
     const u = getUser();
@@ -66,7 +67,7 @@ export default function Onboarding() {
 
   const canContinue =
     step === 1 ? name.trim().length > 0 :
-    step === 2 ? !!vehicle :
+    step === 2 ? vehicles.length > 0 :
     step === 3 ? platforms.length > 0 :
     true;
 
@@ -126,7 +127,7 @@ export default function Onboarding() {
         {step === 2 && (
           <View style={s.stepContent}>
             <Text style={s.hero}>What do you{'\n'}ride or drive?</Text>
-            <Text style={s.sub}>This sets your HMRC mileage rate — the tax-free amount you can claim per mile.</Text>
+            <Text style={s.sub}>Pick all you use — each sets its own HMRC mileage rate, the tax-free amount you can claim per mile. You’ll choose which one per trip.</Text>
             <View style={s.chipGrid}>
               {VEHICLES.map(v => (
                 <VehicleChip
@@ -134,8 +135,9 @@ export default function Onboarding() {
                   vehicle={v.key}
                   label={v.label}
                   suffix={`${(v.rate * 100).toFixed(0)}p/mi`}
-                  selected={vehicle === v.key}
-                  onPress={() => setVehicle(v.key)}
+                  selected={vehicles.includes(v.key)}
+                  onPress={() => setVehicles(list =>
+                    list.includes(v.key) ? list.filter(x => x !== v.key) : [...list, v.key])}
                   style={{ marginBottom: spacing.sm }}
                 />
               ))}

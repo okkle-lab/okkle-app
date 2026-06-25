@@ -11,12 +11,15 @@ export default function SettingsAccount() {
   const router = useRouter();
   const u = getUser();
   const [name, setName] = useState(u?.name ?? '');
-  const [vehicle, setVehicle] = useState(u?.vehicle ?? 'car');
+  const [vehicles, setVehicles] = useState<string[]>(
+    u?.vehicles?.split(',').map(s => s.trim()).filter(Boolean) ?? (u?.vehicle ? [u.vehicle] : ['car']),
+  );
   const [platforms, setPlatforms] = useState<string[]>(u?.platforms?.split(',').filter(Boolean) ?? ['Uber Eats']);
   const [region, setRegion] = useState(u?.region ?? 'ruk');
   const [band, setBand] = useState<'basic' | 'higher'>((u?.tax_rate ?? 0.2) >= 0.4 ? 'higher' : 'basic');
 
   const toggle = (p: string) => setPlatforms(prev => (prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]));
+  const toggleVehicle = (k: string) => setVehicles(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
   const allOptions = Array.from(new Set([...PLATFORMS, ...platforms]));
 
   function addCustom() {
@@ -30,7 +33,8 @@ export default function SettingsAccount() {
   }
 
   function save() {
-    saveUser({ name, vehicle, platforms: platforms.join(','), region, tax_rate: regionRate(region, band) });
+    const v = vehicles.length ? vehicles : ['car'];
+    saveUser({ name, vehicle: v[0], vehicles: v.join(','), platforms: platforms.join(','), region, tax_rate: regionRate(region, band) });
     router.back();
   }
 
@@ -49,9 +53,9 @@ export default function SettingsAccount() {
           <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={colors.textTertiary} />
         </View>
         <View>
-          <Text style={s.fieldLabel}>Default vehicle</Text>
+          <Text style={s.fieldLabel}>Vehicles you use</Text>
           <View style={s.chips}>
-            {VEHICLES.map(v => <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />)}
+            {VEHICLES.map(v => <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicles.includes(v.key)} onPress={() => toggleVehicle(v.key)} />)}
           </View>
         </View>
         <View>

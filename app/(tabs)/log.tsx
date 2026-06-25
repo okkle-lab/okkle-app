@@ -10,7 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
-import { saveRecord, getUser, kvGet, kvSet, getPlatforms, addPlatform, getLearnedCategory, learnCategory } from '../../src/db';
+import { saveRecord, getUser, kvGet, kvSet, getPlatforms, addPlatform, getVehicleKeys, getLearnedCategory, learnCategory } from '../../src/db';
 import { recognizeText } from '../../modules/okkle-vision';
 import { parseReceipt } from '../../src/receiptParse';
 
@@ -80,7 +80,9 @@ export default function LogScreen() {
   }, [params.tab]);
 
   const [miles, setMiles] = useState('');
-  const [vehicle, setVehicle] = useState(user?.vehicle ?? 'car');
+  // Only the vehicles the user picked at onboarding / in Settings.
+  const myVehicles = VEHICLES.filter(v => getVehicleKeys().includes(v.key));
+  const [vehicle, setVehicle] = useState(user?.vehicle ?? myVehicles[0]?.key ?? 'car');
   const [platformList, setPlatformList] = useState(getPlatforms);
   const [platform, setPlatform] = useState(platformList[0]);
 
@@ -398,7 +400,7 @@ export default function LogScreen() {
               <View>
                 <SectionHeader title="Vehicle" />
                 <View style={s.wrapRow}>
-                  {VEHICLES.map(v => (
+                  {myVehicles.map(v => (
                     <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
                   ))}
                 </View>
