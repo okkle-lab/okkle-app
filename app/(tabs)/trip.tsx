@@ -37,9 +37,12 @@ export default function TripScreen() {
   // pick the vehicle here, since that sets the mileage rate.
   const [myVehicles, setMyVehicles] = useState(() => VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
   const [vehicle, setVehicle] = useState(last?.vehicle ?? user?.vehicle ?? VEHICLES.find(v => getVehicleKeys().includes(v.key))?.key ?? 'car');
+  const [platformList, setPlatformList] = useState(getPlatforms);
+  const [platform, setPlatform] = useState(() => getPlatforms()[0]);
 
   useFocusEffect(
     React.useCallback(() => {
+      setPlatformList(getPlatforms());
       setMyVehicles(VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
     }, []),
   );
@@ -351,7 +354,7 @@ export default function TripScreen() {
             <Feather name="navigation" size={54} color="#fff" />
             <Text style={s.startBtnText}>Start trip</Text>
             <Text style={s.startBtnSub}>{vehicleLabel(vehicle)} · GPS miles</Text>
-          </GradientCard>
+          </GlassPanel>
         </Pressable>
       </View>
 

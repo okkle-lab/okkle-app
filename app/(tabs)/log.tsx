@@ -212,16 +212,11 @@ export default function LogScreen() {
       // Learn: this merchant → this category, so the next receipt nails it.
       if (scannedMerchant) learnCategory(scannedMerchant, description);
     }
-    // Confirm exactly what was saved, so the user is sure it landed.
-    const summary = tab === 'mileage'
-      ? `${parseFloat(miles).toFixed(1)} miles`
-      : `${fmtGbp(parseFloat(amount))} ${tab === 'income' ? 'earnings' : 'expense'}`;
     setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null); setScannedMerchant(null);
     const t = new Date(); t.setHours(12, 0, 0, 0); setDate(t);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    Alert.alert('Saved', `${summary}${period === 'week' ? ' for the week' : ''} added to your records.`);
+    setSubmitted(true);
   }
 
   const canSave = tab === 'mileage' ? !!miles : tab === 'income' ? !!amount : (!!amount && !!description);
@@ -443,16 +438,73 @@ export default function LogScreen() {
     );
   }
 
-          {tab === 'mileage' && myVehicles.length > 1 && (
-            <View>
-              <SectionHeader title="Vehicle" />
-              <View style={s.wrapRow}>
-                {myVehicles.map(v => (
-                  <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-                ))}
-              </View>
-            </View>
-          )}
+  function renderDateStep() {
+    return (
+      <View style={s.stepStack}>
+        <View style={s.periodSegLarge}>
+          {(['day', 'week'] as const).map(p => (
+            <Pressable key={p} onPress={() => setPeriod(p)} style={[s.periodItemLarge, period === p && s.periodItemOn]}>
+              <Text style={[s.periodText, period === p && s.periodTextOn]}>{p === 'day' ? 'Day' : 'Week'}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {period === 'week' ? <Text style={s.weekHint}>Pick any day in the week you were paid for.</Text> : null}
+        <DatePickerField value={date} onChange={setDate} quickChips={false} variant="ticker" />
+        {period === 'week' ? (
+          <Text style={s.weekCaption}>Covers {fmtShort(wb.start)} - {fmtShort(wb.end)}. Spread evenly across the 7 days.</Text>
+        ) : null}
+      </View>
+    );
+  }
+
+  function renderReviewStep() {
+    const rows = [
+      ['Type', active.label],
+      [tab === 'mileage' ? 'Miles' : 'Amount', tab === 'mileage' ? `${miles || '0'} mi` : fmtGbp(parseFloat(amount) || 0)],
+      ...(tab === 'expense' ? [['Category', description || '-']] : [['Platform', platform || '-']]),
+      ...(tab === 'mileage' ? [['Vehicle', myVehicles.find(v => v.key === vehicle)?.label ?? vehicle]] : []),
+      ['When', period === 'week' ? `${fmtShort(wb.start)} - ${fmtShort(wb.end)}` : fmtShort(date)],
+      ['Receipt', receiptUri ? 'Attached' : 'Not attached'],
+    ];
+    return (
+      <View style={s.reviewCard}>
+        <IconBadge icon={active.icon} tone={active.tone} size={48} />
+        {rows.map(([label, value], index) => (
+          <View key={label} style={[s.reviewRow, index < rows.length - 1 && s.reviewBorder]}>
+            <Text style={s.reviewLabel}>{label}</Text>
+            <Text style={s.reviewValue}>{value}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  function renderStep() {
+    if (currentStep === 'kind') {
+      return (
+        <View style={s.stepStack}>
+          {kindOptions.map(t => {
+            const on = tab === t.key;
+            return (
+              <Pressable key={t.key} onPress={() => chooseKind(t.key)} style={[s.kindCard, on && s.kindCardActive]}>
+                <IconBadge icon={t.icon} tone={t.tone} size={48} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.kindTitle}>{t.label}</Text>
+                  <Text style={s.kindSub}>{t.sub}</Text>
+                </View>
+                <Feather name={on ? 'check-circle' : 'circle'} size={24} color={on ? colors.brandDeep : colors.textTertiary} />
+              </Pressable>
+            );
+          })}
+        </View>
+      );
+    }
+    if (currentStep === 'receipt') return renderReceiptStep();
+    if (currentStep === 'primary') return renderPrimaryStep();
+    if (currentStep === 'details') return renderDetailsStep();
+    if (currentStep === 'date') return renderDateStep();
+    return renderReviewStep();
+  }
 
   if (submitted) {
     return (
@@ -475,29 +527,72 @@ export default function LogScreen() {
               <Text style={s.successSub}>Saved to Records.</Text>
             </View>
 
-            {/* Just the calendar — defaults to today; tap to pick another day.
-                (No Today/Yesterday chips — the calendar already covers it.) */}
-            {period === 'week' && <Text style={s.weekHint}>Pick any day in the week you were paid for.</Text>}
-            <DatePickerField value={date} onChange={setDate} quickChips={false} />
-            {period === 'week' && (
-              <Text style={s.weekCaption}>Covers {fmtShort(wb.start)} – {fmtShort(wb.end)} · spread evenly across the 7 days</Text>
-            )}
-          </View>
-        </Card>
+            <View style={s.successActions}>
+              <NativeGreenButton label="Keep adding logs" onPress={addAnotherLog} />
+              <Pressable onPress={viewRecords} style={s.successSecondary}>
+                <Feather name="list" size={19} color={colors.brandDeep} />
+                <Text style={s.successSecondaryText}>View in Records</Text>
+              </Pressable>
+            </View>
+          </GlassPanel>
+        </Animated.View>
+      </View>
+    );
+  }
 
-        {/* Gradient save action */}
-        <Pressable onPress={handleSave} disabled={!canSave && !saved} style={({ pressed }) => [pressed && { opacity: 0.9 }, { marginTop: spacing.lg }]}>
-          <GradientCard
-            colors={saved ? ['#3BC07E', colors.green, '#1C7048'] : canSave ? [colors.brand, colors.brandDeep] : ['#B8C2BC', '#8F9C95']}
-            radius={radius.lg}
-            style={s.saveBtn}
-          >
-            <Feather name={saved ? 'check' : 'plus'} size={20} color="#fff" />
-            <Text style={s.saveText}>{saved ? 'Saved!' : 'Save'}</Text>
-          </GradientCard>
-        </Pressable>
-      </Animated.View>
-      </CollapsingHeader>
+  return (
+    <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.headerEyebrow}>Log entry</Text>
+          <Text style={s.headerTitle}>{active.label}</Text>
+        </View>
+        <SettingsGlassButton onPress={() => router.push('/settings')} />
+      </View>
+
+      <View style={s.progressTrack}>
+        <View style={[s.progressFill, { width: `${((stepIndex + 1) / STEPS.length) * 100}%` }]} />
+      </View>
+
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="never"
+        contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 132 }]}
+      >
+        <Animated.View
+          style={[
+            s.page,
+            {
+              opacity: stepAnim,
+              transform: [{ translateX: stepAnim.interpolate({ inputRange: [0, 1], outputRange: [stepDirection.current * 28, 0] }) }],
+            },
+          ]}
+        >
+          <Text style={s.stepCount}>Step {stepIndex + 1} of {STEPS.length}</Text>
+          <Text style={s.questionTitle}>{stepTitle}</Text>
+          <Text style={s.questionSub}>{stepSub}</Text>
+          <View style={s.questionBody}>{renderStep()}</View>
+        </Animated.View>
+      </ScrollView>
+
+      <View style={[s.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+        <NativeGreenButton
+          label="Back"
+          onPress={() => goToStep(stepIndex - 1)}
+          disabled={stepIndex === 0}
+          variant="neutral"
+          height={52}
+          style={s.backBtnWrap}
+          leftIcon={<Feather name="arrow-left" size={18} color={stepIndex === 0 ? colors.textTertiary : colors.textPrimary} />}
+        />
+        <NativeGreenButton
+          label={nextLabel}
+          onPress={() => currentStep === 'review' ? handleSave() : goToStep(stepIndex + 1)}
+          disabled={!canContinue}
+          style={s.nextBtnWrap}
+        />
+      </View>
       <KeyboardDoneAccessory />
     </KeyboardAvoidingView>
   );
