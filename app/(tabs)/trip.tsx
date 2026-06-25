@@ -10,10 +10,19 @@ import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, getPlatforms, getVehicleKeys, type DailyStats } from '../../src/db';
+
+// Circular "Start" hero — inspired by activity-ring fitness UIs: a large tappable
+// gradient disc inside a faint ring with a brand accent arc.
+const RING_SIZE = 252;
+const BTN_SIZE = 196;
+const RING_STROKE = 9;
+const RING_R = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRC = 2 * Math.PI * RING_R;
 
 type LiveMetric = 'miles' | 'time' | 'speed' | 'today' | 'map';
 
@@ -330,10 +339,7 @@ export default function TripScreen() {
       </View>
 
       <View style={[s.fixedBody, { paddingBottom: insets.bottom + 64 }]}>
-      {/* Calm space at the top, then the controls + button sit together as one
-          cohesive cluster low on the screen — balanced and easy to reach. */}
-      <View style={s.startSpacer} />
-
+      {/* Selectors sit quietly under the header */}
       <Text style={s.selLabel}>Platform</Text>
       <ChipScroll fadeColor={colors.bg}>
         {platformList.map(p => (
@@ -352,16 +358,30 @@ export default function TripScreen() {
         </>
       )}
 
-      {/* THE button — big, glove-friendly, anchored under its controls. */}
-      <Pressable onPress={handleStart} style={({ pressed }) => [s.bigStartWrap, pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] }]}>
-        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.bigStart}>
-          <View style={s.bigStartCircle}>
-            <Feather name="navigation" size={50} color="#fff" />
-          </View>
-          <Text style={s.bigStartText}>Start trip</Text>
-          <Text style={s.bigStartSub}>{vehicleLabel(vehicle)} · {platform}</Text>
-        </GradientCard>
-      </Pressable>
+      <View style={s.startSpacer} />
+
+      {/* THE button — a big circular Start disc inside an accent ring (activity-
+          ring inspired), centred as the screen's focal point. */}
+      <View style={s.ringHero}>
+        <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R} stroke={colors.brandLight} strokeWidth={RING_STROKE} fill="none" />
+          <Circle
+            cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R}
+            stroke={colors.brand} strokeWidth={RING_STROKE} fill="none" strokeLinecap="round"
+            strokeDasharray={`${RING_CIRC * 0.28} ${RING_CIRC}`}
+            transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+          />
+        </Svg>
+        <Pressable onPress={handleStart} style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}>
+          <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={BTN_SIZE / 2} style={s.startBtnCircle}>
+            <Feather name="navigation" size={46} color="#fff" />
+            <Text style={s.startBtnText}>Start trip</Text>
+            <Text style={s.startBtnSub}>{vehicleLabel(vehicle)} · {platform}</Text>
+          </GradientCard>
+        </Pressable>
+      </View>
+
+      <View style={s.ringSpacerBottom} />
       </View>
     </View>
   );
@@ -390,6 +410,11 @@ const s = StyleSheet.create({
   setupLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
   setupLabel: { ...type.bodyMedium, fontSize: 15 },
   startSpacer: { flex: 1, minHeight: 16 },
+  ringSpacerBottom: { flex: 0.55 },
+  ringHero: { width: RING_SIZE, height: RING_SIZE, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
+  startBtnCircle: { width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_SIZE / 2, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 16 },
+  startBtnText: { color: '#fff', fontSize: 25, fontWeight: font.bold, letterSpacing: -0.4 },
+  startBtnSub: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: font.medium, textAlign: 'center' },
   bigStartWrap: { marginTop: spacing.lg },
   bigStart: { alignItems: 'center', justifyContent: 'center', paddingVertical: 54, gap: 14 },
   bigStartCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center' },
