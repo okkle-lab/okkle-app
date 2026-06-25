@@ -128,6 +128,22 @@ export default function Settings() {
         </ScrollView>
       </View>
     </View>
+      <Card style={{ padding: 0, overflow: 'hidden', marginTop: spacing.lg }}>
+        <Row icon="user" tone="mint" title="Profile & tax" sub="Name, vehicle, platforms, tax region" onPress={go('/settings-account')} />
+        <Row icon="bell" tone="blue" title="Reminders" sub="Logging nudges & tax deadlines" onPress={go('/settings-reminders')} />
+        <Row icon="calendar" tone="amber" title="Key tax dates" sub="HMRC deadlines & add to calendar" onPress={go('/key-dates')} />
+        <Row icon="navigation" tone="mint" title="Auto-detect trips" sub="Suggest tracking when you start driving" onPress={go('/settings-auto-trip')} />
+        <Row icon="camera" tone="violet" title="Auto-log earnings" sub="Screenshot a pay screen → log it" onPress={go('/settings-earnings-shortcut')} />
+        <Row icon="shield" tone="green" title="Data & backup" sub="Back up, restore or delete your data" onPress={go('/settings-data')} last />
+      </Card>
+
+      <Card style={{ padding: 0, overflow: 'hidden', marginTop: spacing.lg }}>
+        <Row icon="alert-triangle" tone="amber" title="Report a problem" onPress={go('/feedback', { mode: 'problem', screen: 'Settings' })} />
+        <Row icon="message-circle" tone="violet" title="Suggest an improvement" onPress={go('/feedback', { mode: 'suggestion', screen: 'Settings' })} />
+        <Row icon="help-circle" tone="neutral" title="Replay the app tour" onPress={() => { kvSet('coach_seen', ''); router.back(); }} />
+        <Row icon="info" tone="neutral" title="About Okkle" onPress={go('/settings-about')} last />
+      </Card>
+    </ScrollView>
   );
 }
 

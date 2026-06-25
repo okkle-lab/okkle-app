@@ -325,11 +325,11 @@ export default function LogScreen() {
           {tab === 'income' && (
             <View>
               <SectionHeader title="Platform" />
-              <ChipScroll>
+              <View style={s.wrapRow}>
                 {PLATFORMS.map(p => (
                   <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
                 ))}
-              </ChipScroll>
+              </View>
             </View>
           )}
 
@@ -337,19 +337,19 @@ export default function LogScreen() {
             <>
               <View>
                 <SectionHeader title="Vehicle" />
-                <ChipScroll>
+                <View style={s.wrapRow}>
                   {VEHICLES.map(v => (
                     <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
                   ))}
-                </ChipScroll>
+                </View>
               </View>
               <View>
                 <SectionHeader title="Platform" />
-                <ChipScroll>
+                <View style={s.wrapRow}>
                   {PLATFORMS.map(p => (
                     <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
                   ))}
-                </ChipScroll>
+                </View>
               </View>
             </>
           )}
@@ -368,24 +368,13 @@ export default function LogScreen() {
               </View>
             </View>
 
-            {/* Week mode: This week / Last week presets + the covered range.
-                Day mode uses the picker's own Today/Yesterday chips (no dupes). */}
-            {period === 'week' && (
-              <>
-                <View style={s.quickDates}>
-                  {([['This week', 0], ['Last week', -7]] as [string, number][]).map(([label, off]) => {
-                    const on = isSameDay(weekBounds(date).start, weekBounds(dayAt(off)).start);
-                    return (
-                      <Pressable key={label} onPress={() => setDate(dayAt(off))} style={[s.quickChip, on && s.quickChipOn]}>
-                        <Text style={[s.quickChipText, on && s.quickChipTextOn]}>{label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <Text style={s.weekCaption}>Covers {fmtShort(wb.start)} – {fmtShort(wb.end)} · spread evenly across the 7 days</Text>
-              </>
-            )}
+            {/* Week mode: just pick any day on the calendar — its Mon–Sun pay
+                week is selected and shown. Day mode keeps the Today/Yesterday chips. */}
+            {period === 'week' && <Text style={s.weekHint}>Tap the date and pick any day in the week you were paid for.</Text>}
             <DatePickerField value={date} onChange={setDate} quickChips={period === 'day'} />
+            {period === 'week' && (
+              <Text style={s.weekCaption}>Covers {fmtShort(wb.start)} – {fmtShort(wb.end)} · spread evenly across the 7 days</Text>
+            )}
           </View>
         </Card>
 
@@ -446,7 +435,9 @@ const s = StyleSheet.create({
   periodItemOn: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   periodText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
   periodTextOn: { color: colors.textPrimary, fontWeight: font.semibold },
-  weekCaption: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
+  weekCaption: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium, marginTop: spacing.sm },
+  weekHint: { ...type.caption, color: colors.textSecondary, marginBottom: spacing.sm },
+  wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   quickDates: { flexDirection: 'row', gap: 6 },
   quickChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bgSoft },
   quickChipOn: { backgroundColor: colors.brandDeep },

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import * as Location from 'expo-location';
 import { mileageRate, calcDeduction } from '../db/tax';
+import { setTripActive } from '../autoTrip';
 
 export type TripState = 'idle' | 'running' | 'paused';
 
@@ -71,6 +72,7 @@ export function useTrip() {
     const startedAt = new Date();
     pointsRef.current = [];
     lastSampleRef.current = null;
+    setTripActive(true); // pause auto-trip suggestions while we're tracking
     setTrip({ state: 'running', platform, vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
 
     timerRef.current = setInterval(() => {
@@ -150,6 +152,7 @@ export function useTrip() {
     watchRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
     lastPosRef.current = null;
+    setTripActive(false); // re-enable auto-trip suggestions
     const final = { ...trip, state: 'idle' as TripState, points: pointsRef.current.slice() };
     setTrip(INITIAL);
     return final;

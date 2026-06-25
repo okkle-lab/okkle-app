@@ -190,7 +190,7 @@ export default function TripScreen() {
                   {flash ? (
                     <Text style={s.flashText}>{flash}</Text>
                   ) : (
-                    <Text style={s.mileLabel}>{fmtGbp(nextTarget - trip.deduction)} more to {fmtGbp(nextTarget)} back</Text>
+                    <Text style={s.mileLabel}>{fmtGbp(trip.deduction)} of {fmtGbp(nextTarget)} tax back</Text>
                   )}
                   <View style={s.mileTrack}>
                     <View style={[s.mileFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: flash ? colors.green : colors.brand }]} />
