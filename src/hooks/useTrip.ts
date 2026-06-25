@@ -1,7 +1,29 @@
 import { useState, useRef, useEffect } from 'react';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import { mileageRate, calcDeduction } from '../db/tax';
 import { setTripActive } from '../autoTrip';
+
+const TRIP_NOTIF_ID = 'okkle-trip-active';
+
+// A lock-screen notification while a trip is tracking, so it's visible when the
+// phone is locked and one tap brings you back to the live screen.
+function showTripNotification(platform: string) {
+  Notifications.scheduleNotificationAsync({
+    identifier: TRIP_NOTIF_ID,
+    content: {
+      title: 'Tracking your trip',
+      body: `${platform} · GPS is logging your miles. Tap to view.`,
+      data: { type: 'tripActive' },
+      sticky: true,
+    },
+    trigger: null,
+  }).catch(() => {});
+}
+function clearTripNotification() {
+  Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
+  Notifications.cancelScheduledNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
+}
 
 export type TripState = 'idle' | 'running' | 'paused';
 
@@ -73,6 +95,7 @@ export function useTrip() {
     pointsRef.current = [];
     lastSampleRef.current = null;
     setTripActive(true); // pause auto-trip suggestions while we're tracking
+    showTripNotification(platform);
     setTrip({ state: 'running', platform, vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
 
     timerRef.current = setInterval(() => {
@@ -153,6 +176,7 @@ export function useTrip() {
     if (timerRef.current) clearInterval(timerRef.current);
     lastPosRef.current = null;
     setTripActive(false); // re-enable auto-trip suggestions
+    clearTripNotification();
     const final = { ...trip, state: 'idle' as TripState, points: pointsRef.current.slice() };
     setTrip(INITIAL);
     return final;

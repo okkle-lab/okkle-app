@@ -371,17 +371,11 @@ export default function TripScreen() {
         </GradientCard>
       </Pressable>
 
-      {/* Secondary actions — clean tiles, not loud buttons */}
-      <View style={s.tileRow}>
-        <Pressable onPress={() => router.push({ pathname: '/(tabs)/log', params: { tab: 'income' } })} style={({ pressed }) => [s.tile, pressed && { backgroundColor: colors.bgSoft }]}>
-          <IconBadge icon="dollar-sign" tone="green" size={34} />
-          <Text style={s.tileLabel}>Log weekly pay</Text>
-        </Pressable>
-        <Pressable onPress={() => router.push('/order-check')} style={({ pressed }) => [s.tile, pressed && { backgroundColor: colors.bgSoft }]}>
-          <IconBadge icon="check-circle" tone="violet" size={34} />
-          <Text style={s.tileLabel}>Accept or skip?</Text>
-        </Pressable>
-      </View>
+      {/* Secondary action — checking an offer is trip-relevant; pay logging lives in the Log tab */}
+      <Pressable onPress={() => router.push('/order-check')} style={({ pressed }) => [s.tile, s.tileWide, pressed && { backgroundColor: colors.bgSoft }]}>
+        <IconBadge icon="check-circle" tone="violet" size={34} />
+        <Text style={s.tileLabel}>Accept or skip? — check an offer's £/mile</Text>
+      </Pressable>
 
       {todayHasData && (
         <Text style={s.todayLine}>Today: {today.miles.toFixed(1)} mi · {fmtGbpRound(today.deduction)} tax saved</Text>
@@ -416,6 +410,7 @@ const s = StyleSheet.create({
   startCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
   tileRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
   tile: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.lg, paddingHorizontal: spacing.md, alignItems: 'center', gap: 8 },
+  tileWide: { flexDirection: 'row', marginTop: spacing.lg, paddingVertical: spacing.md, justifyContent: 'flex-start' },
   tileLabel: { ...type.bodyMedium, fontSize: 14, textAlign: 'center' },
 
   // live

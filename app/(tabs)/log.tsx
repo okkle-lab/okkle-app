@@ -10,7 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
-import { saveRecord, getUser, kvGet, kvSet, getPlatforms, addPlatform } from '../../src/db';
+import { saveRecord, getUser, kvGet, kvSet, getPlatforms, addPlatform, getLearnedCategory, learnCategory } from '../../src/db';
 import { recognizeText } from '../../modules/okkle-vision';
 import { parseReceipt } from '../../src/receiptParse';
 
@@ -99,6 +99,7 @@ export default function LogScreen() {
   const [description, setDescription] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [scannedMerchant, setScannedMerchant] = useState<string | null>(null);
   const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
   const [period, setPeriod] = useState<'day' | 'week'>('day');
   const [saved, setSaved] = useState(false);
@@ -173,10 +174,14 @@ export default function LogScreen() {
     try {
       const { available, lines } = await recognizeText(uri);
       if (available && lines.length) {
-        const { amount: amt, merchant, category } = parseReceipt(lines);
+        const { amount: amt, merchant, category, date: receiptDate } = parseReceipt(lines);
         if (amt && !amount) setAmount(amt.toFixed(2));
-        // Prefer a recognised category (selects the chip); fall back to merchant name.
-        if (!description) setDescription(category ?? merchant ?? '');
+        // Prefer what Okkle has *learned* for this merchant, then the keyword guess,
+        // then the merchant name.
+        const learned = getLearnedCategory(merchant);
+        if (!description) setDescription(learned ?? category ?? merchant ?? '');
+        if (receiptDate) setDate(receiptDate);
+        setScannedMerchant(merchant);
       }
     } finally {
       setScanning(false);
@@ -200,8 +205,10 @@ export default function LogScreen() {
       if (!amount || !description) { Alert.alert('Enter amount and description'); return; }
       saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: description }, createdAt);
       bumpCat(description); setCatCounts(getCatCounts());
+      // Learn: this merchant → this category, so the next receipt nails it.
+      if (scannedMerchant) learnCategory(scannedMerchant, description);
     }
-    setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null);
+    setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null); setScannedMerchant(null);
     const t = new Date(); t.setHours(12, 0, 0, 0); setDate(t);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setSaved(true);

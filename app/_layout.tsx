@@ -32,7 +32,8 @@ export default function RootLayout() {
   // where the user confirms by hitting Start (we never auto-record).
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(res => {
-      if ((res.notification.request.content.data as any)?.type === 'autotrip') {
+      const type = (res.notification.request.content.data as any)?.type;
+      if (type === 'autotrip' || type === 'tripActive') {
         router.push('/(tabs)/trip');
       }
     });

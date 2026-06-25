@@ -167,6 +167,25 @@ export function addPlatform(name: string): string[] {
   return list;
 }
 
+// On-device learning for receipts: remember which category the user picks for a
+// given merchant, so next time we suggest it. Apple's OCR doesn't learn — this is
+// Okkle's own memory, stored locally (no cloud).
+export function getLearnedCategory(merchant: string | null): string | null {
+  if (!merchant) return null;
+  try {
+    const map = JSON.parse(kvGet('merchant_categories') || '{}');
+    return map[merchant.trim().toLowerCase()] ?? null;
+  } catch { return null; }
+}
+export function learnCategory(merchant: string | null, category: string | null) {
+  if (!merchant || !category) return;
+  try {
+    const map = JSON.parse(kvGet('merchant_categories') || '{}');
+    map[merchant.trim().toLowerCase()] = category;
+    kvSet('merchant_categories', JSON.stringify(map));
+  } catch { /* ignore */ }
+}
+
 export function saveTrip(t: Omit<Trip, 'id' | 'created_at'>) {
   db.runSync(
     `INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at, route_json, zone)

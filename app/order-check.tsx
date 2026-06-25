@@ -115,6 +115,12 @@ export default function OrderCheck() {
         </Card>
 
         <Text style={s.footnote}>A guide, not a rule — busy areas, stacked orders and tips can make a lower £/mile worth taking.</Text>
+
+        {/* Big, glove-friendly close */}
+        <Pressable onPress={() => router.back()} style={({ pressed }) => [s.doneBtn, pressed && { opacity: 0.9 }]}>
+          <Feather name="check" size={20} color="#fff" />
+          <Text style={s.doneBtnText}>Done</Text>
+        </Pressable>
       </ScrollView>
       <KeyboardDoneAccessory />
     </KeyboardAvoidingView>
@@ -156,4 +162,6 @@ const s = StyleSheet.create({
   stepVal: { ...tabular, fontSize: 26, fontWeight: font.bold, color: colors.textPrimary },
 
   footnote: { ...type.small, lineHeight: 18, textAlign: 'center', marginTop: spacing.xl },
+  doneBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.brand, borderRadius: radius.lg, paddingVertical: 18, marginTop: spacing.xl },
+  doneBtnText: { color: '#fff', fontSize: 18, fontWeight: font.bold },
 });

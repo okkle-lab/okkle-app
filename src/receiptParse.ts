@@ -2,7 +2,41 @@
 // Deliberately simple and on-device; the user always confirms/corrects the
 // amount, so we favour a sensible guess over cleverness.
 
-export type ParsedReceipt = { amount: number | null; merchant: string | null; category: string | null };
+export type ParsedReceipt = { amount: number | null; merchant: string | null; category: string | null; date: Date | null };
+
+const MONTHS: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+
+// Best-guess the receipt date. UK receipts are day-first (DD/MM/YYYY); also
+// handles "25 Jun 2026" style. Returns null if none found.
+function detectDate(lines: string[]): Date | null {
+  const text = lines.join('  ');
+  const noon = (y: number, m: number, d: number): Date | null => {
+    if (d < 1 || d > 31 || m < 0 || m > 11) return null;
+    const dt = new Date(y, m, d, 12, 0, 0, 0);
+    if (isNaN(dt.getTime())) return null;
+    if (dt.getTime() > Date.now() + 86400000) return null; // not in the future
+    return dt;
+  };
+
+  // DD/MM/YYYY, DD-MM-YY, DD.MM.YYYY
+  let m = text.match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/);
+  if (m) {
+    let year = parseInt(m[3], 10); if (year < 100) year += 2000;
+    const dt = noon(year, parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+    if (dt) return dt;
+  }
+  // DD Mon YYYY  (e.g. "25 Jun 2026", "25 June 2026")
+  m = text.match(/\b(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{2,4})\b/);
+  if (m) {
+    const mon = MONTHS[m[2].slice(0, 3).toLowerCase()];
+    let year = parseInt(m[3], 10); if (year < 100) year += 2000;
+    if (mon != null) { const dt = noon(year, mon, parseInt(m[1], 10)); if (dt) return dt; }
+  }
+  return null;
+}
 
 // Keyword → Okkle expense category. Names must match the chips in the Log tab.
 const CATEGORY_HINTS: { category: string; keywords: string[] }[] = [
@@ -73,5 +107,5 @@ export function parseReceipt(lines: string[]): ParsedReceipt {
     .map(l => l.trim())
     .find(l => l.length > 2 && /[a-z]/i.test(l) && !/^[\d.,£$\s-]+$/.test(l)) ?? null;
 
-  return { amount, merchant, category: detectCategory(lines) };
+  return { amount, merchant, category: detectCategory(lines), date: detectDate(lines) };
 }
