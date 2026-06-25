@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, radius, type } from '../theme';
 import { IconBadge } from './IconBadge';
+import { ModalHeader } from './ModalHeader';
 
 type Tone = React.ComponentProps<typeof IconBadge>['tone'];
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
@@ -24,13 +25,7 @@ export function SettingsMenuPage({ title, subtitle, items, onBack }: {
   return (
     <View style={s.screen}>
       <View style={s.content}>
-        <View style={s.header}>
-          <Pressable onPress={onBack} hitSlop={12} style={s.back}>
-            <Feather name="chevron-left" size={26} color={colors.textPrimary} />
-          </Pressable>
-          <Text style={s.title} numberOfLines={1}>{title}</Text>
-          <View style={{ width: 34 }} />
-        </View>
+        <ModalHeader title={title} onBack={onBack} />
         <Text style={s.subtitle} numberOfLines={2}>{subtitle}</Text>
 
         <View style={s.group}>

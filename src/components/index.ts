@@ -15,6 +15,7 @@ export { CoachMarks, type CoachStep } from './CoachMarks';
 export { DatePickerField } from './DatePickerField';
 export { BarChart } from './BarChart';
 export { ScreenHeader } from './ScreenHeader';
+export { ModalHeader } from './ModalHeader';
 export { RouteMap } from './RouteMap';
 export { GradientCard } from './GradientCard';
 export { CollapsingHeader } from './CollapsingHeader';

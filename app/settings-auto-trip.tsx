@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, Switch, Alert, Linking } from 'react
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, GradientCard } from '../src/components';
+import { Card, GradientCard, ModalHeader } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled, enableShiftMode, disableShiftMode } from '../src/autoTrip';
 import { isShiftModeEnabled } from '../src/shift';
 
@@ -68,13 +68,7 @@ export default function AutoTripSettings() {
   return (
     <View style={s.screen}>
       <View style={s.content}>
-      <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={s.back}>
-          <Feather name="chevron-left" size={26} color={colors.textPrimary} />
-        </Pressable>
-        <Text style={s.title}>Automatic shift tracking</Text>
-        <View style={{ width: 26 }} />
-      </View>
+      <ModalHeader title="Automatic shift tracking" />
 
       <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
         <Feather name="navigation" size={22} color="#fff" />

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Platform, View, Text, ScrollView, StyleSheet, Switch, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, Chip, SectionHeader, PrimaryButton } from '../src/components';
+import { Card, Chip, SectionHeader, PrimaryButton, ModalHeader } from '../src/components';
 import { getUser, saveUser, kvGet, kvSet } from '../src/db';
 import { syncReminders, WEEKDAYS } from '../src/notifications';
 
@@ -26,11 +27,7 @@ export default function SettingsReminders() {
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Cancel</Text></Pressable>
-        <Text style={s.heading}>Reminders</Text>
-        <View style={{ width: 50 }} />
-      </View>
+      <ModalHeader title="Reminders" />
 
       <Card style={{ gap: spacing.md }}>
         <View style={s.rowBetween}>
@@ -67,7 +64,13 @@ export default function SettingsReminders() {
         </View>
       </Card>
 
-      <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.xl }} />
+      <Pressable onPress={() => router.push('/key-dates')} style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.6 }]}>
+        <Feather name="calendar" size={18} color={colors.brandDeep} />
+        <Text style={s.linkText}>Key tax dates & HMRC deadlines</Text>
+        <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+      </Pressable>
+
+      <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.lg }} />
     </ScrollView>
   );
 }
@@ -84,4 +87,6 @@ const s = StyleSheet.create({
   rowTitle: { ...type.bodyMedium, fontSize: 15 },
   rowSub: { ...type.caption, marginTop: 2 },
   divider: { height: 1, backgroundColor: colors.border },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: spacing.lg, paddingVertical: spacing.sm },
+  linkText: { ...type.bodyMedium, fontSize: 15, color: colors.textPrimary, flex: 1 },
 });

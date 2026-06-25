@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Settings consistency: headers, tour, layout)
+
+- **One consistent header everywhere** (`ModalHeader`): every settings/modal layer now has the same left-arrow back button and the same centred title font. Removes the old mix of "Cancel"/"Done" text buttons and differing title styles.
+- **Settings menu opens to the top and closes with an ✕** instead of a half-down sheet with a "Done" text button.
+- **First-run tour is now five clean cards — one per bottom tab** (Home, Trip, Log, Records, Tax). Dropped the mid-screen spotlights: the tour renders as a modal over the native tab bar, so highlighting elements there looked messy.
+- **Profile & tax fits without scrolling**: moved "Key tax dates & HMRC deadlines" into the Reminders screen (where it belongs), and vehicles/platforms are now single-row horizontal chip scrollers instead of multi-row wraps.
+
 ## 2026-06-25 (Consistent full-screen modals; pinned Send)
 
 - **All pop-up layers now go full-screen to the top** for a consistent feel. Previously some settings/forms were full-screen and others (Automatic shift tracking, Export, Key tax dates, etc.) were the iOS half-sheet that floated below the top. Standardised every modal to full-screen.

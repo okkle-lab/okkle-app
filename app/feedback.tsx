@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Chip, PrimaryButton, Card, SectionHeader } from '../src/components';
+import { Chip, PrimaryButton, Card, SectionHeader, ModalHeader } from '../src/components';
 import { sendFeedback } from '../src/feedback';
 
 const PROBLEM_CATEGORIES = [
@@ -63,10 +63,7 @@ export default function FeedbackScreen() {
   return (
     <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-        <View style={s.header}>
-          <Text style={s.heading}>{title}</Text>
-          <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Cancel</Text></Pressable>
-        </View>
+        <ModalHeader title={title} />
         <Text style={s.sub}>
           {mode === 'problem'
             ? 'Sorry something went wrong. A few details help us fix it fast.'

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Platform, View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, SectionHeader, IconBadge } from '../src/components';
+import { Card, SectionHeader, IconBadge, ModalHeader } from '../src/components';
 import { resetAllData } from '../src/db';
 import { backupNow, restoreFromFile } from '../src/backup';
 import { Feather } from '@expo/vector-icons';
@@ -40,11 +40,7 @@ export default function SettingsData() {
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Done</Text></Pressable>
-        <Text style={s.heading}>Data & backup</Text>
-        <View style={{ width: 50 }} />
-      </View>
+      <ModalHeader title="Data & backup" />
 
       <SectionHeader title="Backup & restore" />
       <Card style={{ gap: spacing.md }}>

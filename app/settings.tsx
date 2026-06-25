@@ -92,14 +92,14 @@ export default function Settings() {
   return (
     <View style={s.root}>
       <Pressable accessibilityLabel="Close settings" onPress={() => router.back()} style={s.scrim} />
-      <View style={[s.sheet, isDark && s.sheetDark, { top: Math.max(insets.top + 42, 82) }]}>
+      <View style={[s.sheet, isDark && s.sheetDark, { top: insets.top }]}>
         <GlassSheetBackground />
         <View style={s.grabber} />
         <View style={[s.content, { paddingBottom: Math.max(insets.bottom + 22, 38) }]}>
           <View style={s.header}>
             <Text style={s.heading}>Settings</Text>
-            <Pressable onPress={() => router.back()} hitSlop={12}>
-              <Text style={s.close}>Done</Text>
+            <Pressable onPress={() => router.back()} hitSlop={12} style={s.closeBtn}>
+              <Feather name="x" size={19} color={colors.textPrimary} />
             </Pressable>
           </View>
 
@@ -139,7 +139,7 @@ const s = StyleSheet.create({
   content: { position: 'relative', zIndex: 1, paddingHorizontal: spacing.xl, paddingTop: 58, gap: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   heading: { ...type.screenTitle },
-  close: { ...type.bodyMedium, color: colors.brandDeep },
+  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(34,48,44,0.10)' },
   group: { overflow: 'hidden', borderRadius: radius.xl, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   rowText: { flex: 1, minWidth: 0 },

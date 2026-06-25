@@ -3,18 +3,14 @@ import { Platform, View, Text, ScrollView, StyleSheet, Pressable } from 'react-n
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { colors, spacing, type } from '../src/theme';
-import { Card } from '../src/components';
+import { Card, ModalHeader } from '../src/components';
 
 export default function SettingsAbout() {
   const router = useRouter();
   const version = Constants.expoConfig?.version ?? 'dev';
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Done</Text></Pressable>
-        <Text style={s.heading}>About Okkle</Text>
-        <View style={{ width: 50 }} />
-      </View>
+      <ModalHeader title="About Okkle" />
 
       <Card style={{ gap: spacing.md }}>
         <Text style={s.aboutText}>Okkle keeps a record of your delivery mileage and earnings so you (or your accountant) have what you need at tax time.</Text>

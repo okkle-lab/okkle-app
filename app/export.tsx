@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, IconBadge } from '../src/components';
+import { Card, IconBadge, ModalHeader } from '../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTrips, getRecords, getUser,
 } from '../src/db';
@@ -83,11 +83,7 @@ export default function ExportScreen() {
   return (
     <View style={s.screen}>
       <ScrollView contentContainerStyle={s.content}>
-        <View style={s.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12}><Feather name="chevron-left" size={26} color={colors.textPrimary} /></Pressable>
-          <Text style={s.title}>Export &amp; share</Text>
-          <View style={{ width: 26 }} />
-        </View>
+        <ModalHeader title="Export & share" />
         <Text style={s.sub}>Everything your accountant needs, {taxYearLabel()}.</Text>
 
         <Pressable onPress={makePack} disabled={packBusy} style={({ pressed }) => [s.packBtn, pressed && { opacity: 0.9 }]}>

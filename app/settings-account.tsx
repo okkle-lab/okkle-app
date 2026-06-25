@@ -3,7 +3,7 @@ import { Platform, View, Text, TextInput, ScrollView, StyleSheet, Pressable, Ale
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, Chip, SectionHeader, PrimaryButton, VehicleChip } from '../src/components';
+import { Card, Chip, SectionHeader, PrimaryButton, VehicleChip, ModalHeader, ChipScroll } from '../src/components';
 import { VEHICLES, PLATFORMS, REGIONS, regionRate, regionLabel } from '../src/db/tax';
 import { getUser, saveUser } from '../src/db';
 
@@ -43,11 +43,7 @@ export default function SettingsAccount() {
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <View style={s.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Cancel</Text></Pressable>
-        <Text style={s.heading}>Profile & tax</Text>
-        <View style={{ width: 50 }} />
-      </View>
+      <ModalHeader title="Profile & tax" />
 
       <SectionHeader title="Your details" />
       <Card style={{ gap: spacing.md }}>
@@ -57,19 +53,19 @@ export default function SettingsAccount() {
         </View>
         <View>
           <Text style={s.fieldLabel}>Vehicles you use</Text>
-          <View style={s.chips}>
+          <ChipScroll fadeColor={colors.bgCard}>
             {VEHICLES.map(v => <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicles.includes(v.key)} onPress={() => toggleVehicle(v.key)} />)}
-          </View>
+          </ChipScroll>
         </View>
         <View>
           <Text style={s.fieldLabel}>Platforms</Text>
-          <View style={s.chips}>
+          <ChipScroll fadeColor={colors.bgCard}>
             {allOptions.map(p => <Chip key={p} label={p} selected={platforms.includes(p)} onPress={() => toggle(p)} />)}
             <Pressable onPress={addCustom} style={s.addChip}>
               <Feather name="plus" size={14} color={colors.brandDeep} />
               <Text style={s.addChipText}>Add</Text>
             </Pressable>
-          </View>
+          </ChipScroll>
         </View>
       </Card>
 
@@ -90,12 +86,6 @@ export default function SettingsAccount() {
         </View>
         <Text style={s.note}>Estimating take-home at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}).</Text>
       </Card>
-
-      <Pressable onPress={() => router.push('/key-dates')} style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.6 }]}>
-        <Feather name="calendar" size={18} color={colors.brandDeep} />
-        <Text style={s.linkText}>Key tax dates & HMRC deadlines</Text>
-        <Feather name="chevron-right" size={18} color={colors.textTertiary} />
-      </Pressable>
 
       <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.lg }} />
     </ScrollView>

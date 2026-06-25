@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-nati
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Card, SectionHeader } from '../src/components';
+import { Card, SectionHeader, ModalHeader } from '../src/components';
 import { addDeadlineToCalendar } from '../src/calendar';
 
 // month is 1-12. Real HMRC Self Assessment deadlines.
@@ -31,13 +31,7 @@ export default function KeyDatesScreen() {
   return (
     <View style={s.screen}>
       <ScrollView contentContainerStyle={s.content}>
-        <View style={s.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={s.back}>
-            <Feather name="chevron-left" size={26} color={colors.textPrimary} />
-          </Pressable>
-          <Text style={s.title}>Key tax dates</Text>
-          <View style={{ width: 26 }} />
-        </View>
+        <ModalHeader title="Key tax dates" />
 
         <SectionHeader icon="calendar" title="HMRC deadlines" />
         <Card style={{ padding: 0, overflow: 'hidden' }}>
