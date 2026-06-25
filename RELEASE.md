@@ -8,6 +8,18 @@ Read this before cutting a dev build, EAS build, or TestFlight submit.
   the public Expo Go on older phones. It uses a classic JS tab bar and pruned
   plugins. **Do not merge it into master** (different SDK) and don't release from it.
 
+## 🚑 If the iOS build FAILS on a native module (fast fallback)
+Both modules below are **optional at runtime** — the app runs fine without them
+(you just lose auto-trip detection / receipt OCR). So if the native build errors
+in `modules/okkle-vision` or `modules/okkle-motion`, the quickest way to still get
+a testable build is to **temporarily remove the offending module folder** and
+rebuild:
+```
+rm -rf modules/okkle-vision    # (or modules/okkle-motion)
+```
+Everything else (live trip, slider, platforms, receipt-first UI, lock-screen
+notification, tour) still works. Re-add it once the Swift/scaffold is sorted.
+
 ## ⚠️ Needs validation on the first dev/EAS build
 Two local Swift modules have **not been compiled yet**. Both are wired optionally
 (`requireOptionalNativeModule`) so they can't break the JS app at runtime — but a
