@@ -9,6 +9,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
@@ -20,6 +21,7 @@ type Phase = 'setup' | 'live' | 'summary';
 
 export default function TripScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = getUser();
   const last = getLastTrip();
   // Platforms/vehicles are managed in Settings; we only show the chosen ones, and
@@ -318,14 +320,16 @@ export default function TripScreen() {
   const todayHasData = today.trips > 0 || today.earnings > 0;
   const showVehiclePicker = myVehicles.length > 1;
   return (
-    <CollapsingHeader
-      title="Start a trip"
-      subtitle="Pick your platform, then hit the big button and ride."
-      right={
+    <View style={[s.screen, { paddingTop: insets.top + 8 }]}>
+      <View style={s.fixedHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.fixedTitle}>Start a trip</Text>
+          <Text style={s.fixedSub}>Pick your platform, then hit the big button and ride.</Text>
+        </View>
         <SettingsGlassButton onPress={() => router.push('/settings')} />
-      }
-      contentStyle={{ flexGrow: 1 }}
-    >
+      </View>
+
+      <View style={[s.fixedBody, { paddingBottom: insets.bottom + 64 }]}>
       {/* Compact selectors up top — one tap to switch, horizontal not a list */}
       <Text style={s.selLabel}>Platform</Text>
       <ChipScroll fadeColor={colors.bg}>
@@ -363,12 +367,17 @@ export default function TripScreen() {
         <Text style={s.todayLine}>Today: {today.miles.toFixed(1)} mi · {fmtGbpRound(today.deduction)} tax saved</Text>
       )}
       <Text style={s.gpsNote}>No need to watch the screen — switch to your delivery app and Okkle keeps counting in the background. You’ll get a nudge to start, and another when you’re done.</Text>
-    </CollapsingHeader>
+      </View>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  fixedHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginTop: spacing.sm, marginBottom: spacing.md, paddingHorizontal: spacing.xl },
+  fixedTitle: { ...type.screenTitle },
+  fixedSub: { ...type.body, color: colors.textSecondary, marginTop: 4 },
+  fixedBody: { flex: 1, paddingHorizontal: spacing.xl },
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   heading: { ...type.screenTitle, marginBottom: 6 },
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.xl },
