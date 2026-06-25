@@ -295,8 +295,44 @@ export default function LogScreen() {
         <Card style={{ gap: spacing.lg, marginTop: spacing.md }}>
           {tab === 'expense' && (
             <>
+              {/* Receipt-first: snap it and Okkle fills the amount, date & category */}
               <View>
-                <SectionHeader title="What did you spend on?" />
+                <SectionHeader title="Snap your receipt" />
+                {receiptUri ? (
+                  <View style={s.receiptWrap}>
+                    <Image source={{ uri: receiptUri }} style={s.receiptImg} />
+                    <Pressable onPress={() => { setReceiptUri(null); setScannedMerchant(null); }} style={s.receiptRemove}>
+                      <Text style={s.receiptRemoveText}>Remove</Text>
+                    </Pressable>
+                    {scanning && (
+                      <View style={s.scanBadge}>
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text style={s.scanText}>Reading receipt…</Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <>
+                    <Pressable onPress={() => pickReceipt(true)} style={({ pressed }) => [pressed && { opacity: 0.9 }]}>
+                      <GradientCard colors={[colors.amber, '#B5740F']} radius={radius.lg} style={s.scanHero}>
+                        <Feather name="camera" size={22} color="#fff" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.scanHeroTitle}>Take a photo</Text>
+                          <Text style={s.scanHeroSub}>Okkle reads the amount, date & category on your phone — you just confirm.</Text>
+                        </View>
+                      </GradientCard>
+                    </Pressable>
+                    <Pressable onPress={() => pickReceipt(false)} style={s.chooseRow}>
+                      <Feather name="image" size={15} color={colors.brandDeep} />
+                      <Text style={s.chooseText}>Choose from photos</Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+
+              {/* Category — pre-filled by the scan; tap to change */}
+              <View>
+                <SectionHeader title="Category" />
                 <ChipScroll>
                   {sortedCats.map(cat => {
                     const on = description === cat.name;
@@ -333,35 +369,6 @@ export default function LogScreen() {
                     })}
                   </View>
                 )}
-              </View>
-              <View>
-                <SectionHeader title="Receipt (optional)" />
-                {receiptUri ? (
-                  <View style={s.receiptWrap}>
-                    <Image source={{ uri: receiptUri }} style={s.receiptImg} />
-                    <Pressable onPress={() => setReceiptUri(null)} style={s.receiptRemove}>
-                      <Text style={s.receiptRemoveText}>Remove</Text>
-                    </Pressable>
-                    {scanning && (
-                      <View style={s.scanBadge}>
-                        <ActivityIndicator size="small" color="#fff" />
-                        <Text style={s.scanText}>Reading receipt…</Text>
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  <View style={s.receiptButtons}>
-                    <Pressable onPress={() => pickReceipt(true)} style={s.receiptBtn}>
-                      <Feather name="camera" size={16} color={colors.textPrimary} />
-                      <Text style={s.receiptBtnText}>Take photo</Text>
-                    </Pressable>
-                    <Pressable onPress={() => pickReceipt(false)} style={s.receiptBtn}>
-                      <Feather name="image" size={16} color={colors.textPrimary} />
-                      <Text style={s.receiptBtnText}>Choose</Text>
-                    </Pressable>
-                  </View>
-                )}
-                {!receiptUri && <Text style={s.receiptHint}>Snap a receipt and we'll read the amount on your phone — you just confirm.</Text>}
               </View>
               <View style={s.notice}>
                 <Text style={s.noticeText}>
@@ -516,6 +523,11 @@ const s = StyleSheet.create({
   scanBadge: { position: 'absolute', left: 8, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full },
   scanText: { color: '#fff', fontSize: 13, fontWeight: font.medium },
   receiptHint: { ...type.small, lineHeight: 17, marginTop: spacing.sm },
+  scanHero: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.lg },
+  scanHeroTitle: { color: '#fff', fontSize: 17, fontWeight: font.bold },
+  scanHeroSub: { color: 'rgba(255,255,255,0.9)', fontSize: 13, lineHeight: 18, marginTop: 2 },
+  chooseRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: spacing.sm },
+  chooseText: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
   receiptRemove: {
     position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
