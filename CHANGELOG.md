@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Consistent full-screen modals; pinned Send)
+
+- **All pop-up layers now go full-screen to the top** for a consistent feel. Previously some settings/forms were full-screen and others (Automatic shift tracking, Export, Key tax dates, etc.) were the iOS half-sheet that floated below the top. Standardised every modal to full-screen.
+- **Report a problem: Send is now pinned to the bottom** so it can never be cut off, and the form was compacted (tighter diagnostics, removed the extra disclaimer paragraph) so it fits without scrolling.
+
 ## 2026-06-25 (Hybrid spotlight tour)
 
 - **Brought back the spotlight in the first-run tour, where it can work.** Steps about on-screen Home elements now dim the screen and highlight the real element — the "Tax saved this year" hero and the Earnings card. Steps about other tabs (Trip / Log / Tax) stay as centred cards, because the native tab bar can't be measured from JavaScript to spotlight reliably. Reordered so the two spotlight steps come first.

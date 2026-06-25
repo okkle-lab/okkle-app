@@ -61,18 +61,18 @@ export default function RootLayout() {
         <Stack.Screen name="settings-reminders" options={modalOptions} />
         <Stack.Screen name="settings-data" options={modalOptions} />
         <Stack.Screen name="settings-about" options={modalOptions} />
-        <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="compare" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="medals" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="insights" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="export" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="edit" options={modalOptions} />
+        <Stack.Screen name="compare" options={modalOptions} />
+        <Stack.Screen name="medals" options={modalOptions} />
+        <Stack.Screen name="insights" options={modalOptions} />
+        <Stack.Screen name="export" options={modalOptions} />
         <Stack.Screen name="feedback" options={modalOptions} />
-        <Stack.Screen name="key-dates" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="order-check" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="log-earnings" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-earnings-shortcut" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-auto-trip" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="shift-review" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="key-dates" options={modalOptions} />
+        <Stack.Screen name="order-check" options={modalOptions} />
+        <Stack.Screen name="log-earnings" options={modalOptions} />
+        <Stack.Screen name="settings-earnings-shortcut" options={modalOptions} />
+        <Stack.Screen name="settings-auto-trip" options={modalOptions} />
+        <Stack.Screen name="shift-review" options={modalOptions} />
       </Stack>
     </>
   );

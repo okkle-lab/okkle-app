@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, font, spacing, radius, type } from '../src/theme';
@@ -17,6 +18,7 @@ const PROBLEM_CATEGORIES = [
 
 export default function FeedbackScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ mode?: string; screen?: string; category?: string }>();
   const mode: 'problem' | 'suggestion' = params.mode === 'suggestion' ? 'suggestion' : 'problem';
   const screen = params.screen ?? 'Settings';
@@ -60,7 +62,7 @@ export default function FeedbackScreen() {
 
   return (
     <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.header}>
           <Text style={s.heading}>{title}</Text>
           <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Cancel</Text></Pressable>
@@ -117,26 +119,29 @@ export default function FeedbackScreen() {
           autoCapitalize="none"
         />
 
-        <Card style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+        <Card style={{ marginTop: spacing.md, gap: 4 }}>
           <View style={s.diagRow}>
             <View style={{ flex: 1 }}>
               <Text style={s.diagTitle}>Include basic diagnostics</Text>
-              <Text style={s.diagSub}>App version, phone model, OS and the screen you're on — to help us reproduce it.</Text>
+              <Text style={s.diagSub}>App version, phone, OS & current screen. Never your earnings, receipts, location or tax records.</Text>
             </View>
             <Switch value={includeDiag} onValueChange={setIncludeDiag} trackColor={{ true: colors.brand }} />
           </View>
-          <Text style={s.privacy}>We never attach your earnings, receipts, location history or tax records. Only what you write and choose to attach is sent.</Text>
         </Card>
-
-        <PrimaryButton label={busy ? 'Opening mail…' : 'Send'} onPress={submit} disabled={busy} style={{ marginTop: spacing.xl }} />
       </ScrollView>
+
+      {/* Send stays pinned so it's never cut off, whatever the screen height. */}
+      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <PrimaryButton label={busy ? 'Opening mail…' : 'Send'} onPress={submit} disabled={busy} />
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.xl, paddingTop: 56, paddingBottom: 24 },
+  content: { padding: spacing.xl, paddingTop: 56, paddingBottom: spacing.md },
+  footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   heading: { ...type.screenTitle },
   close: { ...type.label, color: colors.textSecondary },
