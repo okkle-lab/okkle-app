@@ -18,11 +18,10 @@ import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLonges
 
 // Circular "Start" hero — inspired by activity-ring fitness UIs: a large tappable
 // gradient disc inside a faint ring with a brand accent arc.
-const RING_SIZE = 252;
-const BTN_SIZE = 196;
-const RING_STROKE = 9;
+const RING_SIZE = 300;
+const BTN_SIZE = 240;
+const RING_STROKE = 10;
 const RING_R = (RING_SIZE - RING_STROKE) / 2;
-const RING_CIRC = 2 * Math.PI * RING_R;
 
 type LiveMetric = 'miles' | 'time' | 'speed' | 'today' | 'map';
 
@@ -364,17 +363,11 @@ export default function TripScreen() {
           ring inspired), centred as the screen's focal point. */}
       <View style={s.ringHero}>
         <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R} stroke={colors.brandLight} strokeWidth={RING_STROKE} fill="none" />
-          <Circle
-            cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R}
-            stroke={colors.brand} strokeWidth={RING_STROKE} fill="none" strokeLinecap="round"
-            strokeDasharray={`${RING_CIRC * 0.28} ${RING_CIRC}`}
-            transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-          />
+          <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R} stroke={colors.brand} strokeWidth={RING_STROKE} fill="none" />
         </Svg>
         <Pressable onPress={handleStart} style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}>
           <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={BTN_SIZE / 2} style={s.startBtnCircle}>
-            <Feather name="navigation" size={46} color="#fff" />
+            <Feather name="navigation" size={54} color="#fff" />
             <Text style={s.startBtnText}>Start trip</Text>
             <Text style={s.startBtnSub}>{vehicleLabel(vehicle)} · {platform}</Text>
           </GradientCard>
@@ -412,9 +405,9 @@ const s = StyleSheet.create({
   startSpacer: { flex: 1, minHeight: 16 },
   ringSpacerBottom: { flex: 0.55 },
   ringHero: { width: RING_SIZE, height: RING_SIZE, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
-  startBtnCircle: { width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_SIZE / 2, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 16 },
-  startBtnText: { color: '#fff', fontSize: 25, fontWeight: font.bold, letterSpacing: -0.4 },
-  startBtnSub: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: font.medium, textAlign: 'center' },
+  startBtnCircle: { width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_SIZE / 2, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
+  startBtnText: { color: '#fff', fontSize: 29, fontWeight: font.bold, letterSpacing: -0.4 },
+  startBtnSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: font.medium, textAlign: 'center' },
   bigStartWrap: { marginTop: spacing.lg },
   bigStart: { alignItems: 'center', justifyContent: 'center', paddingVertical: 54, gap: 14 },
   bigStartCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center' },
