@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Two-way trip nudges; removed automatic shift tracking)
+
+- **Removed automatic (passive) shift tracking.** Motion-based auto-tracking could pick up personal drives (commute, school run) and pile up drafts to discard, so it's gone — along with the background shift accumulator, the shift-review screen, and the "Track my shift automatically" toggle.
+- **Trip nudges are now two-way.** Okkle nudges you to **start** a trip when it senses you've started driving (as before) and now also nudges you to **end** it once you've been parked a while (~18 min): a re-armed scheduled notification fires after your last movement, and tapping it opens the live screen to end and save. Nothing is recorded without your tap, so personal drives are simply ignored.
+- Settings: "Automatic shift tracking" is now "**Trip nudges**" — one toggle for the two-way reminder.
+
 ## 2026-06-25 (Settings consistency: headers, tour, layout)
 
 - **One consistent header everywhere** (`ModalHeader`): every settings/modal layer now has the same left-arrow back button and the same centred title font. Removes the old mix of "Cancel"/"Done" text buttons and differing title styles.

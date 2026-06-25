@@ -5,6 +5,8 @@ import { mileageRate, calcDeduction } from '../db/tax';
 import { setTripActive } from '../autoTrip';
 
 const TRIP_NOTIF_ID = 'okkle-trip-active';
+const TRIP_END_NUDGE_ID = 'okkle-trip-end-nudge';
+const END_NUDGE_AFTER_S = 18 * 60; // ask "finished?" ~18 min after last movement
 
 // A lock-screen notification while a trip is tracking, so it's visible when the
 // phone is locked and one tap brings you back to the live screen.
@@ -23,6 +25,26 @@ function showTripNotification(platform: string) {
 function clearTripNotification() {
   Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
   Notifications.cancelScheduledNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
+}
+
+// The other half of the two-way nudge: re-armed on every movement to fire
+// END_NUDGE_AFTER_S after the *last* movement, so it only goes off once you've
+// been parked a while. Tapping it opens the live screen to end & save the trip.
+// Fires via a scheduled trigger, so it works even if the app is suspended.
+function armTripEndNudge() {
+  Notifications.cancelScheduledNotificationAsync(TRIP_END_NUDGE_ID).catch(() => {});
+  Notifications.scheduleNotificationAsync({
+    identifier: TRIP_END_NUDGE_ID,
+    content: {
+      title: 'Finished this trip?',
+      body: 'You’ve been parked a while — tap to end and save your miles.',
+      data: { type: 'tripEnd' },
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: END_NUDGE_AFTER_S },
+  }).catch(() => {});
+}
+function cancelTripEndNudge() {
+  Notifications.cancelScheduledNotificationAsync(TRIP_END_NUDGE_ID).catch(() => {});
 }
 
 export type TripState = 'idle' | 'running' | 'paused';
@@ -96,6 +118,7 @@ export function useTrip() {
     lastSampleRef.current = null;
     setTripActive(true); // pause auto-trip suggestions while we're tracking
     showTripNotification(platform);
+    armTripEndNudge();   // arm the "finished this trip?" half of the nudge
     setTrip({ state: 'running', platform, vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
 
     timerRef.current = setInterval(() => {
@@ -116,6 +139,7 @@ export function useTrip() {
           const d = haversineKm(lastPosRef.current.coords, loc.coords);
           const meters = d * 1000;
           const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
+          if (!stationary) armTripEndNudge(); // moving → push the "finished?" nudge back
           setTrip(t => {
             const miles = stationary ? t.miles : t.miles + d * 0.621371;
             return { ...t, miles, deduction: calcDeduction(miles, t.vehicle), speedMph: mph };
@@ -133,11 +157,13 @@ export function useTrip() {
     watchRef.current?.remove();
     watchRef.current = null;
     if (timerRef.current) clearInterval(timerRef.current);
+    cancelTripEndNudge();
     setTrip(t => ({ ...t, state: 'paused' }));
   }
 
   async function resume() {
     if (timerRef.current) clearInterval(timerRef.current);
+    armTripEndNudge();
     timerRef.current = setInterval(() => {
       setTrip(t => ({ ...t, elapsedSeconds: t.elapsedSeconds + 1 }));
     }, 1000);
@@ -156,6 +182,7 @@ export function useTrip() {
           const d = haversineKm(lastPosRef.current.coords, loc.coords);
           const meters = d * 1000;
           const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
+          if (!stationary) armTripEndNudge(); // moving → push the "finished?" nudge back
           setTrip(t => {
             const miles = stationary ? t.miles : t.miles + d * 0.621371;
             return { ...t, miles, deduction: calcDeduction(miles, t.vehicle), speedMph: mph };
@@ -177,6 +204,7 @@ export function useTrip() {
     lastPosRef.current = null;
     setTripActive(false); // re-enable auto-trip suggestions
     clearTripNotification();
+    cancelTripEndNudge();
     const final = { ...trip, state: 'idle' as TripState, points: pointsRef.current.slice() };
     setTrip(INITIAL);
     return final;
