@@ -90,7 +90,10 @@ export default function LogScreen() {
   useFocusEffect(
     React.useCallback(() => {
       setPlatformList(getPlatforms());
-      setMyVehicles(VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
+      const vehicleKeys = getVehicleKeys();
+      const nextVehicles = VEHICLES.filter(v => vehicleKeys.includes(v.key));
+      setMyVehicles(nextVehicles);
+      setVehicle(current => vehicleKeys.includes(current) ? current : (vehicleKeys[0] ?? 'car'));
     }, []),
   );
   const [amount, setAmount] = useState('');
@@ -390,14 +393,16 @@ export default function LogScreen() {
 
           {tab === 'mileage' && (
             <>
-              <View>
-                <SectionHeader title="Vehicle" />
-                <View style={s.wrapRow}>
-                  {myVehicles.map(v => (
-                    <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-                  ))}
+              {myVehicles.length > 1 && (
+                <View>
+                  <SectionHeader title="Vehicle" />
+                  <View style={s.wrapRow}>
+                    {myVehicles.map(v => (
+                      <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+                    ))}
+                  </View>
                 </View>
-              </View>
+              )}
               <View>
                 <SectionHeader title="Platform" />
                 <View style={s.wrapRow}>

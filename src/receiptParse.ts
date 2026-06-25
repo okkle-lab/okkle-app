@@ -62,8 +62,14 @@ function detectCategory(lines: string[]): string | null {
   return null;
 }
 
-// Matches "12.34", "£12.34", "1,234.56" etc.
-const MONEY = /(\d{1,3}(?:[,\d]{0,8})?[.,]\d{2})\b/g;
+// Matches "12.34", "£12.34", "1,234.56", and OCR-split totals like "8 49".
+const MONEY_PATTERNS = [
+  /(?:^|[^\d])(?:£\s*)?(\d{1,3}(?:[,\s]\d{3})*[.,]\d{2})(?!\d)/g,
+  /(?:^|[^\d])(?:£\s*)?(\d+)\s(\d{2})(?!\d)/g,
+] as const;
+const TOTALISH = /\b(total|amount due|balance due|grand total|to pay|amount paid|paid|card|debit|credit|visa|mastercard)\b/i;
+const EXCLUDE_TOTALISH = /\b(sub.?total|subtotal|vat|tax|discount|saving|savings|change|cashback|points|loyalty|refund)\b/i;
+const QUANTITYISH = /\b(qty|quantity|items?|unit|litres?|liter|ltr|kwh|kw|gallons?)\b/i;
 
 function toNumber(s: string): number {
   // normalise "1,234.56" / "1.234,56" → 1234.56
@@ -79,33 +85,81 @@ function toNumber(s: string): number {
   return parseFloat(cleaned.replace(/,/g, ''));
 }
 
+function normaliseLine(line: string): string {
+  return line
+    .replace(/\s+/g, ' ')
+    .replace(/[|]/g, '1')
+    .trim();
+}
+
+function extractMoney(line: string): number[] {
+  const out: number[] = [];
+  for (const pattern of MONEY_PATTERNS) {
+    for (const match of line.matchAll(pattern)) {
+      const raw = match[2] ? `${match[1]}.${match[2]}` : match[1];
+      const value = toNumber(raw);
+      if (!isNaN(value) && value > 0 && value < 100000) out.push(value);
+    }
+  }
+  return out;
+}
+
+function candidateScore(amount: number, line: string, index: number, totalLines: number, neighborHint: boolean): number {
+  let score = 0;
+  if (TOTALISH.test(line)) score += 90;
+  if (neighborHint) score += 70;
+  if (EXCLUDE_TOTALISH.test(line)) score -= 80;
+  if (QUANTITYISH.test(line)) score -= 35;
+  if (/\b(auth|approval|transaction|invoice|table|order|receipt no|ref)\b/i.test(line)) score -= 25;
+  if (/£/.test(line)) score += 8;
+  if (index >= totalLines * 0.55) score += 12;
+  if (index >= totalLines * 0.75) score += 12;
+  if (amount < 1) score -= 25;
+  if (amount > 5000) score -= 60;
+  return score;
+}
+
 export function parseReceipt(lines: string[]): ParsedReceipt {
-  const totalCandidates: number[] = [];
-  const allCandidates: number[] = [];
+  const cleaned = lines.map(normaliseLine).filter(Boolean);
+  const candidates: { amount: number; score: number; index: number }[] = [];
 
-  for (const raw of lines) {
-    const line = raw.trim();
-    const matches = line.match(MONEY);
-    if (!matches) continue;
-    const nums = matches.map(toNumber).filter(n => !isNaN(n) && n > 0 && n < 100000);
-    if (!nums.length) continue;
+  for (let i = 0; i < cleaned.length; i++) {
+    const line = cleaned[i];
+    const prev = cleaned[i - 1] ?? '';
+    const next = cleaned[i + 1] ?? '';
+    const lineAmounts = extractMoney(line);
+    const prevHint = TOTALISH.test(prev) && !EXCLUDE_TOTALISH.test(prev);
+    const nextHint = TOTALISH.test(next) && !EXCLUDE_TOTALISH.test(next);
 
-    const isTotal = /\b(total|amount due|balance due|to pay|grand total|amount paid)\b/i.test(line)
-      && !/\b(sub.?total|subtotal)\b/i.test(line);
-
-    allCandidates.push(...nums);
-    if (isTotal) totalCandidates.push(...nums);
+    for (const amount of lineAmounts) {
+      candidates.push({
+        amount,
+        score: candidateScore(amount, line, i, cleaned.length, false),
+        index: i,
+      });
+      if (prevHint || nextHint) {
+        candidates.push({
+          amount,
+          score: candidateScore(amount, line, i, cleaned.length, true),
+          index: i,
+        });
+      }
+    }
   }
 
-  // Prefer the largest figure on a "total" line; otherwise the largest figure overall.
   let amount: number | null = null;
-  if (totalCandidates.length) amount = Math.max(...totalCandidates);
-  else if (allCandidates.length) amount = Math.max(...allCandidates);
+  if (candidates.length) {
+    candidates.sort((a, b) => b.score - a.score || b.index - a.index || b.amount - a.amount);
+    amount = candidates[0].amount;
+  }
 
   // Merchant: first meaningful text line near the top (skip pure-number / symbol lines).
-  const merchant = lines
+  const merchant = cleaned
     .map(l => l.trim())
-    .find(l => l.length > 2 && /[a-z]/i.test(l) && !/^[\d.,£$\s-]+$/.test(l)) ?? null;
+    .find(l => l.length > 2
+      && /[a-z]/i.test(l)
+      && !/^[\d.,£$\s-]+$/.test(l)
+      && !/\b(vat|subtotal|total|receipt|invoice|thank you)\b/i.test(l)) ?? null;
 
-  return { amount, merchant, category: detectCategory(lines), date: detectDate(lines) };
+  return { amount, merchant, category: detectCategory(cleaned), date: detectDate(cleaned) };
 }
