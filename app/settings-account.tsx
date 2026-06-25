@@ -91,7 +91,13 @@ export default function SettingsAccount() {
         <Text style={s.note}>Estimating take-home at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}).</Text>
       </Card>
 
-      <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.xl }} />
+      <Pressable onPress={() => router.push('/key-dates')} style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.6 }]}>
+        <Feather name="calendar" size={18} color={colors.brandDeep} />
+        <Text style={s.linkText}>Key tax dates & HMRC deadlines</Text>
+        <Feather name="chevron-right" size={18} color={colors.textTertiary} />
+      </Pressable>
+
+      <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.lg }} />
     </ScrollView>
   );
 }
@@ -108,4 +114,6 @@ const s = StyleSheet.create({
   addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.full, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bg },
   addChipText: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
   note: { ...type.caption, color: colors.textTertiary },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: spacing.lg, paddingVertical: spacing.sm },
+  linkText: { ...type.bodyMedium, fontSize: 15, color: colors.textPrimary, flex: 1 },
 });

@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Settings flattened — no deep menus, no scrolling)
+
+- **Removed the over-nested settings hierarchy.** "Profile & tax" no longer opens a sub-menu of single-field pages (Personal details / Vehicles / Platforms / Tax region) — it's one consolidated screen again (name, vehicles, platforms, tax region & band, plus a Key tax dates link). Deleted the redundant intermediate menus and leaf pages.
+- **Main Settings is one flat, non-scrolling menu** of direct rows: Profile & tax · Automatic shift tracking · Reminders · Export & share · Data & backup · Help & feedback. No menu layer requires scrolling.
+- **Automatic shift tracking now explains itself.** Each toggle has a plain description: what "Automatic shift tracking" does (counts miles in the background, saves a draft to confirm) and what "Trip start nudges" does (notifies you to start a trip yourself), including that the two are mutually exclusive.
+
 ## 2026-06-25 (Verified 2026/27 tax bands; fixed Scottish bands)
 
 - **Confirmed and relabelled the income-tax/NI basis to 2026/27** after checking GOV.UK: the UK personal allowance (£12,570) and basic-rate limit (£37,700) are frozen to 2027/28, and Class 4 NIC is unchanged (6% / 2% at £12,570 / £50,270) — so the existing figures were correct; only the year label was stale.

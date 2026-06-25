@@ -1,13 +1,11 @@
 import React from 'react';
-import { Platform, View, Text, ScrollView, StyleSheet, Pressable, useColorScheme } from 'react-native';
+import { Platform, View, Text, StyleSheet, Pressable, useColorScheme } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, radius, type } from '../src/theme';
-import { IconBadge, VehicleIcon } from '../src/components';
-import { getUser, kvSet } from '../src/db';
-import { vehicleLabel } from '../src/db/tax';
+import { IconBadge } from '../src/components';
 
 declare const require: (moduleName: string) => any;
 
@@ -15,6 +13,9 @@ type GlassEffectModule = {
   GlassView?: React.ComponentType<any>;
   isGlassEffectAPIAvailable?: () => boolean;
 };
+
+type Tone = React.ComponentProps<typeof IconBadge>['tone'];
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
 let glassEffectModule: GlassEffectModule | null | undefined;
 
@@ -74,16 +75,15 @@ export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
-  const u = getUser();
 
-  const go = (path: any, params?: any) => () => router.push(params ? { pathname: path, params } : path);
+  const go = (path: any) => () => router.push(path);
 
-  const Row = ({ icon, tone, title, sub, onPress, last }: { icon: any; tone: any; title: string; sub?: string; onPress: () => void; last?: boolean }) => (
+  const Row = ({ icon, tone, title, sub, onPress, last }: { icon: FeatherName; tone: Tone; title: string; sub: string; onPress: () => void; last?: boolean }) => (
     <Pressable onPress={onPress} style={({ pressed }) => [s.row, !last && s.rowBorder, pressed && s.rowPressed]}>
-      <IconBadge icon={icon} tone={tone} size={38} />
-      <View style={{ flex: 1 }}>
-        <Text style={s.rowTitle}>{title}</Text>
-        {sub ? <Text style={s.rowSub} numberOfLines={1}>{sub}</Text> : null}
+      <IconBadge icon={icon} tone={tone} size={36} />
+      <View style={s.rowText}>
+        <Text style={s.rowTitle} numberOfLines={1}>{title}</Text>
+        <Text style={s.rowSub} numberOfLines={1}>{sub}</Text>
       </View>
       <Feather name="chevron-right" size={20} color={colors.textTertiary} />
     </Pressable>
@@ -95,7 +95,7 @@ export default function Settings() {
       <View style={[s.sheet, isDark && s.sheetDark, { top: Math.max(insets.top + 42, 82) }]}>
         <GlassSheetBackground />
         <View style={s.grabber} />
-        <ScrollView style={s.screen} contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom + 28, 48) }]}>
+        <View style={[s.content, { paddingBottom: Math.max(insets.bottom + 22, 38) }]}>
           <View style={s.header}>
             <Text style={s.heading}>Settings</Text>
             <Pressable onPress={() => router.back()} hitSlop={12}>
@@ -103,44 +103,15 @@ export default function Settings() {
             </Pressable>
           </View>
 
-          <View style={s.profile}>
-            <View style={s.avatar}>
-              <VehicleIcon vehicle={u?.vehicle ?? 'car'} size={26} color={colors.brandDeep} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.profileName}>{u?.name || 'Your profile'}</Text>
-              <Text style={s.profileSub}>
-                {vehicleLabel(u?.vehicle ?? 'car')} · {u?.platforms?.split(',').filter(Boolean).length ?? 0} platforms
-              </Text>
-            </View>
-          </View>
-
-          <Text style={s.groupLabel}>Account & tax</Text>
           <View style={s.group}>
-            <Row icon="user" tone="mint" title="Profile & tax" sub="Name, vehicle, platforms, tax region" onPress={go('/settings-account')} />
-            <Row icon="calendar" tone="amber" title="Key tax dates" sub="HMRC deadlines & add to calendar" onPress={go('/key-dates')} last />
+            <Row icon="user" tone="mint" title="Profile & tax" sub="Name, vehicles, platforms, tax region" onPress={go('/settings-account')} />
+            <Row icon="navigation" tone="blue" title="Automatic shift tracking" sub="Background miles & trip start nudges" onPress={go('/settings-auto-trip')} />
+            <Row icon="bell" tone="violet" title="Reminders" sub="Logging nudges & deadline alerts" onPress={go('/settings-reminders')} />
+            <Row icon="upload" tone="green" title="Export & share" sub="Accountant pack & FreeAgent CSV" onPress={go('/export')} />
+            <Row icon="database" tone="blue" title="Data & backup" sub="Back up, restore or delete" onPress={go('/settings-data')} />
+            <Row icon="help-circle" tone="neutral" title="Help & feedback" sub="Support, tour & app info" onPress={go('/settings-help')} last />
           </View>
-
-          <Text style={s.groupLabel}>Tracking & logging</Text>
-          <View style={s.group}>
-            <Row icon="navigation" tone="mint" title="Auto-detect trips" sub="Track your shift hands-free" onPress={go('/settings-auto-trip')} />
-            <Row icon="camera" tone="violet" title="Auto-log earnings" sub="Screenshot a pay screen -> log it" onPress={go('/settings-earnings-shortcut')} />
-            <Row icon="bell" tone="blue" title="Reminders" sub="Logging nudges & tax deadlines" onPress={go('/settings-reminders')} last />
-          </View>
-
-          <Text style={s.groupLabel}>Your data</Text>
-          <View style={s.group}>
-            <Row icon="shield" tone="green" title="Data & backup" sub="Back up, restore or delete your data" onPress={go('/settings-data')} last />
-          </View>
-
-          <Text style={s.groupLabel}>Help & feedback</Text>
-          <View style={s.group}>
-            <Row icon="alert-triangle" tone="amber" title="Report a problem" onPress={go('/feedback', { mode: 'problem', screen: 'Settings' })} />
-            <Row icon="message-circle" tone="violet" title="Suggest an improvement" onPress={go('/feedback', { mode: 'suggestion', screen: 'Settings' })} />
-            <Row icon="help-circle" tone="neutral" title="Replay the app tour" onPress={() => { kvSet('coach_seen', ''); router.back(); }} />
-            <Row icon="info" tone="neutral" title="About Okkle" onPress={go('/settings-about')} last />
-          </View>
-        </ScrollView>
+        </View>
       </View>
     </View>
   );
@@ -148,120 +119,32 @@ export default function Settings() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent', justifyContent: 'flex-end' },
-  scrim: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.12)',
-  },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.12)' },
   sheet: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    left: 0,
-    overflow: 'hidden',
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: 'rgba(255,255,255,0.58)',
-    backgroundColor: 'transparent',
+    position: 'absolute', right: 0, bottom: 0, left: 0, overflow: 'hidden',
+    borderTopLeftRadius: 36, borderTopRightRadius: 36, borderWidth: 1, borderBottomWidth: 0,
+    borderColor: 'rgba(255,255,255,0.58)', backgroundColor: 'transparent',
   },
-  sheetDark: {
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'transparent',
-  },
-  materialFill: {
-    ...StyleSheet.absoluteFill,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-  },
-  sheetTint: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  sheetTintDark: {
-    backgroundColor: 'rgba(8,15,13,0.22)',
-  },
-  sheetTopSheen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 96,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-  },
-  sheetTopSheenDark: {
-    backgroundColor: 'rgba(255,255,255,0.035)',
-  },
-  sheetBottomShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 180,
-    backgroundColor: 'rgba(226,246,241,0.08)',
-  },
-  sheetBottomShadeDark: {
-    backgroundColor: 'rgba(0,0,0,0.06)',
-  },
-  sheetInnerStroke: {
-    ...StyleSheet.absoluteFill,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: 'rgba(255,255,255,0.50)',
-  },
-  sheetInnerStrokeDark: {
-    borderColor: 'rgba(255,255,255,0.10)',
-  },
-  grabber: {
-    position: 'absolute',
-    top: 10,
-    alignSelf: 'center',
-    width: 54,
-    height: 5,
-    borderRadius: 999,
-    zIndex: 2,
-    backgroundColor: 'rgba(34,48,44,0.22)',
-  },
-  screen: { flex: 1, position: 'relative', zIndex: 1, backgroundColor: 'transparent' },
-  content: { padding: spacing.xl, paddingTop: 58, gap: spacing.lg },
+  sheetDark: { borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'transparent' },
+  materialFill: { ...StyleSheet.absoluteFill, borderTopLeftRadius: 36, borderTopRightRadius: 36 },
+  sheetTint: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,0.18)' },
+  sheetTintDark: { backgroundColor: 'rgba(8,15,13,0.22)' },
+  sheetTopSheen: { position: 'absolute', top: 0, left: 0, right: 0, height: 96, backgroundColor: 'rgba(255,255,255,0.16)' },
+  sheetTopSheenDark: { backgroundColor: 'rgba(255,255,255,0.035)' },
+  sheetBottomShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 180, backgroundColor: 'rgba(226,246,241,0.08)' },
+  sheetBottomShadeDark: { backgroundColor: 'rgba(0,0,0,0.06)' },
+  sheetInnerStroke: { ...StyleSheet.absoluteFill, borderTopLeftRadius: 36, borderTopRightRadius: 36, borderWidth: 1, borderBottomWidth: 0, borderColor: 'rgba(255,255,255,0.50)' },
+  sheetInnerStrokeDark: { borderColor: 'rgba(255,255,255,0.10)' },
+  grabber: { position: 'absolute', top: 10, alignSelf: 'center', width: 54, height: 5, borderRadius: 999, zIndex: 2, backgroundColor: 'rgba(34,48,44,0.22)' },
+  content: { position: 'relative', zIndex: 1, paddingHorizontal: spacing.xl, paddingTop: 58, gap: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   heading: { ...type.screenTitle },
   close: { ...type.bodyMedium, color: colors.brandDeep },
-  profile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingVertical: spacing.md,
-  },
-  groupLabel: {
-    ...type.label,
-    color: colors.textSecondary,
-    marginLeft: spacing.sm,
-    marginTop: spacing.sm,
-    marginBottom: -spacing.sm,
-  },
-  group: {
-    overflow: 'hidden',
-    borderRadius: radius.xl,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.30)',
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(226,246,241,0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileName: { ...type.heading, fontSize: 19 },
-  profileSub: { ...type.caption, marginTop: 2 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.lg },
+  group: { overflow: 'hidden', borderRadius: radius.xl, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  rowText: { flex: 1, minWidth: 0 },
   rowPressed: { backgroundColor: 'rgba(255,255,255,0.24)' },
   rowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(34,48,44,0.10)' },
-  rowTitle: { ...type.bodyMedium, fontSize: 15 },
+  rowTitle: { ...type.bodyMedium, fontSize: 16 },
   rowSub: { ...type.caption, marginTop: 2 },
 });

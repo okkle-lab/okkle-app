@@ -55,6 +55,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" options={glassSheetOptions} />
         <Stack.Screen name="settings-account" options={modalOptions} />
+        <Stack.Screen name="settings-help" options={modalOptions} />
         <Stack.Screen name="settings-reminders" options={modalOptions} />
         <Stack.Screen name="settings-data" options={modalOptions} />
         <Stack.Screen name="settings-about" options={modalOptions} />
