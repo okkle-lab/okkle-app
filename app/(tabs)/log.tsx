@@ -10,7 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
-import { saveRecord, getUser, kvGet, kvSet, getPlatforms, addPlatform, getVehicleKeys, getLearnedCategory, learnCategory } from '../../src/db';
+import { saveRecord, getUser, kvGet, kvSet, getPlatforms, getVehicleKeys, getLearnedCategory, learnCategory } from '../../src/db';
 import { recognizeText } from '../../modules/okkle-vision';
 import { parseReceipt } from '../../src/receiptParse';
 
@@ -83,20 +83,9 @@ export default function LogScreen() {
   // Only the vehicles the user picked at onboarding / in Settings.
   const myVehicles = VEHICLES.filter(v => getVehicleKeys().includes(v.key));
   const [vehicle, setVehicle] = useState(user?.vehicle ?? myVehicles[0]?.key ?? 'car');
-  const [platformList, setPlatformList] = useState(getPlatforms);
+  // Platforms are managed in Settings; here we only show the chosen ones.
+  const platformList = getPlatforms();
   const [platform, setPlatform] = useState(platformList[0]);
-
-  function addCustomPlatform() {
-    Alert.prompt('Add platform', 'Name of the delivery platform you work for', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Add', onPress: (name?: string) => {
-        const n = (name ?? '').trim();
-        if (!n) return;
-        setPlatformList(addPlatform(n));
-        setPlatform(n);
-      } },
-    ], 'plain-text');
-  }
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
@@ -388,10 +377,6 @@ export default function LogScreen() {
                 {platformList.map(p => (
                   <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
                 ))}
-                <Pressable onPress={addCustomPlatform} style={s.addChip}>
-                  <Feather name="plus" size={14} color={colors.brandDeep} />
-                  <Text style={s.addChipText}>Add</Text>
-                </Pressable>
               </View>
             </View>
           )}
@@ -412,10 +397,6 @@ export default function LogScreen() {
                   {platformList.map(p => (
                     <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
                   ))}
-                  <Pressable onPress={addCustomPlatform} style={s.addChip}>
-                    <Feather name="plus" size={14} color={colors.brandDeep} />
-                    <Text style={s.addChipText}>Add</Text>
-                  </Pressable>
                 </View>
               </View>
             </>

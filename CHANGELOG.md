@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Platform management lives in Settings)
+
+- Removed the "Add platform" chip from the **Trip** and **Log** tabs. Those tabs now only show the platforms chosen at onboarding; adding or editing your platforms is done in **Settings → Profile & tax**, keeping one clear place to manage them.
+
 ## 2026-06-25 (Compliance pass — mileage rates & honest wording)
 
 - **Mileage rates are now versioned by tax year and updated for 2026/27.** HMRC raised the car & van first-10,000-mile simplified/AMAP rate from 45p to 55p (25p after, unchanged) effective 6 April 2026; motorcycles stay 24p. `calcDeduction`/`mileageRate` now pick the rate schedule by the record's date, so back-dated entries keep the old rate while current trips use 55p. (Source: gov.uk "Increasing mileage rates".) Previously the app hard-coded 45p and under-claimed for the current year.
