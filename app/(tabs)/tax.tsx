@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TextInput, Pressable, Alert } from 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, CollapsingHeader, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
+import { Card, SectionHeader, CollapsingHeader, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, GlassPanel } from '../../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries,
@@ -63,14 +63,14 @@ export default function TaxScreen() {
     <View style={{ flex: 1 }}>
       <CollapsingHeader title="Tax" subtitle={`Your estimated position for ${taxYearLabel()}`} right={gear}>
       {/* Headline: what to set aside — the number that matters on this tab */}
-      <View style={s.setAside}>
-        <View style={s.setAsideIcon}><Feather name="shield" size={20} color="#fff" /></View>
+      <GlassPanel tone="amber" style={s.setAside} contentStyle={s.setAsideContent}>
+        <View style={s.setAsideIcon}><Feather name="shield" size={20} color={colors.amberDark} /></View>
         <View style={{ flex: 1 }}>
           <Text style={s.setAsideLabel}>Set aside for tax</Text>
           <Text style={s.setAsideSub}>Estimated bill for {taxYearLabel()} so far</Text>
         </View>
         <Text style={s.setAsideValue}>{fmtGbp(pos.totalDue)}</Text>
-      </View>
+      </GlassPanel>
 
       {/* How "tax saved" is worked out — the chain from miles to money back */}
       {year.miles > 0 && (
@@ -252,11 +252,12 @@ const s = StyleSheet.create({
   heading: { ...type.screenTitle, marginBottom: 6 },
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.xl },
 
-  setAside: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.amber, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.xl },
-  setAsideIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' },
-  setAsideLabel: { ...type.bodyMedium, fontSize: 16, color: '#fff' },
-  setAsideSub: { ...type.caption, color: 'rgba(255,255,255,0.9)', marginTop: 1 },
-  setAsideValue: { ...tabular, fontSize: 26, fontWeight: font.bold, color: '#fff', letterSpacing: -0.5 },
+  setAside: { marginBottom: spacing.xl },
+  setAsideContent: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  setAsideIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.amberLight, alignItems: 'center', justifyContent: 'center' },
+  setAsideLabel: { ...type.bodyMedium, fontSize: 16, color: colors.textPrimary },
+  setAsideSub: { ...type.caption, color: colors.textSecondary, marginTop: 1 },
+  setAsideValue: { ...tabular, fontSize: 26, fontWeight: font.bold, color: colors.textPrimary, letterSpacing: -0.5 },
   savedHead: { ...type.label, color: colors.textSecondary, fontWeight: font.semibold, marginBottom: spacing.md },
   savedFlow: { flexDirection: 'row', alignItems: 'center' },
   savedCell: { flex: 1, alignItems: 'center' },

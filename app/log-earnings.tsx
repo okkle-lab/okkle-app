@@ -3,7 +3,7 @@ import { View, Text, TextInput, ScrollView, StyleSheet, Pressable, KeyboardAvoid
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Card, Chip, IconBadge, GradientCard, DatePickerField, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
+import { Card, Chip, IconBadge, GradientCard, DatePickerField, KeyboardDoneAccessory, numberKeyboardDoneProps, NativeGreenButton } from '../src/components';
 import { PLATFORMS, fmtGbp } from '../src/db/tax';
 import { saveRecord } from '../src/db';
 
@@ -115,12 +115,12 @@ export default function LogEarnings() {
           </View>
         </Card>
 
-        <Pressable onPress={save} disabled={!canSave} style={({ pressed }) => [pressed && { opacity: 0.9 }, { marginTop: spacing.lg }]}>
-          <GradientCard colors={canSave ? [colors.brand, colors.brandDeep] : [colors.borderStrong, colors.borderStrong]} radius={radius.lg} style={s.saveBtn}>
-            <Feather name="check" size={20} color="#fff" />
-            <Text style={s.saveText}>Save {canSave ? fmtGbp(amountN) : 'earnings'}</Text>
-          </GradientCard>
-        </Pressable>
+        <NativeGreenButton
+          label={`Save ${canSave ? fmtGbp(amountN) : 'earnings'}`}
+          onPress={save}
+          disabled={!canSave}
+          style={{ marginTop: spacing.lg }}
+        />
 
         <Text style={s.footnote}>Nothing is logged until you tap Save. You can edit the amount above if the scan got it wrong.</Text>
       </ScrollView>
@@ -156,7 +156,5 @@ const s = StyleSheet.create({
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   dateBlock: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg, gap: spacing.md },
 
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 18 },
-  saveText: { color: '#fff', fontSize: 17, fontWeight: font.bold },
   footnote: { ...type.small, lineHeight: 18, textAlign: 'center', marginTop: spacing.lg },
 });

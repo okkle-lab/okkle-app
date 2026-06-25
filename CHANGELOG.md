@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2.0.0 - 2026-06-25 (Guided logging and liquid glass UI)
+
+- **Redesigned Log as a guided flow.** Logging now asks one question per page, supports receipt/photo upload first, attempts on-device receipt parsing, and resets cleanly after saving or navigating to Records.
+- **Added liquid-glass material language.** Shared glass panels and green/neutral native-style buttons now power the log number inputs, tax headline value, Start Trip button, and the logged confirmation sheet.
+- **Improved trip and log ergonomics.** Start Trip uses a darker glass button, Log and Trip tab order is updated, numeric-keyboard flows have a done path, and the submitted-log confirmation slides up as a transparent glass bottom sheet.
+
 ## 2026-06-25 (Two-way trip nudges; removed automatic shift tracking)
 
 - **Removed automatic (passive) shift tracking.** Motion-based auto-tracking could pick up personal drives (commute, school run) and pile up drafts to discard, so it's gone — along with the background shift accumulator, the shift-review screen, and the "Track my shift automatically" toggle.

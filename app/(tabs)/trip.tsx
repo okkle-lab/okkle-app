@@ -11,7 +11,7 @@ import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll, GlassPanel } from '../../src/components';
 import { VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, getPlatforms, getVehicleKeys, type DailyStats } from '../../src/db';
@@ -312,7 +312,7 @@ export default function TripScreen() {
 
   // ---- Phase 1: setup --------------------------------------------------------
   const todayHasData = today.trips > 0 || today.earnings > 0;
-  const showVehiclePicker = myVehicles.length > 1;
+  const showVehiclePicker = myVehicles.length > 0;
   return (
     <View style={[s.screen, { paddingTop: insets.top + 8 }]}>
       <View style={s.fixedHeader}>
@@ -342,16 +342,37 @@ export default function TripScreen() {
       {/* THE button — a big circular Start disc inside an accent ring (activity-
           ring inspired), centred as the screen's focal point. */}
       <View style={s.ringHero}>
+        <View pointerEvents="none" style={s.startGlow} />
         <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill} pointerEvents="none">
           <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R} stroke={colors.brand} strokeWidth={RING_STROKE} fill="none" />
         </Svg>
         <Pressable onPress={handleStart} style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}>
-          <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={BTN_SIZE / 2} style={s.startBtnCircle}>
+          <GlassPanel tone="deepGreen" radius={BTN_SIZE / 2} isInteractive style={s.startBtnCircle} clipStyle={s.startBtnCircleClip} contentStyle={s.startBtnCircleContent}>
             <Feather name="navigation" size={54} color="#fff" />
             <Text style={s.startBtnText}>Start trip</Text>
             <Text style={s.startBtnSub}>{vehicleLabel(vehicle)} · GPS miles</Text>
           </GradientCard>
         </Pressable>
+      </View>
+
+      <View style={s.selectorDeck}>
+        <Text style={s.selLabel}>Platform</Text>
+        <ChipScroll fadeColor={colors.bg}>
+          {platformList.map(p => (
+            <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
+          ))}
+        </ChipScroll>
+
+        {showVehiclePicker && (
+          <>
+            <Text style={s.selLabel}>Car</Text>
+            <ChipScroll fadeColor={colors.bg}>
+              {myVehicles.map(v => (
+                <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+              ))}
+            </ChipScroll>
+          </>
+        )}
       </View>
 
       <View style={s.ringSpacerBottom} />
@@ -383,9 +404,20 @@ const s = StyleSheet.create({
   setupLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
   setupLabel: { ...type.bodyMedium, fontSize: 15 },
   startSpacer: { flex: 1, minHeight: 16 },
-  ringSpacerBottom: { flex: 0.55 },
+  startSpacerTop: { flex: 0.75, minHeight: 12 },
+  ringSpacerBottom: { flex: 0.4, minHeight: 12 },
   ringHero: { width: RING_SIZE, height: RING_SIZE, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
-  startBtnCircle: { width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_SIZE / 2, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
+  startGlow: {
+    position: 'absolute',
+    width: BTN_SIZE + 46,
+    height: BTN_SIZE + 46,
+    borderRadius: (BTN_SIZE + 46) / 2,
+    backgroundColor: 'rgba(43,188,168,0.26)',
+    boxShadow: '0 0 36px rgba(31,184,154,0.34)',
+  },
+  startBtnCircle: { width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_SIZE / 2 },
+  startBtnCircleClip: { width: BTN_SIZE, height: BTN_SIZE, backgroundColor: colors.brandDeep, borderWidth: 0 },
+  startBtnCircleContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18 },
   startBtnText: { color: '#fff', fontSize: 29, fontWeight: font.bold, letterSpacing: -0.4 },
   startBtnSub: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: font.medium, textAlign: 'center' },
   bigStartWrap: { marginTop: spacing.lg },
@@ -393,7 +425,8 @@ const s = StyleSheet.create({
   bigStartCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center' },
   bigStartText: { color: '#fff', fontSize: 36, fontWeight: font.bold, letterSpacing: -0.6 },
   bigStartSub: { color: 'rgba(255,255,255,0.9)', fontSize: 17, fontWeight: font.medium },
-  selLabel: { ...type.label, color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm },
+  selectorDeck: { marginTop: spacing.lg, gap: spacing.xs },
+  selLabel: { ...type.label, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs },
   startHero: { flexDirection: 'row', alignItems: 'center', padding: spacing.xl, marginTop: spacing.lg },
   startKicker: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: font.semibold, letterSpacing: 1 },
   startTitle: { color: '#fff', fontSize: 28, fontWeight: font.bold, letterSpacing: -0.5, marginTop: 2 },

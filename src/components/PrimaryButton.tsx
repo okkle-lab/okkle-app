@@ -1,13 +1,14 @@
 import React from 'react';
-import { Pressable, Text, ViewStyle } from 'react-native';
+import { Pressable, Text, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, radius, font } from '../theme';
+import { NativeGreenButton } from './NativeGreenButton';
 
 type Props = {
   label: string;
   onPress: () => void;
   variant?: 'primary' | 'danger' | 'ghost' | 'warning';
   disabled?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 };
 
 const VARIANTS = {
@@ -18,6 +19,18 @@ const VARIANTS = {
 };
 
 export function PrimaryButton({ label, onPress, variant = 'primary', disabled, style }: Props) {
+  if (variant === 'primary' || variant === 'ghost') {
+    return (
+      <NativeGreenButton
+        label={label}
+        onPress={onPress}
+        disabled={disabled}
+        variant={variant === 'ghost' ? 'outlined' : 'filled'}
+        style={style}
+      />
+    );
+  }
+
   const v = VARIANTS[variant];
   return (
     <Pressable
