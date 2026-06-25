@@ -32,16 +32,14 @@ export default function TripScreen() {
   const insets = useSafeAreaInsets();
   const user = getUser();
   const last = getLastTrip();
-  // Platforms/vehicles are managed in Settings; we only show the chosen ones, and
-  // refresh them whenever the tab regains focus (e.g. after adding one in Settings).
-  const [platformList, setPlatformList] = useState(getPlatforms);
+  // A trip is just a day's driving — platform-agnostic (you may multi-app across
+  // Uber/Deliveroo/etc.). Platform lives on your earnings, not the trip. We only
+  // pick the vehicle here, since that sets the mileage rate.
   const [myVehicles, setMyVehicles] = useState(() => VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
-  const [platform, setPlatform] = useState(last?.platform ?? getPlatforms()[0]);
   const [vehicle, setVehicle] = useState(last?.vehicle ?? user?.vehicle ?? VEHICLES.find(v => getVehicleKeys().includes(v.key))?.key ?? 'car');
 
   useFocusEffect(
     React.useCallback(() => {
-      setPlatformList(getPlatforms());
       setMyVehicles(VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
     }, []),
   );
@@ -86,7 +84,7 @@ export default function TripScreen() {
       setTodayBase(getTodayMiles());
       milestoneRef.current = 0;
       setFlash(null);
-      await start(platform, vehicle);
+      await start(vehicle);
       setPhase('live');
     } catch {
       Alert.alert('Location needed', 'Please allow location access to track your trip distance.');
@@ -135,11 +133,11 @@ export default function TripScreen() {
     }
 
     saveTrip({
-      platform: finished.platform,
+      platform: '', // trips are platform-agnostic; platform lives on earnings
       vehicle: finished.vehicle,
       miles: parseFloat(finished.miles.toFixed(2)),
       deduction: parseFloat(finished.deduction.toFixed(2)),
-      earnings: earnings ? parseFloat(earnings) : null,
+      earnings: null, // pay is logged separately, per platform, in the Log tab
       started_at: finished.startedAt!.toISOString(),
       ended_at: new Date().toISOString(),
       route_json: pts.length > 0 ? JSON.stringify(pts) : null,
@@ -297,24 +295,12 @@ export default function TripScreen() {
             </View>
           )}
 
-          <SectionHeader icon="dollar-sign" title="Add earnings for this trip (optional)" />
-          <TextInput
-            style={s.earningsInput}
-            placeholder="£0.00"
-            placeholderTextColor={colors.textTertiary}
-            keyboardType="decimal-pad"
-            value={earnings}
-            onChangeText={setEarnings}
-            {...numberKeyboardDoneProps}
-          />
-          <Text style={s.earningsNote}>
-            Most couriers are paid weekly, so you can skip this and log earnings in one go later from the Log tab.
-          </Text>
+          <View style={[s.hookBanner, { backgroundColor: colors.brandLight }]}>
+            <IconBadge icon="dollar-sign" tone="green" size={34} />
+            <Text style={s.hookText}>Miles saved. Log your pay any time from the Log tab — by platform, daily or weekly.</Text>
+          </View>
 
           <PrimaryButton label="Save trip" onPress={handleSave} style={{ marginTop: spacing.lg }} />
-          <Pressable onPress={handleSave} style={{ marginTop: 14, alignItems: 'center' }}>
-            <Text style={s.skip}>Skip — add earnings later</Text>
-          </Pressable>
           <Pressable onPress={() => { setFinished(null); setEarnings(''); setPhase('setup'); }} style={{ marginTop: 18, alignItems: 'center' }}>
             <Text style={s.discardText}>Discard this trip</Text>
           </Pressable>
@@ -338,14 +324,8 @@ export default function TripScreen() {
       </View>
 
       <View style={[s.fixedBody, { paddingBottom: insets.bottom + 64 }]}>
-      {/* Selectors sit quietly under the header */}
-      <Text style={s.selLabel}>Platform</Text>
-      <ChipScroll fadeColor={colors.bg}>
-        {platformList.map(p => (
-          <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
-        ))}
-      </ChipScroll>
-
+      {/* Only the vehicle matters here (it sets your mileage rate). Platform is
+          asked when you log earnings, since a day can span several apps. */}
       {showVehiclePicker && (
         <>
           <Text style={s.selLabel}>Vehicle</Text>
@@ -369,7 +349,7 @@ export default function TripScreen() {
           <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={BTN_SIZE / 2} style={s.startBtnCircle}>
             <Feather name="navigation" size={54} color="#fff" />
             <Text style={s.startBtnText}>Start trip</Text>
-            <Text style={s.startBtnSub}>{vehicleLabel(vehicle)} · {platform}</Text>
+            <Text style={s.startBtnSub}>{vehicleLabel(vehicle)} · GPS miles</Text>
           </GradientCard>
         </Pressable>
       </View>

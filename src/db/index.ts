@@ -508,8 +508,10 @@ export function getPlatformStatsForPeriod(period: Period, ref = new Date()): Pla
     if (!agg[key]) agg[key] = { miles: 0, earnings: 0, hours: 0 };
     agg[key].miles += miles; agg[key].earnings += earnings; agg[key].hours += hours;
   };
+  // Trips are platform-agnostic now (a day can span several apps), so they don't
+  // feed the per-platform breakdown — that comes from your earnings records.
   for (const t of db.getAllSync<Trip>('SELECT * FROM trips WHERE date(started_at) BETWEEN ? AND ?', start, end)) {
-    bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
+    if (t.platform) bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
   }
   for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type IN ('income','mileage') AND date(created_at) BETWEEN ? AND ?`, start, end)) {
     bump(r.platform ?? 'Other', r.record_type === 'mileage' ? (r.miles ?? 0) : 0,
@@ -612,7 +614,7 @@ export function getPlatformStats(): PlatformStat[] {
     agg[key].hours += hours;
   };
   for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
-    bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
+    if (t.platform) bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
   }
   for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type IN ('income','mileage')`)) {
     bump(r.platform ?? 'Other', r.record_type === 'mileage' ? (r.miles ?? 0) : 0,

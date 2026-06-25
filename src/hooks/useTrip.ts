@@ -10,12 +10,12 @@ const END_NUDGE_AFTER_S = 18 * 60; // ask "finished?" ~18 min after last movemen
 
 // A lock-screen notification while a trip is tracking, so it's visible when the
 // phone is locked and one tap brings you back to the live screen.
-function showTripNotification(platform: string) {
+function showTripNotification() {
   Notifications.scheduleNotificationAsync({
     identifier: TRIP_NOTIF_ID,
     content: {
       title: 'Tracking your trip',
-      body: `${platform} · GPS is logging your miles. Tap to view.`,
+      body: 'GPS is logging your miles. Tap to view.',
       data: { type: 'tripActive' },
       sticky: true,
     },
@@ -65,7 +65,7 @@ export type LiveTrip = {
 
 const INITIAL: LiveTrip = {
   state: 'idle',
-  platform: 'Uber Eats',
+  platform: '',
   vehicle: 'car',
   miles: 0,
   deduction: 0,
@@ -106,7 +106,7 @@ export function useTrip() {
     };
   }, []);
 
-  async function start(platform: string, vehicle: string) {
+  async function start(vehicle: string) {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') throw new Error('Location permission denied');
     // Ask for background permission so tracking continues when the phone is
@@ -117,9 +117,9 @@ export function useTrip() {
     pointsRef.current = [];
     lastSampleRef.current = null;
     setTripActive(true); // pause auto-trip suggestions while we're tracking
-    showTripNotification(platform);
+    showTripNotification();
     armTripEndNudge();   // arm the "finished this trip?" half of the nudge
-    setTrip({ state: 'running', platform, vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
+    setTrip({ state: 'running', platform: '', vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
 
     timerRef.current = setInterval(() => {
       setTrip(t => ({ ...t, elapsedSeconds: t.elapsedSeconds + 1 }));
