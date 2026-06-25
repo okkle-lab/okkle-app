@@ -12,6 +12,7 @@ import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHead
 import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser, kvGet, kvSet, getPlatforms, addPlatform, getLearnedCategory, learnCategory } from '../../src/db';
 import { recognizeText } from '../../modules/okkle-vision';
+import { aiParseReceipt } from '../../modules/okkle-ai';
 import { parseReceipt } from '../../src/receiptParse';
 
 // Copy a picked image into app storage so it survives even if the cache clears.
@@ -174,12 +175,19 @@ export default function LogScreen() {
     try {
       const { available, lines } = await recognizeText(uri);
       if (available && lines.length) {
-        const { amount: amt, merchant, category, date: receiptDate } = parseReceipt(lines);
+        // Heuristic parse as the baseline…
+        const heur = parseReceipt(lines);
+        // …then let Apple Intelligence (on-device LLM) refine it where available.
+        const ai = await aiParseReceipt(lines.join('\n'));
+        const amt = ai?.amount ?? heur.amount;
+        const merchant = ai?.merchant ?? heur.merchant;
+        const aiDate = ai?.date ? new Date(`${ai.date}T12:00:00`) : null;
+        const receiptDate = aiDate && !isNaN(aiDate.getTime()) ? aiDate : heur.date;
+
         if (amt && !amount) setAmount(amt.toFixed(2));
-        // Prefer what Okkle has *learned* for this merchant, then the keyword guess,
-        // then the merchant name.
+        // Prefer what Okkle has *learned* for this merchant, then AI, then keyword, then merchant.
         const learned = getLearnedCategory(merchant);
-        if (!description) setDescription(learned ?? category ?? merchant ?? '');
+        if (!description) setDescription(learned ?? ai?.category ?? heur.category ?? merchant ?? '');
         if (receiptDate) setDate(receiptDate);
         setScannedMerchant(merchant);
       }
