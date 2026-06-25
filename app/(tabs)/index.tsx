@@ -103,7 +103,8 @@ export default function HomeScreen() {
   const gameScrollX = React.useRef(new Animated.Value(0)).current;
   const insightScrollX = React.useRef(new Animated.Value(0)).current;
 
-  // First-run tour — a quick walk across the five tabs so people know what each does.
+  // First-run tour — short, value-first cards (no tab spotlights; the native tab
+  // bar's positions can't be measured reliably, so we explain rather than point).
   const [showCoach, setShowCoach] = React.useState(false);
   useFocusEffect(useCallback(() => {
     if (getUser()?.onboarded && !kvGet('coach_seen')) {
@@ -111,14 +112,12 @@ export default function HomeScreen() {
       return () => clearTimeout(t);
     }
   }, []));
-  const TAB_H = 84;
-  const tabRect = (i: number) => ({ x: (win.width / 5) * i + 4, y: win.height - TAB_H + 2, w: win.width / 5 - 8, h: 50 });
   const coachSteps: CoachStep[] = [
-    { rect: tabRect(0), title: 'Home', body: 'Your earnings, your £/hour, and where you earn most — at a glance.' },
-    { rect: tabRect(1), title: 'Track a trip', body: 'Tap Trip, then Start. GPS logs every mile as tax-free money back — automatically, no notes.' },
-    { rect: tabRect(2), title: 'Log', body: 'Add expenses (snap the receipt) and your weekly pay so your numbers stay accurate.' },
-    { rect: tabRect(3), title: 'Records', body: 'Everything you’ve logged — tap any entry to edit or delete it.' },
-    { rect: tabRect(4), title: 'Tax', body: 'Your estimated bill, what to set aside, and a one-tap summary for your accountant.' },
+    { title: 'Welcome to Okkle 👋', body: 'Track your delivery miles and money in one place — and see exactly what you keep after tax. Here’s the 20-second tour.' },
+    { title: 'Track every mile', body: 'On the Trip tab, tap Start before you set off. GPS turns your distance into a tax-free mileage deduction — automatically, nothing to write down.' },
+    { title: 'Log pay & expenses', body: 'Use the Log tab for your weekly pay and any costs — fuel, parking, phone. Snap a receipt and Okkle reads the amount for you.' },
+    { title: 'No January surprises', body: 'The Tax tab shows what to set aside and your estimated bill as you go, plus a one-tap summary you can hand your accountant.' },
+    { title: 'See what really pays', body: 'Home shows your earnings, your real £/hour and where you earn most. The more you track, the clearer your take-home gets.' },
   ];
   function dismissCoach() { kvSet('coach_seen', 1); setShowCoach(false); }
 

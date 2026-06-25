@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Alert, Pressable, TextInput,
-  KeyboardAvoidingView, Platform, Dimensions,
+  KeyboardAvoidingView, Platform, Dimensions, Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
@@ -161,7 +161,7 @@ export default function TripScreen() {
     };
     const stripMetrics = (['miles', 'time', 'speed', 'today', 'map'] as LiveMetric[]).filter(m => m !== heroMetric);
     return (
-      <>
+      <Modal visible animationType="fade" statusBarTranslucent presentationStyle="overFullScreen">
         <StatusBar style="light" />
         <View style={s.liveScreen}>
           {/* Status pill (live/waiting/paused) + discard */}
@@ -238,7 +238,7 @@ export default function TripScreen() {
             <SlideToConfirm label="Slide to end trip" onConfirm={handleEnd} color={colors.red} />
           </View>
         </View>
-      </>
+      </Modal>
     );
   }
 
