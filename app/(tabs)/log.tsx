@@ -210,11 +210,16 @@ export default function LogScreen() {
       // Learn: this merchant → this category, so the next receipt nails it.
       if (scannedMerchant) learnCategory(scannedMerchant, description);
     }
+    // Confirm exactly what was saved, so the user is sure it landed.
+    const summary = tab === 'mileage'
+      ? `${parseFloat(miles).toFixed(1)} miles`
+      : `${fmtGbp(parseFloat(amount))} ${tab === 'income' ? 'earnings' : 'expense'}`;
     setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null); setScannedMerchant(null);
     const t = new Date(); t.setHours(12, 0, 0, 0); setDate(t);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+    Alert.alert('Saved', `${summary}${period === 'week' ? ' for the week' : ''} added to your records.`);
   }
 
   const canSave = tab === 'mileage' ? !!miles : tab === 'income' ? !!amount : (!!amount && !!description);
@@ -434,7 +439,7 @@ export default function LogScreen() {
             style={s.saveBtn}
           >
             <Feather name={saved ? 'check' : 'plus'} size={20} color="#fff" />
-            <Text style={s.saveText}>{saved ? 'Saved!' : 'Save entry'}</Text>
+            <Text style={s.saveText}>{saved ? 'Saved!' : 'Save'}</Text>
           </GradientCard>
         </Pressable>
       </Animated.View>
