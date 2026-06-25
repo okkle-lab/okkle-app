@@ -10,7 +10,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
+import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
 import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, getPlatforms, getVehicleKeys, type DailyStats } from '../../src/db';
@@ -330,56 +330,35 @@ export default function TripScreen() {
         <SettingsGlassButton onPress={() => router.push('/settings')} />
       }
     >
-      {/* Your setup — platform + vehicle in one calm card */}
-      <Card style={s.setupCard}>
-        <View style={s.setupSection}>
-          <View style={s.setupLabelRow}>
-            <IconBadge icon="grid" tone="mint" size={28} />
-            <Text style={s.setupLabel}>Platform</Text>
+      {/* THE button — big, central, glove-friendly. This is the whole tab. */}
+      <Pressable onPress={handleStart} style={({ pressed }) => [s.bigStartWrap, pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] }]}>
+        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.bigStart}>
+          <View style={s.bigStartCircle}>
+            <Feather name="navigation" size={44} color="#fff" />
           </View>
-          <View style={s.chips}>
-            {platformList.map(p => (
-              <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} style={s.chip} />
-            ))}
-          </View>
-        </View>
-        {showVehiclePicker && (
-          <>
-            <View style={s.setupDivider} />
-            <View style={s.setupSection}>
-              <View style={s.setupLabelRow}>
-                <IconBadge icon="truck" tone="blue" size={28} />
-                <Text style={s.setupLabel}>Vehicle</Text>
-              </View>
-              <View style={[s.chips, { marginBottom: 0 }]}>
-                {myVehicles.map(v => (
-                  <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-                ))}
-              </View>
-            </View>
-          </>
-        )}
-      </Card>
-
-      {/* Start — the hero action, gradient like Home */}
-      <Pressable onPress={handleStart} style={({ pressed }) => pressed && { opacity: 0.9 }}>
-        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.startHero}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.startKicker}>GPS TRIP</Text>
-            <Text style={s.startTitle}>Start trip</Text>
-            <Text style={s.startSub}>Tracking {vehicleLabel(vehicle)} miles on {platform}</Text>
-          </View>
-          <View style={s.startCircle}>
-            <Feather name="navigation" size={26} color={colors.brandDeep} />
-          </View>
+          <Text style={s.bigStartText}>Start trip</Text>
+          <Text style={s.bigStartSub}>{vehicleLabel(vehicle)} · {platform}</Text>
         </GradientCard>
       </Pressable>
 
-      {/* Secondary action — checking an offer is trip-relevant; pay logging lives in the Log tab */}
-      <Pressable onPress={() => router.push('/order-check')} style={({ pressed }) => [s.tile, s.tileWide, pressed && { backgroundColor: colors.bgSoft }]}>
-        <IconBadge icon="check-circle" tone="violet" size={34} />
-        <Text style={s.tileLabel}>Accept or skip? — check an offer's £/mile</Text>
-      </Pressable>
+      {/* Compact selectors — one tap to switch, horizontal not a stacked list */}
+      <Text style={s.selLabel}>Platform</Text>
+      <ChipScroll fadeColor={colors.bg}>
+        {platformList.map(p => (
+          <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
+        ))}
+      </ChipScroll>
+
+      {showVehiclePicker && (
+        <>
+          <Text style={s.selLabel}>Vehicle</Text>
+          <ChipScroll fadeColor={colors.bg}>
+            {myVehicles.map(v => (
+              <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+            ))}
+          </ChipScroll>
+        </>
+      )}
 
       {todayHasData && (
         <Text style={s.todayLine}>Today: {today.miles.toFixed(1)} mi · {fmtGbpRound(today.deduction)} tax saved</Text>
@@ -407,6 +386,12 @@ const s = StyleSheet.create({
   setupDivider: { height: 1, backgroundColor: colors.border },
   setupLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
   setupLabel: { ...type.bodyMedium, fontSize: 15 },
+  bigStartWrap: { marginTop: spacing.lg },
+  bigStart: { alignItems: 'center', justifyContent: 'center', paddingVertical: 44, gap: 12 },
+  bigStartCircle: { width: 104, height: 104, borderRadius: 52, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center' },
+  bigStartText: { color: '#fff', fontSize: 32, fontWeight: font.bold, letterSpacing: -0.6 },
+  bigStartSub: { color: 'rgba(255,255,255,0.88)', fontSize: 16, fontWeight: font.medium },
+  selLabel: { ...type.label, color: colors.textSecondary, marginTop: spacing.xl, marginBottom: spacing.sm },
   startHero: { flexDirection: 'row', alignItems: 'center', padding: spacing.xl, marginTop: spacing.lg },
   startKicker: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: font.semibold, letterSpacing: 1 },
   startTitle: { color: '#fff', fontSize: 28, fontWeight: font.bold, letterSpacing: -0.5, marginTop: 2 },
