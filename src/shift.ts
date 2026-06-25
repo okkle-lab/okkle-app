@@ -73,7 +73,10 @@ function armEndNudge() {
       body: 'Tap to end your shift and log the miles — or ignore if you’re still out.',
       data: { type: 'shiftMaybeEnded' },
     },
-    trigger: { seconds: NUDGE_AFTER_S } as any,
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: NUDGE_AFTER_S,
+    },
   }).catch(() => {});
 }
 function cancelEndNudge() {
