@@ -71,6 +71,8 @@ export default function TripScreen() {
 
   async function handleStart() {
     try {
+      // Tactile confirmation so a gloved driver feels the tap land without looking.
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
       setTodayBase(getTodayMiles());
       milestoneRef.current = 0;
       setFlash(null);
@@ -350,7 +352,7 @@ export default function TripScreen() {
       <Pressable onPress={handleStart} style={({ pressed }) => [s.bigStartWrap, pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] }]}>
         <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.bigStart}>
           <View style={s.bigStartCircle}>
-            <Feather name="navigation" size={44} color="#fff" />
+            <Feather name="navigation" size={50} color="#fff" />
           </View>
           <Text style={s.bigStartText}>Start trip</Text>
           <Text style={s.bigStartSub}>{vehicleLabel(vehicle)} · {platform}</Text>
@@ -385,10 +387,10 @@ const s = StyleSheet.create({
   setupLabel: { ...type.bodyMedium, fontSize: 15 },
   startSpacer: { flex: 1, minHeight: 24 },
   bigStartWrap: { marginTop: spacing.sm },
-  bigStart: { alignItems: 'center', justifyContent: 'center', paddingVertical: 44, gap: 12 },
-  bigStartCircle: { width: 104, height: 104, borderRadius: 52, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center' },
-  bigStartText: { color: '#fff', fontSize: 32, fontWeight: font.bold, letterSpacing: -0.6 },
-  bigStartSub: { color: 'rgba(255,255,255,0.88)', fontSize: 16, fontWeight: font.medium },
+  bigStart: { alignItems: 'center', justifyContent: 'center', paddingVertical: 54, gap: 14 },
+  bigStartCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center' },
+  bigStartText: { color: '#fff', fontSize: 36, fontWeight: font.bold, letterSpacing: -0.6 },
+  bigStartSub: { color: 'rgba(255,255,255,0.9)', fontSize: 17, fontWeight: font.medium },
   selLabel: { ...type.label, color: colors.textSecondary, marginTop: spacing.xl, marginBottom: spacing.sm },
   startHero: { flexDirection: 'row', alignItems: 'center', padding: spacing.xl, marginTop: spacing.lg },
   startKicker: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: font.semibold, letterSpacing: 1 },
