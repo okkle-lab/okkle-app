@@ -9,6 +9,7 @@ A React Native / Expo iPhone app for UK gig-economy delivery couriers (Uber Eats
 ## Features
 
 ### Trip tracking
+- **Passive whole-shift tracking** (`src/shift.ts`) — the recommended mode for couriers. Just drive: Okkle counts every business mile of the shift in the background (to the restaurant, to the customer, and the dead miles between offers), auto-starts on detected driving, auto-closes after ~12 min stationary, and logs a **draft** mileage record with a "tap to review" notification. Nothing is finalised without you confirming. Built battery-first — it reuses the low-power background location task (Balanced accuracy, automotive activity type, 60s deferred/batched updates, auto-pause when still), never a continuous high-accuracy fix. Toggle under Settings → Auto-detect trips.
 - **Log weekly pay** — dedicated screen for logging weekly platform bank transfers (Uber Eats / Deliveroo / Just Eat all pay weekly, not per trip). Pre-fills the platform from your last selection.
 - **Today's summary bar** — shows today's trips / miles / saved / earned on the trip setup screen as soon as you've completed a trip. Day-level view without leaving the tab.
 - **One-tap GPS trips** — tap Start, ride, tap End. Distance accumulates via `watchPositionAsync` with a stationary jitter filter (ignores GPS drift when speed < 0.5 m/s or movement < 8 m).

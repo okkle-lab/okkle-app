@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 import '../src/autoTrip'; // registers the background trip-detection task at load
+import { endShiftNow } from '../src/shift';
 
 const glassSheetOptions = {
   presentation: 'transparentModal' as const,
@@ -33,8 +34,14 @@ export default function RootLayout() {
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(res => {
       const type = (res.notification.request.content.data as any)?.type;
-      if (type === 'autotrip' || type === 'tripActive') {
+      if (type === 'autotrip' || type === 'tripActive' || type === 'shiftActive') {
         router.push('/(tabs)/trip');
+      } else if (type === 'shiftEnded') {
+        router.push('/shift-review');
+      } else if (type === 'shiftMaybeEnded') {
+        // "Done for the day?" — finalize the shift now, then open the review.
+        endShiftNow();
+        router.push('/shift-review');
       }
     });
     return () => sub.remove();
@@ -62,6 +69,7 @@ export default function RootLayout() {
         <Stack.Screen name="log-earnings" options={{ presentation: 'modal' }} />
         <Stack.Screen name="settings-earnings-shortcut" options={{ presentation: 'modal' }} />
         <Stack.Screen name="settings-auto-trip" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="shift-review" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   );

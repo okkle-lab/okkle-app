@@ -3,6 +3,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import { kvGet, kvGetNum, kvSet } from './db';
 import { recentActivity, hasMotionModule, type MotionActivity } from '../modules/okkle-motion';
+import { processShiftLocations } from './shift';
 
 // Movement-based trip *suggestion* (Feature 1).
 //
@@ -25,6 +26,13 @@ TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
   if (error) return;
   const locations: Location.LocationObject[] = data?.locations ?? [];
   if (!locations.length) return;
+
+  // Passive shift mode: accumulate whole-shift miles in the background instead of
+  // just nudging. This is the "set it and forget it" path for couriers.
+  if (kvGet('shift_mode') === '1') {
+    await processShiftLocations(locations).catch(() => {});
+    return;
+  }
 
   if (kvGet('trip_active') === '1') return;           // already tracking a trip
   if (kvGet('auto_trip') !== '1') return;             // feature turned off
@@ -54,6 +62,56 @@ TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
 
 export function isAutoTripEnabled(): boolean {
   return kvGet('auto_trip') === '1';
+}
+
+// Shared low-power background location config. Balanced accuracy + automotive
+// activity type + deferred batched updates + auto-pause when stationary. This is
+// the battery story: we ride the GPS the platform app already holds and let iOS
+// sleep the radios between batches — we never run a continuous high-accuracy fix.
+const BG_OPTIONS: Location.LocationTaskOptions = {
+  accuracy: Location.Accuracy.Balanced,
+  activityType: Location.ActivityType.AutomotiveNavigation,
+  deferredUpdatesInterval: 60_000,
+  pausesUpdatesAutomatically: true,
+  showsBackgroundLocationIndicator: false,
+  foregroundService: {
+    notificationTitle: 'Okkle',
+    notificationBody: 'Counting your shift miles',
+  },
+};
+
+async function ensureBackgroundUpdates() {
+  const already = await Location.hasStartedLocationUpdatesAsync(AUTO_TRIP_TASK).catch(() => false);
+  if (!already) await Location.startLocationUpdatesAsync(AUTO_TRIP_TASK, BG_OPTIONS);
+}
+
+// Passive whole-shift tracking (the recommended default for couriers).
+export async function enableShiftMode(vehicle = 'car'): Promise<{ ok: boolean; reason?: 'foreground' | 'background' | 'error' }> {
+  try {
+    const fg = await Location.requestForegroundPermissionsAsync();
+    if (fg.status !== 'granted') return { ok: false, reason: 'foreground' };
+    const bg = await Location.requestBackgroundPermissionsAsync();
+    if (bg.status !== 'granted') return { ok: false, reason: 'background' };
+    if (hasMotionModule) { await recentActivity(60).catch(() => {}); }
+    kvSet('shift_vehicle', vehicle);
+    kvSet('shift_mode', '1');
+    await ensureBackgroundUpdates();
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+}
+
+export async function disableShiftMode(): Promise<void> {
+  kvSet('shift_mode', '');
+  kvSet('shift_active', '');
+  // Only stop the OS updates if plain auto-trip isn't also using them.
+  if (kvGet('auto_trip') !== '1') {
+    try {
+      const started = await Location.hasStartedLocationUpdatesAsync(AUTO_TRIP_TASK).catch(() => false);
+      if (started) await Location.stopLocationUpdatesAsync(AUTO_TRIP_TASK);
+    } catch { /* ignore */ }
+  }
 }
 
 // Request Always location + start low-power background updates.
@@ -90,6 +148,7 @@ export async function enableAutoTrip(): Promise<{ ok: boolean; reason?: 'foregro
 
 export async function disableAutoTrip(): Promise<void> {
   kvSet('auto_trip', '');
+  if (kvGet('shift_mode') === '1') return; // shift mode still needs the updates
   try {
     const started = await Location.hasStartedLocationUpdatesAsync(AUTO_TRIP_TASK).catch(() => false);
     if (started) await Location.stopLocationUpdatesAsync(AUTO_TRIP_TASK);

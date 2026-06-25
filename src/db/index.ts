@@ -230,6 +230,17 @@ export function getRecords(limit = 100): Record[] {
   return db.getAllSync<Record>('SELECT * FROM records ORDER BY created_at DESC LIMIT ?', limit);
 }
 
+// Marker the passive shift tracker writes into `notes` for a freshly auto-logged
+// shift the driver hasn't reviewed yet.
+export const SHIFT_DRAFT_NOTE = 'Auto-tracked shift — tap to confirm';
+
+export function getLatestDraftShift(): Record | null {
+  return db.getFirstSync<Record>(
+    `SELECT * FROM records WHERE record_type='mileage' AND notes=? ORDER BY created_at DESC LIMIT 1`,
+    SHIFT_DRAFT_NOTE,
+  );
+}
+
 export type WeeklySummary = {
   earnings: number;
   miles: number;

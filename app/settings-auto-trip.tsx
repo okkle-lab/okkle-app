@@ -4,12 +4,40 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, IconBadge, GradientCard } from '../src/components';
-import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
+import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled, enableShiftMode, disableShiftMode } from '../src/autoTrip';
+import { isShiftModeEnabled } from '../src/shift';
 
 export default function AutoTripSettings() {
   const router = useRouter();
   const [on, setOn] = React.useState(isAutoTripEnabled());
+  const [shiftOn, setShiftOn] = React.useState(isShiftModeEnabled());
   const [busy, setBusy] = React.useState(false);
+
+  async function toggleShift(next: boolean) {
+    if (busy) return;
+    setBusy(true);
+    if (next) {
+      const res = await enableShiftMode();
+      if (res.ok) {
+        setShiftOn(true);
+        setOn(false); // passive mode supersedes the nudge-only mode
+      } else if (res.reason === 'background') {
+        Alert.alert(
+          'Allow “Always”',
+          'To count your miles in the background while you work, iOS needs location set to “Always”. Open Settings to change it.',
+          [{ text: 'Not now' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
+        );
+      } else if (res.reason === 'foreground') {
+        Alert.alert('Location needed', 'Allow location access to track your shift miles.');
+      } else {
+        Alert.alert('Couldn’t enable', 'Something went wrong turning this on. Please try again.');
+      }
+    } else {
+      await disableShiftMode();
+      setShiftOn(false);
+    }
+    setBusy(false);
+  }
 
   async function toggle(next: boolean) {
     if (busy) return;
@@ -18,6 +46,7 @@ export default function AutoTripSettings() {
       const res = await enableAutoTrip();
       if (res.ok) {
         setOn(true);
+        if (shiftOn) { await disableShiftMode(); setShiftOn(false); }
       } else if (res.reason === 'background') {
         Alert.alert(
           'Allow “Always”',
@@ -58,18 +87,27 @@ export default function AutoTripSettings() {
 
       <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
         <Feather name="navigation" size={22} color="#fff" />
-        <Text style={s.heroTitle}>Never forget to track a trip</Text>
+        <Text style={s.heroTitle}>Track your whole shift, hands-free</Text>
         <Text style={s.heroSub}>
-          When Okkle notices you’ve started driving, it’ll send a gentle nudge: “On the move — track this trip?”
-          Tap it and you’re recording — so you don’t lose tax-free miles by forgetting to press Start.
+          Just drive. Okkle quietly counts every business mile in the background — to the restaurant, to the customer,
+          and the miles between jobs — then logs your shift for you to confirm. No tapping mid-delivery.
         </Text>
       </GradientCard>
 
-      {/* The toggle */}
+      {/* Passive whole-shift tracking — the recommended default */}
       <Card style={s.toggleCard}>
         <View style={{ flex: 1 }}>
-          <Text style={s.toggleTitle}>Suggest trips automatically</Text>
-          <Text style={s.toggleSub}>{on ? 'On — we’ll nudge you when you start driving.' : 'Off — you start trips manually.'}</Text>
+          <Text style={s.toggleTitle}>Track my shift automatically</Text>
+          <Text style={s.toggleSub}>{shiftOn ? 'On — miles are counted in the background while you work.' : 'Off — you track trips yourself.'}</Text>
+        </View>
+        <Switch value={shiftOn} onValueChange={toggleShift} disabled={busy} trackColor={{ true: colors.brand }} />
+      </Card>
+
+      {/* Nudge-only fallback */}
+      <Card style={s.toggleCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.toggleTitle}>Just nudge me instead</Text>
+          <Text style={s.toggleSub}>{on ? 'On — we’ll nudge you when you start driving.' : 'Off — prefer a tap-to-start nudge over full tracking.'}</Text>
         </View>
         <Switch value={on} onValueChange={toggle} disabled={busy} trackColor={{ true: colors.brand }} />
       </Card>

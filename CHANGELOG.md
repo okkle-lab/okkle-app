@@ -2,6 +2,18 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Passive whole-shift mileage tracking)
+
+- **Added hands-free shift tracking** (`src/shift.ts`): Okkle now counts every business mile of a delivery shift in the background — driving to the restaurant, to the customer, and the "dead" miles cruising between offers — without the courier tapping anything mid-delivery. This matches the UK simplified-expenses model, where all of those are simply business miles (no per-leg split needed).
+- **Auto start/stop, break-aware:** a shift starts when Core Motion (or a GPS-speed fallback) detects sustained driving. A short stop (lunch, a wait at a busy restaurant, an errand) does **not** end it — those are just 0-mile gaps inside one shift. The shift only finalises after a long idle (~2h), on manual End, or when a much later drive proves it ended back when movement stopped. It then logs the miles as a draft and fires a "Shift logged — tap to review" notification. Nothing is finalised without the driver confirming.
+- **No double-counting:** the passive tracker stands down while a manual trip (the classic Start/End flow, which is unchanged and always available) is running.
+- **"Done for the day?" prompt:** a scheduled notification re-armed on every movement, set to fire ~40 min after your *last* movement, so it reliably asks you to end (even if the app is suspended) instead of waiting for a background wake-up. Tapping it finalises the shift and opens the review; ignoring it (e.g. a long lunch) leaves the shift open and still counting.
+- **On-device learning (first slice):** the review screen remembers the app(s) you tagged last time and pre-selects them, so a single-platform driver just taps Confirm. Stays entirely on the phone.
+- **Battery-first design:** reuses the existing low-power background location task (Balanced accuracy, automotive activity type, 60s deferred/batched updates, `pausesUpdatesAutomatically`) instead of a continuous high-accuracy GPS fix or keeping a screen awake.
+- **End-of-shift review** (`app/shift-review.tsx`): tapping the "Shift logged" notification opens a one-tap **Confirm** screen showing the miles + estimated tax back. The driver can optionally tag **which app(s)** the shift was on (multi-select for multi-apping) and, **only for a single-app shift**, record what they earned — multi-app shifts ask the driver to log pay weekly instead, since earnings can't be honestly split per mile. A **Discard** option handles a personal drive that got caught.
+- **Platform attribution is insight-only, not tax:** totals (income + miles) stay platform-agnostic so the HMRC calculation is always correct; per-platform tagging exists purely to power a "which platform pays best" comparison, and only clean single-app shifts feed that comparison.
+- **Settings:** "Auto-detect trips" now leads with a **Track my shift automatically** toggle (recommended), with the older tap-to-start nudge kept as a fallback. The two are mutually exclusive.
+
 ## 1.0.1 - 2026-06-23 (iOS 26 polish, dark mode and native testing)
 
 - **Upgraded to Expo SDK 56** and aligned the app for native iPhone simulator/TestFlight development.
