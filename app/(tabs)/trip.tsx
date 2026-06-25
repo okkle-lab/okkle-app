@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
@@ -69,12 +68,6 @@ export default function TripScreen() {
     milestoneRef.current = reached;
   }, [trip.deduction, phase]);
 
-  // Keep the screen awake only while a trip is running (phone is mounted).
-  useEffect(() => {
-    if (phase === 'live') { activateKeepAwakeAsync(); }
-    else { deactivateKeepAwake(); }
-    return () => { deactivateKeepAwake(); };
-  }, [phase]);
 
   async function handleStart() {
     try {
@@ -363,7 +356,7 @@ export default function TripScreen() {
       {todayHasData && (
         <Text style={s.todayLine}>Today: {today.miles.toFixed(1)} mi · {fmtGbpRound(today.deduction)} tax saved</Text>
       )}
-      <Text style={s.gpsNote}>Keep Okkle open during your ride — your screen stays awake automatically.</Text>
+      <Text style={s.gpsNote}>No need to watch the screen — switch to your delivery app and Okkle keeps counting your miles in the background. Want it fully hands-free? Turn on Automatic shift tracking in Settings.</Text>
     </CollapsingHeader>
   );
 }
