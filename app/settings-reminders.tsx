@@ -73,7 +73,7 @@ export default function SettingsReminders() {
 }
 
 const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.bg },
+  screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 60 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   heading: { ...type.heading, fontSize: 18 },

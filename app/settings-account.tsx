@@ -50,7 +50,7 @@ export default function SettingsAccount() {
       </View>
 
       <SectionHeader title="Your details" />
-      <Card style={{ gap: spacing.lg }}>
+      <Card style={{ gap: spacing.md }}>
         <View>
           <Text style={s.fieldLabel}>Name</Text>
           <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={colors.textTertiary} />
@@ -74,7 +74,7 @@ export default function SettingsAccount() {
       </Card>
 
       <SectionHeader title="Tax region" />
-      <Card style={{ gap: spacing.lg }}>
+      <Card style={{ gap: spacing.md }}>
         <View>
           <Text style={s.fieldLabel}>Where you live</Text>
           <View style={s.chips}>
@@ -103,9 +103,9 @@ export default function SettingsAccount() {
 }
 
 const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.bg },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 60 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
+  screen: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.xl, paddingTop: 64, paddingBottom: 24, gap: spacing.md },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   heading: { ...type.heading, fontSize: 18 },
   close: { ...type.bodyMedium, color: colors.textSecondary },
   fieldLabel: { ...type.label, marginBottom: 8 },

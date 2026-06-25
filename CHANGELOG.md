@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-25 (Full-screen settings/forms; fix Replay tour)
+
+- **Settings sub-screens and the feedback form are now full-screen** instead of the iOS half-sheet that peeked the parent and wasted ~180px of height. Profile & tax now fits without scrolling; Report a problem is much shorter (also tightened spacing and the message box). Opaque backgrounds set for the full-screen presentation.
+- **Fixed "Replay app tour".** It cleared the flag but only `replace()`d the route, leaving the Settings sheet on top so the tour never appeared. It now dismisses the Settings modals and returns to the tabs; Home re-checks on focus and replays the coach marks.
+
 ## 2026-06-25 (Settings flattened — no deep menus, no scrolling)
 
 - **Removed the over-nested settings hierarchy.** "Profile & tax" no longer opens a sub-menu of single-field pages (Personal details / Vehicles / Platforms / Tax region) — it's one consolidated screen again (name, vehicles, platforms, tax region & band, plus a Key tax dates link). Deleted the redundant intermediate menus and leaf pages.

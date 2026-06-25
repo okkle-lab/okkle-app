@@ -136,16 +136,16 @@ export default function FeedbackScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
+  content: { padding: spacing.xl, paddingTop: 56, paddingBottom: 24 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   heading: { ...type.screenTitle },
   close: { ...type.label, color: colors.textSecondary },
-  sub: { ...type.body, color: colors.textSecondary, lineHeight: 23, marginTop: 6, marginBottom: spacing.lg },
+  sub: { ...type.body, color: colors.textSecondary, lineHeight: 21, marginTop: 4, marginBottom: spacing.md },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   input: {
     borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
-    padding: spacing.lg, fontSize: 16, color: colors.textPrimary, backgroundColor: colors.bgCard,
-    minHeight: 110, textAlignVertical: 'top',
+    padding: spacing.md, fontSize: 16, color: colors.textPrimary, backgroundColor: colors.bgCard,
+    minHeight: 84, textAlignVertical: 'top',
   },
   attachBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 14, backgroundColor: colors.bgCard },
   attachText: { ...type.bodyMedium, fontSize: 15 },

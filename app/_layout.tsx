@@ -12,8 +12,10 @@ const glassSheetOptions = {
   contentStyle: { backgroundColor: 'transparent' },
 };
 
+// Full-screen (not the iOS half-sheet that peeks the parent and wastes ~180px of
+// height) so content-heavy settings/forms fit without scrolling.
 const modalOptions = {
-  presentation: 'modal' as const,
+  presentation: 'fullScreenModal' as const,
 };
 
 Notifications.setNotificationHandler({
@@ -64,7 +66,7 @@ export default function RootLayout() {
         <Stack.Screen name="medals" options={{ presentation: 'modal' }} />
         <Stack.Screen name="insights" options={{ presentation: 'modal' }} />
         <Stack.Screen name="export" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="feedback" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="feedback" options={modalOptions} />
         <Stack.Screen name="key-dates" options={{ presentation: 'modal' }} />
         <Stack.Screen name="order-check" options={{ presentation: 'modal' }} />
         <Stack.Screen name="log-earnings" options={{ presentation: 'modal' }} />
