@@ -147,6 +147,26 @@ export function saveUser(u: Partial<User>) {
   }
 }
 
+// The platforms the user actually works for (chosen at onboarding / in Settings).
+// Logging screens show only these — not the full master list.
+export function getPlatforms(): string[] {
+  const raw = getUser()?.platforms ?? 'Uber Eats';
+  const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+  return list.length ? Array.from(new Set(list)) : ['Uber Eats'];
+}
+
+// Add a custom platform (e.g. via "Other") and persist it. Returns the new list.
+export function addPlatform(name: string): string[] {
+  const clean = name.trim();
+  if (!clean) return getPlatforms();
+  const list = getPlatforms();
+  if (!list.some(p => p.toLowerCase() === clean.toLowerCase())) {
+    list.push(clean);
+    saveUser({ platforms: list.join(',') });
+  }
+  return list;
+}
+
 export function saveTrip(t: Omit<Trip, 'id' | 'created_at'>) {
   db.runSync(
     `INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at, route_json, zone)

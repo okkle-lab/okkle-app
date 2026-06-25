@@ -11,9 +11,9 @@ import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter } from 'expo-router';
 import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../../src/components';
-import { PLATFORMS, VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
+import { VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, type DailyStats } from '../../src/db';
+import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, getPlatforms, addPlatform, type DailyStats } from '../../src/db';
 
 type LiveMetric = 'miles' | 'time' | 'speed' | 'today' | 'map';
 
@@ -24,8 +24,21 @@ export default function TripScreen() {
   const user = getUser();
   const last = getLastTrip();
   // Remember the last platform/vehicle so starting is a single tap.
-  const [platform, setPlatform] = useState(last?.platform ?? user?.platforms?.split(',')[0] ?? 'Uber Eats');
+  const [platformList, setPlatformList] = useState(getPlatforms);
+  const [platform, setPlatform] = useState(last?.platform ?? getPlatforms()[0]);
   const [vehicle, setVehicle] = useState(last?.vehicle ?? user?.vehicle ?? 'car');
+
+  function addCustomPlatform() {
+    Alert.prompt('Add platform', 'Name of the delivery platform you work for', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Add', onPress: (name?: string) => {
+        const n = (name ?? '').trim();
+        if (!n) return;
+        setPlatformList(addPlatform(n));
+        setPlatform(n);
+      } },
+    ], 'plain-text');
+  }
   const [phase, setPhase] = useState<Phase>('setup');
   const [finished, setFinished] = useState<LiveTrip | null>(null);
   const [earnings, setEarnings] = useState('');
@@ -321,9 +334,13 @@ export default function TripScreen() {
             <Text style={s.setupLabel}>Platform</Text>
           </View>
           <View style={s.chips}>
-            {PLATFORMS.map(p => (
+            {platformList.map(p => (
               <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} style={s.chip} />
             ))}
+            <Pressable onPress={addCustomPlatform} style={s.addChip}>
+              <Feather name="plus" size={14} color={colors.brandDeep} />
+              <Text style={s.addChipText}>Add</Text>
+            </Pressable>
           </View>
         </View>
         <View style={s.setupDivider} />
@@ -381,6 +398,8 @@ const s = StyleSheet.create({
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.xl },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
   chip: { marginBottom: 0 },
+  addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 16, paddingVertical: 12, borderRadius: radius.full, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bgCard },
+  addChipText: { ...type.bodyMedium, fontSize: 15, color: colors.brandDeep },
   gpsNote: { ...type.caption, color: colors.textTertiary, textAlign: 'center', marginTop: 14, lineHeight: 20 },
   todayLine: { ...type.caption, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.lg, fontWeight: font.medium },
 

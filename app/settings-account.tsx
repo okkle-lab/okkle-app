@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Platform, View, Text, TextInput, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { Platform, View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, Chip, SectionHeader, PrimaryButton, VehicleChip } from '../src/components';
@@ -16,6 +17,17 @@ export default function SettingsAccount() {
   const [band, setBand] = useState<'basic' | 'higher'>((u?.tax_rate ?? 0.2) >= 0.4 ? 'higher' : 'basic');
 
   const toggle = (p: string) => setPlatforms(prev => (prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]));
+  const allOptions = Array.from(new Set([...PLATFORMS, ...platforms]));
+
+  function addCustom() {
+    Alert.prompt('Add platform', 'Name of the delivery platform you work for', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Add', onPress: (name?: string) => {
+        const n = (name ?? '').trim();
+        if (n && !platforms.some(p => p.toLowerCase() === n.toLowerCase())) setPlatforms([...platforms, n]);
+      } },
+    ], 'plain-text');
+  }
 
   function save() {
     saveUser({ name, vehicle, platforms: platforms.join(','), region, tax_rate: regionRate(region, band) });
@@ -45,7 +57,11 @@ export default function SettingsAccount() {
         <View>
           <Text style={s.fieldLabel}>Platforms</Text>
           <View style={s.chips}>
-            {PLATFORMS.map(p => <Chip key={p} label={p} selected={platforms.includes(p)} onPress={() => toggle(p)} />)}
+            {allOptions.map(p => <Chip key={p} label={p} selected={platforms.includes(p)} onPress={() => toggle(p)} />)}
+            <Pressable onPress={addCustom} style={s.addChip}>
+              <Feather name="plus" size={14} color={colors.brandDeep} />
+              <Text style={s.addChipText}>Add</Text>
+            </Pressable>
           </View>
         </View>
       </Card>
@@ -82,5 +98,7 @@ const s = StyleSheet.create({
   fieldLabel: { ...type.label, marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.full, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bg },
+  addChipText: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
   note: { ...type.caption, color: colors.textTertiary },
 });

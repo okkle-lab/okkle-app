@@ -9,8 +9,8 @@ import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
-import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
-import { saveRecord, getUser, kvGet, kvSet } from '../../src/db';
+import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
+import { saveRecord, getUser, kvGet, kvSet, getPlatforms, addPlatform } from '../../src/db';
 import { recognizeText } from '../../modules/okkle-vision';
 import { parseReceipt } from '../../src/receiptParse';
 
@@ -81,7 +81,20 @@ export default function LogScreen() {
 
   const [miles, setMiles] = useState('');
   const [vehicle, setVehicle] = useState(user?.vehicle ?? 'car');
-  const [platform, setPlatform] = useState(user?.platforms?.split(',')[0] ?? 'Uber Eats');
+  const [platformList, setPlatformList] = useState(getPlatforms);
+  const [platform, setPlatform] = useState(platformList[0]);
+
+  function addCustomPlatform() {
+    Alert.prompt('Add platform', 'Name of the delivery platform you work for', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Add', onPress: (name?: string) => {
+        const n = (name ?? '').trim();
+        if (!n) return;
+        setPlatformList(addPlatform(n));
+        setPlatform(n);
+      } },
+    ], 'plain-text');
+  }
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
@@ -160,9 +173,10 @@ export default function LogScreen() {
     try {
       const { available, lines } = await recognizeText(uri);
       if (available && lines.length) {
-        const { amount: amt, merchant } = parseReceipt(lines);
+        const { amount: amt, merchant, category } = parseReceipt(lines);
         if (amt && !amount) setAmount(amt.toFixed(2));
-        if (merchant && !description) setDescription(merchant);
+        // Prefer a recognised category (selects the chip); fall back to merchant name.
+        if (!description) setDescription(category ?? merchant ?? '');
       }
     } finally {
       setScanning(false);
@@ -354,9 +368,13 @@ export default function LogScreen() {
             <View>
               <SectionHeader title="Platform" />
               <View style={s.wrapRow}>
-                {PLATFORMS.map(p => (
+                {platformList.map(p => (
                   <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
                 ))}
+                <Pressable onPress={addCustomPlatform} style={s.addChip}>
+                  <Feather name="plus" size={14} color={colors.brandDeep} />
+                  <Text style={s.addChipText}>Add</Text>
+                </Pressable>
               </View>
             </View>
           )}
@@ -374,9 +392,13 @@ export default function LogScreen() {
               <View>
                 <SectionHeader title="Platform" />
                 <View style={s.wrapRow}>
-                  {PLATFORMS.map(p => (
+                  {platformList.map(p => (
                     <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
                   ))}
+                  <Pressable onPress={addCustomPlatform} style={s.addChip}>
+                    <Feather name="plus" size={14} color={colors.brandDeep} />
+                    <Text style={s.addChipText}>Add</Text>
+                  </Pressable>
                 </View>
               </View>
             </>
@@ -466,6 +488,8 @@ const s = StyleSheet.create({
   weekCaption: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium, marginTop: spacing.sm },
   weekHint: { ...type.caption, color: colors.textSecondary, marginBottom: spacing.sm },
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.full, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bg },
+  addChipText: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
   quickDates: { flexDirection: 'row', gap: 6 },
   quickChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full, backgroundColor: colors.bgSoft },
   quickChipOn: { backgroundColor: colors.brandDeep },
