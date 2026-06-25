@@ -330,7 +330,10 @@ export default function TripScreen() {
       </View>
 
       <View style={[s.fixedBody, { paddingBottom: insets.bottom + 64 }]}>
-      {/* Compact selectors up top — one tap to switch, horizontal not a list */}
+      {/* Calm space at the top, then the controls + button sit together as one
+          cohesive cluster low on the screen — balanced and easy to reach. */}
+      <View style={s.startSpacer} />
+
       <Text style={s.selLabel}>Platform</Text>
       <ChipScroll fadeColor={colors.bg}>
         {platformList.map(p => (
@@ -349,10 +352,7 @@ export default function TripScreen() {
         </>
       )}
 
-      {/* Spacer drops the button right down to the bottom thumb zone */}
-      <View style={s.startSpacer} />
-
-      {/* THE button — big, low and glove-friendly. This is the whole tab. */}
+      {/* THE button — big, glove-friendly, anchored under its controls. */}
       <Pressable onPress={handleStart} style={({ pressed }) => [s.bigStartWrap, pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] }]}>
         <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.bigStart}>
           <View style={s.bigStartCircle}>
@@ -389,13 +389,13 @@ const s = StyleSheet.create({
   setupDivider: { height: 1, backgroundColor: colors.border },
   setupLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
   setupLabel: { ...type.bodyMedium, fontSize: 15 },
-  startSpacer: { flex: 1, minHeight: 24 },
-  bigStartWrap: { marginTop: spacing.sm },
+  startSpacer: { flex: 1, minHeight: 16 },
+  bigStartWrap: { marginTop: spacing.lg },
   bigStart: { alignItems: 'center', justifyContent: 'center', paddingVertical: 54, gap: 14 },
   bigStartCircle: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center' },
   bigStartText: { color: '#fff', fontSize: 36, fontWeight: font.bold, letterSpacing: -0.6 },
   bigStartSub: { color: 'rgba(255,255,255,0.9)', fontSize: 17, fontWeight: font.medium },
-  selLabel: { ...type.label, color: colors.textSecondary, marginTop: spacing.xl, marginBottom: spacing.sm },
+  selLabel: { ...type.label, color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm },
   startHero: { flexDirection: 'row', alignItems: 'center', padding: spacing.xl, marginTop: spacing.lg },
   startKicker: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: font.semibold, letterSpacing: 1 },
   startTitle: { color: '#fff', fontSize: 28, fontWeight: font.bold, letterSpacing: -0.5, marginTop: 2 },
