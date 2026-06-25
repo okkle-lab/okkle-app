@@ -13,74 +13,77 @@ type Props = {
 
 const THUMB = 64;
 
-// A big "slide to confirm" track — easy with one thumb, gloves on, and
-// impossible to trigger by an accidental tap. The track fills as you slide,
-// snaps with a haptic, and shows a tick on completion.
+// A big "slide to confirm" track — grab anywhere, easy with gloves on, impossible
+// to trigger by accident. The PanResponder is created ONCE (stable) and reads the
+// latest values through refs, so the per-second re-renders of the live trip screen
+// never disrupt or lag the gesture.
 export function SlideToConfirm({ label, onConfirm, color = colors.red }: Props) {
   const [trackW, setTrackW] = useState(0);
   const [done, setDone] = useState(false);
   const x = useRef(new Animated.Value(0)).current;
+
   const maxX = Math.max(0, trackW - THUMB - 8);
+  // Live values the stable responder reads from (kept fresh each render).
+  const maxXRef = useRef(maxX); maxXRef.current = maxX;
+  const onConfirmRef = useRef(onConfirm); onConfirmRef.current = onConfirm;
+  const doneRef = useRef(false);
+
   const dragStart = useRef(0);
   const latestX = useRef(0);
   const didDrag = useRef(false);
 
-  function clamp(value: number) {
-    return Math.min(Math.max(0, value), maxX);
-  }
-
-  function setThumb(value: number) {
-    const next = clamp(value);
-    latestX.current = next;
-    x.setValue(next);
-  }
-
-  const responder = React.useMemo(
-    () => PanResponder.create({
-      onStartShouldSetPanResponder: () => !done,
-      onMoveShouldSetPanResponder: () => !done,
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !doneRef.current,
+      onMoveShouldSetPanResponder: () => !doneRef.current,
       onPanResponderGrant: e => {
+        const clamp = (v: number) => Math.min(Math.max(0, v), maxXRef.current);
         didDrag.current = false;
         const start = clamp(e.nativeEvent.locationX - THUMB / 2);
         dragStart.current = start;
-        setThumb(start);
+        latestX.current = start;
+        x.setValue(start);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       },
       onPanResponderMove: (_, g) => {
+        const clamp = (v: number) => Math.min(Math.max(0, v), maxXRef.current);
         didDrag.current = didDrag.current || Math.abs(g.dx) > 6;
-        setThumb(dragStart.current + g.dx);
+        const next = clamp(dragStart.current + g.dx);
+        latestX.current = next;
+        x.setValue(next);
       },
       onPanResponderRelease: () => {
-        if (didDrag.current && latestX.current >= maxX * 0.85) {
+        const max = maxXRef.current;
+        if (didDrag.current && latestX.current >= max * 0.8) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          doneRef.current = true;
           setDone(true);
-          Animated.timing(x, { toValue: maxX, duration: 140, useNativeDriver: false }).start(() => {
+          Animated.timing(x, { toValue: max, duration: 120, useNativeDriver: false }).start(() => {
             setTimeout(() => {
-              onConfirm();
+              onConfirmRef.current();
               latestX.current = 0;
               x.setValue(0);
+              doneRef.current = false;
               setDone(false);
-            }, 220);
+            }, 200);
           });
         } else {
           latestX.current = 0;
-          Animated.spring(x, { toValue: 0, useNativeDriver: false, bounciness: 8 }).start();
+          Animated.spring(x, { toValue: 0, useNativeDriver: false, bounciness: 6, speed: 16 }).start();
         }
       },
       onPanResponderTerminate: () => {
         latestX.current = 0;
-        Animated.spring(x, { toValue: 0, useNativeDriver: false, bounciness: 8 }).start();
+        Animated.spring(x, { toValue: 0, useNativeDriver: false, bounciness: 6, speed: 16 }).start();
       },
     }),
-    [done, maxX, onConfirm, x],
-  );
+  ).current;
 
   function onLayout(e: LayoutChangeEvent) {
     setTrackW(e.nativeEvent.layout.width);
   }
 
-  const labelOpacity = x.interpolate({ inputRange: [0, Math.max(1, maxX * 0.6)], outputRange: [1, 0] });
-  // Coloured fill that follows the thumb.
+  const labelOpacity = x.interpolate({ inputRange: [0, Math.max(1, maxX * 0.55)], outputRange: [1, 0] });
   const fillW = Animated.add(x, new Animated.Value(THUMB + 8));
 
   return (

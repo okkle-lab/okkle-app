@@ -368,10 +368,10 @@ export default function LogScreen() {
               </View>
             </View>
 
-            {/* Week mode: just pick any day on the calendar — its Mon–Sun pay
-                week is selected and shown. Day mode keeps the Today/Yesterday chips. */}
-            {period === 'week' && <Text style={s.weekHint}>Tap the date and pick any day in the week you were paid for.</Text>}
-            <DatePickerField value={date} onChange={setDate} quickChips={period === 'day'} />
+            {/* Just the calendar — defaults to today; tap to pick another day.
+                (No Today/Yesterday chips — the calendar already covers it.) */}
+            {period === 'week' && <Text style={s.weekHint}>Pick any day in the week you were paid for.</Text>}
+            <DatePickerField value={date} onChange={setDate} quickChips={false} />
             {period === 'week' && (
               <Text style={s.weekCaption}>Covers {fmtShort(wb.start)} – {fmtShort(wb.end)} · spread evenly across the 7 days</Text>
             )}

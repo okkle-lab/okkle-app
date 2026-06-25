@@ -166,7 +166,7 @@ export default function TripScreen() {
           <View style={s.ringWrap}>
             {heroMetric === 'map' ? (
               <View style={s.heroMap}>
-                <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.36)} />
+                <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.30)} />
                 <Text style={s.bigMilesUnit}>your route so far</Text>
               </View>
             ) : (
@@ -407,7 +407,7 @@ const s = StyleSheet.create({
   discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
   liveDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.green },
   ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  bigMiles: { ...tabular, fontSize: 108, fontWeight: font.bold, color: '#fff', letterSpacing: -4, lineHeight: 114 },
+  bigMiles: { ...tabular, alignSelf: 'stretch', textAlign: 'center', paddingHorizontal: spacing.lg, fontSize: 108, fontWeight: font.bold, color: '#fff', letterSpacing: -4, lineHeight: 114 },
   bigTripMiles: { fontSize: 148, lineHeight: 154, letterSpacing: -5 },
   bigMilesUnit: { fontSize: 15, color: 'rgba(255,255,255,0.55)', marginTop: 2, textAlign: 'center' },
   moneyChip: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: spacing.lg, backgroundColor: 'rgba(224,150,31,0.16)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
