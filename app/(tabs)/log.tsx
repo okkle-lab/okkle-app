@@ -199,7 +199,7 @@ export default function LogScreen() {
     const pe = period === 'week' ? wb.end.toISOString() : null;
     if (tab === 'mileage') {
       if (!miles) { Alert.alert('Enter miles'); return; }
-      saveRecord({ record_type: 'mileage', platform, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
+      saveRecord({ record_type: 'mileage', platform: null, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
     } else if (tab === 'income') {
       if (!amount) { Alert.alert('Enter amount'); return; }
       saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
@@ -391,27 +391,15 @@ export default function LogScreen() {
             </View>
           )}
 
-          {tab === 'mileage' && (
-            <>
-              {myVehicles.length > 1 && (
-                <View>
-                  <SectionHeader title="Vehicle" />
-                  <View style={s.wrapRow}>
-                    {myVehicles.map(v => (
-                      <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-                    ))}
-                  </View>
-                </View>
-              )}
-              <View>
-                <SectionHeader title="Platform" />
-                <View style={s.wrapRow}>
-                  {platformList.map(p => (
-                    <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
-                  ))}
-                </View>
+          {tab === 'mileage' && myVehicles.length > 1 && (
+            <View>
+              <SectionHeader title="Vehicle" />
+              <View style={s.wrapRow}>
+                {myVehicles.map(v => (
+                  <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+                ))}
               </View>
-            </>
+            </View>
           )}
 
           {/* When — a single day or a whole pay-week */}
