@@ -9,11 +9,15 @@ Read this before cutting a dev build, EAS build, or TestFlight submit.
   plugins. **Do not merge it into master** (different SDK) and don't release from it.
 
 ## ⚠️ Needs validation on the first dev/EAS build
-- **`modules/okkle-motion`** — a local Expo module (Swift) wrapping
-  `CMMotionActivityManager` for accurate driving/cycling detection. **This Swift has
-  not been compiled yet.** It's wired optionally (`requireOptionalNativeModule`), so
-  it can't break the JS app at runtime — but a malformed module/podspec **can fail a
-  native build**. On the first `npx expo prebuild` / EAS build:
+Two local Swift modules have **not been compiled yet**. Both are wired optionally
+(`requireOptionalNativeModule`) so they can't break the JS app at runtime — but a
+malformed module/podspec **can fail a native build**. Validate both on the first
+`npx expo prebuild` / EAS build:
+- **`modules/okkle-vision`** — Apple Vision on-device receipt OCR
+  (`VNRecognizeTextRequest`). Used by the Log expense flow to pre-fill the amount
+  from a receipt photo (`src/receiptParse.ts` parses the text). No extra permission.
+- **`modules/okkle-motion`** — `CMMotionActivityManager` for accurate
+  driving/cycling detection. On the first build:
   1. Confirm it autolinks and compiles.
   2. If autolinking is fussy, regenerate the scaffold with
      `npx create-expo-module@latest --local okkle-motion` and port the Swift in

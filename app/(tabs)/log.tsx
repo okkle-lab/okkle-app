@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, Pressable, Alert, Image, Animated, Dimensions,
+  View, Text, TextInput, StyleSheet, Pressable, Alert, Image, Animated, Dimensions, ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
@@ -11,6 +11,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Chip, Card, SectionHeader, VehicleChip, DatePickerField, CollapsingHeader, IconBadge, GradientCard, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll } from '../../src/components';
 import { PLATFORMS, calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser, kvGet, kvSet } from '../../src/db';
+import { recognizeText } from '../../modules/okkle-vision';
+import { parseReceipt } from '../../src/receiptParse';
 
 // Copy a picked image into app storage so it survives even if the cache clears.
 async function persistImage(uri: string): Promise<string> {
@@ -83,6 +85,7 @@ export default function LogScreen() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
   const [period, setPeriod] = useState<'day' | 'week'>('day');
   const [saved, setSaved] = useState(false);
@@ -145,6 +148,24 @@ export default function LogScreen() {
     if (!res.canceled && res.assets[0]) {
       const saved = await persistImage(res.assets[0].uri);
       setReceiptUri(saved);
+      scanReceipt(saved);
+    }
+  }
+
+  // Read the receipt on-device (Apple Vision) and pre-fill the amount + category.
+  // Best-effort: silently does nothing if the native module isn't present, and the
+  // user always reviews/edits before saving.
+  async function scanReceipt(uri: string) {
+    setScanning(true);
+    try {
+      const { available, lines } = await recognizeText(uri);
+      if (available && lines.length) {
+        const { amount: amt, merchant } = parseReceipt(lines);
+        if (amt && !amount) setAmount(amt.toFixed(2));
+        if (merchant && !description) setDescription(merchant);
+      }
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -300,6 +321,12 @@ export default function LogScreen() {
                     <Pressable onPress={() => setReceiptUri(null)} style={s.receiptRemove}>
                       <Text style={s.receiptRemoveText}>Remove</Text>
                     </Pressable>
+                    {scanning && (
+                      <View style={s.scanBadge}>
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text style={s.scanText}>Reading receipt…</Text>
+                      </View>
+                    )}
                   </View>
                 ) : (
                   <View style={s.receiptButtons}>
@@ -313,6 +340,7 @@ export default function LogScreen() {
                     </Pressable>
                   </View>
                 )}
+                {!receiptUri && <Text style={s.receiptHint}>Snap a receipt and we'll read the amount on your phone — you just confirm.</Text>}
               </View>
               <View style={s.notice}>
                 <Text style={s.noticeText}>
@@ -454,6 +482,9 @@ const s = StyleSheet.create({
   receiptBtnText: { ...type.bodyMedium, fontSize: 14 },
   receiptWrap: { position: 'relative' },
   receiptImg: { width: '100%', height: 180, borderRadius: radius.md, backgroundColor: colors.bgSoft },
+  scanBadge: { position: 'absolute', left: 8, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full },
+  scanText: { color: '#fff', fontSize: 13, fontWeight: font.medium },
+  receiptHint: { ...type.small, lineHeight: 17, marginTop: spacing.sm },
   receiptRemove: {
     position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
