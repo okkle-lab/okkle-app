@@ -54,7 +54,7 @@ export default function AutoTripSettings() {
           [{ text: 'Not now' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
         );
       } else if (res.reason === 'foreground') {
-        Alert.alert('Location needed', 'Allow location access to use automatic trip detection.');
+        Alert.alert('Location needed', 'Allow location access to track your shift miles.');
       } else {
         Alert.alert('Couldn’t enable', 'Something went wrong turning this on. Please try again.');
       }
@@ -74,15 +74,15 @@ export default function AutoTripSettings() {
         <Feather name="navigation" size={22} color="#fff" />
         <Text style={s.heroTitle}>Count delivery miles in the background</Text>
         <Text style={s.heroSub}>
-          Turn this on only while working. Personal driving can be picked up, so auto-logged shifts are saved as drafts.
+          Switch this on at the start of your shift and off when you finish. While it’s on, Okkle counts your miles in the background whenever you’re driving — and saves each shift as a draft to confirm. Personal driving can be picked up, so always review drafts.
         </Text>
       </GradientCard>
 
       <Card style={s.toggleCard}>
         <View style={{ flex: 1 }}>
-          <Text style={s.toggleTitle}>Automatic shift tracking</Text>
+          <Text style={s.toggleTitle}>Shift tracking</Text>
           <Text style={s.toggleDesc}>
-            Okkle counts your delivery miles in the background while you drive — you never press start. When you finish, the shift is saved as a draft for you to confirm.
+            Turn this on for your working session. While it’s on, Okkle counts your miles in the background whenever you’re driving — no need to press Start each trip. Turn it off when you’re done; each shift is saved as a draft to confirm.
           </Text>
           <Text style={s.toggleState}>{shiftOn ? 'On' : 'Off'}</Text>
         </View>
@@ -93,7 +93,7 @@ export default function AutoTripSettings() {
         <View style={{ flex: 1 }}>
           <Text style={s.toggleTitle}>Trip start nudges</Text>
           <Text style={s.toggleDesc}>
-            Prefer to start trips yourself? Instead of tracking automatically, Okkle sends a notification when it senses you’ve started driving, so you can tap to begin a trip. (This and automatic tracking can’t both be on.)
+            Prefer to start each trip yourself? Instead of counting in the background, Okkle sends a notification when it senses you’ve started driving, so you can tap to begin a trip. (This and shift tracking can’t both be on.)
           </Text>
           <Text style={s.toggleState}>{on ? 'On' : 'Off'}</Text>
         </View>
