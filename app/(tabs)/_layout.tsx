@@ -27,8 +27,8 @@ const tabLabel = Platform.OS === 'ios'
 
 const tabs: TabItem[] = [
   { name: 'index', label: 'Home', feather: 'home', sf: { default: 'house', selected: 'house.fill' } },
-  { name: 'trip', label: 'Trip', feather: 'navigation', sf: { default: 'location.north', selected: 'location.north.fill' } },
   { name: 'log', label: 'Log', feather: 'edit-3', sf: { default: 'square.and.pencil', selected: 'square.and.pencil' } },
+  { name: 'trip', label: 'Trip', feather: 'navigation', sf: { default: 'location.north', selected: 'location.north.fill' } },
   { name: 'records', label: 'Records', feather: 'list', sf: { default: 'list.bullet.rectangle', selected: 'list.bullet.rectangle.fill' } },
   { name: 'tax', label: 'Tax', feather: 'pie-chart', sf: { default: 'chart.pie', selected: 'chart.pie.fill' } },
 ];
