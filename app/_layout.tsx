@@ -5,9 +5,13 @@ import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 
 const glassSheetOptions = {
-  presentation: 'formSheet' as const,
-  sheetGrabberVisible: true,
+  presentation: 'transparentModal' as const,
+  animation: 'slide_from_bottom' as const,
   contentStyle: { backgroundColor: 'transparent' },
+};
+
+const modalOptions = {
+  presentation: 'modal' as const,
 };
 
 Notifications.setNotificationHandler({
@@ -28,10 +32,10 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" options={glassSheetOptions} />
-        <Stack.Screen name="settings-account" options={glassSheetOptions} />
-        <Stack.Screen name="settings-reminders" options={glassSheetOptions} />
-        <Stack.Screen name="settings-data" options={glassSheetOptions} />
-        <Stack.Screen name="settings-about" options={glassSheetOptions} />
+        <Stack.Screen name="settings-account" options={modalOptions} />
+        <Stack.Screen name="settings-reminders" options={modalOptions} />
+        <Stack.Screen name="settings-data" options={modalOptions} />
+        <Stack.Screen name="settings-about" options={modalOptions} />
         <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compare" options={{ presentation: 'modal' }} />
         <Stack.Screen name="medals" options={{ presentation: 'modal' }} />
