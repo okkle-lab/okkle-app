@@ -49,7 +49,7 @@ function cancelTripEndNudge() {
 
 export type TripState = 'idle' | 'running' | 'paused';
 
-export type GeoPoint = { lat: number; lng: number };
+export type GeoPoint = { lat: number; lng: number; t?: number };
 
 export type LiveTrip = {
   state: TripState;
@@ -94,6 +94,7 @@ export function useTrip() {
       pointsRef.current.push({
         lat: +loc.coords.latitude.toFixed(5),
         lng: +loc.coords.longitude.toFixed(5),
+        t: loc.timestamp || Date.now(), // ms — lets Insights bucket by real hour
       });
       lastSampleRef.current = loc;
     }

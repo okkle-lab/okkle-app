@@ -671,17 +671,57 @@ function estimatedTripEarnings(): Map<number, number> {
   return result;
 }
 
+function hourBucketIdx(ms: number): number {
+  const h = new Date(ms).getHours();
+  const norm = h < 6 ? h + 24 : h; // 0-5am wraps into the Late bucket (21-30)
+  return TIME_BUCKETS.findIndex(b => norm >= b.from && norm < b.to);
+}
+
+function haversineMiles(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371, rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(bLat - aLat), dLon = rad(bLng - aLng);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)) * 0.621371;
+}
+
+// Best-times analysis. For trips with timestamped GPS points we walk each segment
+// and credit the real hour-of-day with its DISTANCE (activity) and its DURATION
+// including waiting gaps (presence) — then apportion the trip's estimated earnings
+// across hours by distance. £/hour = earnings ÷ presence, so an hour spent mostly
+// waiting (high presence, low distance) correctly scores low. Trips logged before
+// timestamps fall back to start-hour bucketing.
 export function getEarningsByTimeOfDay(): TimeBucket[] {
   const est = estimatedTripEarnings();
   const acc = TIME_BUCKETS.map(b => ({ ...b, earnings: 0, hours: 0, trips: 0 }));
   for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
-    const h = new Date(t.started_at).getHours();
-    const hourNorm = h < 6 ? h + 24 : h; // group 0-5am into the Late bucket (21-30)
-    const idx = acc.findIndex(b => hourNorm >= b.from && hourNorm < b.to);
-    if (idx >= 0) {
-      acc[idx].earnings += est.get(t.id) ?? 0;
-      acc[idx].hours += tripHours(t);
-      acc[idx].trips += 1;
+    const E = est.get(t.id) ?? 0;
+    let pts: { lat: number; lng: number; t?: number }[] = [];
+    try { pts = t.route_json ? JSON.parse(t.route_json) : []; } catch { /* ignore */ }
+    const timed = pts.filter(p => typeof p?.t === 'number');
+    const startIdx = hourBucketIdx(new Date(t.started_at).getTime());
+    if (startIdx >= 0) acc[startIdx].trips += 1;
+
+    if (timed.length >= 2) {
+      const segs: { idx: number; presence: number; dist: number }[] = [];
+      let tripDist = 0;
+      for (let i = 1; i < timed.length; i++) {
+        const p0 = timed[i - 1], p1 = timed[i];
+        const durH = (p1.t! - p0.t!) / 3600000;
+        if (durH <= 0) continue;
+        const idx = hourBucketIdx((p0.t! + p1.t!) / 2);
+        if (idx < 0) continue;
+        const dist = haversineMiles(p0.lat, p0.lng, p1.lat, p1.lng);
+        // Cap a single gap at 2h so a tracking dropout can't masquerade as presence.
+        segs.push({ idx, presence: Math.min(durH, 2), dist });
+        tripDist += dist;
+      }
+      for (const sg of segs) {
+        acc[sg.idx].hours += sg.presence;
+        acc[sg.idx].earnings += tripDist > 0 ? E * (sg.dist / tripDist) : 0;
+      }
+    } else if (startIdx >= 0) {
+      acc[startIdx].hours += tripHours(t);
+      acc[startIdx].earnings += E;
     }
   }
   return acc.map(b => ({

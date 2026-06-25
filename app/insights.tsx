@@ -148,7 +148,7 @@ export default function InsightsScreen() {
           </Card>
         )}
         {hasData && tab === 'when' && anyBucketEarnings && (
-          <Text style={s.note}>£/hour is estimated by spreading your logged pay across the hours you tracked.</Text>
+          <Text style={s.note}>£/hour is estimated — your logged pay is credited to the hours you actually drove, and waiting time counts against them. Improves as you track more trips.</Text>
         )}
 
         {/* MONEY — platform ranking + business P&L */}
