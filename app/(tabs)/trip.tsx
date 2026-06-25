@@ -318,23 +318,13 @@ export default function TripScreen() {
   return (
     <CollapsingHeader
       title="Start a trip"
-      subtitle="Tap start and ride — GPS measures your distance for you."
+      subtitle="Pick your platform, then hit the big button and ride."
       right={
         <SettingsGlassButton onPress={() => router.push('/settings')} />
       }
+      contentStyle={{ flexGrow: 1 }}
     >
-      {/* THE button — big, central, glove-friendly. This is the whole tab. */}
-      <Pressable onPress={handleStart} style={({ pressed }) => [s.bigStartWrap, pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] }]}>
-        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.bigStart}>
-          <View style={s.bigStartCircle}>
-            <Feather name="navigation" size={44} color="#fff" />
-          </View>
-          <Text style={s.bigStartText}>Start trip</Text>
-          <Text style={s.bigStartSub}>{vehicleLabel(vehicle)} · {platform}</Text>
-        </GradientCard>
-      </Pressable>
-
-      {/* Compact selectors — one tap to switch, horizontal not a stacked list */}
+      {/* Compact selectors up top — one tap to switch, horizontal not a list */}
       <Text style={s.selLabel}>Platform</Text>
       <ChipScroll fadeColor={colors.bg}>
         {platformList.map(p => (
@@ -353,10 +343,24 @@ export default function TripScreen() {
         </>
       )}
 
+      {/* Spacer drops the button into the lower thumb zone — easy to reach */}
+      <View style={s.startSpacer} />
+
+      {/* THE button — big, low and glove-friendly. This is the whole tab. */}
+      <Pressable onPress={handleStart} style={({ pressed }) => [s.bigStartWrap, pressed && { opacity: 0.94, transform: [{ scale: 0.99 }] }]}>
+        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.bigStart}>
+          <View style={s.bigStartCircle}>
+            <Feather name="navigation" size={44} color="#fff" />
+          </View>
+          <Text style={s.bigStartText}>Start trip</Text>
+          <Text style={s.bigStartSub}>{vehicleLabel(vehicle)} · {platform}</Text>
+        </GradientCard>
+      </Pressable>
+
       {todayHasData && (
         <Text style={s.todayLine}>Today: {today.miles.toFixed(1)} mi · {fmtGbpRound(today.deduction)} tax saved</Text>
       )}
-      <Text style={s.gpsNote}>No need to watch the screen — switch to your delivery app and Okkle keeps counting your miles in the background. Want it fully hands-free? Turn on Automatic shift tracking in Settings.</Text>
+      <Text style={s.gpsNote}>No need to watch the screen — switch to your delivery app and Okkle keeps counting in the background. You’ll get a nudge to start, and another when you’re done.</Text>
     </CollapsingHeader>
   );
 }
@@ -379,7 +383,8 @@ const s = StyleSheet.create({
   setupDivider: { height: 1, backgroundColor: colors.border },
   setupLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
   setupLabel: { ...type.bodyMedium, fontSize: 15 },
-  bigStartWrap: { marginTop: spacing.lg },
+  startSpacer: { flex: 1, minHeight: 24 },
+  bigStartWrap: { marginTop: spacing.sm },
   bigStart: { alignItems: 'center', justifyContent: 'center', paddingVertical: 44, gap: 12 },
   bigStartCircle: { width: 104, height: 104, borderRadius: 52, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center' },
   bigStartText: { color: '#fff', fontSize: 32, fontWeight: font.bold, letterSpacing: -0.6 },
