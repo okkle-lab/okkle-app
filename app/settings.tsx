@@ -46,7 +46,7 @@ function GlassSheetBackground() {
   const glassEffect = getGlassEffectModule();
   const GlassView = glassEffect?.GlassView;
   const useLiquidGlass = canUseLiquidGlass() && GlassView;
-  const tint = Platform.OS === 'ios' ? 'systemUltraThinMaterial' : isDark ? 'dark' : 'light';
+  const tint = isDark ? 'dark' : 'light';
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -55,14 +55,16 @@ function GlassSheetBackground() {
           pointerEvents="none"
           glassEffectStyle="regular"
           colorScheme={isDark ? 'dark' : 'light'}
-          tintColor={isDark ? 'rgba(16,24,22,0.18)' : 'rgba(255,255,255,0.08)'}
-          style={StyleSheet.absoluteFill}
+          isInteractive
+          tintColor={isDark ? 'rgba(13,22,20,0.20)' : 'rgba(255,255,255,0.18)'}
+          style={s.materialFill}
         />
       ) : (
-        <BlurView pointerEvents="none" intensity={88} tint={tint} style={StyleSheet.absoluteFill} />
+        <BlurView pointerEvents="none" intensity={isDark ? 84 : 78} tint={tint} style={s.materialFill} />
       )}
       <View style={[s.sheetTint, isDark && s.sheetTintDark]} />
       <View style={[s.sheetTopSheen, isDark && s.sheetTopSheenDark]} />
+      <View style={[s.sheetBottomShade, isDark && s.sheetBottomShadeDark]} />
       <View style={[s.sheetInnerStroke, isDark && s.sheetInnerStrokeDark]} />
     </View>
   );
@@ -71,6 +73,7 @@ function GlassSheetBackground() {
 export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isDark = useColorScheme() === 'dark';
   const u = getUser();
 
   const go = (path: any, params?: any) => () => router.push(params ? { pathname: path, params } : path);
@@ -89,7 +92,7 @@ export default function Settings() {
   return (
     <View style={s.root}>
       <Pressable accessibilityLabel="Close settings" onPress={() => router.back()} style={s.scrim} />
-      <View style={[s.sheet, { top: Math.max(insets.top + 42, 82) }]}>
+      <View style={[s.sheet, isDark && s.sheetDark, { top: Math.max(insets.top + 42, 82) }]}>
         <GlassSheetBackground />
         <View style={s.grabber} />
         <ScrollView style={s.screen} contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom + 28, 48) }]}>
@@ -137,7 +140,7 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent', justifyContent: 'flex-end' },
   scrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    backgroundColor: 'rgba(0,0,0,0.12)',
   },
   sheet: {
     position: 'absolute',
@@ -149,27 +152,46 @@ const s = StyleSheet.create({
     borderTopRightRadius: 36,
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: 'rgba(255,255,255,0.52)',
-    boxShadow: '0 -18px 42px rgba(21,33,29,0.20), inset 0 1px 0 rgba(255,255,255,0.55)',
+    borderColor: 'rgba(255,255,255,0.58)',
+    backgroundColor: 'transparent',
+  },
+  sheetDark: {
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'transparent',
+  },
+  materialFill: {
+    ...StyleSheet.absoluteFill,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
   },
   sheetTint: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   sheetTintDark: {
-    backgroundColor: 'rgba(10,16,14,0.28)',
+    backgroundColor: 'rgba(8,15,13,0.22)',
   },
   sheetTopSheen: {
     position: 'absolute',
     top: 0,
-    left: 20,
-    right: 20,
-    height: 74,
-    borderRadius: 37,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    left: 0,
+    right: 0,
+    height: 96,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   sheetTopSheenDark: {
-    backgroundColor: 'rgba(255,255,255,0.055)',
+    backgroundColor: 'rgba(255,255,255,0.035)',
+  },
+  sheetBottomShade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 180,
+    backgroundColor: 'rgba(226,246,241,0.08)',
+  },
+  sheetBottomShadeDark: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
   },
   sheetInnerStroke: {
     ...StyleSheet.absoluteFill,
@@ -177,7 +199,7 @@ const s = StyleSheet.create({
     borderTopRightRadius: 36,
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: 'rgba(255,255,255,0.42)',
+    borderColor: 'rgba(255,255,255,0.50)',
   },
   sheetInnerStrokeDark: {
     borderColor: 'rgba(255,255,255,0.10)',
@@ -206,9 +228,9 @@ const s = StyleSheet.create({
   group: {
     overflow: 'hidden',
     borderRadius: radius.xl,
-    backgroundColor: 'rgba(255,255,255,0.38)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.42)',
+    borderColor: 'rgba(255,255,255,0.30)',
   },
   avatar: {
     width: 52,
