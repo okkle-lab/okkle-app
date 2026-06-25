@@ -5,6 +5,16 @@ import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 import '../src/autoTrip'; // registers the background trip-detection task at load
 
+const glassSheetOptions = {
+  presentation: 'transparentModal' as const,
+  animation: 'slide_from_bottom' as const,
+  contentStyle: { backgroundColor: 'transparent' },
+};
+
+const modalOptions = {
+  presentation: 'modal' as const,
+};
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -35,11 +45,11 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-account" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-reminders" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-data" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings-about" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="settings" options={glassSheetOptions} />
+        <Stack.Screen name="settings-account" options={modalOptions} />
+        <Stack.Screen name="settings-reminders" options={modalOptions} />
+        <Stack.Screen name="settings-data" options={modalOptions} />
+        <Stack.Screen name="settings-about" options={modalOptions} />
         <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compare" options={{ presentation: 'modal' }} />
         <Stack.Screen name="medals" options={{ presentation: 'modal' }} />
