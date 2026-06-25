@@ -199,7 +199,7 @@ export default function LogScreen() {
     const pe = period === 'week' ? wb.end.toISOString() : null;
     if (tab === 'mileage') {
       if (!miles) { Alert.alert('Enter miles'); return; }
-      saveRecord({ record_type: 'mileage', platform: null, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
+      saveRecord({ record_type: 'mileage', platform: null, vehicle, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
     } else if (tab === 'income') {
       if (!amount) { Alert.alert('Enter amount'); return; }
       saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);

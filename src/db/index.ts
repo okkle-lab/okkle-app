@@ -50,6 +50,7 @@ export function initDb() {
       period_end TEXT,
       receipt_uri TEXT,
       notes TEXT,
+      vehicle TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
@@ -62,6 +63,7 @@ export function initDb() {
     `ALTER TABLE user ADD COLUMN log_frequency TEXT DEFAULT 'weekly'`,
     `ALTER TABLE trips ADD COLUMN zone TEXT`,
     `ALTER TABLE user ADD COLUMN vehicles TEXT`,
+    `ALTER TABLE records ADD COLUMN vehicle TEXT`,
   ];
   for (const sql of migrations) {
     try { db.execSync(sql); } catch { /* column already present */ }
@@ -108,6 +110,7 @@ export type Record = {
   period_end: string | null;
   receipt_uri: string | null;
   notes: string | null;
+  vehicle?: string | null;
   created_at: string;
 };
 
@@ -223,21 +226,21 @@ export function saveRecord(r: Omit<Record, 'id' | 'created_at'>, createdAt?: str
   if (createdAt) {
     db.runSync(
       `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
-        period_start, period_end, receipt_uri, notes, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        period_start, period_end, receipt_uri, notes, vehicle, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       r.record_type, r.platform ?? null, r.amount ?? null, r.miles ?? null,
       r.deduction ?? null, r.category ?? null, r.period_start ?? null,
-      r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, createdAt,
+      r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.vehicle ?? null, createdAt,
     );
     return;
   }
   db.runSync(
     `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
-      period_start, period_end, receipt_uri, notes)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      period_start, period_end, receipt_uri, notes, vehicle)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     r.record_type, r.platform ?? null, r.amount ?? null, r.miles ?? null,
     r.deduction ?? null, r.category ?? null, r.period_start ?? null,
-    r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null,
+    r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.vehicle ?? null,
   );
 }
 
@@ -719,7 +722,7 @@ export function getVehicleStats(): VehicleStat[] {
     bump(t.vehicle, t.miles, t.deduction, true);
   }
   for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type='mileage'`)) {
-    bump((r as any).vehicle ?? 'car', r.miles ?? 0, r.deduction ?? 0, false);
+    bump(r.vehicle ?? 'car', r.miles ?? 0, r.deduction ?? 0, false);
   }
   return Object.values(agg).filter(v => v.miles > 0).sort((a, b) => b.miles - a.miles);
 }
@@ -755,13 +758,14 @@ export function updateRecord(id: number, r: Partial<Record>) {
   const cur = getRecord(id);
   if (!cur) return;
   db.runSync(
-    'UPDATE records SET platform=?, amount=?, miles=?, deduction=?, category=?, notes=?, created_at=? WHERE id=?',
+    'UPDATE records SET platform=?, amount=?, miles=?, deduction=?, category=?, notes=?, vehicle=?, created_at=? WHERE id=?',
     r.platform ?? cur.platform,
     r.amount ?? cur.amount,
     r.miles ?? cur.miles,
     r.deduction ?? cur.deduction,
     r.category ?? cur.category,
     r.notes ?? cur.notes,
+    r.vehicle ?? cur.vehicle ?? null,
     r.created_at ?? cur.created_at,
     id,
   );
