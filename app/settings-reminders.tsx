@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Platform, View, Text, ScrollView, StyleSheet, Switch, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, Chip, SectionHeader, PrimaryButton, ModalHeader } from '../src/components';
 import { getUser, saveUser, kvGet, kvSet } from '../src/db';
@@ -11,6 +12,7 @@ const DAY_LABELS: { [k: string]: string } = { sun: 'Sun', mon: 'Mon', tue: 'Tue'
 
 export default function SettingsReminders() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const u = getUser();
   const [reminderOn, setReminderOn] = useState((u?.reminder_enabled ?? 1) === 1);
   const [reminderDay, setReminderDay] = useState(u?.reminder_day ?? 'sun');
@@ -26,7 +28,8 @@ export default function SettingsReminders() {
   }
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content}>
+    <View style={[s.screen, { paddingTop: insets.top + 8 }]}>
+      <View style={s.body}>
       <ModalHeader title="Reminders" />
 
       <Card style={{ gap: spacing.md }}>
@@ -71,15 +74,19 @@ export default function SettingsReminders() {
           <Feather name="chevron-right" size={20} color={colors.textTertiary} />
         </Pressable>
       </Card>
+      </View>
 
-      <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.lg }} />
-    </ScrollView>
+      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <PrimaryButton label="Save changes" onPress={save} />
+      </View>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 60 },
+  body: { flex: 1, paddingHorizontal: spacing.xl, gap: spacing.md },
+  footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   heading: { ...type.heading, fontSize: 18 },
   close: { ...type.bodyMedium, color: colors.textSecondary },
