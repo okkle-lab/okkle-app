@@ -50,6 +50,7 @@ export function initDb() {
       period_end TEXT,
       receipt_uri TEXT,
       notes TEXT,
+      vehicle TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
@@ -62,6 +63,7 @@ export function initDb() {
     `ALTER TABLE user ADD COLUMN log_frequency TEXT DEFAULT 'weekly'`,
     `ALTER TABLE trips ADD COLUMN zone TEXT`,
     `ALTER TABLE user ADD COLUMN vehicles TEXT`,
+    `ALTER TABLE records ADD COLUMN vehicle TEXT`,
   ];
   for (const sql of migrations) {
     try { db.execSync(sql); } catch { /* column already present */ }
@@ -108,6 +110,7 @@ export type Record = {
   period_end: string | null;
   receipt_uri: string | null;
   notes: string | null;
+  vehicle?: string | null;
   created_at: string;
 };
 
@@ -223,21 +226,21 @@ export function saveRecord(r: Omit<Record, 'id' | 'created_at'>, createdAt?: str
   if (createdAt) {
     db.runSync(
       `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
-        period_start, period_end, receipt_uri, notes, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        period_start, period_end, receipt_uri, notes, vehicle, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       r.record_type, r.platform ?? null, r.amount ?? null, r.miles ?? null,
       r.deduction ?? null, r.category ?? null, r.period_start ?? null,
-      r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, createdAt,
+      r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.vehicle ?? null, createdAt,
     );
     return;
   }
   db.runSync(
     `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
-      period_start, period_end, receipt_uri, notes)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      period_start, period_end, receipt_uri, notes, vehicle)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     r.record_type, r.platform ?? null, r.amount ?? null, r.miles ?? null,
     r.deduction ?? null, r.category ?? null, r.period_start ?? null,
-    r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null,
+    r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.vehicle ?? null,
   );
 }
 
@@ -508,8 +511,10 @@ export function getPlatformStatsForPeriod(period: Period, ref = new Date()): Pla
     if (!agg[key]) agg[key] = { miles: 0, earnings: 0, hours: 0 };
     agg[key].miles += miles; agg[key].earnings += earnings; agg[key].hours += hours;
   };
+  // Trips are platform-agnostic now (a day can span several apps), so they don't
+  // feed the per-platform breakdown — that comes from your earnings records.
   for (const t of db.getAllSync<Trip>('SELECT * FROM trips WHERE date(started_at) BETWEEN ? AND ?', start, end)) {
-    bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
+    if (t.platform) bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
   }
   for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type IN ('income','mileage') AND date(created_at) BETWEEN ? AND ?`, start, end)) {
     bump(r.platform ?? 'Other', r.record_type === 'mileage' ? (r.miles ?? 0) : 0,
@@ -612,7 +617,7 @@ export function getPlatformStats(): PlatformStat[] {
     agg[key].hours += hours;
   };
   for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
-    bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
+    if (t.platform) bump(t.platform, t.miles, t.earnings ?? 0, tripHours(t));
   }
   for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type IN ('income','mileage')`)) {
     bump(r.platform ?? 'Other', r.record_type === 'mileage' ? (r.miles ?? 0) : 0,
@@ -639,16 +644,84 @@ const TIME_BUCKETS: { label: string; from: number; to: number }[] = [
   { label: 'Late', from: 21, to: 30 }, // wraps past midnight (handled below)
 ];
 
+// Estimate £ earned per trip by spreading each income record across the trips in
+// its period, weighted by trip duration. Earnings are entered as period lumps
+// (daily/weekly/monthly) and trips are platform-agnostic, so any per-trip / zone
+// / hour £ figure is necessarily an ESTIMATE — surface it as such in the UI.
+function estimatedTripEarnings(): Map<number, number> {
+  const result = new Map<number, number>();
+  const trips = db.getAllSync<{ id: number; started_at: string; ended_at: string }>('SELECT id, started_at, ended_at FROM trips');
+  if (!trips.length) return result;
+  const incomes = db.getAllSync<Record>(`SELECT * FROM records WHERE record_type='income'`);
+  const dur = (t: { started_at: string; ended_at: string }) => {
+    const ms = new Date(t.ended_at).getTime() - new Date(t.started_at).getTime();
+    return ms > 0 ? ms / 3600000 : 0;
+  };
+  for (const inc of incomes) {
+    const ws = (inc.period_start ?? inc.created_at ?? '').slice(0, 10);
+    const we = (inc.period_end ?? inc.created_at ?? '').slice(0, 10);
+    if (!ws || !we) continue;
+    const inWin = trips.filter(t => { const d = t.started_at.slice(0, 10); return d >= ws && d <= we; });
+    const totalH = inWin.reduce((s, t) => s + dur(t), 0);
+    if (totalH <= 0) continue;
+    for (const t of inWin) {
+      result.set(t.id, (result.get(t.id) ?? 0) + (inc.amount ?? 0) * (dur(t) / totalH));
+    }
+  }
+  return result;
+}
+
+function hourBucketIdx(ms: number): number {
+  const h = new Date(ms).getHours();
+  const norm = h < 6 ? h + 24 : h; // 0-5am wraps into the Late bucket (21-30)
+  return TIME_BUCKETS.findIndex(b => norm >= b.from && norm < b.to);
+}
+
+function haversineMiles(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371, rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(bLat - aLat), dLon = rad(bLng - aLng);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)) * 0.621371;
+}
+
+// Best-times analysis. For trips with timestamped GPS points we walk each segment
+// and credit the real hour-of-day with its DISTANCE (activity) and its DURATION
+// including waiting gaps (presence) — then apportion the trip's estimated earnings
+// across hours by distance. £/hour = earnings ÷ presence, so an hour spent mostly
+// waiting (high presence, low distance) correctly scores low. Trips logged before
+// timestamps fall back to start-hour bucketing.
 export function getEarningsByTimeOfDay(): TimeBucket[] {
+  const est = estimatedTripEarnings();
   const acc = TIME_BUCKETS.map(b => ({ ...b, earnings: 0, hours: 0, trips: 0 }));
   for (const t of db.getAllSync<Trip>('SELECT * FROM trips')) {
-    const h = new Date(t.started_at).getHours();
-    const hourNorm = h < 6 ? h + 24 : h; // group 0-5am into the Late bucket (21-30)
-    const idx = acc.findIndex(b => hourNorm >= b.from && hourNorm < b.to);
-    if (idx >= 0) {
-      acc[idx].earnings += t.earnings ?? 0;
-      acc[idx].hours += tripHours(t);
-      acc[idx].trips += 1;
+    const E = est.get(t.id) ?? 0;
+    let pts: { lat: number; lng: number; t?: number }[] = [];
+    try { pts = t.route_json ? JSON.parse(t.route_json) : []; } catch { /* ignore */ }
+    const timed = pts.filter(p => typeof p?.t === 'number');
+    const startIdx = hourBucketIdx(new Date(t.started_at).getTime());
+    if (startIdx >= 0) acc[startIdx].trips += 1;
+
+    if (timed.length >= 2) {
+      const segs: { idx: number; presence: number; dist: number }[] = [];
+      let tripDist = 0;
+      for (let i = 1; i < timed.length; i++) {
+        const p0 = timed[i - 1], p1 = timed[i];
+        const durH = (p1.t! - p0.t!) / 3600000;
+        if (durH <= 0) continue;
+        const idx = hourBucketIdx((p0.t! + p1.t!) / 2);
+        if (idx < 0) continue;
+        const dist = haversineMiles(p0.lat, p0.lng, p1.lat, p1.lng);
+        // Cap a single gap at 2h so a tracking dropout can't masquerade as presence.
+        segs.push({ idx, presence: Math.min(durH, 2), dist });
+        tripDist += dist;
+      }
+      for (const sg of segs) {
+        acc[sg.idx].hours += sg.presence;
+        acc[sg.idx].earnings += tripDist > 0 ? E * (sg.dist / tripDist) : 0;
+      }
+    } else if (startIdx >= 0) {
+      acc[startIdx].hours += tripHours(t);
+      acc[startIdx].earnings += E;
     }
   }
   return acc.map(b => ({
@@ -689,7 +762,7 @@ export function getVehicleStats(): VehicleStat[] {
     bump(t.vehicle, t.miles, t.deduction, true);
   }
   for (const r of db.getAllSync<Record>(`SELECT * FROM records WHERE record_type='mileage'`)) {
-    bump((r as any).vehicle ?? 'car', r.miles ?? 0, r.deduction ?? 0, false);
+    bump(r.vehicle ?? 'car', r.miles ?? 0, r.deduction ?? 0, false);
   }
   return Object.values(agg).filter(v => v.miles > 0).sort((a, b) => b.miles - a.miles);
 }
@@ -725,13 +798,14 @@ export function updateRecord(id: number, r: Partial<Record>) {
   const cur = getRecord(id);
   if (!cur) return;
   db.runSync(
-    'UPDATE records SET platform=?, amount=?, miles=?, deduction=?, category=?, notes=?, created_at=? WHERE id=?',
+    'UPDATE records SET platform=?, amount=?, miles=?, deduction=?, category=?, notes=?, vehicle=?, created_at=? WHERE id=?',
     r.platform ?? cur.platform,
     r.amount ?? cur.amount,
     r.miles ?? cur.miles,
     r.deduction ?? cur.deduction,
     r.category ?? cur.category,
     r.notes ?? cur.notes,
+    r.vehicle ?? cur.vehicle ?? null,
     r.created_at ?? cur.created_at,
     id,
   );
@@ -1040,8 +1114,9 @@ function hourInFilter(startedAt: string, f: TimeFilter): boolean {
 // Ranked by £/hour where we have the data (the actionable metric), else by
 // earnings, else by miles.
 export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
-  const rows = db.getAllSync<{ zone: string | null; miles: number; earnings: number | null; deduction: number; started_at: string; ended_at: string }>(
-    `SELECT zone, miles, earnings, deduction, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
+  const est = estimatedTripEarnings(); // apportioned £ per trip (estimate)
+  const rows = db.getAllSync<{ id: number; zone: string | null; miles: number; deduction: number; started_at: string; ended_at: string }>(
+    `SELECT id, zone, miles, deduction, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
   const agg: { [z: string]: ZoneStat } = {};
   for (const r of rows) {
     if (!hourInFilter(r.started_at, filter)) continue;
@@ -1049,7 +1124,7 @@ export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
     if (!agg[z]) agg[z] = { zone: z, trips: 0, miles: 0, earnings: 0, deduction: 0, hours: 0, perHour: 0 };
     agg[z].trips += 1;
     agg[z].miles += r.miles;
-    agg[z].earnings += r.earnings ?? 0;
+    agg[z].earnings += est.get(r.id) ?? 0;
     agg[z].deduction += r.deduction;
     const ms = new Date(r.ended_at).getTime() - new Date(r.started_at).getTime();
     agg[z].hours += ms > 0 ? ms / 3600000 : 0;
@@ -1077,21 +1152,24 @@ function bucketLabel(hour: number): string {
 }
 
 export function getBestSpot(): BestSpot | null {
-  const rows = db.getAllSync<{ zone: string | null; earnings: number | null; started_at: string; ended_at: string }>(
-    `SELECT zone, earnings, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> '' AND earnings > 0`);
+  const est = estimatedTripEarnings();
+  const rows = db.getAllSync<{ id: number; zone: string | null; started_at: string; ended_at: string }>(
+    `SELECT id, zone, started_at, ended_at FROM trips WHERE zone IS NOT NULL AND zone <> ''`);
   const agg: { [k: string]: BestSpot } = {};
   let totalEarnings = 0, totalHours = 0;
   for (const r of rows) {
+    const e = est.get(r.id) ?? 0;
+    if (e <= 0) continue;
     const d = new Date(r.started_at);
     const time = bucketLabel(d.getHours());
     const key = `${r.zone}|${time}`;
     if (!agg[key]) agg[key] = { zone: r.zone as string, timeLabel: time, perHour: 0, earnings: 0, hours: 0, trips: 0, vsAverage: 0 };
     const ms = new Date(r.ended_at).getTime() - d.getTime();
     const hrs = ms > 0 ? ms / 3600000 : 0;
-    agg[key].earnings += r.earnings ?? 0;
+    agg[key].earnings += e;
     agg[key].hours += hrs;
     agg[key].trips += 1;
-    totalEarnings += r.earnings ?? 0;
+    totalEarnings += e;
     totalHours += hrs;
   }
   const avgPerHour = totalHours > 0 ? totalEarnings / totalHours : 0;
@@ -1107,15 +1185,17 @@ export type HeatPoint = { lat: number; lng: number; w: number };
 // All saved GPS breadcrumb points, optionally restricted to a time of day, each
 // weighted (earnings/point when known, else 1). Feeds the location heatmap.
 export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
-  const rows = db.getAllSync<{ route_json: string | null; earnings: number | null; started_at: string }>(
-    `SELECT route_json, earnings, started_at FROM trips WHERE route_json IS NOT NULL`);
+  const est = estimatedTripEarnings(); // £-weight the map by apportioned earnings
+  const rows = db.getAllSync<{ id: number; route_json: string | null; started_at: string }>(
+    `SELECT id, route_json, started_at FROM trips WHERE route_json IS NOT NULL`);
   const out: HeatPoint[] = [];
   for (const r of rows) {
     if (!hourInFilter(r.started_at, filter)) continue;
     let pts: { lat: number; lng: number }[] = [];
     try { pts = JSON.parse(r.route_json as string); } catch { continue; }
     if (!Array.isArray(pts) || pts.length === 0) continue;
-    const w = (r.earnings && r.earnings > 0) ? r.earnings / pts.length : 1;
+    const e = est.get(r.id) ?? 0;
+    const w = e > 0 ? e / pts.length : 1;
     for (const p of pts) {
       if (typeof p?.lat === 'number' && typeof p?.lng === 'number') out.push({ lat: p.lat, lng: p.lng, w });
     }

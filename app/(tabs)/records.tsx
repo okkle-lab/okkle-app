@@ -14,7 +14,6 @@ type Item = { kind: 'trip'; data: Trip } | { kind: 'record'; data: OkkleRecord }
 export default function RecordsScreen() {
   const router = useRouter();
   const [items, setItems] = React.useState<Item[]>([]);
-  const [vehicles, setVehicles] = React.useState<VehicleStat[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
   const [filter, setFilter] = React.useState<'all' | 'trips' | 'income' | 'expense'>('all');
   const [month, setMonth] = React.useState<string>('all'); // 'all' or 'YYYY-MM'
@@ -40,6 +39,24 @@ export default function RecordsScreen() {
     return typeOk && monthOk;
   });
 
+  // A single total that reflects the current filter (and month). Records are just
+  // records — this is the only number, and it changes with what you're looking at.
+  const totals = visible.reduce((a, it) => {
+    if (it.kind === 'trip') a.miles += it.data.miles;
+    else {
+      const r = it.data;
+      if (r.record_type === 'mileage') a.miles += r.miles ?? 0;
+      else if (r.record_type === 'income') a.income += r.amount ?? 0;
+      else a.expense += r.amount ?? 0;
+    }
+    return a;
+  }, { miles: 0, income: 0, expense: 0 });
+  const totalView =
+    filter === 'trips' ? { label: 'Total distance', value: fmtMiles(totals.miles) } :
+    filter === 'income' ? { label: 'Total earnings', value: fmtGbp(totals.income) } :
+    filter === 'expense' ? { label: 'Total expenses', value: fmtGbp(totals.expense) } :
+    { label: `${visible.length} ${visible.length === 1 ? 'record' : 'records'}`, value: '' };
+
   function pickMonth() {
     Alert.alert('Show month', undefined, [
       { text: 'All time', onPress: () => setMonth('all') },
@@ -57,7 +74,6 @@ export default function RecordsScreen() {
       return bDate.localeCompare(aDate);
     });
     setItems(all);
-    setVehicles(getVehicleStats());
   }
 
   useFocusEffect(useCallback(() => { load(); }, []));
@@ -74,12 +90,12 @@ export default function RecordsScreen() {
     let c: Cfg;
     if (item.kind === 'trip') {
       const t = item.data;
-      c = { id: `t${t.id}`, edit: () => openEdit('trip', t.id), icon: 'navigation', tone: 'mint', title: t.platform, source: 'GPS', meta: `${fmtMiles(t.miles)} · ${fmtDate(t.started_at)}`, amount: fmtGbp(t.deduction), amountColor: colors.brandDeep, amountSub: t.earnings ? `${fmtGbp(t.earnings)} earned` : null };
+      c = { id: `t${t.id}`, edit: () => openEdit('trip', t.id), icon: 'navigation', tone: 'mint', title: `Trip · ${vehicleLabel(t.vehicle)}`, source: 'GPS', meta: fmtDate(t.started_at), amount: fmtMiles(t.miles), amountColor: colors.textPrimary, amountSub: `${fmtGbp(t.deduction)} tax` };
     } else {
       const r = item.data;
       const when = fmtWhen(r);
       if (r.record_type === 'mileage') {
-        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'map', tone: 'neutral', title: r.platform ?? 'Mileage', source: 'Manual', meta: `${fmtMiles(r.miles ?? 0)} · ${when}`, amount: fmtGbp(r.deduction ?? 0), amountColor: colors.brandDeep, amountSub: null };
+        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'map', tone: 'neutral', title: `Mileage · ${vehicleLabel(r.vehicle ?? 'car')}`, source: 'Manual', meta: when, amount: fmtMiles(r.miles ?? 0), amountColor: colors.textPrimary, amountSub: `${fmtGbp(r.deduction ?? 0)} tax` };
       } else if (r.record_type === 'income') {
         c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'dollar-sign', tone: 'green', title: r.platform ?? 'Earnings', source: null, meta: `Earnings · ${when}`, amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
       } else {
@@ -115,24 +131,6 @@ export default function RecordsScreen() {
       right={gear}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
-      {vehicles.length > 0 && (
-        <View style={{ marginBottom: spacing.xl }}>
-          <SectionHeader icon="truck" title="By vehicle" />
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            {vehicles.map((v, i) => (
-              <View key={v.vehicle} style={[row.container, i < vehicles.length - 1 && row.border]}>
-                <VehicleIcon vehicle={v.vehicle} size={22} color={colors.textSecondary} />
-                <View style={row.mid}>
-                  <Text style={row.title}>{vehicleLabel(v.vehicle)}</Text>
-                  <Text style={[row.sub, { marginTop: 2 }]}>{v.trips} {v.trips === 1 ? 'trip' : 'trips'} · {fmtMiles(v.miles)}</Text>
-                </View>
-                <Text style={[row.amount, { color: colors.brandDeep }]}>{fmtGbp(v.deduction)}</Text>
-              </View>
-            ))}
-          </Card>
-        </View>
-      )}
-
       {items.length === 0 ? (
         <Card>
           <Text style={{ color: colors.textSecondary, textAlign: 'center', paddingVertical: 8 }}>
@@ -156,6 +154,14 @@ export default function RecordsScreen() {
               </Pressable>
             )}
           </View>
+          {totalView.value ? (
+            <View style={s.totalRow}>
+              <Text style={s.totalLabel}>{totalView.label}</Text>
+              <Text style={s.totalValue}>{totalView.value}</Text>
+            </View>
+          ) : (
+            <Text style={s.totalCount}>{totalView.label}</Text>
+          )}
           {visible.length === 0 ? (
             <Card><Text style={{ color: colors.textSecondary, textAlign: 'center', paddingVertical: 8 }}>Nothing here yet.</Text></Card>
           ) : (
@@ -197,6 +203,10 @@ const s = StyleSheet.create({
   monthBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 11, height: 36, borderRadius: radius.md, backgroundColor: colors.brandLight },
   monthBtnOn: { backgroundColor: colors.brandDeep },
   monthBtnText: { fontSize: 12.5, fontWeight: font.semibold, color: '#fff', maxWidth: 72 },
+  totalRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: spacing.xs, marginBottom: spacing.md },
+  totalLabel: { ...type.label, color: colors.textSecondary },
+  totalValue: { ...tabular, fontSize: 24, fontWeight: font.bold, color: colors.textPrimary, letterSpacing: -0.5 },
+  totalCount: { ...type.caption, color: colors.textSecondary, marginBottom: spacing.md, paddingHorizontal: spacing.xs },
 });
 
 const row = StyleSheet.create({
@@ -212,5 +222,5 @@ const row = StyleSheet.create({
   sub: { fontSize: 13, color: colors.textSecondary, flexShrink: 1 },
   right: { alignItems: 'flex-end', marginLeft: 8, maxWidth: 120 },
   amount: { ...tabular, fontSize: 15, fontWeight: font.bold, color: colors.textPrimary },
-  amountSub: { ...tabular, fontSize: 11, color: colors.green, marginTop: 2 },
+  amountSub: { ...tabular, fontSize: 11, color: colors.textTertiary, marginTop: 2 },
 });

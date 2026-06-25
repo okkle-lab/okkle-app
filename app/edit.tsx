@@ -4,11 +4,12 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Chip, SectionHeader, PrimaryButton, VehicleChip, DatePickerField, RouteMap, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { PLATFORMS, VEHICLES, calcDeduction, fmtGbp, fmtMiles } from '../src/db/tax';
 import {
-  getTrip, updateTrip, deleteTrip, getRecord, updateRecord, deleteRecord,
+  getTrip, updateTrip, deleteTrip, getRecord, updateRecord, deleteRecord, getVehicleKeys, getPlatforms,
 } from '../src/db';
 
 function tripDuration(start: string, end: string): string {
@@ -30,7 +31,7 @@ export default function EditEntry() {
   }, [trip?.route_json]);
 
   const [platform, setPlatform] = useState(trip?.platform ?? record?.platform ?? 'Uber Eats');
-  const [vehicle, setVehicle] = useState(trip?.vehicle ?? 'car');
+  const [vehicle, setVehicle] = useState(trip?.vehicle ?? record?.vehicle ?? 'car');
   const [miles, setMiles] = useState(String(trip?.miles ?? record?.miles ?? ''));
   const [amount, setAmount] = useState(String(record?.amount ?? trip?.earnings ?? ''));
   const [description, setDescription] = useState(record?.category ?? record?.notes ?? '');
@@ -52,8 +53,12 @@ export default function EditEntry() {
   const recordType = record?.record_type;
   const showMiles = kind === 'trip' || recordType === 'mileage';
   const showAmount = kind === 'trip' || recordType === 'income' || recordType === 'expense';
-  const showPlatform = kind === 'trip' || recordType === 'income' || recordType === 'mileage';
-  const showVehicle = kind === 'trip';
+  // Platform lives on earnings only now — trips and mileage are platform-agnostic.
+  const showPlatform = recordType === 'income';
+  const showVehicle = kind === 'trip' || recordType === 'mileage';
+  // Only the vehicles the user chose at onboarding / in Settings.
+  const myVehicles = VEHICLES.filter(v => getVehicleKeys().includes(v.key));
+  const platformOptions = Array.from(new Set([...getPlatforms(), ...(platform ? [platform] : [])]));
   const showDescription = recordType === 'expense';
   const milesNum = parseFloat(miles) || 0;
   const previewDeduction = showMiles ? calcDeduction(milesNum, vehicle) : 0;
@@ -61,7 +66,7 @@ export default function EditEntry() {
   function commitSave() {
     if (kind === 'trip') {
       updateTrip(entryId, {
-        platform, vehicle,
+        platform: '', vehicle, // trips are platform-agnostic
         miles: milesNum,
         deduction: parseFloat(previewDeduction.toFixed(2)),
         earnings: amount ? parseFloat(amount) : null,
@@ -73,6 +78,7 @@ export default function EditEntry() {
         amount: showAmount && amount ? parseFloat(amount) : record.amount,
         miles: showMiles ? milesNum : record.miles,
         deduction: showMiles ? parseFloat(previewDeduction.toFixed(2)) : record.deduction,
+        vehicle: showVehicle ? vehicle : record.vehicle,
         category: showDescription ? description : record.category,
         notes: showDescription ? description : record.notes,
         created_at: date.toISOString(),
@@ -116,7 +122,9 @@ export default function EditEntry() {
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.header}>
           <Text style={s.heading}>{title}</Text>
-          <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Cancel</Text></Pressable>
+          <Pressable onPress={() => router.back()} hitSlop={12} style={s.closeBtn}>
+            <Feather name="x" size={19} color={colors.textPrimary} />
+          </Pressable>
         </View>
 
         {/* Premium trip summary — route map + at-a-glance stats (GPS trips only) */}
@@ -150,7 +158,7 @@ export default function EditEntry() {
           <>
             <SectionHeader title="Platform" />
             <View style={s.chips}>
-              {PLATFORMS.map(p => (
+              {platformOptions.map(p => (
                 <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} />
               ))}
             </View>
@@ -161,7 +169,7 @@ export default function EditEntry() {
           <>
             <SectionHeader title="Vehicle" />
             <View style={s.chips}>
-              {VEHICLES.map(v => (
+              {myVehicles.map(v => (
                 <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
               ))}
             </View>
@@ -212,7 +220,7 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 60 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   heading: { ...type.screenTitle },
-  close: { ...type.bodyMedium, color: colors.brandDeep },
+  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(34,48,44,0.10)' },
   tripCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.sm, marginBottom: spacing.xl, overflow: 'hidden' },
   tripStats: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md },
   tripStat: { flex: 1, alignItems: 'center' },

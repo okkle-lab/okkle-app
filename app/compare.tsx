@@ -53,7 +53,9 @@ export default function Compare() {
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.header}>
           <Text style={s.heading}>Compare methods</Text>
-          <Pressable onPress={() => router.back()} hitSlop={12}><Text style={s.close}>Cancel</Text></Pressable>
+          <Pressable onPress={() => router.back()} hitSlop={12} style={s.closeBtn}>
+            <Feather name="x" size={19} color={colors.textPrimary} />
+          </Pressable>
         </View>
         <Text style={s.intro}>
           Most couriers use the simple flat-rate method. If you drive an expensive
@@ -150,7 +152,7 @@ const s = StyleSheet.create({
   content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 60 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
   heading: { ...type.screenTitle },
-  close: { ...type.bodyMedium, color: colors.brandDeep },
+  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(34,48,44,0.10)' },
   intro: { ...type.body, color: colors.textSecondary, lineHeight: 23, marginBottom: spacing.xl },
   label: { ...type.label, marginBottom: 8, marginTop: spacing.md },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bgCard },
