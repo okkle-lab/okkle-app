@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
-import { Platform, View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, Chip, SectionHeader, PrimaryButton, VehicleChip, ModalHeader, ChipScroll } from '../src/components';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors, spacing, radius, type } from '../src/theme';
+import { Card, Chip, PrimaryButton, VehicleChip, ModalHeader, ChipScroll } from '../src/components';
 import { VEHICLES, PLATFORMS, REGIONS, regionRate, regionLabel } from '../src/db/tax';
 import { getUser, saveUser } from '../src/db';
 
+// Fixed (non-scrolling) layout: the whole form fits one screen and Save is
+// pinned to the bottom, so Settings never needs to scroll.
 export default function SettingsAccount() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const u = getUser();
   const [name, setName] = useState(u?.name ?? '');
   const [vehicles, setVehicles] = useState<string[]>(
@@ -27,83 +31,82 @@ export default function SettingsAccount() {
   function addCustom() {
     Alert.prompt('Add platform', 'Name of the delivery platform you work for', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Add', onPress: (name?: string) => {
-        const n = (name ?? '').trim();
-        if (n && !platforms.some(p => p.toLowerCase() === n.toLowerCase())) setPlatforms([...platforms, n]);
+      { text: 'Add', onPress: (n?: string) => {
+        const clean = (n ?? '').trim();
+        if (clean && !platforms.some(p => p.toLowerCase() === clean.toLowerCase())) setPlatforms([...platforms, clean]);
       } },
     ], 'plain-text');
   }
 
   function save() {
     const v = vehicles.length ? vehicles : ['car'];
-    const cleanedPlatforms = platforms.filter(p => p.trim() && p.toLowerCase() !== 'other');
-    saveUser({ name, vehicle: v[0], vehicles: v.join(','), platforms: cleanedPlatforms.join(','), region, tax_rate: regionRate(region, band) });
+    const cleaned = platforms.filter(p => p.trim() && p.toLowerCase() !== 'other');
+    saveUser({ name, vehicle: v[0], vehicles: v.join(','), platforms: cleaned.join(','), region, tax_rate: regionRate(region, band) });
     router.back();
   }
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <ModalHeader title="Profile & tax" />
+    <View style={[s.screen, { paddingTop: insets.top + 8 }]}>
+      <View style={s.body}>
+        <ModalHeader title="Profile & tax" />
 
-      <SectionHeader title="Your details" />
-      <Card style={{ gap: spacing.md }}>
-        <View>
-          <Text style={s.fieldLabel}>Name</Text>
-          <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={colors.textTertiary} />
-        </View>
-        <View>
-          <Text style={s.fieldLabel}>Vehicles you use</Text>
-          <ChipScroll fadeColor={colors.bgCard}>
-            {VEHICLES.map(v => <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicles.includes(v.key)} onPress={() => toggleVehicle(v.key)} />)}
-          </ChipScroll>
-        </View>
-        <View>
-          <Text style={s.fieldLabel}>Platforms</Text>
-          <ChipScroll fadeColor={colors.bgCard}>
-            {allOptions.map(p => <Chip key={p} label={p} selected={platforms.includes(p)} onPress={() => toggle(p)} />)}
-            <Pressable onPress={addCustom} style={s.addChip}>
-              <Feather name="plus" size={14} color={colors.brandDeep} />
-              <Text style={s.addChipText}>Add</Text>
-            </Pressable>
-          </ChipScroll>
-        </View>
-      </Card>
-
-      <SectionHeader title="Tax region" />
-      <Card style={{ gap: spacing.md }}>
-        <View>
-          <Text style={s.fieldLabel}>Where you live</Text>
-          <View style={s.chips}>
-            {REGIONS.map(r => <Chip key={r.key} label={r.label} selected={region === r.key} onPress={() => setRegion(r.key)} />)}
+        <Card style={s.card}>
+          <View>
+            <Text style={s.label}>Name</Text>
+            <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={colors.textTertiary} />
           </View>
-        </View>
-        <View>
-          <Text style={s.fieldLabel}>Income tax band</Text>
-          <View style={s.chips}>
-            <Chip label="Basic rate" selected={band === 'basic'} onPress={() => setBand('basic')} />
-            <Chip label="Higher rate" selected={band === 'higher'} onPress={() => setBand('higher')} />
+          <View>
+            <Text style={s.label}>Vehicles you use</Text>
+            <ChipScroll fadeColor={colors.bgCard}>
+              {VEHICLES.map(v => <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicles.includes(v.key)} onPress={() => toggleVehicle(v.key)} />)}
+            </ChipScroll>
           </View>
-        </View>
-        <Text style={s.note}>Estimating take-home at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}).</Text>
-      </Card>
+          <View>
+            <Text style={s.label}>Platforms</Text>
+            <ChipScroll fadeColor={colors.bgCard}>
+              {allOptions.map(p => <Chip key={p} label={p} selected={platforms.includes(p)} onPress={() => toggle(p)} />)}
+              <Pressable onPress={addCustom} style={s.addChip}>
+                <Feather name="plus" size={14} color={colors.brandDeep} />
+                <Text style={s.addChipText}>Add</Text>
+              </Pressable>
+            </ChipScroll>
+          </View>
+        </Card>
 
-      <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.lg }} />
-    </ScrollView>
+        <Card style={s.card}>
+          <View>
+            <Text style={s.label}>Where you live</Text>
+            <View style={s.chips}>
+              {REGIONS.map(r => <Chip key={r.key} label={r.label} selected={region === r.key} onPress={() => setRegion(r.key)} />)}
+            </View>
+          </View>
+          <View>
+            <Text style={s.label}>Income tax band</Text>
+            <View style={s.chips}>
+              <Chip label="Basic rate" selected={band === 'basic'} onPress={() => setBand('basic')} />
+              <Chip label="Higher rate" selected={band === 'higher'} onPress={() => setBand('higher')} />
+            </View>
+          </View>
+          <Text style={s.note}>Estimating take-home at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}).</Text>
+        </Card>
+      </View>
+
+      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <PrimaryButton label="Save changes" onPress={save} />
+      </View>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.xl, paddingTop: 64, paddingBottom: 24, gap: spacing.md },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  heading: { ...type.heading, fontSize: 18 },
-  close: { ...type.bodyMedium, color: colors.textSecondary },
-  fieldLabel: { ...type.label, marginBottom: 8 },
+  body: { flex: 1, paddingHorizontal: spacing.xl, gap: spacing.md },
+  card: { gap: spacing.md },
+  label: { ...type.label, marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.full, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bg },
   addChipText: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
   note: { ...type.caption, color: colors.textTertiary },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: spacing.lg, paddingVertical: spacing.sm },
-  linkText: { ...type.bodyMedium, fontSize: 15, color: colors.textPrimary, flex: 1 },
+  footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md },
 });

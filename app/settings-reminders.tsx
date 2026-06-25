@@ -62,13 +62,15 @@ export default function SettingsReminders() {
           </View>
           <Switch value={deadlinesOn} onValueChange={setDeadlinesOn} trackColor={{ true: colors.brand, false: colors.borderStrong }} />
         </View>
+        <View style={s.divider} />
+        <Pressable onPress={() => router.push('/key-dates')} style={({ pressed }) => [s.rowBetween, pressed && { opacity: 0.6 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.rowTitle}>Key tax dates</Text>
+            <Text style={s.rowSub}>View HMRC deadlines & add to calendar</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color={colors.textTertiary} />
+        </Pressable>
       </Card>
-
-      <Pressable onPress={() => router.push('/key-dates')} style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.6 }]}>
-        <Feather name="calendar" size={18} color={colors.brandDeep} />
-        <Text style={s.linkText}>Key tax dates & HMRC deadlines</Text>
-        <Feather name="chevron-right" size={18} color={colors.textTertiary} />
-      </Pressable>
 
       <PrimaryButton label="Save changes" onPress={save} style={{ marginTop: spacing.lg }} />
     </ScrollView>

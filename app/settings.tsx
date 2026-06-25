@@ -92,10 +92,9 @@ export default function Settings() {
   return (
     <View style={s.root}>
       <Pressable accessibilityLabel="Close settings" onPress={() => router.back()} style={s.scrim} />
-      <View style={[s.sheet, isDark && s.sheetDark, { top: insets.top }]}>
+      <View style={[s.sheet, isDark && s.sheetDark, { top: 0 }]}>
         <GlassSheetBackground />
-        <View style={s.grabber} />
-        <View style={[s.content, { paddingBottom: Math.max(insets.bottom + 22, 38) }]}>
+        <View style={[s.content, { paddingTop: insets.top + 14, paddingBottom: Math.max(insets.bottom + 22, 38) }]}>
           <View style={s.header}>
             <Text style={s.heading}>Settings</Text>
             <Pressable onPress={() => router.back()} hitSlop={12} style={s.closeBtn}>
@@ -122,18 +121,18 @@ const s = StyleSheet.create({
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.12)' },
   sheet: {
     position: 'absolute', right: 0, bottom: 0, left: 0, overflow: 'hidden',
-    borderTopLeftRadius: 36, borderTopRightRadius: 36, borderWidth: 1, borderBottomWidth: 0,
+    borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 1, borderBottomWidth: 0,
     borderColor: 'rgba(255,255,255,0.58)', backgroundColor: 'transparent',
   },
   sheetDark: { borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'transparent' },
-  materialFill: { ...StyleSheet.absoluteFill, borderTopLeftRadius: 36, borderTopRightRadius: 36 },
+  materialFill: { ...StyleSheet.absoluteFill, borderTopLeftRadius: 0, borderTopRightRadius: 0 },
   sheetTint: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,0.18)' },
   sheetTintDark: { backgroundColor: 'rgba(8,15,13,0.22)' },
   sheetTopSheen: { position: 'absolute', top: 0, left: 0, right: 0, height: 96, backgroundColor: 'rgba(255,255,255,0.16)' },
   sheetTopSheenDark: { backgroundColor: 'rgba(255,255,255,0.035)' },
   sheetBottomShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 180, backgroundColor: 'rgba(226,246,241,0.08)' },
   sheetBottomShadeDark: { backgroundColor: 'rgba(0,0,0,0.06)' },
-  sheetInnerStroke: { ...StyleSheet.absoluteFill, borderTopLeftRadius: 36, borderTopRightRadius: 36, borderWidth: 1, borderBottomWidth: 0, borderColor: 'rgba(255,255,255,0.50)' },
+  sheetInnerStroke: { ...StyleSheet.absoluteFill, borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 1, borderBottomWidth: 0, borderColor: 'rgba(255,255,255,0.50)' },
   sheetInnerStrokeDark: { borderColor: 'rgba(255,255,255,0.10)' },
   grabber: { position: 'absolute', top: 10, alignSelf: 'center', width: 54, height: 5, borderRadius: 999, zIndex: 2, backgroundColor: 'rgba(34,48,44,0.22)' },
   content: { position: 'relative', zIndex: 1, paddingHorizontal: spacing.xl, paddingTop: 58, gap: spacing.lg },
