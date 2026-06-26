@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, HeatMapView, CoachMarks, SettingsGlassButton, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, HeatMapView, CoachMarks, SettingsGlassButton, GlassPanel, type CoachStep } from '../../src/components';
 import {
   getUser,
   getTaxYearSummary,
@@ -254,13 +254,20 @@ export default function HomeScreen() {
     <CoachMarks steps={coachSteps} visible={showCoach} onDone={dismissCoach} />
     <Modal visible={newAch !== null} transparent animationType="fade" onRequestClose={() => setNewAch(null)}>
       <Pressable style={s.modalBg} onPress={() => setNewAch(null)}>
-        <View style={s.modalCard}>
+        <GlassPanel
+          tone="amber"
+          radius={32}
+          isInteractive
+          style={s.modalCard}
+          clipStyle={s.modalCardClip}
+          contentStyle={s.modalCardContent}
+        >
           {newAch && <Medal icon={newAch.icon as any} category={newAch.category} tier={newAch.tier} unlocked size={104} />}
           <Text style={s.achKicker}>Medal unlocked</Text>
           <Text style={s.modalTitle}>{newAch?.label}</Text>
           <Text style={s.modalBody}>{newAch?.desc}</Text>
           <Pressable onPress={() => setNewAch(null)} style={s.modalBtn}><Text style={s.modalBtnText}>Nice!</Text></Pressable>
-        </View>
+        </GlassPanel>
       </Pressable>
     </Modal>
     <CollapsingHeader
@@ -628,8 +635,10 @@ const s = StyleSheet.create({
   heatVal: { ...type.caption, ...tabular, color: colors.textPrimary, width: 62, textAlign: 'right', fontWeight: font.medium },
   heatNote: { ...type.small, marginTop: 10, lineHeight: 17 },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  modalCard: { backgroundColor: colors.bgCard, borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', width: '100%', maxWidth: 340 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(15,28,25,0.32)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  modalCard: { width: '100%', maxWidth: 340, borderCurve: 'continuous' },
+  modalCardClip: { backgroundColor: 'transparent', borderCurve: 'continuous' },
+  modalCardContent: { padding: spacing.xl, alignItems: 'center' },
   modalEmoji: { fontSize: 56, marginBottom: spacing.md },
   modalTitle: { ...type.screenTitle, marginBottom: spacing.sm },
   modalBody: { ...type.body, color: colors.textSecondary, textAlign: 'center', lineHeight: 23, marginBottom: spacing.xl },
