@@ -60,8 +60,8 @@ function bumpCat(name: string) {
 type Tab = 'mileage' | 'income' | 'expense';
 type LogStep = 'kind' | 'receipt' | 'primary' | 'details' | 'date' | 'review';
 const TABS: { key: Tab; label: string; icon: React.ComponentProps<typeof Feather>['name']; tone: 'red' | 'green' | 'blue'; title: string; sub: string }[] = [
-  { key: 'expense', label: 'Expense', icon: 'file-text', tone: 'red', title: 'Add an expense', sub: 'A cost you can claim against tax' },
   { key: 'income', label: 'Earnings', icon: 'dollar-sign', tone: 'green', title: 'Log earnings', sub: 'A day or a week of pay — set the date below' },
+  { key: 'expense', label: 'Expense', icon: 'file-text', tone: 'red', title: 'Add an expense', sub: 'A cost you can claim against tax' },
   { key: 'mileage', label: 'Mileage', icon: 'map', tone: 'blue', title: 'Add mileage', sub: 'Miles you drove without GPS tracking' },
 ];
 
@@ -86,7 +86,7 @@ export default function LogScreen() {
   const user = getUser();
   // Other screens can deep-link a tab (?tab=income).
   const params = useLocalSearchParams<{ tab?: string }>();
-  const [tab, setTab] = useState<Tab>((params.tab === 'income' || params.tab === 'mileage') ? params.tab : 'expense');
+  const [tab, setTab] = useState<Tab>((params.tab === 'expense' || params.tab === 'mileage') ? params.tab : 'income');
   React.useEffect(() => {
     if (params.tab === 'income' || params.tab === 'mileage' || params.tab === 'expense') setTab(params.tab);
   }, [params.tab]);
