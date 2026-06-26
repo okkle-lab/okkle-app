@@ -37,12 +37,9 @@ export default function TripScreen() {
   // pick the vehicle here, since that sets the mileage rate.
   const [myVehicles, setMyVehicles] = useState(() => VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
   const [vehicle, setVehicle] = useState(last?.vehicle ?? user?.vehicle ?? VEHICLES.find(v => getVehicleKeys().includes(v.key))?.key ?? 'car');
-  const [platformList, setPlatformList] = useState(getPlatforms);
-  const [platform, setPlatform] = useState(() => getPlatforms()[0]);
 
   useFocusEffect(
     React.useCallback(() => {
-      setPlatformList(getPlatforms());
       setMyVehicles(VEHICLES.filter(v => getVehicleKeys().includes(v.key)));
     }, []),
   );
@@ -177,7 +174,7 @@ export default function TripScreen() {
           <View style={s.liveHeader}>
             <View style={s.statusPill}>
               <View style={[s.liveDot, { backgroundColor: statusColor }]} />
-              <Text style={s.statusPillText}>{statusText} · {trip.platform}</Text>
+              <Text style={s.statusPillText}>{statusText}{trip.vehicle ? ` · ${vehicleLabel(trip.vehicle)}` : ''}</Text>
             </View>
           </View>
           <Pressable onPress={handleDiscard} hitSlop={12} style={s.discardX}>
@@ -315,31 +312,18 @@ export default function TripScreen() {
 
   // ---- Phase 1: setup --------------------------------------------------------
   const todayHasData = today.trips > 0 || today.earnings > 0;
-  const showVehiclePicker = myVehicles.length > 0;
+  const showVehiclePicker = myVehicles.length > 1;
   return (
     <View style={[s.screen, { paddingTop: insets.top + 8 }]}>
       <View style={s.fixedHeader}>
         <View style={{ flex: 1 }}>
           <Text style={s.fixedTitle}>Start a trip</Text>
-          <Text style={s.fixedSub}>Pick your platform, then hit the big button and ride.</Text>
+          <Text style={s.fixedSub}>Tap the big button and ride — GPS measures your distance.</Text>
         </View>
         <SettingsGlassButton onPress={() => router.push('/settings')} />
       </View>
 
       <View style={[s.fixedBody, { paddingBottom: insets.bottom + 64 }]}>
-      {/* Only the vehicle matters here (it sets your mileage rate). Platform is
-          asked when you log earnings, since a day can span several apps. */}
-      {showVehiclePicker && (
-        <>
-          <Text style={s.selLabel}>Vehicle</Text>
-          <ChipScroll fadeColor={colors.bg}>
-            {myVehicles.map(v => (
-              <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-            ))}
-          </ChipScroll>
-        </>
-      )}
-
       <View style={s.startSpacer} />
 
       {/* THE button — a big circular Start disc inside an accent ring (activity-
@@ -358,25 +342,16 @@ export default function TripScreen() {
         </Pressable>
       </View>
 
-      <View style={s.selectorDeck}>
-        <Text style={s.selLabel}>Platform</Text>
-        <ChipScroll fadeColor={colors.bg}>
-          {platformList.map(p => (
-            <Chip key={p} label={p} selected={platform === p} onPress={() => setPlatform(p)} size="lg" />
-          ))}
-        </ChipScroll>
-
-        {showVehiclePicker && (
-          <>
-            <Text style={s.selLabel}>Car</Text>
-            <ChipScroll fadeColor={colors.bg}>
-              {myVehicles.map(v => (
-                <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
-              ))}
-            </ChipScroll>
-          </>
-        )}
-      </View>
+      {showVehiclePicker && (
+        <View style={s.selectorDeck}>
+          <Text style={s.selLabel}>Vehicle</Text>
+          <ChipScroll fadeColor={colors.bg}>
+            {myVehicles.map(v => (
+              <VehicleChip key={v.key} vehicle={v.key} label={v.label} selected={vehicle === v.key} onPress={() => setVehicle(v.key)} />
+            ))}
+          </ChipScroll>
+        </View>
+      )}
 
       <View style={s.ringSpacerBottom} />
       </View>

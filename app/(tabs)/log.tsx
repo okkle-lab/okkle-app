@@ -65,7 +65,14 @@ const TABS: { key: Tab; label: string; icon: React.ComponentProps<typeof Feather
   { key: 'mileage', label: 'Mileage', icon: 'map', tone: 'blue', title: 'Add mileage', sub: 'Miles you drove without GPS tracking' },
 ];
 
-const STEPS: LogStep[] = ['kind', 'receipt', 'primary', 'details', 'date', 'review'];
+// Mileage has no receipt, and no platform — only a vehicle to pick (and only if
+// the user has more than one). So its flow skips those steps.
+function stepsFor(tab: Tab, multiVehicle: boolean): LogStep[] {
+  if (tab === 'mileage') {
+    return multiVehicle ? ['kind', 'primary', 'details', 'date', 'review'] : ['kind', 'primary', 'date', 'review'];
+  }
+  return ['kind', 'receipt', 'primary', 'details', 'date', 'review'];
+}
 const SUCCESS_SHEET_EDGE_GAP = spacing.sm;
 const SUCCESS_SHEET_RADIUS = 40;
 
@@ -143,7 +150,8 @@ export default function LogScreen() {
 
   const tabIndex = Math.max(0, TABS.findIndex(t => t.key === tab));
   const active = TABS[tabIndex];
-  const currentStep = STEPS[stepIndex] ?? 'kind';
+  const steps = stepsFor(tab, myVehicles.length > 1);
+  const currentStep = steps[stepIndex] ?? 'kind';
 
   React.useEffect(() => {
     if (!submitted) return;
@@ -233,7 +241,7 @@ export default function LogScreen() {
   const canSave = tab === 'mileage' ? !!miles : tab === 'income' ? !!amount : (!!amount && !!description);
 
   function goToStep(next: number) {
-    const bounded = Math.max(0, Math.min(STEPS.length - 1, next));
+    const bounded = Math.max(0, Math.min(steps.length - 1, next));
     if (bounded === stepIndex) return;
     stepDirection.current = bounded > stepIndex ? 1 : -1;
     stepAnim.setValue(0);
@@ -283,7 +291,7 @@ export default function LogScreen() {
     currentStep === 'kind' ? 'What are you logging?' :
     currentStep === 'receipt' ? 'Add a receipt' :
     currentStep === 'primary' ? (tab === 'mileage' ? 'How many miles?' : tab === 'income' ? 'How much did you earn?' : 'How much was it?') :
-    currentStep === 'details' ? (tab === 'expense' ? 'What was it for?' : 'Where did this happen?') :
+    currentStep === 'details' ? (tab === 'expense' ? 'What was it for?' : tab === 'mileage' ? 'Which vehicle?' : 'Which platform?') :
     currentStep === 'date' ? 'When was it?' :
     'Review and save';
 
@@ -291,7 +299,7 @@ export default function LogScreen() {
     currentStep === 'kind' ? 'Okkle will ask one thing at a time.' :
     currentStep === 'receipt' ? (tab === 'expense' ? 'Take a photo or upload one, then Okkle will try to fill the next answers.' : 'Optional. Upload a receipt or screenshot and Okkle will fill what it can.') :
     currentStep === 'primary' ? (tab === 'mileage' ? 'Use the manually driven miles for this log.' : 'You can edit anything Okkle read from the receipt.') :
-    currentStep === 'details' ? (tab === 'expense' ? 'Pick a category or type your own.' : 'Choose the platform and vehicle details for reports.') :
+    currentStep === 'details' ? (tab === 'expense' ? 'Pick a category or type your own.' : tab === 'mileage' ? 'Which vehicle did you drive?' : 'Which app paid you?') :
     currentStep === 'date' ? 'Choose a day, or log the amount across a whole pay week.' :
     'Check the details before adding it to your records.';
 
@@ -427,9 +435,10 @@ export default function LogScreen() {
       );
     }
 
-    return (
-      <View style={s.stepStack}>
-        {tab === 'mileage' && myVehicles.length > 1 ? (
+    // Mileage: vehicle only (no platform — a day's miles aren't tied to one app).
+    if (tab === 'mileage') {
+      return (
+        <View style={s.stepStack}>
           <View style={s.choiceGroup}>
             <Text style={s.groupLabel}>Vehicle</Text>
             <View style={s.wrapRow}>
@@ -438,7 +447,12 @@ export default function LogScreen() {
               ))}
             </View>
           </View>
-        ) : null}
+        </View>
+      );
+    }
+    // Earnings: platform only.
+    return (
+      <View style={s.stepStack}>
         <View style={s.choiceGroup}>
           <Text style={s.groupLabel}>Platform</Text>
           <View style={s.wrapRow}>
@@ -474,7 +488,8 @@ export default function LogScreen() {
     const rows = [
       ['Type', active.label],
       [tab === 'mileage' ? 'Miles' : 'Amount', tab === 'mileage' ? `${miles || '0'} mi` : fmtGbp(parseFloat(amount) || 0)],
-      ...(tab === 'expense' ? [['Category', description || '-']] : [['Platform', platform || '-']]),
+      ...(tab === 'income' ? [['Platform', platform || '-']] : []),
+      ...(tab === 'expense' ? [['Category', description || '-']] : []),
       ...(tab === 'mileage' ? [['Vehicle', myVehicles.find(v => v.key === vehicle)?.label ?? vehicle]] : []),
       ['When', period === 'week' ? `${fmtShort(wb.start)} - ${fmtShort(wb.end)}` : fmtShort(date)],
       ['Receipt', receiptUri ? 'Attached' : 'Not attached'],
@@ -572,7 +587,7 @@ export default function LogScreen() {
       </View>
 
       <View style={s.progressTrack}>
-        <View style={[s.progressFill, { width: `${((stepIndex + 1) / STEPS.length) * 100}%` }]} />
+        <View style={[s.progressFill, { width: `${((stepIndex + 1) / steps.length) * 100}%` }]} />
       </View>
 
       <ScrollView
@@ -590,7 +605,7 @@ export default function LogScreen() {
             },
           ]}
         >
-          <Text style={s.stepCount}>Step {stepIndex + 1} of {STEPS.length}</Text>
+          <Text style={s.stepCount}>Step {stepIndex + 1} of {steps.length}</Text>
           <Text style={s.questionTitle}>{stepTitle}</Text>
           <Text style={s.questionSub}>{stepSub}</Text>
           <View style={s.questionBody}>{renderStep()}</View>
