@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable, Modal } from 'react-nati
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Medal, Card, SectionHeader, IconBadge } from '../src/components';
+import { Medal, Card, SectionHeader, IconBadge, GlassPanel } from '../src/components';
 import { getAchievements, getStreak, getPersonalRecords, type Achievement } from '../src/db';
 
 export default function MedalsScreen() {
@@ -88,7 +88,14 @@ export default function MedalsScreen() {
       {/* Medal detail */}
       <Modal visible={selected !== null} transparent animationType="fade" onRequestClose={() => setSelected(null)}>
         <Pressable style={s.modalBg} onPress={() => setSelected(null)}>
-          <View style={s.modalCard}>
+          <GlassPanel
+            tone={selected?.unlocked ? 'amber' : 'neutral'}
+            radius={32}
+            isInteractive
+            style={s.modalCard}
+            clipStyle={s.modalCardClip}
+            contentStyle={s.modalCardContent}
+          >
             {selected && <Medal icon={selected.icon as any} category={selected.category} tier={selected.tier} unlocked={selected.unlocked} size={108} />}
             <Text style={s.modalTier}>{selected?.unlocked ? `${selected?.tier} medal` : 'Locked'}</Text>
             <Text style={s.modalTitle}>{selected?.label}</Text>
@@ -99,7 +106,7 @@ export default function MedalsScreen() {
               </View>
             )}
             <Pressable onPress={() => setSelected(null)} style={s.modalBtn}><Text style={s.modalBtnText}>Done</Text></Pressable>
-          </View>
+          </GlassPanel>
         </Pressable>
       </Modal>
     </View>
@@ -132,8 +139,10 @@ const s = StyleSheet.create({
   medalPct: { ...tabular, ...type.small, fontSize: 10, color: colors.brandDeep, marginTop: 1 },
   footnote: { ...type.small, lineHeight: 18, marginTop: spacing.xl, textAlign: 'center' },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  modalCard: { backgroundColor: colors.bgCard, borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', width: '100%', maxWidth: 340 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(15,28,25,0.32)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  modalCard: { width: '100%', maxWidth: 340, borderCurve: 'continuous' },
+  modalCardClip: { backgroundColor: 'transparent', borderCurve: 'continuous' },
+  modalCardContent: { padding: spacing.xl, alignItems: 'center' },
   modalTier: { ...type.label, color: colors.textTertiary, textTransform: 'capitalize', fontSize: 12, marginBottom: 2, marginTop: spacing.sm },
   modalTitle: { ...type.screenTitle, fontSize: 22, marginBottom: spacing.sm, textAlign: 'center' },
   modalDesc: { ...type.body, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg },

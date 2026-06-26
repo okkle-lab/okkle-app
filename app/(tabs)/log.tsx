@@ -66,6 +66,8 @@ const TABS: { key: Tab; label: string; icon: React.ComponentProps<typeof Feather
 ];
 
 const STEPS: LogStep[] = ['kind', 'receipt', 'primary', 'details', 'date', 'review'];
+const SUCCESS_SHEET_EDGE_GAP = spacing.sm;
+const SUCCESS_SHEET_RADIUS = 40;
 
 export default function LogScreen() {
   const router = useRouter();
@@ -194,6 +196,17 @@ export default function LogScreen() {
   // Pass the record's date so a back-dated entry uses that tax year's rate.
   const deduction = miles ? calcDeduction(parseFloat(miles) || 0, vehicle, 0, date) : 0;
 
+  function resetEntryFields() {
+    setMiles('');
+    setAmount('');
+    setDescription('');
+    setReceiptUri(null);
+    setScannedMerchant(null);
+    const t = new Date();
+    t.setHours(12, 0, 0, 0);
+    setDate(t);
+  }
+
   function handleSave() {
     const createdAt = date.toISOString();
     // A weekly entry stores the Mon–Sun range so reports spread it across the days.
@@ -212,8 +225,6 @@ export default function LogScreen() {
       // Learn: this merchant → this category, so the next receipt nails it.
       if (scannedMerchant) learnCategory(scannedMerchant, description);
     }
-    setMiles(''); setAmount(''); setDescription(''); setReceiptUri(null); setScannedMerchant(null);
-    const t = new Date(); t.setHours(12, 0, 0, 0); setDate(t);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setSaved(true);
     setSubmitted(true);
@@ -244,10 +255,12 @@ export default function LogScreen() {
   }
 
   function addAnotherLog() {
+    resetEntryFields();
     resetWorkflow();
   }
 
   function viewRecords() {
+    resetEntryFields();
     resetWorkflow();
     router.push('/records');
   }
@@ -506,20 +519,28 @@ export default function LogScreen() {
     return renderReviewStep();
   }
 
-  if (submitted) {
+  function renderSuccessSheet() {
+    if (!submitted) return null;
+
     return (
-      <View style={s.successBackdrop}>
+      <View style={s.successOverlay}>
+        <View pointerEvents="none" style={s.successDim} />
         <Animated.View
           style={[
             s.successSheetWrap,
             {
-              opacity: successAnim,
               transform: [{ translateY: successAnim.interpolate({ inputRange: [0, 1], outputRange: [260, 0] }) }],
             },
           ]}
         >
-          <GlassPanel tone="green" radius={34} style={s.successSheet} contentStyle={[s.successSheetContent, { paddingBottom: insets.bottom + spacing.xl }]}>
-            <View style={s.successHandle} />
+          <GlassPanel
+            tone="green"
+            radius={SUCCESS_SHEET_RADIUS}
+            isInteractive
+            style={s.successSheet}
+            clipStyle={s.successSheetClip}
+            contentStyle={[s.successSheetContent, { paddingBottom: insets.bottom + spacing.xl }]}
+          >
             <View style={s.successContent}>
               <View style={s.successBadge}>
                 <Feather name="check" size={42} color="#fff" />
@@ -576,23 +597,26 @@ export default function LogScreen() {
         </Animated.View>
       </ScrollView>
 
-      <View style={[s.footer, { paddingBottom: insets.bottom + spacing.md }]}>
-        <NativeGreenButton
-          label="Back"
-          onPress={() => goToStep(stepIndex - 1)}
-          disabled={stepIndex === 0}
-          variant="neutral"
-          height={52}
-          style={s.backBtnWrap}
-          leftIcon={<Feather name="arrow-left" size={18} color={stepIndex === 0 ? colors.textTertiary : colors.textPrimary} />}
-        />
-        <NativeGreenButton
-          label={nextLabel}
-          onPress={() => currentStep === 'review' ? handleSave() : goToStep(stepIndex + 1)}
-          disabled={!canContinue}
-          style={s.nextBtnWrap}
-        />
-      </View>
+      {!submitted ? (
+        <View style={[s.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+          <NativeGreenButton
+            label="Back"
+            onPress={() => goToStep(stepIndex - 1)}
+            disabled={stepIndex === 0}
+            variant="neutral"
+            height={52}
+            style={s.backBtnWrap}
+            leftIcon={<Feather name="arrow-left" size={18} color={stepIndex === 0 ? colors.textTertiary : colors.textPrimary} />}
+          />
+          <NativeGreenButton
+            label={nextLabel}
+            onPress={() => currentStep === 'review' ? handleSave() : goToStep(stepIndex + 1)}
+            disabled={!canContinue}
+            style={s.nextBtnWrap}
+          />
+        </View>
+      ) : null}
+      {renderSuccessSheet()}
       <KeyboardDoneAccessory />
     </KeyboardAvoidingView>
   );
@@ -600,12 +624,19 @@ export default function LogScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  successBackdrop: { flex: 1, backgroundColor: 'transparent', justifyContent: 'flex-end' },
-  successSheetWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
-  successSheet: { width: '100%' },
-  successSheetContent: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.xl },
-  successHandle: { width: 44, height: 5, borderRadius: radius.full, backgroundColor: colors.borderStrong, alignSelf: 'center', opacity: 0.72 },
-  successContent: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingTop: spacing.lg },
+  successOverlay: {
+    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+    justifyContent: 'flex-end',
+  },
+  successDim: {
+    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+    backgroundColor: 'rgba(15, 28, 25, 0.34)',
+  },
+  successSheetWrap: { paddingHorizontal: SUCCESS_SHEET_EDGE_GAP, paddingBottom: SUCCESS_SHEET_EDGE_GAP, zIndex: 1 },
+  successSheet: { width: '100%', borderCurve: 'continuous' },
+  successSheetClip: { backgroundColor: 'transparent', borderCurve: 'continuous' },
+  successSheetContent: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.xl },
+  successContent: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingTop: spacing.md },
   successBadge: {
     width: 92, height: 92, borderRadius: radius.full,
     alignItems: 'center', justifyContent: 'center', backgroundColor: colors.green,

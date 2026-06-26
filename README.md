@@ -178,6 +178,18 @@ src/
 
 ---
 
+## Versioning
+
+Okkle is still in beta, so release versions use `0.x.y` semver. Every PR should bump the app version before review in all three version files:
+
+- `app.json` (`expo.version` — the app version shown by native builds)
+- `package.json`
+- `package-lock.json`
+
+Build counters such as iOS build numbers and Android version codes are managed separately when store builds need them.
+
+---
+
 ## Run locally in Xcode
 
 The recommended local workflow is a native iOS development build in Xcode. This repo uses Expo Continuous Native Generation: `ios/` and `android/` are generated from `app.json`, config plugins, and npm packages, then ignored by git.
