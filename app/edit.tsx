@@ -35,6 +35,7 @@ export default function EditEntry() {
   const [miles, setMiles] = useState(String(trip?.miles ?? record?.miles ?? ''));
   const [amount, setAmount] = useState(String(record?.amount ?? trip?.earnings ?? ''));
   const [description, setDescription] = useState(record?.category ?? record?.notes ?? '');
+  const [merchant, setMerchant] = useState(record?.record_type === 'expense' && record?.notes && record.notes !== record.category ? record.notes : '');
   const [date, setDate] = useState(() => {
     const iso = trip?.started_at ?? record?.created_at;
     const d = iso ? new Date(iso) : new Date();
@@ -82,7 +83,7 @@ export default function EditEntry() {
         deduction: showMiles ? parseFloat(previewDeduction.toFixed(2)) : record.deduction,
         vehicle: showVehicle ? vehicle : record.vehicle,
         category: showDescription ? description : record.category,
-        notes: showDescription ? description : record.notes,
+        notes: showDescription ? (merchant.trim() || null) : record.notes,
         created_at: date.toISOString(),
       });
     }
@@ -188,8 +189,10 @@ export default function EditEntry() {
 
         {showDescription && (
           <>
-            <SectionHeader title="Description" />
-            <TextInput style={s.input} value={description} onChangeText={setDescription} placeholder="Description" placeholderTextColor={colors.textTertiary} />
+            <SectionHeader title="Category" />
+            <TextInput style={s.input} value={description} onChangeText={setDescription} placeholder="Category" placeholderTextColor={colors.textTertiary} />
+            <SectionHeader title="Merchant" />
+            <TextInput style={s.input} value={merchant} onChangeText={setMerchant} placeholder="Merchant" placeholderTextColor={colors.textTertiary} />
           </>
         )}
 

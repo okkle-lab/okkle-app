@@ -10,7 +10,7 @@ import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Chip, VehicleChip, DatePickerField, IconBadge, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll, NativeGreenButton, GlassPanel } from '../../src/components';
+import { Chip, VehicleChip, DatePickerField, IconBadge, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, NativeGreenButton, GlassPanel } from '../../src/components';
 import { HEADER_TITLE_SIDE_CLEARANCE, headerActionTop, headerTitleTop } from '../../src/components/headerLayout';
 import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser, kvGet, kvSet, getPlatforms, getVehicleKeys, getLearnedCategory, learnCategory } from '../../src/db';
@@ -34,6 +34,7 @@ async function persistImage(uri: string): Promise<string> {
 // for fast scanning). Default order roughly follows how often couriers claim
 // each one; this is then personalised by the user's own usage.
 type Cat = { name: string; icon: React.ComponentProps<typeof Feather>['name'] };
+type DropdownOption = { label: string; icon?: React.ComponentProps<typeof Feather>['name'] };
 const EXPENSE_CATEGORIES: Cat[] = [
   { name: 'Fuel', icon: 'droplet' },
   { name: 'Charging', icon: 'battery-charging' },
@@ -56,6 +57,88 @@ function getCatCounts(): Record<string, number> {
 }
 function bumpCat(name: string) {
   const c = getCatCounts(); c[name] = (c[name] || 0) + 1; kvSet('expense_cat_counts', JSON.stringify(c));
+}
+function getMerchantCounts(): Record<string, number> {
+  try { return JSON.parse(kvGet('expense_merchant_counts') || '{}'); } catch { return {}; }
+}
+function bumpMerchant(name: string) {
+  const clean = name.trim();
+  if (!clean) return;
+  const c = getMerchantCounts();
+  c[clean] = (c[clean] || 0) + 1;
+  kvSet('expense_merchant_counts', JSON.stringify(c));
+}
+
+function FreeTextDropdown({
+  label,
+  value,
+  options,
+  placeholder,
+  onChangeText,
+}: {
+  label: string;
+  value: string;
+  options: DropdownOption[];
+  placeholder: string;
+  onChangeText: (value: string) => void;
+}) {
+  const [focused, setFocused] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+  const query = value.trim().toLowerCase();
+  const matches = React.useMemo(() => {
+    const seen = new Set<string>();
+    const filtered = options.filter(option => {
+      const key = option.label.trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return query.length === 0 || key.includes(query);
+    });
+    return filtered.slice(0, 7);
+  }, [options, query]);
+  const showOptions = (focused || expanded) && matches.length > 0;
+
+  function choose(next: string) {
+    onChangeText(next);
+    setExpanded(false);
+    setFocused(false);
+    Keyboard.dismiss();
+  }
+
+  return (
+    <View style={s.dropdownField}>
+      <Text style={s.dropdownLabel}>{label}</Text>
+      <View style={[s.dropdownInputWrap, (focused || expanded) && s.dropdownInputActive]}>
+        <TextInput
+          style={s.dropdownInput}
+          value={value}
+          onChangeText={(next) => { onChangeText(next); setExpanded(true); }}
+          onFocus={() => { setFocused(true); setExpanded(true); }}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textTertiary}
+          autoCorrect={false}
+          autoCapitalize="words"
+        />
+        <Pressable onPress={() => setExpanded(current => !current)} hitSlop={10} style={s.dropdownIcon}>
+          <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={19} color={colors.textSecondary} />
+        </Pressable>
+      </View>
+      {showOptions ? (
+        <View style={s.dropdownMenu}>
+          {matches.map((option, index) => (
+            <Pressable
+              key={`${option.label}-${index}`}
+              onPressIn={() => choose(option.label)}
+              style={[s.dropdownOption, index < matches.length - 1 && s.dropdownOptionBorder]}
+            >
+              {option.icon ? <Feather name={option.icon} size={15} color={colors.textSecondary} /> : null}
+              <Text style={s.dropdownOptionText}>{option.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 type Tab = 'mileage' | 'income' | 'expense';
@@ -112,6 +195,7 @@ export default function LogScreen() {
   );
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [merchant, setMerchant] = useState('');
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scannedMerchant, setScannedMerchant] = useState<string | null>(null);
@@ -119,7 +203,7 @@ export default function LogScreen() {
   const [period, setPeriod] = useState<'day' | 'week'>('day');
   const [saved, setSaved] = useState(false);
   const [catCounts, setCatCounts] = useState(getCatCounts);
-  const [descFocus, setDescFocus] = useState(false);
+  const [merchantCounts, setMerchantCounts] = useState(getMerchantCounts);
   const [numberInputFocused, setNumberInputFocused] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [submitted, setSubmitted] = useState(false);
@@ -132,10 +216,17 @@ export default function LogScreen() {
     const used = Object.entries(catCounts).sort((a, b) => b[1] - a[1]).map(([k]) => k);
     return Array.from(new Set([...used, ...EXPENSE_CATEGORIES.map(c => c.name)]));
   }, [catCounts]);
-  const q = description.trim().toLowerCase();
-  const suggestions = q.length > 0
-    ? suggestionPool.filter(sg => sg.toLowerCase().includes(q) && sg.toLowerCase() !== q).slice(0, 6)
-    : [];
+  const categoryOptions: DropdownOption[] = React.useMemo(() => {
+    const byName = new Map(EXPENSE_CATEGORIES.map(cat => [cat.name, cat.icon]));
+    return suggestionPool.map(label => ({ label, icon: byName.get(label) }));
+  }, [suggestionPool]);
+  const merchantOptions: DropdownOption[] = React.useMemo(() => {
+    const learned = (() => {
+      try { return Object.keys(JSON.parse(kvGet('merchant_categories') || '{}')); } catch { return []; }
+    })();
+    const recent = Object.entries(merchantCounts).sort((a, b) => b[1] - a[1]).map(([name]) => name);
+    return Array.from(new Set([...recent, scannedMerchant, ...learned].filter(Boolean) as string[])).map(label => ({ label }));
+  }, [merchantCounts, scannedMerchant]);
 
   // The Mon–Sun week the chosen date falls in (pay weeks run Monday–Sunday).
   const weekBounds = (d: Date) => {
@@ -146,13 +237,6 @@ export default function LogScreen() {
   };
   const wb = weekBounds(date);
   const fmtShort = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-
-  // Most-used categories first, then the default priority order (benchmark apps
-  // surface what you reach for most so you're not hunting every time).
-  const sortedCats = React.useMemo(
-    () => EXPENSE_CATEGORIES.map((c, i) => ({ c, i })).sort((a, b) => (catCounts[b.c.name] || 0) - (catCounts[a.c.name] || 0) || a.i - b.i).map(x => x.c),
-    [catCounts],
-  );
 
   const tabIndex = Math.max(0, TABS.findIndex(t => t.key === tab));
   const active = TABS[tabIndex];
@@ -203,14 +287,15 @@ export default function LogScreen() {
     try {
       const { available, lines } = await recognizeText(uri);
       if (available && lines.length) {
-        const { amount: amt, merchant, category, date: receiptDate } = parseReceipt(lines);
+        const { amount: amt, merchant: receiptMerchant, category, date: receiptDate } = parseReceipt(lines);
         if (amt && !amount && tab !== 'mileage') setAmount(amt.toFixed(2));
         // Prefer what Okkle has *learned* for this merchant, then the keyword guess,
         // then the merchant name.
-        const learned = getLearnedCategory(merchant);
-        if (tab === 'expense' && !description) setDescription(learned ?? category ?? merchant ?? '');
+        const learned = getLearnedCategory(receiptMerchant);
+        if (tab === 'expense' && !description) setDescription(learned ?? category ?? '');
+        if (tab === 'expense' && receiptMerchant && !merchant) setMerchant(receiptMerchant);
         if (receiptDate) setDate(receiptDate);
-        setScannedMerchant(merchant);
+        setScannedMerchant(receiptMerchant);
       }
     } finally {
       setScanning(false);
@@ -224,6 +309,7 @@ export default function LogScreen() {
     setMiles('');
     setAmount('');
     setDescription('');
+    setMerchant('');
     setReceiptUri(null);
     setScannedMerchant(null);
     const t = new Date();
@@ -244,10 +330,13 @@ export default function LogScreen() {
       saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: null }, createdAt);
     } else {
       if (!amount || !description) { Alert.alert('Enter amount and description'); return; }
-      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: description }, createdAt);
-      bumpCat(description); setCatCounts(getCatCounts());
+      const cleanCategory = description.trim();
+      const cleanMerchant = merchant.trim();
+      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: cleanCategory, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: cleanMerchant || null }, createdAt);
+      bumpCat(cleanCategory); setCatCounts(getCatCounts());
+      bumpMerchant(cleanMerchant); setMerchantCounts(getMerchantCounts());
       // Learn: this merchant → this category, so the next receipt nails it.
-      if (scannedMerchant) learnCategory(scannedMerchant, description);
+      if (cleanMerchant) learnCategory(cleanMerchant, cleanCategory);
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setSaved(true);
@@ -303,7 +392,7 @@ export default function LogScreen() {
     currentStep === 'kind' ? 'What are you logging?' :
     currentStep === 'receipt' ? 'Add a receipt' :
     currentStep === 'primary' ? (tab === 'mileage' ? 'How many miles?' : tab === 'income' ? 'How much did you earn?' : 'How much was it?') :
-    currentStep === 'details' ? (tab === 'expense' ? 'What was it for?' : tab === 'mileage' ? 'Which vehicle?' : 'Which platform?') :
+    currentStep === 'details' ? (tab === 'expense' ? 'Category and merchant' : tab === 'mileage' ? 'Which vehicle?' : 'Which platform?') :
     currentStep === 'date' ? 'When was it?' :
     'Review and save';
 
@@ -311,7 +400,7 @@ export default function LogScreen() {
     currentStep === 'kind' ? 'Okkle will ask one thing at a time.' :
     currentStep === 'receipt' ? (tab === 'expense' ? 'Choose a receipt photo. AI fills numbers and category, and keeps the image for accounting.' : 'Optional. Choose a receipt or screenshot and Okkle will fill what it can.') :
     currentStep === 'primary' ? (tab === 'mileage' ? 'Use the manually driven miles for this log.' : 'You can edit anything Okkle read from the receipt.') :
-    currentStep === 'details' ? (tab === 'expense' ? 'Pick a category or type your own.' : tab === 'mileage' ? 'Which vehicle did you drive?' : 'Which app paid you?') :
+    currentStep === 'details' ? (tab === 'expense' ? 'Pick from the dropdowns or type your own values.' : tab === 'mileage' ? 'Which vehicle did you drive?' : 'Which app paid you?') :
     currentStep === 'date' ? 'Choose a day, or log the amount across a whole pay week.' :
     'Check the details before adding it to your records.';
 
@@ -427,42 +516,20 @@ export default function LogScreen() {
     if (tab === 'expense') {
       return (
         <View style={s.stepStack}>
-          <ChipScroll>
-            {sortedCats.map(cat => {
-              const on = description === cat.name;
-              return (
-                <Pressable key={cat.name} onPress={() => setDescription(cat.name)} style={[s.catChip, on && s.catChipActive]}>
-                  <Feather name={cat.icon} size={15} color={on ? colors.brandDeep : colors.textSecondary} />
-                  <Text style={[s.catChipText, on && s.catChipTextActive]}>{cat.name}</Text>
-                </Pressable>
-              );
-            })}
-          </ChipScroll>
-          <View style={s.searchWrap}>
-            <Feather name="search" size={16} color={colors.textTertiary} />
-            <TextInput
-              style={s.searchInput}
-              placeholder="Search or type your own"
-              placeholderTextColor={colors.textTertiary}
-              value={description}
-              onChangeText={setDescription}
-              onFocus={() => setDescFocus(true)}
-              onBlur={() => setDescFocus(false)}
-            />
-          </View>
-          {descFocus && suggestions.length > 0 && (
-            <View style={s.suggestBox}>
-              {suggestions.map((sg, i) => {
-                const known = EXPENSE_CATEGORIES.find(c => c.name === sg);
-                return (
-                  <Pressable key={sg} onPress={() => { setDescription(sg); setDescFocus(false); }} style={[s.suggestRow, i < suggestions.length - 1 && s.suggestBorder]}>
-                    <Feather name={known?.icon ?? 'corner-down-left'} size={15} color={colors.textSecondary} />
-                    <Text style={s.suggestText}>{sg}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
+          <FreeTextDropdown
+            label="Category"
+            value={description}
+            onChangeText={setDescription}
+            options={categoryOptions}
+            placeholder="Choose or type a category"
+          />
+          <FreeTextDropdown
+            label="Merchant"
+            value={merchant}
+            onChangeText={setMerchant}
+            options={merchantOptions}
+            placeholder="Choose or type a merchant"
+          />
           <View style={s.notice}>
             <Text style={s.noticeText}>Vehicle running costs are flagged for accountant review when you use simplified mileage.</Text>
           </View>
@@ -525,6 +592,7 @@ export default function LogScreen() {
       [tab === 'mileage' ? 'Miles' : 'Amount', tab === 'mileage' ? `${miles || '0'} mi` : fmtGbp(parseFloat(amount) || 0)],
       ...(tab === 'income' ? [['Platform', platform || '-']] : []),
       ...(tab === 'expense' ? [['Category', description || '-']] : []),
+      ...(tab === 'expense' ? [['Merchant', merchant || '-']] : []),
       ...(tab === 'mileage' ? [['Vehicle', myVehicles.find(v => v.key === vehicle)?.label ?? vehicle]] : []),
       ['When', period === 'week' ? `${fmtShort(wb.start)} - ${fmtShort(wb.end)}` : fmtShort(date)],
       ['Receipt', receiptUri ? 'Attached' : 'Not attached'],
@@ -763,6 +831,51 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
     padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg,
   },
+  dropdownField: { gap: spacing.xs },
+  dropdownLabel: { ...type.label, fontWeight: font.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
+  dropdownInputWrap: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgCard,
+    overflow: 'hidden',
+  },
+  dropdownInputActive: { borderColor: colors.brandMid },
+  dropdownInput: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 17,
+    fontWeight: font.medium,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 13,
+  },
+  dropdownIcon: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  dropdownMenu: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    marginTop: -spacing.xs,
+    overflow: 'hidden',
+    boxShadow: '0 10px 24px rgba(27,38,33,0.10)',
+  },
+  dropdownOption: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: spacing.md,
+  },
+  dropdownOptionBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  dropdownOptionText: { ...type.bodyMedium, color: colors.textPrimary, fontSize: 15 },
   chipRow: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.lg },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.sm, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, backgroundColor: colors.bg },
   searchInput: { flex: 1, fontSize: 16, color: colors.textPrimary, paddingVertical: 12 },

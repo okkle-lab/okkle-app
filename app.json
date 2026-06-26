@@ -2,7 +2,7 @@
   "expo": {
     "name": "Okkle",
     "slug": "okkle",
-    "version": "0.3",
+    "version": "0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",

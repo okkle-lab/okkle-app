@@ -108,7 +108,8 @@ export default function RecordsScreen() {
       } else if (r.record_type === 'income') {
         c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'dollar-sign', tone: 'green', title: r.platform ?? 'Earnings', source: null, meta: `Earnings · ${when}`, amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
       } else {
-        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'file-text', tone: 'amber', title: r.category ?? r.notes ?? 'Expense', source: null, meta: when, amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
+        const merchant = r.notes && r.notes !== r.category ? r.notes : null;
+        c = { id: `r${r.id}`, edit: () => openEdit('record', r.id), icon: 'file-text', tone: 'amber', title: r.category ?? r.notes ?? 'Expense', source: null, meta: merchant ? `${merchant} · ${when}` : when, amount: fmtGbp(r.amount ?? 0), amountColor: colors.textPrimary, amountSub: null };
       }
     }
     return (
