@@ -261,6 +261,7 @@ export default function LogScreen() {
   function chooseKind(nextTab: Tab) {
     setTab(nextTab);
     Haptics.selectionAsync().catch(() => {});
+    if (currentStep === 'kind') goToStep(stepIndex + 1);
   }
 
   function resetWorkflow() {
@@ -306,7 +307,7 @@ export default function LogScreen() {
 
   const stepSub =
     currentStep === 'kind' ? 'Okkle will ask one thing at a time.' :
-    currentStep === 'receipt' ? (tab === 'expense' ? 'Take a photo or upload one, then Okkle will try to fill the next answers.' : 'Optional. Upload a receipt or screenshot and Okkle will fill what it can.') :
+    currentStep === 'receipt' ? (tab === 'expense' ? 'Choose a receipt photo. AI fills numbers and category, and keeps the image for accounting.' : 'Optional. Choose a receipt or screenshot and Okkle will fill what it can.') :
     currentStep === 'primary' ? (tab === 'mileage' ? 'Use the manually driven miles for this log.' : 'You can edit anything Okkle read from the receipt.') :
     currentStep === 'details' ? (tab === 'expense' ? 'Pick a category or type your own.' : tab === 'mileage' ? 'Which vehicle did you drive?' : 'Which app paid you?') :
     currentStep === 'date' ? 'Choose a day, or log the amount across a whole pay week.' :
@@ -336,7 +337,9 @@ export default function LogScreen() {
           </View>
         ) : null}
         <NativeGreenButton label="Choose from photos" onPress={() => pickReceipt(false)} height={62} />
-        <NativeGreenButton label="Take a photo" onPress={() => pickReceipt(true)} variant="neutral" height={62} />
+        {tab === 'expense' ? (
+          <NativeGreenButton label="Take a photo" onPress={() => pickReceipt(true)} variant="neutral" height={62} />
+        ) : null}
       </View>
     );
   }
@@ -613,7 +616,7 @@ export default function LogScreen() {
         </Animated.View>
       </ScrollView>
 
-      {!submitted ? (
+      {!submitted && currentStep !== 'kind' ? (
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <NativeGreenButton
             label="Back"
