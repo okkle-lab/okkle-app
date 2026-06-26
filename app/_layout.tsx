@@ -59,7 +59,6 @@ export default function RootLayout() {
         <Stack.Screen name="edit" options={modalOptions} />
         <Stack.Screen name="compare" options={modalOptions} />
         <Stack.Screen name="medals" options={modalOptions} />
-        <Stack.Screen name="insights" options={modalOptions} />
         <Stack.Screen name="export" options={modalOptions} />
         <Stack.Screen name="feedback" options={modalOptions} />
         <Stack.Screen name="key-dates" options={modalOptions} />

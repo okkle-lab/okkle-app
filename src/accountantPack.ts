@@ -1,5 +1,5 @@
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { shareFileAs } from './exportFile';
 import {
   getUser, getTrips, getRecords, getTaxYearSummary, getTaxYearMiles,
@@ -23,7 +23,7 @@ function ukDate(iso: string): string {
 async function imageDataUri(uri: string | null): Promise<string | null> {
   if (!uri) return null;
   try {
-    const b64 = await (FileSystem as any).readAsStringAsync(uri, { encoding: 'base64' });
+    const b64 = await new File(uri).base64();
     return `data:image/jpeg;base64,${b64}`;
   } catch {
     return null;

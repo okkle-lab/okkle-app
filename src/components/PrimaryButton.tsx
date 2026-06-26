@@ -1,4 +1,3 @@
-import React from 'react';
 import { Pressable, Text, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, radius, font } from '../theme';
 import { NativeGreenButton } from './NativeGreenButton';

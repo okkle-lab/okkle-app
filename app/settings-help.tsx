@@ -1,4 +1,3 @@
-import React from 'react';
 import { useRouter } from 'expo-router';
 import { SettingsMenuPage, type SettingsMenuItem } from '../src/components/SettingsMenuPage';
 import { kvSet } from '../src/db';

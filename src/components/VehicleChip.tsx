@@ -1,4 +1,3 @@
-import React from 'react';
 import { Pressable, Text, ViewStyle } from 'react-native';
 import { colors, radius, font } from '../theme';
 import { VehicleIcon } from './Icon';

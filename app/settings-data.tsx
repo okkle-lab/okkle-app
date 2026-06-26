@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Platform, View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import { useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, font, spacing, radius, type } from '../src/theme';
+import { colors, spacing, type } from '../src/theme';
 import { Card, SectionHeader, IconBadge, ModalHeader } from '../src/components';
 import { resetAllData } from '../src/db';
 import { backupNow, restoreFromFile } from '../src/backup';
@@ -13,7 +13,14 @@ export default function SettingsData() {
 
   async function doBackup() {
     setBusy(true);
-    try { await backupNow(); } catch { Alert.alert('Backup failed', 'Could not create the backup file.'); }
+    try {
+      const result = await backupNow();
+      if (!result.shared) {
+        Alert.alert('Backup created', `Created ${result.fileName}, but this device could not open the share sheet.`);
+      }
+    } catch {
+      Alert.alert('Backup failed', 'Could not create the backup file.');
+    }
     setBusy(false);
   }
 
@@ -44,10 +51,10 @@ export default function SettingsData() {
 
       <SectionHeader title="Backup & restore" />
       <Card style={{ gap: spacing.md }}>
-        <Text style={s.aboutText}>Your data lives only on this phone. Back it up to your own iCloud or Files so you don't lose your records — HMRC expects records kept for at least 5 years.</Text>
+        <Text style={s.aboutText}>Your data lives only on this phone. Create a backup file, then choose Save to Files and pick iCloud Drive so you don't lose your records — HMRC expects records kept for at least 5 years.</Text>
         <Pressable onPress={doBackup} disabled={busy} style={s.actionRow}>
           <IconBadge icon="upload-cloud" tone="mint" />
-          <Text style={s.actionText}>Back up my data</Text>
+          <Text style={s.actionText}>Create backup file</Text>
           <Feather name="chevron-right" size={18} color={colors.textTertiary} />
         </Pressable>
         <View style={s.divider} />

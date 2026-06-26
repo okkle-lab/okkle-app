@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
-import { mileageRate, calcDeduction } from '../db/tax';
+import { calcDeduction } from '../db/tax';
 import { setTripActive } from '../autoTrip';
 
 const TRIP_NOTIF_ID = 'okkle-trip-active';

@@ -64,6 +64,7 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 ### Insights — where & when you earn most
 - Trips capture an on-device GPS breadcrumb and a reverse-geocoded **area name**.
 - The Insights screen is **split into three tabs** — **Where** (ranked areas + on-device hotspot heatmap), **When** (best hours), **Money** (platform ranking + business P&L) — with the headline takeaway pinned above, so it's never one long scroll.
+- **Smart controls** for Trip nudges and Reminders live here, alongside the AI guidance they power.
 - **Time-of-day filter** (All / Morning / Lunch / Afternoon / Dinner / Late) — compare where you earn most at each part of the day.
 - **Best zone × best time tip** — your most lucrative combination, tied to your £/hour: "You earn most around Wimbledon on evenings — £14.20/h · £4.10/h above your average." Areas are ranked by £/hour.
 
@@ -118,7 +119,7 @@ All exports save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26
 
 ### Settings & onboarding
 - Value-first onboarding + a **first-run spotlight tour** (coachmarks) that highlights Start-a-trip, Level/XP, your streak and Insights. Onboarding: welcome → name → vehicle → platforms → tax region (GPS auto-detect) → a "what to do first" step (start a trip, log weekly pay, check Insights).
-- Edit everything in Settings: name, vehicle, platforms, tax region, income band, reminder preferences.
+- Edit profile/tax details in Settings; tune smart nudges and reminder preferences in Insights.
 - Delete all data option.
 
 ---

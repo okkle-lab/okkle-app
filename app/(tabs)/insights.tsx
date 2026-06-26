@@ -1,22 +1,31 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Alert, Linking, Switch, View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Card, SectionHeader, HeatMapView, IconBadge } from '../src/components';
-import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../src/db';
-import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../src/db/tax';
+import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
+import { AiGlowPanel, Card, Chip, SectionHeader, HeatMapView, IconBadge, CollapsingHeader, SettingsGlassButton } from '../../src/components';
+import { disableAutoTrip, enableAutoTrip, isAutoTripEnabled } from '../../src/autoTrip';
+import { getUser, saveUser, kvGet, kvSet, getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../../src/db';
+import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
+import { syncReminders, WEEKDAYS } from '../../src/notifications';
 
-type InsightTab = 'where' | 'when' | 'money';
-const TABS: { key: InsightTab; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
+type InsightsTab = 'where' | 'when' | 'money';
+const TABS: { key: InsightsTab; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
   { key: 'where', label: 'Where', icon: 'map-pin' },
   { key: 'when', label: 'When', icon: 'clock' },
   { key: 'money', label: 'Money', icon: 'trending-up' },
 ];
 
+type LogFrequency = 'weekly' | 'monthly';
+const DAY_LABELS: { [key: string]: string } = { sun: 'Sun', mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat' };
+
+function userFrequency(): LogFrequency {
+  return getUser()?.log_frequency === 'monthly' ? 'monthly' : 'weekly';
+}
+
 export default function InsightsScreen() {
   const router = useRouter();
-  const [tab, setTab] = React.useState<InsightTab>('where');
+  const [tab, setTab] = React.useState<InsightsTab>('where');
   const [filter, setFilter] = React.useState<TimeFilter>('all');
   const [zones, setZones] = React.useState<ZoneStat[]>([]);
   const [points, setPoints] = React.useState<HeatPoint[]>([]);
@@ -24,6 +33,12 @@ export default function InsightsScreen() {
   const [best, setBest] = React.useState<BestSpot | null>(null);
   const [pnl, setPnl] = React.useState<YearPnL | null>(null);
   const [platforms, setPlatforms] = React.useState<PlatformStat[]>([]);
+  const [autoTripOn, setAutoTripOn] = React.useState(isAutoTripEnabled);
+  const [autoTripBusy, setAutoTripBusy] = React.useState(false);
+  const [reminderOn, setReminderOn] = React.useState(() => (getUser()?.reminder_enabled ?? 1) === 1);
+  const [reminderDay, setReminderDay] = React.useState(() => getUser()?.reminder_day ?? 'sun');
+  const [frequency, setFrequency] = React.useState<LogFrequency>(userFrequency);
+  const [deadlinesOn, setDeadlinesOn] = React.useState(() => (kvGet('deadline_reminders') ?? 'on') !== 'off');
 
   React.useEffect(() => {
     setZones(getZoneStats(filter));
@@ -37,21 +52,153 @@ export default function InsightsScreen() {
     setPlatforms(getPlatformStats());
   }, []);
 
+  useFocusEffect(React.useCallback(() => {
+    const u = getUser();
+    setAutoTripOn(isAutoTripEnabled());
+    setReminderOn((u?.reminder_enabled ?? 1) === 1);
+    setReminderDay(u?.reminder_day ?? 'sun');
+    setFrequency(userFrequency());
+    setDeadlinesOn((kvGet('deadline_reminders') ?? 'on') !== 'off');
+  }, []));
+
   const anyEarnings = zones.some(z => z.earnings > 0);
   const anyPerHour = zones.some(z => z.perHour > 0);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
   const anyBucketEarnings = buckets.some(b => b.earnings > 0);
   const hasData = zones.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.earnings > 0) || !!pnl?.hasData;
 
+  async function persistReminders(next: Partial<{ reminderOn: boolean; reminderDay: string; frequency: LogFrequency; deadlinesOn: boolean }>) {
+    const nextReminderOn = next.reminderOn ?? reminderOn;
+    const nextReminderDay = next.reminderDay ?? reminderDay;
+    const nextFrequency = next.frequency ?? frequency;
+    const nextDeadlinesOn = next.deadlinesOn ?? deadlinesOn;
+    kvSet('deadline_reminders', nextDeadlinesOn ? 'on' : 'off');
+    saveUser({ reminder_enabled: nextReminderOn ? 1 : 0, reminder_day: nextReminderDay, log_frequency: nextFrequency });
+    const updated = getUser();
+    if (updated) await syncReminders(updated);
+  }
+
+  function updateReminderOn(next: boolean) {
+    setReminderOn(next);
+    persistReminders({ reminderOn: next }).catch(() => {});
+  }
+
+  function updateFrequency(next: LogFrequency) {
+    setFrequency(next);
+    persistReminders({ frequency: next }).catch(() => {});
+  }
+
+  function updateReminderDay(next: string) {
+    setReminderDay(next);
+    persistReminders({ reminderDay: next }).catch(() => {});
+  }
+
+  function updateDeadlinesOn(next: boolean) {
+    setDeadlinesOn(next);
+    persistReminders({ deadlinesOn: next }).catch(() => {});
+  }
+
+  async function toggleAutoTrip(next: boolean) {
+    if (autoTripBusy) return;
+    setAutoTripBusy(true);
+    if (next) {
+      const res = await enableAutoTrip();
+      if (res.ok) {
+        setAutoTripOn(true);
+      } else if (res.reason === 'background') {
+        Alert.alert(
+          'Allow “Always”',
+          'To nudge you while Okkle is closed, iOS needs location set to “Always”. Open Settings to change it.',
+          [{ text: 'Not now' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
+        );
+      } else if (res.reason === 'foreground') {
+        Alert.alert('Location needed', 'Allow location access to detect when you start driving.');
+      } else {
+        Alert.alert('Couldn’t enable', 'Something went wrong turning this on. Please try again.');
+      }
+    } else {
+      await disableAutoTrip();
+      setAutoTripOn(false);
+    }
+    setAutoTripBusy(false);
+  }
+
   return (
-    <View style={s.screen}>
-      <ScrollView contentContainerStyle={s.content}>
-        <View style={s.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12}><Feather name="chevron-left" size={26} color={colors.textPrimary} /></Pressable>
-          <Text style={s.title}>Insights</Text>
-          <View style={{ width: 26 }} />
-        </View>
-        <Text style={s.sub}>Where and when your work pays off best.</Text>
+    <CollapsingHeader
+      title="Insights"
+      subtitle="AI guidance, smart nudges and patterns from your work."
+      right={<SettingsGlassButton onPress={() => router.push('/settings')} />}
+    >
+        <AiGlowPanel style={s.smartCard} contentStyle={s.smartContent}>
+          <View style={s.smartHead}>
+            <IconBadge icon="navigation" tone="blue" size={38} />
+            <Text style={s.smartKicker}>Trip nudges</Text>
+          </View>
+          <Text style={s.smartTitle}>Never forget to track a trip</Text>
+          <Text style={s.smartBody}>
+            Okkle watches both ends of your trip. When it senses you’ve started driving it nudges you to start tracking, then reminds you to end and save your miles once you’ve stopped.
+          </Text>
+          <View style={s.toggleRow}>
+            <View style={s.toggleCopy}>
+              <Text style={s.toggleTitle}>Trip nudges</Text>
+              <Text style={s.toggleSub}>{autoTripOn ? 'On' : 'Off'}</Text>
+            </View>
+            <Switch value={autoTripOn} onValueChange={toggleAutoTrip} disabled={autoTripBusy} trackColor={{ true: colors.brand, false: colors.borderStrong }} />
+          </View>
+          <View style={s.noticeRow}>
+            <Feather name="alert-circle" size={16} color={colors.amberDark} />
+            <Text style={s.noticeText}>Detection is a prompt, not auto-logging. Nothing is recorded until you confirm.</Text>
+          </View>
+        </AiGlowPanel>
+
+        <AiGlowPanel style={s.smartCard} contentStyle={s.smartContent}>
+          <View style={s.smartHead}>
+            <IconBadge icon="bell" tone="violet" size={38} />
+            <Text style={s.smartKicker}>Reminders</Text>
+          </View>
+          <Text style={s.smartTitle}>Keep your records fresh</Text>
+          <View style={s.toggleRow}>
+            <View style={s.toggleCopy}>
+              <Text style={s.toggleTitle}>Logging reminder</Text>
+              <Text style={s.toggleSub}>A nudge to log your miles and earnings</Text>
+            </View>
+            <Switch value={reminderOn} onValueChange={updateReminderOn} trackColor={{ true: colors.brand, false: colors.borderStrong }} />
+          </View>
+          {reminderOn && (
+            <>
+              <View style={s.fieldGroup}>
+                <Text style={s.fieldLabel}>Frequency</Text>
+                <View style={s.chips}>
+                  <Chip label="Weekly" selected={frequency === 'weekly'} onPress={() => updateFrequency('weekly')} />
+                  <Chip label="Monthly" selected={frequency === 'monthly'} onPress={() => updateFrequency('monthly')} />
+                </View>
+              </View>
+              <View style={s.fieldGroup}>
+                <Text style={s.fieldLabel}>Reminder day</Text>
+                <View style={s.chips}>
+                  {WEEKDAYS.map(day => (
+                    <Chip key={day} label={DAY_LABELS[day]} selected={reminderDay === day} onPress={() => updateReminderDay(day)} />
+                  ))}
+                </View>
+              </View>
+            </>
+          )}
+          <View style={s.divider} />
+          <View style={s.toggleRow}>
+            <View style={s.toggleCopy}>
+              <Text style={s.toggleTitle}>Tax deadline reminders</Text>
+              <Text style={s.toggleSub}>Self Assessment, payment and MTD dates</Text>
+            </View>
+            <Switch value={deadlinesOn} onValueChange={updateDeadlinesOn} trackColor={{ true: colors.brand, false: colors.borderStrong }} />
+          </View>
+          <Pressable onPress={() => router.push('/key-dates')} style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.65 }]}>
+            <View style={s.toggleCopy}>
+              <Text style={s.toggleTitle}>Key tax dates</Text>
+              <Text style={s.toggleSub}>View HMRC deadlines and add to calendar</Text>
+            </View>
+            <Feather name="chevron-right" size={20} color={colors.textTertiary} />
+          </Pressable>
+        </AiGlowPanel>
 
         {/* Headline takeaway — always visible above the categories */}
         {best && (
@@ -190,18 +337,7 @@ export default function InsightsScreen() {
             )}
           </>
         )}
-
-        {!hasData && (
-          <Card style={{ marginTop: spacing.xl, alignItems: 'center', paddingVertical: spacing.xxl }}>
-            <View style={{ marginBottom: 10 }}><IconBadge icon="map-pin" tone="mint" size={48} /></View>
-            <Text style={[type.bodyMedium, { textAlign: 'center' }]}>No data yet</Text>
-            <Text style={[type.caption, { textAlign: 'center', marginTop: 4, lineHeight: 19 }]}>
-              Track trips with GPS and log your pay — your hotspots, best hours and business stats will appear here.
-            </Text>
-          </Card>
-        )}
-      </ScrollView>
-    </View>
+    </CollapsingHeader>
   );
 }
 
@@ -219,10 +355,23 @@ const s = StyleSheet.create({
   pnlRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
   pnlLabel: { fontSize: 15, color: colors.textSecondary, flex: 1, paddingRight: spacing.md },
   pnlValue: { ...tabular, fontSize: 15, fontWeight: font.medium, color: colors.textPrimary },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  title: { ...type.screenTitle },
-  sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.lg },
+  smartCard: { marginBottom: spacing.lg, borderCurve: 'continuous' },
+  smartContent: { gap: spacing.md },
+  smartHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  smartKicker: { ...type.label, color: '#6D5DF6', fontWeight: font.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
+  smartTitle: { ...type.heading, fontSize: 20, lineHeight: 25 },
+  smartBody: { ...type.caption, color: colors.textSecondary, lineHeight: 19 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  toggleCopy: { flex: 1, minWidth: 0 },
+  toggleTitle: { ...type.bodyMedium, fontSize: 15 },
+  toggleSub: { ...type.caption, marginTop: 2, lineHeight: 18 },
+  noticeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.amberLight },
+  noticeText: { ...type.caption, color: colors.amberDark, lineHeight: 18, flex: 1 },
+  fieldGroup: { gap: spacing.sm },
+  fieldLabel: { ...type.label },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  divider: { height: 1, backgroundColor: colors.border },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
 
   tip: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
   tipText: { ...type.body, fontSize: 15, color: colors.textPrimary, lineHeight: 21 },

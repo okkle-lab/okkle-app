@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Platform, View, Text, ScrollView, StyleSheet, Switch, Pressable } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, Switch, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, Chip, SectionHeader, PrimaryButton, ModalHeader } from '../src/components';
+import { colors, spacing, type } from '../src/theme';
+import { Card, Chip, PrimaryButton, ModalHeader } from '../src/components';
 import { getUser, saveUser, kvGet, kvSet } from '../src/db';
 import { syncReminders, WEEKDAYS } from '../src/notifications';
 

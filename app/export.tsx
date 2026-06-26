@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, IconBadge, ModalHeader } from '../src/components';
@@ -14,7 +13,6 @@ import { shareAccountantPack } from '../src/accountantPack';
 import { shareTextExport } from '../src/exportFile';
 
 export default function ExportScreen() {
-  const router = useRouter();
   const [packBusy, setPackBusy] = React.useState(false);
 
   const year = getTaxYearSummary();

@@ -1,20 +1,23 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TextInput, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, CollapsingHeader, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, GlassPanel } from '../../src/components';
+import { colors, font, spacing, radius, type, tabular } from '../theme';
+import { Card } from './Card';
+import { SectionHeader } from './SectionHeader';
+import { numberKeyboardDoneProps } from './KeyboardDoneAccessory';
+import { GlassPanel } from './GlassPanel';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries,
   kvGet, kvGetNum, kvSet, type QuarterSummary,
-} from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel, fmtPct } from '../../src/db/tax';
-import { tabular } from '../../src/theme';
+} from '../db';
+import { fmtGbp, fmtMiles, taxYearLabel, fmtPct } from '../db/tax';
 import {
-  compareMethods, taxPosition, class2Note, caRate, PERSONAL_ALLOWANCE, RATES_YEAR,
-} from '../../src/db/taxcalc';
-export default function TaxScreen() {
+  compareMethods, taxPosition, class2Note, caRate, RATES_YEAR,
+} from '../db/taxcalc';
+
+export function TaxPanel() {
   const router = useRouter();
   const [year, setYear] = React.useState(getTaxYearSummary());
   const [bizMiles, setBizMiles] = React.useState(0);
@@ -54,14 +57,8 @@ export default function TaxScreen() {
   const totalExpenses = chosenDeduction + otherExpenses;
   const pos = taxPosition(year.earnings, totalExpenses, region, parseFloat(otherIncome) || 0);
 
-
-  const gear = (
-    <SettingsGlassButton onPress={() => router.push('/settings')} />
-  );
-
   return (
-    <View style={{ flex: 1 }}>
-      <CollapsingHeader title="Tax" subtitle={`Your estimated position for ${taxYearLabel()}`} right={gear}>
+    <>
       {/* Headline: what to set aside — the number that matters on this tab */}
       <GlassPanel tone="amber" style={s.setAside} contentStyle={s.setAsideContent}>
         <View style={s.setAsideIcon}><Feather name="shield" size={20} color={colors.amberDark} /></View>
@@ -227,9 +224,7 @@ export default function TaxScreen() {
           Estimated using {RATES_YEAR} HMRC rates (allowances frozen to 2027/28) and what you've logged — not tax advice. Your accountant confirms the final figures and files your return.
         </Text>
       </View>
-      </CollapsingHeader>
-      <KeyboardDoneAccessory />
-    </View>
+    </>
   );
 }
 

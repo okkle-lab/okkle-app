@@ -7,7 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Chip, SectionHeader, PrimaryButton, VehicleChip, DatePickerField, RouteMap, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
-import { PLATFORMS, VEHICLES, calcDeduction, fmtGbp, fmtMiles } from '../src/db/tax';
+import { VEHICLES, calcDeduction, fmtGbp, fmtMiles } from '../src/db/tax';
 import {
   getTrip, updateTrip, deleteTrip, getRecord, updateRecord, deleteRecord, getVehicleKeys, getPlatforms,
 } from '../src/db';

@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Share } from 'react-native';
 import { taxYearLabel } from './db/tax';
@@ -28,10 +28,11 @@ const MIME: { [ext: string]: string } = {
 export async function shareTextExport(what: string, ext: 'csv' | 'txt', content: string): Promise<void> {
   const name = exportFilename(what, ext);
   try {
-    const uri = (FileSystem as any).cacheDirectory + name;
-    await (FileSystem as any).writeAsStringAsync(uri, content);
+    const file = new File(Paths.cache, name);
+    file.create({ overwrite: true, intermediates: true });
+    file.write(content);
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri, { mimeType: MIME[ext], dialogTitle: name, UTI: UTI[ext] });
+      await Sharing.shareAsync(file.uri, { mimeType: MIME[ext], dialogTitle: name, UTI: UTI[ext] });
       return;
     }
   } catch {
@@ -45,9 +46,9 @@ export async function shareFileAs(srcUri: string, what: string, ext: 'pdf'): Pro
   const name = exportFilename(what, ext);
   let uri = srcUri;
   try {
-    const dest = (FileSystem as any).cacheDirectory + name;
-    await (FileSystem as any).copyAsync({ from: srcUri, to: dest });
-    uri = dest;
+    const dest = new File(Paths.cache, name);
+    await new File(srcUri).copy(dest, { overwrite: true });
+    uri = dest.uri;
   } catch {
     // if the copy fails, share the original file
   }

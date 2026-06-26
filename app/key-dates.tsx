@@ -1,6 +1,4 @@
-import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, ModalHeader } from '../src/components';
@@ -27,7 +25,6 @@ function daysUntil(d: Date): number {
 }
 
 export default function KeyDatesScreen() {
-  const router = useRouter();
   return (
     <View style={s.screen}>
       <ScrollView contentContainerStyle={s.content}>

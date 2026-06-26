@@ -3,33 +3,18 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, D
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../../src/theme';
-import { Card, SectionHeader, CountUp, Medal, BarChart, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, HeatMapView, CoachMarks, SettingsGlassButton, GlassPanel, type CoachStep } from '../../src/components';
+import { Card, SectionHeader, CountUp, Medal, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, CoachMarks, SettingsGlassButton, GlassPanel, type CoachStep } from '../../src/components';
 import {
   getUser,
   getTaxYearSummary,
-  getPeriodSummary, getPlatformStatsForPeriod,
   getStreak, getAchievements, popNewAchievements, getWeeklyChallenges,
-  getBestSpot, getZoneStats, getEarningsByTimeOfDay, getPlatformStats, getHeatPoints, getPeriodSeries, kvGet, kvSet,
-  type PlatformStat, type Period, type PeriodSummary, type Achievement,
-  type Challenge, type BestSpot, type SeriesPoint, type ZoneStat, type TimeBucket, type HeatPoint,
+  kvGet, kvSet,
+  type Achievement,
+  type Challenge,
 } from '../../src/db';
-import { fmtGbp, fmtMiles, taxYearLabel, fmtPerHour, fmtPerMile, fmtHours } from '../../src/db/tax';
+import { fmtGbp, fmtMiles, taxYearLabel } from '../../src/db/tax';
 import { tabular } from '../../src/theme';
 
-
-// A reference date inside the *previous* comparable period, for the trend.
-function prevRef(period: Period): Date {
-  const d = new Date();
-  if (period === 'today') d.setDate(d.getDate() - 1);
-  else if (period === 'week') d.setDate(d.getDate() - 7);
-  else if (period === 'month') d.setMonth(d.getMonth() - 1, 15);
-  else d.setFullYear(d.getFullYear() - 1);
-  return d;
-}
-const PREV_WORD: { [k in Period]: string } = { today: 'yesterday', week: 'last week', month: 'last month', year: 'last year' };
-const PERIODS: Period[] = ['today', 'week', 'month', 'year'];
-const PERIOD_LABELS = ['Today', 'Week', 'Month', 'Year'];
-type Bundle = { data: PeriodSummary; platforms: PlatformStat[]; prev: PeriodSummary; series: SeriesPoint[] };
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
 function flatGoalTone(tone: string, isDark: boolean) {
@@ -60,20 +45,6 @@ function FlatGoalIcon({ icon, tone, isDark, size = 36 }: { icon: FeatherName; to
   );
 }
 
-// A clear date range under the period switcher (e.g. "Mon 17 – Sun 23 Jun").
-function fmtPeriodRange(period: Period, startIso: string, endIso: string): string {
-  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' };
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  if (period === 'today') return start.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-  if (period === 'month') return start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  if (period === 'year') {
-    const y = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${y(start)} – ${y(end)}`;
-  }
-  return `${start.toLocaleDateString('en-GB', opts)} – ${end.toLocaleDateString('en-GB', opts)}`;
-}
-
 export default function HomeScreen() {
   const router = useRouter();
   const win = Dimensions.get('window');
@@ -82,26 +53,14 @@ export default function HomeScreen() {
     ? ['#1A2420', '#123B34', '#071310']
     : ['#FFFFFF', '#E9FAF6', '#BDEFE5'];
   const heroAccent = isDark ? colors.brandMid : colors.brandDeep;
-  const [periodIndex, setPeriodIndex] = React.useState(1); // default: Week
-  const [bundles, setBundles] = React.useState<Bundle[] | null>(null);
-  const period = PERIODS[periodIndex];
-  const scrollX = React.useRef(new Animated.Value(win.width)).current; // start on Week
-  const pagerRef = React.useRef<ScrollView>(null);
-  const didInitPager = React.useRef(false);
   const [year, setYear] = React.useState({ miles: 0, deduction: 0, taxSaved: 0, earnings: 0, taxRate: 0.2 });
   const [user, setUser] = React.useState(getUser());
   const [streak, setStreak] = React.useState(0);
   const [achievements, setAchievements] = React.useState<Achievement[]>([]);
   const [newAch, setNewAch] = React.useState<Achievement | null>(null);
   const [challenges, setChallenges] = React.useState<Challenge[]>([]);
-  const [zones, setZones] = React.useState<ZoneStat[]>([]);
-  const [buckets, setBuckets] = React.useState<TimeBucket[]>([]);
-  const [platformsAll, setPlatformsAll] = React.useState<PlatformStat[]>([]);
-  const [heatPoints, setHeatPoints] = React.useState<HeatPoint[]>([]);
-  const [bestSpot, setBestSpot] = React.useState<BestSpot | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
   const gameScrollX = React.useRef(new Animated.Value(0)).current;
-  const insightScrollX = React.useRef(new Animated.Value(0)).current;
 
   // First-run tour — centred cards, one per bottom tab. We don't spotlight the
   // native tab bar: the tour renders as a Modal over it, so a highlight there
@@ -115,30 +74,17 @@ export default function HomeScreen() {
   }, []));
   const coachSteps: CoachStep[] = [
     { title: 'Welcome to Okkle 👋', body: 'Track your delivery miles and money in one place — and see exactly what you keep after tax. Here’s the 20-second tour of the five tabs along the bottom.' },
-    { title: '🏠  Home', body: 'Your tax saved, earnings, real £/hour and where you earn most — all on this Home tab.' },
-    { title: '🧭  Trip', body: 'Tap Start before you set off. GPS turns your distance into a tax-free mileage deduction — automatically, nothing to write down.' },
+    { title: '👤  Home', body: 'Your tax saved this year and your progress live here — simple, focused and easy to check at a glance.' },
     { title: '✍️  Log', body: 'Add your weekly pay and any costs — fuel, parking, phone. Snap a receipt and Okkle reads the amount for you.' },
-    { title: '📋  Records', body: 'Everything you’ve logged, in one place — edit or review any trip, expense or payment.' },
-    { title: '📊  Tax', body: 'What to set aside and your estimated bill as you go, plus a one-tap summary you can hand your accountant.' },
+    { title: '🧭  Trip', body: 'Tap Start before you set off. GPS turns your distance into a tax-free mileage deduction — automatically, nothing to write down.' },
+    { title: '💡  Insights', body: 'AI-powered guidance highlights your best zones, hours, platforms and next actions as your data grows.' },
+    { title: '🗄  Records', body: 'Everything you’ve logged, plus your tax estimate and accountant exports, in one place.' },
   ];
   function dismissCoach() { kvSet('coach_seen', 1); setShowCoach(false); }
 
   function load() {
     setYear(getTaxYearSummary());
     setUser(getUser());
-    setBestSpot(getBestSpot());
-    setZones(getZoneStats('all'));
-    setBuckets(getEarningsByTimeOfDay());
-    setPlatformsAll(getPlatformStats());
-    setHeatPoints(getHeatPoints());
-
-    // Preload all four periods so swiping between them is instant & smooth.
-    setBundles(PERIODS.map(p => ({
-      data: getPeriodSummary(p),
-      platforms: getPlatformStatsForPeriod(p),
-      prev: getPeriodSummary(p, prevRef(p)),
-      series: getPeriodSeries(p, 'earnings'),
-    })));
 
     // Gamification: streak, badges, and a celebration for anything new.
     setStreak(getStreak());
@@ -149,11 +95,6 @@ export default function HomeScreen() {
   }
 
   useFocusEffect(useCallback(() => { load(); }, []));
-
-  function goToPeriod(i: number) {
-    setPeriodIndex(i);
-    pagerRef.current?.scrollTo({ x: i * win.width, animated: true });
-  }
 
   function onRefresh() { setRefreshing(true); load(); setRefreshing(false); }
 
@@ -166,88 +107,6 @@ export default function HomeScreen() {
     .filter(a => !a.unlocked && a.progress > 0)
     .sort((a, b) => b.progress - a.progress)
     .slice(0, 2);
-
-  // Animated sliding pill for the period switcher, driven by the earnings pager.
-  const SEG_W = win.width - spacing.xl * 2;
-  const SEG_PAD = 4;
-  const ITEM_W = (SEG_W - SEG_PAD * 2) / PERIODS.length;
-  const indicatorX = scrollX.interpolate({
-    inputRange: [0, win.width * (PERIODS.length - 1)],
-    outputRange: [SEG_PAD, SEG_PAD + ITEM_W * (PERIODS.length - 1)],
-    extrapolate: 'clamp',
-  });
-
-  // One earnings card, rendered per period so users can swipe between them.
-  function renderEarnings(b: Bundle, p: Period) {
-    const earnings = b.data.earnings;
-    const hrs = b.data.hours;
-    const miles = b.data.miles;
-    const hasHours = hrs >= 0.25;
-    const perHour = hasHours ? earnings / hrs : 0;
-    const netPerHour = hasHours ? Math.max(0, b.data.takeHome - b.data.expenses) / hrs : 0;
-    const earnDelta = b.prev && b.prev.earnings > 0 ? earnings - b.prev.earnings : null;
-    const hasTrend = earnDelta != null && Math.abs(earnDelta) >= 1;
-    const tops = [...b.platforms].sort((x, y) => y.earnings - x.earnings).slice(0, 3);
-    return (
-      <Card style={{ padding: spacing.lg }}>
-        <View style={s.earnHead}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <IconBadge icon="dollar-sign" tone="green" size={32} />
-            <Text style={s.earnLabel}>Earnings</Text>
-          </View>
-          {hasTrend && (
-            <View style={[s.mcTrend, { backgroundColor: earnDelta! >= 0 ? colors.greenLight : colors.redLight, marginTop: 0, flexShrink: 1 }]}>
-              <Feather name={earnDelta! >= 0 ? 'arrow-up-right' : 'arrow-down-right'} size={13} color={earnDelta! >= 0 ? colors.green : colors.red} />
-              <Text numberOfLines={1} style={[s.mcTrendText, { color: earnDelta! >= 0 ? colors.green : colors.red }]}>{fmtGbp(Math.abs(earnDelta!))} vs {PREV_WORD[p]}</Text>
-            </View>
-          )}
-        </View>
-        <Text style={s.earnValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{fmtGbp(earnings)}</Text>
-
-        <View style={s.statRow}>
-          <View style={s.statCell}>
-            <Text style={s.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{hasHours ? `£${perHour.toFixed(2)}` : '—'}</Text>
-            <Text style={s.statLbl}>per hour</Text>
-          </View>
-          <View style={s.statDivider} />
-          <View style={s.statCell}>
-            <Text style={s.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{fmtMiles(miles)}</Text>
-            <Text style={s.statLbl} numberOfLines={1}>{fmtGbp(b.data.deduction)} back</Text>
-          </View>
-          <View style={s.statDivider} />
-          <View style={s.statCell}>
-            <Text style={s.statVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{p === 'today' ? b.data.trips : fmtHours(hrs)}</Text>
-            <Text style={s.statLbl}>{p === 'today' ? 'trips' : 'hours'}</Text>
-          </View>
-        </View>
-
-        {hasHours && (
-          <Text style={s.earnNet}>£{netPerHour.toFixed(2)}/hr after tax &amp; costs · take-home {fmtGbp(b.data.takeHome)}</Text>
-        )}
-
-        <View style={{ marginTop: spacing.lg }}>
-          {p === 'today' && <Text style={s.chartCaption}>When you earned today</Text>}
-          <BarChart data={b.series} format={fmtGbp} emptyLabel={p === 'today' ? 'No earnings logged yet today.' : 'No earnings logged in this period.'} height={120} />
-        </View>
-
-        {tops.length > 0 && (
-          <View style={s.platWrap}>
-            <Text style={s.platHead}>By platform</Text>
-            {tops.map((pl, i) => (
-              <View key={pl.platform} style={s.platRow}>
-                <View style={[s.rankBadge, i === 0 && s.rankBadgeTop]}>
-                  <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
-                </View>
-                <Text style={s.platName} numberOfLines={1}>{pl.platform}</Text>
-                <Text style={s.platMiles}>{fmtMiles(pl.miles)}</Text>
-                <Text style={[s.platVal, i === 0 && { color: colors.green }]}>{fmtGbp(pl.earnings)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </Card>
-    );
-  }
 
   return (
     <>
@@ -278,7 +137,7 @@ export default function HomeScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
       {/* HERO: tax saved — tap through to the full Tax breakdown */}
-      <Pressable onPress={() => router.push('/(tabs)/tax')} style={({ pressed }) => [s.heroPressable, isDark && s.heroPressableDark, pressed && { opacity: 0.94 }]}>
+      <Pressable onPress={() => router.push({ pathname: '/(tabs)/records', params: { view: 'tax' } })} style={({ pressed }) => [s.heroPressable, isDark && s.heroPressableDark, pressed && { opacity: 0.94 }]}>
         <GradientCard colors={heroColors} radius={radius.xl} style={[s.hero, isDark && s.heroDark]}>
           <View style={s.heroTop}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -296,42 +155,9 @@ export default function HomeScreen() {
         </GradientCard>
       </Pressable>
 
-      {/* Period switcher with an animated sliding pill, synced to the pager */}
-      <View style={s.segment}>
-        <Animated.View style={[s.segIndicator, { width: ITEM_W, transform: [{ translateX: indicatorX }] }]} />
-        {PERIOD_LABELS.map((label, i) => (
-          <Pressable key={label} onPress={() => goToPeriod(i)} style={s.segItem}>
-            <Text style={[s.segText, periodIndex === i && s.segTextActive]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={s.periodLabel}>{bundles ? fmtPeriodRange(period, bundles[periodIndex].data.rangeStart, bundles[periodIndex].data.rangeEnd) : ''}</Text>
-
-      {/* Swipe sideways to move between Today · Week · Month · Year */}
-      {bundles && (
-        <>
-          <Animated.ScrollView
-            ref={pagerRef as any}
-            horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onLayout={() => { if (!didInitPager.current) { pagerRef.current?.scrollTo({ x: periodIndex * win.width, animated: false }); didInitPager.current = true; } }}
-            onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-            onMomentumScrollEnd={e => setPeriodIndex(Math.round(e.nativeEvent.contentOffset.x / win.width))}
-            style={{ marginHorizontal: -spacing.xl, marginTop: spacing.md }}
-          >
-            {bundles.map((b, i) => (
-              <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
-                {renderEarnings(b, PERIODS[i])}
-              </View>
-            ))}
-          </Animated.ScrollView>
-          <AnimatedDots scrollX={scrollX} count={PERIODS.length} pageWidth={win.width} />
-        </>
-      )}
-
       {/* Progress — goals + medals combined into one swipeable card */}
       {(achievements.length > 0 || challenges.length > 0) && (
-        <View style={{ marginTop: spacing.xl }}>
+        <View style={s.progressSection}>
           <View style={s.progressHead}>
             <SectionHeader icon="zap" title="Progress" />
             <Pressable onPress={() => router.push('/medals')} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
@@ -417,92 +243,6 @@ export default function HomeScreen() {
           <AnimatedDots scrollX={gameScrollX} count={2} pageWidth={win.width} />
         </View>
       )}
-
-      {/* Where & when you earn — a swipeable carousel: Areas · Times · Platforms */}
-      {(zones.length > 0 || buckets.some(b => b.trips > 0) || platformsAll.length > 0) && (() => {
-        const anyPerHour = zones.some(z => z.perHour > 0);
-        const rankedZones = [...zones].sort((a, b) => (anyPerHour ? b.perHour - a.perHour : b.miles - a.miles)).slice(0, 4);
-        const anyBucketEarn = buckets.some(b => b.earnings > 0);
-        const rankedTimes = [...buckets].filter(b => b.trips > 0).sort((a, b) => (anyBucketEarn ? b.perHour - a.perHour : b.trips - a.trips)).slice(0, 4);
-        const anyPlatPerHour = platformsAll.some(p => p.perHour > 0);
-        const rankedPlats = [...platformsAll].sort((a, b) => (anyPlatPerHour ? b.perHour - a.perHour : b.earnings - a.earnings)).slice(0, 4);
-
-        const RankList = ({ rows }: { rows: { key: string; name: string; sub: string; val: string }[] }) => (
-          <>
-            {rows.map((r, i) => (
-              <View key={r.key} style={[s.platRow, i > 0 && s.zoneBorder]}>
-                <View style={[s.rankBadge, i === 0 && s.rankBadgeTop]}>
-                  <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.platName} numberOfLines={1}>{r.name}</Text>
-                  <Text style={s.zoneSub}>{r.sub}</Text>
-                </View>
-                <Text style={[s.platVal, i === 0 && { color: colors.green }]}>{r.val}</Text>
-              </View>
-            ))}
-          </>
-        );
-
-        const pages: { title: string; node: React.ReactNode }[] = [];
-        if (rankedZones.length) pages.push({ title: 'Top areas', node: (
-          <RankList rows={rankedZones.map(z => ({ key: z.zone, name: z.zone, sub: `${z.trips} ${z.trips === 1 ? 'trip' : 'trips'} · ${fmtMiles(z.miles)}`, val: anyPerHour ? fmtPerHour(z.perHour) : z.earnings > 0 ? fmtGbp(z.earnings) : fmtMiles(z.miles) }))} />
-        ) });
-        if (heatPoints.length) pages.push({ title: 'Hotspot map', node: (
-          <View style={{ marginTop: spacing.sm }}>
-            <HeatMapView points={heatPoints} height={168} />
-            <Text style={[s.zoneSub, { marginTop: spacing.sm }]}>Brighter = where you spend more time. Tap for the full map.</Text>
-          </View>
-        ) });
-        if (rankedTimes.length) pages.push({ title: 'Best times', node: (
-          <RankList rows={rankedTimes.map(b => ({ key: b.label, name: b.label, sub: `${b.trips} ${b.trips === 1 ? 'trip' : 'trips'}`, val: anyBucketEarn ? fmtPerHour(b.perHour) : `${b.trips}` }))} />
-        ) });
-        if (rankedPlats.length) pages.push({ title: 'Best platforms', node: (
-          <RankList rows={rankedPlats.map(p => ({ key: p.platform, name: p.platform, sub: `${fmtMiles(p.miles)}${p.perMile > 0 ? ` · ${fmtPerMile(p.perMile)}` : ''}`, val: anyPlatPerHour ? fmtPerHour(p.perHour) : fmtGbp(p.earnings) }))} />
-        ) });
-
-        return (
-          <View style={{ marginTop: spacing.xl }}>
-            <View style={s.progressHead}>
-              <SectionHeader icon="bar-chart-2" title="Where & when you earn" />
-              <Pressable onPress={() => router.push('/insights')} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                <Text style={s.seeAll}>Insights</Text>
-                <Feather name="chevron-right" size={15} color={colors.brandDeep} />
-              </Pressable>
-            </View>
-            {bestSpot && (
-              <Pressable onPress={() => router.push('/insights')}>
-                <View style={s.bestBanner}>
-                  <IconBadge icon="award" tone="amber" size={34} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.bestLabel} numberOfLines={1}>Best: {bestSpot.zone} · {bestSpot.timeLabel}</Text>
-                    <Text style={s.bestSub}>your most lucrative spot &amp; time</Text>
-                  </View>
-                  <Text style={s.bestVal}>{fmtPerHour(bestSpot.perHour)}</Text>
-                </View>
-              </Pressable>
-            )}
-            <Animated.ScrollView
-              horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-              scrollEventThrottle={16}
-              onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: insightScrollX } } }], { useNativeDriver: true })}
-              style={{ marginHorizontal: -spacing.xl, marginTop: spacing.md }}
-            >
-              {pages.map((pg, i) => (
-                <View key={i} style={{ width: win.width, paddingHorizontal: spacing.xl }}>
-                  <Pressable onPress={() => router.push('/insights')}>
-                    <Card style={{ padding: spacing.lg, minHeight: 232 }}>
-                      <Text style={s.platHead}>{pg.title}</Text>
-                      {pg.node}
-                    </Card>
-                  </Pressable>
-                </View>
-              ))}
-            </Animated.ScrollView>
-            <AnimatedDots scrollX={insightScrollX} count={pages.length} pageWidth={win.width} />
-          </View>
-        );
-      })()}
 
       <View style={s.disclaimer}>
         <Feather name="shield" size={14} color={colors.textTertiary} />
@@ -648,6 +388,7 @@ const s = StyleSheet.create({
   achKicker: { ...type.label, color: colors.brandDeep, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 12, marginBottom: 4 },
 
   progressHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  progressSection: { marginTop: spacing.md },
   seeAll: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },
   insightsCaptionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.sm, paddingTop: spacing.md, paddingBottom: 4 },
   insightsCaption: { ...type.caption, color: colors.brandDeep, fontWeight: font.medium },

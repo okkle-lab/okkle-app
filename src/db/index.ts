@@ -1267,7 +1267,7 @@ export function getPersonalRecords(): PersonalRecord[] {
   }
 
   const allDays = Object.entries(days);
-  const best = <T>(fn: (d: Day) => number): { v: number; date: string } =>
+  const best = (fn: (d: Day) => number): { v: number; date: string } =>
     allDays.reduce((acc, [date, d]) => fn(d) > acc.v ? { v: fn(d), date } : acc, { v: 0, date: '' });
 
   const bestDay = best(d => d.earnings);
@@ -1436,11 +1436,11 @@ export function restoreData(p: BackupPayload) {
     for (const r of p.records) {
       db.runSync(
         `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
-          period_start, period_end, receipt_uri, notes, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          period_start, period_end, receipt_uri, notes, vehicle, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         r.record_type, r.platform ?? null, r.amount ?? null, r.miles ?? null,
         r.deduction ?? null, r.category ?? null, r.period_start ?? null,
-        r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.created_at,
+        r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.vehicle ?? null, r.created_at,
       );
     }
     for (const row of (p.kv ?? [])) {

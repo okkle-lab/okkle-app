@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, Alert, Pressable, TextInput,
+  View, Text, ScrollView, StyleSheet, Alert, Pressable,
   KeyboardAvoidingView, Platform, Dimensions, Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -11,10 +11,11 @@ import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
-import { Chip, PrimaryButton, SectionHeader, SlideToConfirm, VehicleChip, CollapsingHeader, Card, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll, GlassPanel } from '../../src/components';
-import { VEHICLES, fmtGbp, fmtGbpRound, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
+import { PrimaryButton, SlideToConfirm, VehicleChip, IconBadge, GradientCard, RouteMap, SettingsGlassButton, KeyboardDoneAccessory, ChipScroll, GlassPanel } from '../../src/components';
+import { HEADER_TITLE_SIDE_CLEARANCE, headerActionTop, headerTitleTop } from '../../src/components/headerLayout';
+import { VEHICLES, fmtGbp, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, getUser, getLastTrip, getTodayMiles, getDailyStats, getLongestTrip, getStreak, getPlatforms, getVehicleKeys, type DailyStats } from '../../src/db';
+import { saveTrip, getUser, getLastTrip, getTodayMiles, getLongestTrip, getStreak, getVehicleKeys } from '../../src/db';
 
 // Circular "Start" hero — inspired by activity-ring fitness UIs: a large tappable
 // gradient disc inside a faint ring with a brand accent arc.
@@ -51,16 +52,12 @@ export default function TripScreen() {
 
   const [phase, setPhase] = useState<Phase>('setup');
   const [finished, setFinished] = useState<LiveTrip | null>(null);
-  const [earnings, setEarnings] = useState('');
   const [todayBase, setTodayBase] = useState(0);
-  const [today, setToday] = useState<DailyStats>({ miles: 0, deduction: 0, earnings: 0, trips: 0, hours: 0 });
   const [flash, setFlash] = useState<string | null>(null); // milestone celebration
   const [heroMetric, setHeroMetric] = useState<LiveMetric>('miles');
   const [prevBestTrip, setPrevBestTrip] = useState(0);
   const milestoneRef = React.useRef(0);
   const { trip, points, start, pause, resume, end } = useTrip();
-
-  useEffect(() => { setToday(getDailyStats()); }, [phase]);
 
   // Gamified "earn it back" milestones — every £5 of mileage deduction earned
   // mid-trip fires a haptic + a brief celebration, so progress feels rewarding.
@@ -96,7 +93,6 @@ export default function TripScreen() {
     setPrevBestTrip(getLongestTrip());
     const final = end();
     setFinished(final);
-    setEarnings('');
     setPhase('summary');
   }
 
@@ -106,7 +102,7 @@ export default function TripScreen() {
       "The miles tracked so far won't be saved.",
       [
         { text: 'Keep tracking', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { end(); setFinished(null); setEarnings(''); setPhase('setup'); } },
+        { text: 'Discard', style: 'destructive', onPress: () => { end(); setFinished(null); setPhase('setup'); } },
       ],
     );
   }
@@ -144,7 +140,6 @@ export default function TripScreen() {
       zone,
     });
     setFinished(null);
-    setEarnings('');
     setPhase('setup');
   }
 
@@ -301,7 +296,7 @@ export default function TripScreen() {
           </View>
 
           <PrimaryButton label="Save trip" onPress={handleSave} style={{ marginTop: spacing.lg }} />
-          <Pressable onPress={() => { setFinished(null); setEarnings(''); setPhase('setup'); }} style={{ marginTop: 18, alignItems: 'center' }}>
+          <Pressable onPress={() => { setFinished(null); setPhase('setup'); }} style={{ marginTop: 18, alignItems: 'center' }}>
             <Text style={s.discardText}>Discard this trip</Text>
           </Pressable>
         </ScrollView>
@@ -311,36 +306,37 @@ export default function TripScreen() {
   }
 
   // ---- Phase 1: setup --------------------------------------------------------
-  const todayHasData = today.trips > 0 || today.earnings > 0;
   const showVehiclePicker = myVehicles.length > 1;
+  const titleTop = headerTitleTop(insets.top);
+  const actionTop = headerActionTop(insets.top);
   return (
-    <View style={[s.screen, { paddingTop: insets.top + 8 }]}>
-      <View style={s.fixedHeader}>
-        <View style={{ flex: 1 }}>
+    <View style={s.screen}>
+      <View style={[s.fixedHeader, { paddingTop: titleTop }]}>
+        <View style={s.fixedHeaderText}>
           <Text style={s.fixedTitle}>Start a trip</Text>
           <Text style={s.fixedSub}>Tap the big button and ride — GPS measures your distance.</Text>
         </View>
-        <SettingsGlassButton onPress={() => router.push('/settings')} />
+        <SettingsGlassButton onPress={() => router.push('/settings')} style={[s.fixedSettings, { top: actionTop }]} />
       </View>
 
       <View style={[s.fixedBody, { paddingBottom: insets.bottom + 64 }]}>
-      <View style={s.startSpacer} />
-
-      {/* THE button — a big circular Start disc inside an accent ring (activity-
-          ring inspired), centred as the screen's focal point. */}
-      <View style={s.ringHero}>
-        <View pointerEvents="none" style={s.startGlow} />
-        <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R} stroke={colors.brand} strokeWidth={RING_STROKE} fill="none" />
-        </Svg>
-        <Pressable onPress={handleStart} style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}>
-          <GlassPanel tone="deepGreen" radius={BTN_SIZE / 2} isInteractive style={s.startBtnCircle} clipStyle={s.startBtnCircleClip} contentStyle={s.startBtnCircleContent}>
-            <Feather name="navigation" size={54} color="#fff" />
-            <Text style={s.startBtnText}>Start trip</Text>
-            <Text style={s.startBtnSub}>{vehicleLabel(vehicle)} · GPS miles</Text>
-          </GlassPanel>
-        </Pressable>
-      </View>
+        <View style={s.startButtonSlot}>
+          {/* THE button — a big circular Start disc inside an accent ring (activity-
+              ring inspired), centred as the screen's focal point. */}
+          <View style={s.ringHero}>
+            <View pointerEvents="none" style={s.startGlow} />
+            <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R} stroke={colors.brand} strokeWidth={RING_STROKE} fill="none" />
+            </Svg>
+            <Pressable onPress={handleStart} style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}>
+              <GlassPanel tone="deepGreen" radius={BTN_SIZE / 2} isInteractive style={s.startBtnCircle} clipStyle={s.startBtnCircleClip} contentStyle={s.startBtnCircleContent}>
+                <Feather name="navigation" size={54} color="#fff" />
+                <Text style={s.startBtnText}>Start trip</Text>
+                <Text style={s.startBtnSub}>{vehicleLabel(vehicle)} · GPS miles</Text>
+              </GlassPanel>
+            </Pressable>
+          </View>
+        </View>
 
       {showVehiclePicker && (
         <View style={s.selectorDeck}>
@@ -352,8 +348,6 @@ export default function TripScreen() {
           </ChipScroll>
         </View>
       )}
-
-      <View style={s.ringSpacerBottom} />
       </View>
     </View>
   );
@@ -361,7 +355,9 @@ export default function TripScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  fixedHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginTop: spacing.sm, marginBottom: spacing.md, paddingHorizontal: spacing.xl },
+  fixedHeader: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md },
+  fixedHeaderText: { paddingRight: HEADER_TITLE_SIDE_CLEARANCE },
+  fixedSettings: { position: 'absolute', right: spacing.xl },
   fixedTitle: { ...type.screenTitle },
   fixedSub: { ...type.body, color: colors.textSecondary, marginTop: 4 },
   fixedBody: { flex: 1, paddingHorizontal: spacing.xl },
@@ -373,17 +369,13 @@ const s = StyleSheet.create({
   addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 16, paddingVertical: 12, borderRadius: radius.full, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bgCard },
   addChipText: { ...type.bodyMedium, fontSize: 15, color: colors.brandDeep },
   gpsNote: { ...type.caption, color: colors.textTertiary, textAlign: 'center', marginTop: 14, lineHeight: 20 },
-  todayLine: { ...type.caption, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.lg, fontWeight: font.medium },
-
   // setup
   setupCard: { padding: 0, overflow: 'hidden' },
   setupSection: { padding: spacing.lg },
   setupDivider: { height: 1, backgroundColor: colors.border },
   setupLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
   setupLabel: { ...type.bodyMedium, fontSize: 15 },
-  startSpacer: { flex: 1, minHeight: 16 },
-  startSpacerTop: { flex: 0.75, minHeight: 12 },
-  ringSpacerBottom: { flex: 0.4, minHeight: 12 },
+  startButtonSlot: { flex: 1, minHeight: RING_SIZE + spacing.xl, alignItems: 'center', justifyContent: 'center' },
   ringHero: { width: RING_SIZE, height: RING_SIZE, alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
   startGlow: {
     position: 'absolute',
@@ -461,12 +453,6 @@ const s = StyleSheet.create({
   summaryStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg },
   summaryStatValue: { ...tabular, fontSize: 20, fontWeight: font.bold, color: colors.textPrimary },
   summaryStatLabel: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
-  earningsInput: {
-    borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
-    padding: spacing.lg, fontSize: 22, fontWeight: font.semibold,
-    color: colors.textPrimary, backgroundColor: colors.bgCard,
-  },
-  earningsNote: { ...type.caption, color: colors.textTertiary, marginTop: 8, lineHeight: 19 },
   skip: { ...type.label, color: colors.textSecondary },
   discardText: { ...type.caption, color: colors.red },
 });

@@ -1,22 +1,31 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Alert } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { View, Text, StyleSheet, RefreshControl, Pressable, Alert } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { Card, SectionHeader, VehicleIcon, CollapsingHeader, IconBadge, SettingsGlassButton } from '../../src/components';
-import { getTrips, getRecords, getVehicleStats, type VehicleStat } from '../../src/db';
+import { Card, CollapsingHeader, IconBadge, KeyboardDoneAccessory, SettingsGlassButton } from '../../src/components';
+import { getTrips, getRecords } from '../../src/db';
 import { fmtGbp, fmtMiles, vehicleLabel } from '../../src/db/tax';
 import type { Trip, Record as OkkleRecord } from '../../src/db';
+import { TaxPanel } from '../../src/components/TaxPanel';
 
 type Item = { kind: 'trip'; data: Trip } | { kind: 'record'; data: OkkleRecord };
+type RecordsMode = 'records' | 'tax';
 
 
 export default function RecordsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ view?: string }>();
   const [items, setItems] = React.useState<Item[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
   const [filter, setFilter] = React.useState<'all' | 'trips' | 'income' | 'expense'>('all');
   const [month, setMonth] = React.useState<string>('all'); // 'all' or 'YYYY-MM'
+  const [mode, setMode] = React.useState<RecordsMode>(params.view === 'tax' ? 'tax' : 'records');
+
+  React.useEffect(() => {
+    if (params.view === 'tax') setMode('tax');
+    if (params.view === 'records') setMode('records');
+  }, [params.view]);
 
   // Four clear buckets. "Trips" covers driving (GPS + manual mileage) — each row
   // still carries a GPS / Manual tag so you can tell them apart at a glance.
@@ -125,12 +134,28 @@ export default function RecordsScreen() {
     <SettingsGlassButton onPress={() => router.push('/settings')} />
   );
 
-  return (
-    <CollapsingHeader
-      title="Records"
-      right={gear}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
-    >
+  function renderModeSwitch() {
+    return (
+      <View style={s.modeSeg}>
+        {([
+          ['records', 'History', 'list'] as const,
+          ['tax', 'Tax', 'shield'] as const,
+        ]).map(([key, label, icon]) => {
+          const on = mode === key;
+          return (
+            <Pressable key={key} onPress={() => setMode(key)} style={[s.modeItem, on && s.modeItemOn]}>
+              <Feather name={icon} size={14} color={on ? colors.brandDeep : colors.textSecondary} />
+              <Text style={[s.modeText, on && s.modeTextOn]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  }
+
+  function renderRecordsList() {
+    return (
+      <>
       {items.length === 0 ? (
         <Card>
           <Text style={{ color: colors.textSecondary, textAlign: 'center', paddingVertical: 8 }}>
@@ -172,7 +197,24 @@ export default function RecordsScreen() {
           <Text style={s.hint}>Tap any entry to edit or delete it.</Text>
         </>
       )}
-    </CollapsingHeader>
+      </>
+    );
+  }
+
+  return (
+    <View style={s.screen}>
+      <CollapsingHeader
+        title="Records"
+        subtitle="Your logs, tax estimate and exports in one place."
+        right={gear}
+        refreshControl={mode === 'records' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} /> : undefined}
+        keyboardShouldPersistTaps="handled"
+      >
+        {renderModeSwitch()}
+        {mode === 'tax' ? <TaxPanel /> : renderRecordsList()}
+      </CollapsingHeader>
+      <KeyboardDoneAccessory />
+    </View>
   );
 }
 
@@ -191,8 +233,11 @@ function fmtWhen(r: OkkleRecord): string {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
-  heading: { ...type.screenTitle, marginBottom: spacing.lg },
+  modeSeg: { flexDirection: 'row', backgroundColor: colors.bgSoft, borderRadius: radius.lg, padding: 4, marginBottom: spacing.lg },
+  modeItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: radius.md },
+  modeItemOn: { backgroundColor: colors.bgCard, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  modeText: { fontSize: 14, fontWeight: font.medium, color: colors.textSecondary },
+  modeTextOn: { color: colors.textPrimary, fontWeight: font.semibold },
   hint: { ...type.small, textAlign: 'center', marginTop: spacing.md },
   filterBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.md },
   segment: { flexDirection: 'row', flex: 1, backgroundColor: colors.bgSoft, borderRadius: radius.md, padding: 3 },
