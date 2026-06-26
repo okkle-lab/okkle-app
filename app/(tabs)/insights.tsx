@@ -129,6 +129,39 @@ export default function InsightsScreen() {
       subtitle="AI guidance, smart nudges and patterns from your work."
       right={<SettingsGlassButton onPress={() => router.push('/settings')} />}
     >
+        <AiGlowPanel style={[s.smartCard, s.hotspotTop]} contentStyle={s.smartContent}>
+          <View style={s.smartHead}>
+            <IconBadge icon="map" tone="mint" size={38} />
+            <Text style={s.smartKicker}>Hotspot map</Text>
+          </View>
+          <Text style={s.smartTitle}>See where your work clusters</Text>
+          <Text style={s.smartBody}>
+            Okkle maps your saved GPS trips so you can spot the areas you keep returning to.
+          </Text>
+          {buckets.some(b => b.trips > 0) && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
+              {TIME_FILTERS.map(f => (
+                <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.filterChip, filter === f.key && s.filterChipOn]}>
+                  <Text style={[s.filterText, filter === f.key && s.filterTextOn]}>{f.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+          <View style={s.mapFrame}>
+            <HeatMapView points={points} height={210} />
+            <View style={s.legend}>
+              <Text style={s.legendText}>Quieter</Text>
+              <View style={s.legendBar}>
+                {['#9BE3D2', '#5FD0BB', '#E7C66B', '#E0961F', '#E2604A'].map(c => (
+                  <View key={c} style={[s.legendSwatch, { backgroundColor: c }]} />
+                ))}
+              </View>
+              <Text style={s.legendText}>Busier</Text>
+            </View>
+            <Text style={s.note}>Where you drive, from your GPS trips. £ shading is estimated by spreading your logged pay across your trips. Built on-device — nothing leaves your phone.</Text>
+          </View>
+        </AiGlowPanel>
+
         <AiGlowPanel style={s.smartCard} contentStyle={s.smartContent}>
           <View style={s.smartHead}>
             <IconBadge icon="navigation" tone="blue" size={38} />
@@ -231,15 +264,6 @@ export default function InsightsScreen() {
         {/* WHERE — hotspots + ranked areas */}
         {hasData && tab === 'where' && (
           <>
-            {buckets.some(b => b.trips > 0) && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
-                {TIME_FILTERS.map(f => (
-                  <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[s.filterChip, filter === f.key && s.filterChipOn]}>
-                    <Text style={[s.filterText, filter === f.key && s.filterTextOn]}>{f.label}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            )}
             {zones.length > 0 && (
               <Card style={{ padding: 0, overflow: 'hidden' }}>
                 {zones.slice(0, 6).map((z, i, arr) => (
@@ -258,22 +282,6 @@ export default function InsightsScreen() {
                 ))}
               </Card>
             )}
-            <View style={{ marginTop: spacing.lg }}>
-              <SectionHeader icon="map" title="Hotspot map" />
-              <Card style={{ padding: spacing.sm }}>
-                <HeatMapView points={points} height={210} />
-                <View style={s.legend}>
-                  <Text style={s.legendText}>Quieter</Text>
-                  <View style={s.legendBar}>
-                    {['#9BE3D2', '#5FD0BB', '#E7C66B', '#E0961F', '#E2604A'].map(c => (
-                      <View key={c} style={[s.legendSwatch, { backgroundColor: c }]} />
-                    ))}
-                  </View>
-                  <Text style={s.legendText}>Busier</Text>
-                </View>
-                <Text style={s.note}>Where you drive, from your GPS trips. £ shading is estimated by spreading your logged pay across your trips. Built on-device — nothing leaves your phone.</Text>
-              </Card>
-            </View>
           </>
         )}
 
@@ -372,6 +380,8 @@ const s = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   divider: { height: 1, backgroundColor: colors.border },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
+  hotspotTop: { marginBottom: spacing.lg },
+  mapFrame: { padding: spacing.sm, borderRadius: radius.lg, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
 
   tip: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
   tipText: { ...type.body, fontSize: 15, color: colors.textPrimary, lineHeight: 21 },

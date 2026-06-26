@@ -1,4 +1,5 @@
 import CoreLocation
+import EventKit
 import MapKit
 import PhotosUI
 import SwiftUI
@@ -49,6 +50,12 @@ private func shortDate(_ date: Date) -> String {
 
 private func monthLabel(_ date: Date) -> String {
   date.formatted(.dateTime.month(.abbreviated).year())
+}
+
+private func nativeTaxYearLabel(for interval: DateInterval) -> String {
+  let start = Calendar.current.component(.year, from: interval.start)
+  let end = Calendar.current.component(.year, from: interval.end)
+  return "\(start)/\(String(end).suffix(2))"
 }
 
 private func hideKeyboard() {
@@ -201,6 +208,13 @@ struct NativeSnapshot: Codable {
   var trips: [NativeTrip]
 }
 
+struct NativeBackupPayload: Codable {
+  var app: String
+  var version: Int
+  var exportedAt: Date
+  var snapshot: NativeSnapshot
+}
+
 @MainActor
 final class OkkleStore: ObservableObject {
   @Published var settings = NativeSettings() { didSet { save() } }
@@ -234,6 +248,22 @@ final class OkkleStore: ObservableObject {
     if let data = try? JSONEncoder().encode(snapshot) {
       UserDefaults.standard.set(data, forKey: key)
     }
+  }
+
+  var backupPayload: NativeBackupPayload {
+    NativeBackupPayload(
+      app: "okkle",
+      version: 1,
+      exportedAt: Date(),
+      snapshot: NativeSnapshot(settings: settings, records: records, trips: trips)
+    )
+  }
+
+  func backupData() throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    return try encoder.encode(backupPayload)
   }
 
   func addRecord(_ record: NativeRecord) {
@@ -426,15 +456,43 @@ struct OkkleNativeRootView: View {
   }
 }
 
+enum NativeScreenStyle {
+  case standard
+  case dark
+
+  var titleColor: Color {
+    switch self {
+    case .standard: return OkkleColor.ink
+    case .dark: return .white
+    }
+  }
+
+  var subtitleColor: Color {
+    switch self {
+    case .standard: return OkkleColor.muted
+    case .dark: return Color.white.opacity(0.62)
+    }
+  }
+
+  var settingsColor: Color {
+    switch self {
+    case .standard: return OkkleColor.ink
+    case .dark: return .white
+    }
+  }
+}
+
 struct NativeScreen<Content: View>: View {
   let title: String
   let subtitle: String?
+  let style: NativeScreenStyle
   let content: Content
   @State private var showSettings = false
 
-  init(title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
+  init(title: String, subtitle: String? = nil, style: NativeScreenStyle = .standard, @ViewBuilder content: () -> Content) {
     self.title = title
     self.subtitle = subtitle
+    self.style = style
     self.content = content()
   }
 
@@ -446,18 +504,18 @@ struct NativeScreen<Content: View>: View {
             VStack(alignment: .leading, spacing: 6) {
               Text(title)
                 .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(OkkleColor.ink)
+                .foregroundStyle(style.titleColor)
               if let subtitle {
                 Text(subtitle)
                   .font(.system(size: 16, weight: .medium))
-                  .foregroundStyle(OkkleColor.muted)
+                  .foregroundStyle(style.subtitleColor)
               }
             }
             Spacer(minLength: 16)
             Button { showSettings = true } label: {
               Image(systemName: "gearshape")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(OkkleColor.ink)
+                .foregroundStyle(style.settingsColor)
                 .frame(width: 50, height: 50)
                 .background(.ultraThinMaterial, in: Circle())
                 .shadow(color: .black.opacity(0.10), radius: 14, y: 8)
@@ -471,7 +529,14 @@ struct NativeScreen<Content: View>: View {
         .padding(.horizontal, 22)
         .padding(.bottom, 120)
       }
-      .background(NativeBackground())
+      .background {
+        switch style {
+        case .standard:
+          NativeBackground()
+        case .dark:
+          Color.black.ignoresSafeArea()
+        }
+      }
       .scrollIndicators(.hidden)
       .toolbar {
         ToolbarItemGroup(placement: .keyboard) {
@@ -1231,75 +1296,85 @@ struct NativeTripView: View {
   @State private var completedTrip: NativeTrip?
 
   var body: some View {
-    NativeScreen(title: "Trip", subtitle: "Track GPS miles for HMRC mileage relief.") {
-      NativeGlassCard(cornerRadius: 34) {
-        VStack(spacing: 22) {
-          Picker("Vehicle", selection: $selectedVehicle) {
-            ForEach(NativeVehicle.allCases) { vehicle in
-              Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
-            }
+    NativeScreen(title: "Trip", subtitle: "Track GPS miles for HMRC mileage relief.", style: .dark) {
+      VStack(spacing: 22) {
+        Picker("Vehicle", selection: $selectedVehicle) {
+          ForEach(NativeVehicle.allCases) { vehicle in
+            Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
           }
-          .pickerStyle(.menu)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .disabled(session.phase == .live || session.phase == .paused)
+        }
+        .pickerStyle(.menu)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .disabled(session.phase == .live || session.phase == .paused)
+        .tint(.white)
 
-          ZStack {
-            Circle()
-              .stroke(OkkleColor.mint, lineWidth: 18)
-              .frame(width: 270, height: 270)
-            Circle()
-              .fill(
-                LinearGradient(colors: [OkkleColor.brand, OkkleColor.brandDark], startPoint: .topLeading, endPoint: .bottomTrailing)
-              )
-              .frame(width: 222, height: 222)
-              .shadow(color: OkkleColor.brand.opacity(0.32), radius: 28, y: 20)
+        ZStack {
+          Circle()
+            .stroke(OkkleColor.mint.opacity(0.18), lineWidth: 18)
+            .frame(width: 270, height: 270)
+          Circle()
+            .fill(
+              LinearGradient(colors: [OkkleColor.brand, OkkleColor.brandDark], startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .frame(width: 222, height: 222)
+            .shadow(color: OkkleColor.brand.opacity(0.45), radius: 34, y: 22)
 
-            VStack(spacing: 8) {
-              if session.phase == .setup {
-                Image(systemName: "location.north.fill")
-                  .font(.system(size: 42, weight: .bold))
-                Text("Start")
-                  .font(.system(size: 38, weight: .heavy, design: .rounded))
-              } else {
-                Text(miles(session.miles))
-                  .font(.system(size: 44, weight: .heavy, design: .rounded))
-                  .minimumScaleFactor(0.6)
-                Text(session.phase == .paused ? "Paused" : "Recording")
-                  .font(.system(size: 16, weight: .bold))
-              }
-            }
-            .foregroundStyle(.white)
-          }
-          .frame(maxWidth: .infinity)
-          .contentShape(Circle())
-          .onTapGesture {
+          VStack(spacing: 8) {
             if session.phase == .setup {
-              session.start(vehicle: selectedVehicle)
+              Image(systemName: "location.north.fill")
+                .font(.system(size: 42, weight: .bold))
+              Text("Start")
+                .font(.system(size: 38, weight: .heavy, design: .rounded))
+            } else {
+              Text(miles(session.miles))
+                .font(.system(size: 44, weight: .heavy, design: .rounded))
+                .minimumScaleFactor(0.6)
+              Text(session.phase == .paused ? "Paused" : "Recording")
+                .font(.system(size: 16, weight: .bold))
             }
           }
-
-          HStack(spacing: 12) {
-            NativeMetricTile(title: "Tax deduction", value: gbp(store.calcDeduction(miles: session.miles, vehicle: selectedVehicle), whole: true), symbol: "sterlingsign.arrow.circlepath")
-            NativeMetricTile(title: "Elapsed", value: elapsedLabel(session.elapsed), symbol: "timer", color: OkkleColor.blue)
+          .foregroundStyle(.white)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Circle())
+        .onTapGesture {
+          if session.phase == .setup {
+            session.start(vehicle: selectedVehicle)
           }
+        }
 
-          if !session.points.isEmpty {
-            NativeTripMap(points: session.points)
-              .frame(height: 190)
-              .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-          }
+        HStack(spacing: 12) {
+          NativeMetricTile(title: "Tax deduction", value: gbp(store.calcDeduction(miles: session.miles, vehicle: selectedVehicle), whole: true), symbol: "sterlingsign.arrow.circlepath")
+          NativeMetricTile(title: "Elapsed", value: elapsedLabel(session.elapsed), symbol: "timer", color: OkkleColor.blue)
+        }
 
-          if let message = session.permissionMessage {
-            Label(message, systemImage: "location.slash")
-              .font(.system(size: 14, weight: .semibold))
-              .foregroundStyle(OkkleColor.red)
-              .padding(12)
-              .background(OkkleColor.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
-          }
+        if !session.points.isEmpty {
+          NativeTripMap(points: session.points)
+            .frame(height: 190)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
 
+        if let message = session.permissionMessage {
+          Label(message, systemImage: "location.slash")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(OkkleColor.red)
+            .padding(12)
+            .background(OkkleColor.red.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
+        }
+
+        if session.phase != .setup {
           tripControls
         }
       }
+      .padding(20)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(Color.black, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: 34, style: .continuous)
+          .stroke(Color.white.opacity(0.10), lineWidth: 1)
+      )
+      .shadow(color: .black.opacity(0.24), radius: 28, y: 16)
+      .colorScheme(.dark)
     }
     .alert("Save this trip?", isPresented: Binding(get: { completedTrip != nil }, set: { if !$0 { completedTrip = nil } })) {
       Button("Discard", role: .destructive) {
@@ -1406,12 +1481,367 @@ struct NativeTripMap: View {
   }
 }
 
+private enum NativeTimeFilter: String, CaseIterable, Identifiable {
+  case all
+  case morning
+  case lunch
+  case afternoon
+  case dinner
+  case late
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .all: return "All day"
+    case .morning: return "Morning"
+    case .lunch: return "Lunch"
+    case .afternoon: return "Afternoon"
+    case .dinner: return "Dinner"
+    case .late: return "Late"
+    }
+  }
+
+  func includes(_ date: Date) -> Bool {
+    if self == .all { return true }
+    let hour = Calendar.current.component(.hour, from: date)
+    switch self {
+    case .all:
+      return true
+    case .morning:
+      return hour >= 6 && hour < 11
+    case .lunch:
+      return hour >= 11 && hour < 14
+    case .afternoon:
+      return hour >= 14 && hour < 17
+    case .dinner:
+      return hour >= 17 && hour < 21
+    case .late:
+      return hour >= 21 || hour < 6
+    }
+  }
+}
+
+private struct NativeHeatPoint: Identifiable, Equatable {
+  let id: String
+  let latitude: Double
+  let longitude: Double
+  let weight: Double
+
+  var coordinate: CLLocationCoordinate2D {
+    CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+  }
+}
+
+private struct NativeHeatBubble: Identifiable {
+  let id: String
+  let latitude: Double
+  let longitude: Double
+  let weight: Double
+  let normalized: Double
+
+  var coordinate: CLLocationCoordinate2D {
+    CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+  }
+
+  var diameter: CGFloat {
+    CGFloat(34 + (normalized * 54))
+  }
+}
+
+private func nativeHeatPoints(from trips: [NativeTrip], filter: NativeTimeFilter) -> [NativeHeatPoint] {
+  var points: [NativeHeatPoint] = []
+  for trip in trips where filter.includes(trip.startedAt) {
+    guard !trip.points.isEmpty else { continue }
+    let stride = max(1, trip.points.count / 160)
+    let sampled = trip.points.enumerated().filter { $0.offset % stride == 0 }
+    let weight = max(0.35, trip.miles / Double(max(sampled.count, 1)))
+    for item in sampled {
+      points.append(NativeHeatPoint(
+        id: "\(trip.id.uuidString)-\(item.offset)",
+        latitude: item.element.latitude,
+        longitude: item.element.longitude,
+        weight: weight
+      ))
+    }
+  }
+  return points
+}
+
+private func nativeDistinctCoordinateCount(_ points: [NativeHeatPoint]) -> Int {
+  Set(points.map { "\(String(format: "%.3f", $0.latitude)),\(String(format: "%.3f", $0.longitude))" }).count
+}
+
+private func nativeHeatRegion(for points: [NativeHeatPoint]) -> MKCoordinateRegion {
+  guard !points.isEmpty else {
+    return MKCoordinateRegion(
+      center: CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276),
+      span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+    )
+  }
+
+  var minLat = Double.infinity
+  var maxLat = -Double.infinity
+  var minLng = Double.infinity
+  var maxLng = -Double.infinity
+
+  for point in points {
+    minLat = min(minLat, point.latitude)
+    maxLat = max(maxLat, point.latitude)
+    minLng = min(minLng, point.longitude)
+    maxLng = max(maxLng, point.longitude)
+  }
+
+  return MKCoordinateRegion(
+    center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLng + maxLng) / 2),
+    span: MKCoordinateSpan(
+      latitudeDelta: max((maxLat - minLat) * 1.7, 0.012),
+      longitudeDelta: max((maxLng - minLng) * 1.7, 0.012)
+    )
+  )
+}
+
+private func nativeHeatBubbles(from points: [NativeHeatPoint]) -> [NativeHeatBubble] {
+  guard !points.isEmpty else { return [] }
+
+  var minLat = Double.infinity
+  var maxLat = -Double.infinity
+  var minLng = Double.infinity
+  var maxLng = -Double.infinity
+
+  for point in points {
+    minLat = min(minLat, point.latitude)
+    maxLat = max(maxLat, point.latitude)
+    minLng = min(minLng, point.longitude)
+    maxLng = max(maxLng, point.longitude)
+  }
+
+  let cols = 18
+  let rows = 18
+  let latSpan = max(maxLat - minLat, 0.0001)
+  let lngSpan = max(maxLng - minLng, 0.0001)
+
+  struct Accumulator {
+    var latitude = 0.0
+    var longitude = 0.0
+    var weight = 0.0
+  }
+
+  var buckets: [String: Accumulator] = [:]
+  for point in points {
+    let col = min(cols - 1, max(0, Int(((point.longitude - minLng) / lngSpan) * Double(cols))))
+    let row = min(rows - 1, max(0, Int(((maxLat - point.latitude) / latSpan) * Double(rows))))
+    let key = "\(row)-\(col)"
+    var bucket = buckets[key] ?? Accumulator()
+    bucket.latitude += point.latitude * point.weight
+    bucket.longitude += point.longitude * point.weight
+    bucket.weight += point.weight
+    buckets[key] = bucket
+  }
+
+  let maxWeight = max(buckets.values.map(\.weight).max() ?? 1, 1)
+  return buckets.map { key, bucket in
+    let safeWeight = max(bucket.weight, 0.0001)
+    return NativeHeatBubble(
+      id: key,
+      latitude: bucket.latitude / safeWeight,
+      longitude: bucket.longitude / safeWeight,
+      weight: bucket.weight,
+      normalized: min(1, bucket.weight / maxWeight)
+    )
+  }
+  .sorted { $0.weight > $1.weight }
+  .prefix(90)
+  .map { $0 }
+}
+
+private func nativeHeatColor(_ value: Double) -> Color {
+  switch value {
+  case ..<0.2:
+    return Color(red: 0.61, green: 0.89, blue: 0.82)
+  case ..<0.4:
+    return Color(red: 0.37, green: 0.82, blue: 0.73)
+  case ..<0.6:
+    return Color(red: 0.91, green: 0.78, blue: 0.42)
+  case ..<0.8:
+    return Color(red: 0.88, green: 0.59, blue: 0.12)
+  default:
+    return Color(red: 0.89, green: 0.38, blue: 0.29)
+  }
+}
+
+private struct NativeHeatMapCard: View {
+  let points: [NativeHeatPoint]
+  let showsFilters: Bool
+  @Binding var filter: NativeTimeFilter
+
+  var body: some View {
+    NativeAiCard {
+      VStack(alignment: .leading, spacing: 16) {
+        HStack(spacing: 10) {
+          Image(systemName: "map.circle.fill")
+            .font(.system(size: 20, weight: .bold))
+            .foregroundStyle(OkkleColor.brand)
+            .frame(width: 42, height: 42)
+            .background(OkkleColor.brand.opacity(0.14), in: Circle())
+          Text("HOTSPOT MAP")
+            .font(.system(size: 15, weight: .heavy))
+            .foregroundStyle(.purple)
+        }
+        Text("See where your work clusters")
+          .font(.system(size: 26, weight: .bold, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+        Text("Okkle maps your saved GPS trips so you can spot the areas you keep returning to.")
+          .font(.system(size: 15, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+        if showsFilters {
+          NativeHeatFilterBar(selection: $filter)
+        }
+        NativeHeatMapView(points: points)
+        NativeHeatLegend()
+        Text("Built on-device from your trip breadcrumbs.")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+}
+
+private struct NativeHeatFilterBar: View {
+  @Binding var selection: NativeTimeFilter
+
+  var body: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 8) {
+        ForEach(NativeTimeFilter.allCases) { filter in
+          Button {
+            selection = filter
+          } label: {
+            Text(filter.label)
+              .font(.system(size: 13, weight: .bold))
+              .foregroundStyle(selection == filter ? Color.white : OkkleColor.muted)
+              .padding(.horizontal, 14)
+              .padding(.vertical, 9)
+              .background(selection == filter ? OkkleColor.brand : Color.white.opacity(0.72), in: Capsule())
+              .overlay(
+                Capsule()
+                  .stroke(selection == filter ? OkkleColor.brand : OkkleColor.line, lineWidth: 1)
+              )
+          }
+          .buttonStyle(.plain)
+        }
+      }
+    }
+  }
+}
+
+private struct NativeHeatMapView: View {
+  let points: [NativeHeatPoint]
+  @State private var region = nativeHeatRegion(for: [])
+
+  private var hasEnoughPoints: Bool {
+    points.count >= 2 && nativeDistinctCoordinateCount(points) >= 2
+  }
+
+  private var signature: String {
+    "\(points.count)-\(points.first?.id ?? "none")-\(points.last?.id ?? "none")"
+  }
+
+  var body: some View {
+    Group {
+      if hasEnoughPoints {
+        Map(coordinateRegion: $region, annotationItems: nativeHeatBubbles(from: points)) { bubble in
+          MapAnnotation(coordinate: bubble.coordinate) {
+            Circle()
+              .fill(nativeHeatColor(bubble.normalized).opacity(0.42))
+              .frame(width: bubble.diameter, height: bubble.diameter)
+              .blur(radius: 5)
+              .overlay(
+                Circle()
+                  .stroke(Color.white.opacity(0.20), lineWidth: 1)
+              )
+              .allowsHitTesting(false)
+          }
+        }
+        .frame(height: 220)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .onAppear(perform: updateRegion)
+        .onChange(of: signature) { _ in updateRegion() }
+      } else {
+        NativeHeatMapEmpty()
+      }
+    }
+  }
+
+  private func updateRegion() {
+    region = nativeHeatRegion(for: points)
+  }
+}
+
+private struct NativeHeatMapEmpty: View {
+  var body: some View {
+    VStack(spacing: 10) {
+      Image(systemName: "map")
+        .font(.system(size: 30, weight: .bold))
+        .foregroundStyle(OkkleColor.brand)
+      Text("Track a few GPS trips and your hotspots will appear here.")
+        .font(.system(size: 15, weight: .semibold))
+        .multilineTextAlignment(.center)
+        .foregroundStyle(OkkleColor.muted)
+        .padding(.horizontal, 18)
+    }
+    .frame(maxWidth: .infinity)
+    .frame(height: 220)
+    .background(Color(red: 0.94, green: 0.97, blue: 0.96), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+  }
+}
+
+private struct NativeHeatLegend: View {
+  private let colors = [
+    Color(red: 0.61, green: 0.89, blue: 0.82),
+    Color(red: 0.37, green: 0.82, blue: 0.73),
+    Color(red: 0.91, green: 0.78, blue: 0.42),
+    Color(red: 0.88, green: 0.59, blue: 0.12),
+    Color(red: 0.89, green: 0.38, blue: 0.29)
+  ]
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Text("Quieter")
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+      HStack(spacing: 0) {
+        ForEach(colors.indices, id: \.self) { index in
+          colors[index]
+            .frame(maxWidth: .infinity)
+        }
+      }
+      .frame(maxWidth: .infinity)
+      .frame(height: 8)
+      .clipShape(Capsule())
+      Text("Busier")
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+    }
+  }
+}
+
 struct NativeInsightsView: View {
   @EnvironmentObject private var store: OkkleStore
+  @State private var heatFilter: NativeTimeFilter = .all
   private let weekdays = Calendar.current.shortWeekdaySymbols
+  private var selectedHeatPoints: [NativeHeatPoint] {
+    nativeHeatPoints(from: store.trips, filter: heatFilter)
+  }
+  private var hasAnyHeatPoints: Bool {
+    !nativeHeatPoints(from: store.trips, filter: .all).isEmpty
+  }
 
   var body: some View {
     NativeScreen(title: "Insights", subtitle: "AI guidance, smart nudges and patterns from your work.") {
+      NativeHeatMapCard(points: selectedHeatPoints, showsFilters: hasAnyHeatPoints, filter: $heatFilter)
+
       NativeAiCard {
         VStack(alignment: .leading, spacing: 16) {
           cardHeader("Trip nudges", symbol: "location.north.circle.fill", color: OkkleColor.blue)
@@ -1477,22 +1907,13 @@ struct NativeInsightsView: View {
           ))
           .font(.system(size: 17, weight: .bold))
           .tint(OkkleColor.brand)
-
-          NativeTaxDatesPreview()
         }
       }
 
+      NativeKeyTaxDatesPanel()
+
       if store.history.isEmpty {
         NativeEmptyState(symbol: "sparkles", title: "Insights will grow with your data", message: "Track trips and log pay to unlock best zones, hours, platform mix and tax-aware suggestions.")
-      } else {
-        NativeGlassCard {
-          VStack(alignment: .leading, spacing: 12) {
-            NativeSectionTitle(title: "First native insight", symbol: "lightbulb.fill")
-            Text("You have logged \(store.records.count) records and \(store.trips.count) trips. Your current mileage deduction is \(gbp(store.yearMileageDeduction, whole: true)).")
-              .font(.system(size: 16, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-          }
-        }
       }
     }
   }
@@ -1511,30 +1932,254 @@ struct NativeInsightsView: View {
   }
 }
 
-struct NativeTaxDatesPreview: View {
-  private let rows = [
-    ("31 Jan", "Self Assessment return and balancing payment"),
-    ("31 Jul", "Second payment on account"),
-    ("5 Apr", "Tax year ends")
-  ]
+private struct NativeTaxDeadline: Identifiable {
+  let title: String
+  let month: Int
+  let day: Int
+  let note: String
 
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("Key tax dates")
-        .font(.system(size: 16, weight: .bold))
-      ForEach(rows, id: \.0) { row in
-        HStack {
-          Text(row.0)
-            .font(.system(size: 14, weight: .bold, design: .rounded))
-            .foregroundStyle(OkkleColor.brandDark)
-            .frame(width: 54, alignment: .leading)
-          Text(row.1)
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
-          Spacer()
+  var id: String { title }
+
+  func nextOccurrence(from reference: Date = Date()) -> Date {
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: reference)
+    let year = calendar.component(.year, from: reference)
+    var components = DateComponents(year: year, month: month, day: day, hour: 9, minute: 0)
+    var date = calendar.date(from: components) ?? reference
+    if date < today {
+      components.year = year + 1
+      date = calendar.date(from: components) ?? reference
+    }
+    return date
+  }
+}
+
+private let nativeTaxDeadlines = [
+  NativeTaxDeadline(title: "Register for Self Assessment", month: 10, day: 5, note: "Only if this was your first year self-employed."),
+  NativeTaxDeadline(title: "File your return & pay your tax", month: 1, day: 31, note: "Online Self Assessment deadline for the previous tax year."),
+  NativeTaxDeadline(title: "Second payment on account", month: 7, day: 31, note: "Only if HMRC asked you for payments on account.")
+]
+
+private func nativeDaysUntil(_ date: Date) -> Int {
+  let calendar = Calendar.current
+  let today = calendar.startOfDay(for: Date())
+  let target = calendar.startOfDay(for: date)
+  return calendar.dateComponents([.day], from: today, to: target).day ?? 0
+}
+
+private func nativeTaxDateLabel(_ date: Date) -> String {
+  date.formatted(.dateTime.day().month(.wide).year())
+}
+
+@MainActor
+private func nativeAddDeadlineToCalendar(_ deadline: NativeTaxDeadline) async -> Bool {
+  let eventStore = EKEventStore()
+  do {
+    let granted: Bool
+    if #available(iOS 17.0, *) {
+      granted = try await eventStore.requestFullAccessToEvents()
+    } else {
+      granted = try await withCheckedThrowingContinuation { continuation in
+        eventStore.requestAccess(to: .event) { granted, error in
+          if let error {
+            continuation.resume(throwing: error)
+          } else {
+            continuation.resume(returning: granted)
+          }
         }
       }
     }
+    guard granted, let calendar = eventStore.defaultCalendarForNewEvents else { return false }
+
+    let start = deadline.nextOccurrence()
+    let end = Calendar.current.date(byAdding: .minute, value: 30, to: start) ?? start.addingTimeInterval(1800)
+    let event = EKEvent(eventStore: eventStore)
+    event.calendar = calendar
+    event.title = "HMRC: \(deadline.title)"
+    event.startDate = start
+    event.endDate = end
+    event.notes = deadline.note
+    event.addAlarm(EKAlarm(relativeOffset: -60 * 60 * 24 * 7))
+    try eventStore.save(event, span: .thisEvent)
+    return true
+  } catch {
+    return false
+  }
+}
+
+private struct NativeKeyTaxDatesPanel: View {
+  @State private var showSheet = false
+
+  var body: some View {
+    NativeAiCard {
+      VStack(alignment: .leading, spacing: 16) {
+        HStack(spacing: 10) {
+          Image(systemName: "calendar.circle.fill")
+            .font(.system(size: 20, weight: .bold))
+            .foregroundStyle(OkkleColor.brand)
+            .frame(width: 42, height: 42)
+            .background(OkkleColor.brand.opacity(0.14), in: Circle())
+          Text("KEY TAX DATES")
+            .font(.system(size: 15, weight: .heavy))
+            .foregroundStyle(.purple)
+        }
+        Text("Keep HMRC deadlines close")
+          .font(.system(size: 26, weight: .bold, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+        Text("Review Self Assessment dates and add reminders to your calendar.")
+          .font(.system(size: 15, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+        Button {
+          showSheet = true
+        } label: {
+          HStack {
+            Text("View dates")
+              .font(.system(size: 16, weight: .bold))
+            Spacer()
+            Image(systemName: "chevron.up")
+              .font(.system(size: 15, weight: .bold))
+          }
+          .foregroundStyle(Color.white)
+          .padding(.horizontal, 16)
+          .padding(.vertical, 14)
+          .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+      }
+    }
+    .sheet(isPresented: $showSheet) {
+      NativeKeyTaxDatesSheet()
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+  }
+}
+
+private struct NativeKeyTaxDatesSheet: View {
+  @Environment(\.dismiss) private var dismiss
+  @State private var alertMessage: String?
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          Text("Add these dates to Calendar with a reminder one week before.")
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
+
+          NativeGlassCard {
+            VStack(spacing: 0) {
+              ForEach(nativeTaxDeadlines) { deadline in
+                NativeTaxDeadlineRow(deadline: deadline) { message in
+                  alertMessage = message
+                }
+                if deadline.id != nativeTaxDeadlines.last?.id {
+                  Divider().padding(.leading, 0)
+                }
+              }
+            }
+          }
+
+          Button {
+            Task {
+              var added = 0
+              for deadline in nativeTaxDeadlines {
+                if await nativeAddDeadlineToCalendar(deadline) {
+                  added += 1
+                }
+              }
+              alertMessage = added == nativeTaxDeadlines.count
+                ? "All key tax dates were added to your calendar."
+                : "Added \(added) of \(nativeTaxDeadlines.count) dates. Please allow calendar access and try again for the rest."
+            }
+          } label: {
+            Label("Add all dates", systemImage: "calendar.badge.plus")
+              .font(.system(size: 16, weight: .bold))
+              .frame(maxWidth: .infinity)
+              .padding(.vertical, 15)
+              .foregroundStyle(Color.white)
+              .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+          }
+          .buttonStyle(.plain)
+
+          Text("Keep your records for at least 5 years after the 31 January deadline. MTD for Income Tax adds quarterly updates once your income passes the threshold.")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(22)
+      }
+      .background(NativeBackground())
+      .navigationTitle("Key tax dates")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") {
+            dismiss()
+          }
+          .fontWeight(.bold)
+        }
+      }
+      .alert("Calendar", isPresented: Binding(get: { alertMessage != nil }, set: { if !$0 { alertMessage = nil } })) {
+        Button("OK", role: .cancel) {}
+      } message: {
+        Text(alertMessage ?? "")
+      }
+    }
+  }
+}
+
+private struct NativeTaxDeadlineRow: View {
+  let deadline: NativeTaxDeadline
+  let onResult: (String) -> Void
+  @State private var busy = false
+
+  var body: some View {
+    let next = deadline.nextOccurrence()
+    let days = nativeDaysUntil(next)
+    HStack(alignment: .center, spacing: 12) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(deadline.title)
+          .font(.system(size: 15, weight: .bold))
+          .foregroundStyle(OkkleColor.ink)
+        Text("\(nativeTaxDateLabel(next)) - \(daysLabel(days))")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(OkkleColor.brandDark)
+        Text(deadline.note)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 8)
+      Button {
+        busy = true
+        Task {
+          let ok = await nativeAddDeadlineToCalendar(deadline)
+          busy = false
+          onResult(ok
+            ? "\(deadline.title) was added to your calendar with a reminder one week before."
+            : "Could not add \(deadline.title). Please allow calendar access and try again.")
+        }
+      } label: {
+        Label(busy ? "Adding" : "Add", systemImage: "calendar.badge.plus")
+          .font(.system(size: 13, weight: .bold))
+          .labelStyle(.titleAndIcon)
+          .foregroundStyle(OkkleColor.brandDark)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 9)
+          .background(OkkleColor.brand.opacity(0.13), in: Capsule())
+      }
+      .buttonStyle(.plain)
+      .disabled(busy)
+    }
+    .padding(.vertical, 13)
+  }
+
+  private func daysLabel(_ days: Int) -> String {
+    if days == 0 { return "today" }
+    if days == 1 { return "tomorrow" }
+    return "in \(days) days"
   }
 }
 
@@ -1726,6 +2371,376 @@ struct NativeHistoryRow: View {
   }
 }
 
+private struct NativeShareItem: Identifiable {
+  let id = UUID()
+  let url: URL
+}
+
+private struct NativeShareSheet: UIViewControllerRepresentable {
+  let items: [Any]
+
+  func makeUIViewController(context: Context) -> UIActivityViewController {
+    UIActivityViewController(activityItems: items, applicationActivities: nil)
+  }
+
+  func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private enum NativeBackupResult {
+  case iCloud(URL)
+  case share(NativeShareItem)
+  case failed(String)
+}
+
+@MainActor
+private func nativeCreateBackup(store: OkkleStore) -> NativeBackupResult {
+  if let container = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+    do {
+      let folder = container
+        .appendingPathComponent("Documents", isDirectory: true)
+        .appendingPathComponent("Okkle Backups", isDirectory: true)
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+      let url = folder.appendingPathComponent(nativeBackupFileName())
+      try store.backupData().write(to: url, options: [.atomic])
+      return .iCloud(url)
+    } catch {
+      if let item = nativeCreateShareBackup(store: store) {
+        return .share(item)
+      }
+      return .failed("Could not write to iCloud Drive. \(error.localizedDescription)")
+    }
+  }
+
+  if let item = nativeCreateShareBackup(store: store) {
+    return .share(item)
+  }
+  return .failed("iCloud Drive is not available on this device.")
+}
+
+@MainActor
+private func nativeCreateShareBackup(store: OkkleStore) -> NativeShareItem? {
+  do {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(nativeBackupFileName())
+    try store.backupData().write(to: url, options: [.atomic])
+    return NativeShareItem(url: url)
+  } catch {
+    return nil
+  }
+}
+
+private func nativeBackupFileName() -> String {
+  let formatter = DateFormatter()
+  formatter.calendar = Calendar(identifier: .gregorian)
+  formatter.locale = Locale(identifier: "en_US_POSIX")
+  formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+  return "Okkle_Backup_\(formatter.string(from: Date())).json"
+}
+
+private enum NativeTaxExportKind: String, CaseIterable, Identifiable {
+  case accountantPack
+  case freeAgent
+  case selfAssessment
+  case mileageLog
+  case allData
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .accountantPack: return "Accountant pack"
+    case .freeAgent: return "FreeAgent CSV"
+    case .selfAssessment: return "Self Assessment summary"
+    case .mileageLog: return "HMRC mileage log"
+    case .allData: return "All data CSV"
+    }
+  }
+
+  var subtitle: String {
+    switch self {
+    case .accountantPack: return "Summary, mileage, expenses and records"
+    case .freeAgent: return "Income and expenses for bank import"
+    case .selfAssessment: return "Turnover, expenses, profit and tax estimate"
+    case .mileageLog: return "GPS and manual mileage claims"
+    case .allData: return "Trips, earnings, mileage and expenses"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .accountantPack: return "doc.richtext.fill"
+    case .freeAgent: return "arrow.up.doc.fill"
+    case .selfAssessment: return "doc.text.fill"
+    case .mileageLog: return "map.fill"
+    case .allData: return "externaldrive.fill"
+    }
+  }
+
+  var fileStem: String {
+    switch self {
+    case .accountantPack: return "Accountant-Pack"
+    case .freeAgent: return "FreeAgent-Import"
+    case .selfAssessment: return "SelfAssessment-Summary"
+    case .mileageLog: return "HMRC-Mileage-Log"
+    case .allData: return "All-Data"
+    }
+  }
+
+  var fileExtension: String {
+    switch self {
+    case .accountantPack, .selfAssessment: return "txt"
+    case .freeAgent, .mileageLog, .allData: return "csv"
+    }
+  }
+}
+
+private struct NativeExportCard: View {
+  @EnvironmentObject private var store: OkkleStore
+  @State private var shareItem: NativeShareItem?
+  @State private var exportFailed = false
+
+  var body: some View {
+    NativeGlassCard(cornerRadius: 30) {
+      VStack(alignment: .leading, spacing: 14) {
+        Label("Send to your accountant", systemImage: "square.and.arrow.up")
+          .font(.system(size: 16, weight: .heavy))
+          .foregroundStyle(OkkleColor.brandDark)
+        Text("Export & share")
+          .font(.system(size: 24, weight: .heavy, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+        Text("Generate files on-device and choose where to send or save them.")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+
+        VStack(spacing: 0) {
+          ForEach(NativeTaxExportKind.allCases) { kind in
+            Button {
+              if let item = nativeMakeExport(kind, store: store) {
+                shareItem = item
+              } else {
+                exportFailed = true
+              }
+            } label: {
+              HStack(spacing: 12) {
+                Image(systemName: kind.symbol)
+                  .font(.system(size: 17, weight: .bold))
+                  .foregroundStyle(OkkleColor.brand)
+                  .frame(width: 38, height: 38)
+                  .background(OkkleColor.brand.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                  Text(kind.title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(OkkleColor.ink)
+                  Text(kind.subtitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                    .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "square.and.arrow.up")
+                  .font(.system(size: 15, weight: .bold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+              .padding(.vertical, 11)
+            }
+            .buttonStyle(.plain)
+
+            if kind != .allData {
+              Divider().padding(.leading, 50)
+            }
+          }
+        }
+      }
+    }
+    .sheet(item: $shareItem) { item in
+      NativeShareSheet(items: [item.url])
+    }
+    .alert("Could not create export", isPresented: $exportFailed) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text("Please try again.")
+    }
+  }
+}
+
+@MainActor
+private func nativeMakeExport(_ kind: NativeTaxExportKind, store: OkkleStore) -> NativeShareItem? {
+  let content = nativeExportContents(kind, store: store)
+  let fileName = "Okkle_\(kind.fileStem)_TaxYear-\(nativeTaxYearLabel(for: store.taxYear))_\(nativeTodayStamp()).\(kind.fileExtension)"
+    .replacingOccurrences(of: "/", with: "-")
+  let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+  do {
+    try content.write(to: url, atomically: true, encoding: .utf8)
+    return NativeShareItem(url: url)
+  } catch {
+    return nil
+  }
+}
+
+@MainActor
+private func nativeExportContents(_ kind: NativeTaxExportKind, store: OkkleStore) -> String {
+  switch kind {
+  case .accountantPack:
+    return [
+      nativeSelfAssessmentText(store: store),
+      "",
+      "Mileage log",
+      nativeMileageCsv(store: store),
+      "",
+      "All records",
+      nativeAllDataCsv(store: store)
+    ].joined(separator: "\n")
+  case .freeAgent:
+    return nativeFreeAgentCsv(store: store)
+  case .selfAssessment:
+    return nativeSelfAssessmentText(store: store)
+  case .mileageLog:
+    return nativeMileageCsv(store: store)
+  case .allData:
+    return nativeAllDataCsv(store: store)
+  }
+}
+
+@MainActor
+private func nativeSelfAssessmentText(store: OkkleStore) -> String {
+  let tax = store.taxPosition
+  let lines = [
+    "Okkle - Self Assessment summary \(nativeTaxYearLabel(for: store.taxYear))",
+    "",
+    "Turnover (income):        \(gbp(tax.turnover))",
+    "Allowable expenses:       \(gbp(tax.expenses))",
+    "Net profit:               \(gbp(tax.profit))",
+    "",
+    "Estimated Income Tax:     \(gbp(tax.incomeTax))",
+    "Estimated Class 4 NIC:    \(gbp(tax.class4))",
+    "Estimated total due:      \(gbp(tax.totalDue))",
+    tax.paymentOnAccount > 0 ? "Payment on account (x2):  \(gbp(tax.paymentOnAccount)) each" : "",
+    "",
+    "Business miles:           \(miles(store.yearMiles))",
+    "Mileage deduction:        \(gbp(store.yearMileageDeduction))",
+    "",
+    "Estimates only, not tax advice. Confirm with your accountant."
+  ]
+  return lines.filter { !$0.isEmpty }.joined(separator: "\n")
+}
+
+@MainActor
+private func nativeMileageCsv(store: OkkleStore) -> String {
+  let header = "Date,Vehicle,Source,Miles,Basis,Deduction GBP"
+  let tripRows = store.trips.sorted { $0.startedAt < $1.startedAt }.map { trip in
+    [
+      nativeCsvField(nativeDateStamp(trip.startedAt)),
+      nativeCsvField(trip.vehicle.label),
+      nativeCsvField("GPS"),
+      nativeCsvField(nativeDecimal(trip.miles)),
+      nativeCsvField("HMRC simplified"),
+      nativeCsvField(nativeDecimal(trip.deduction))
+    ].joined(separator: ",")
+  }
+  let manualRows = store.records
+    .filter { $0.kind == .mileage }
+    .sorted { $0.date < $1.date }
+    .map { record in
+      [
+        nativeCsvField(nativeDateStamp(record.date)),
+        nativeCsvField(record.vehicle?.label ?? "Vehicle"),
+        nativeCsvField("Manual"),
+        nativeCsvField(nativeDecimal(record.miles ?? 0)),
+        nativeCsvField("HMRC simplified"),
+        nativeCsvField(nativeDecimal(record.deduction ?? 0))
+      ].joined(separator: ",")
+    }
+  return ([header] + tripRows + manualRows).joined(separator: "\n")
+}
+
+@MainActor
+private func nativeFreeAgentCsv(store: OkkleStore) -> String {
+  let rows = store.records
+    .filter { ($0.kind == .income || $0.kind == .expense) && (($0.amount ?? 0) > 0) }
+    .sorted { $0.date < $1.date }
+    .map { record in
+      let amount = record.kind == .expense ? -abs(record.amount ?? 0) : (record.amount ?? 0)
+      let description: String
+      if record.kind == .income {
+        description = "\(record.platform ?? "Platform") earnings"
+      } else {
+        description = [record.merchant, record.category ?? "Expense"].compactMap { value in
+          guard let value, !value.isEmpty else { return nil }
+          return value
+        }.joined(separator: " - ")
+      }
+      return [
+        nativeCsvField(nativeUkDateStamp(record.date)),
+        nativeCsvField(nativeDecimal(amount)),
+        nativeCsvField(description)
+      ].joined(separator: ",")
+    }
+  return (["Date,Amount,Description"] + rows).joined(separator: "\n")
+}
+
+@MainActor
+private func nativeAllDataCsv(store: OkkleStore) -> String {
+  let header = "date,type,platform,vehicle,miles,deduction,amount,category,merchant"
+  let tripRows = store.trips.map { trip in
+    [
+      nativeCsvField(nativeDateStamp(trip.startedAt)),
+      nativeCsvField("trip"),
+      nativeCsvField(""),
+      nativeCsvField(trip.vehicle.label),
+      nativeCsvField(nativeDecimal(trip.miles)),
+      nativeCsvField(nativeDecimal(trip.deduction)),
+      nativeCsvField(""),
+      nativeCsvField(""),
+      nativeCsvField("")
+    ].joined(separator: ",")
+  }
+  let recordRows = store.records.map { record in
+    [
+      nativeCsvField(nativeDateStamp(record.date)),
+      nativeCsvField(record.kind.rawValue),
+      nativeCsvField(record.platform ?? ""),
+      nativeCsvField(record.vehicle?.label ?? ""),
+      nativeCsvField(record.miles.map(nativeDecimal) ?? ""),
+      nativeCsvField(record.deduction.map(nativeDecimal) ?? ""),
+      nativeCsvField(record.amount.map(nativeDecimal) ?? ""),
+      nativeCsvField(record.category ?? ""),
+      nativeCsvField(record.merchant ?? "")
+    ].joined(separator: ",")
+  }
+  return ([header] + tripRows + recordRows).joined(separator: "\n")
+}
+
+private func nativeCsvField(_ value: String) -> String {
+  if value.contains(",") || value.contains("\"") || value.contains("\n") {
+    return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+  }
+  return value
+}
+
+private func nativeDecimal(_ value: Double) -> String {
+  String(format: "%.2f", value)
+}
+
+private func nativeTodayStamp() -> String {
+  nativeDateStamp(Date())
+}
+
+private func nativeDateStamp(_ date: Date) -> String {
+  let formatter = DateFormatter()
+  formatter.calendar = Calendar(identifier: .gregorian)
+  formatter.locale = Locale(identifier: "en_US_POSIX")
+  formatter.dateFormat = "yyyy-MM-dd"
+  return formatter.string(from: date)
+}
+
+private func nativeUkDateStamp(_ date: Date) -> String {
+  let formatter = DateFormatter()
+  formatter.calendar = Calendar(identifier: .gregorian)
+  formatter.locale = Locale(identifier: "en_GB")
+  formatter.dateFormat = "dd/MM/yyyy"
+  return formatter.string(from: date)
+}
+
 struct NativeTaxSummaryView: View {
   @EnvironmentObject private var store: OkkleStore
 
@@ -1759,6 +2774,8 @@ struct NativeTaxSummaryView: View {
           taxRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
         }
       }
+
+      NativeExportCard()
     }
   }
 
@@ -1779,6 +2796,9 @@ struct NativeSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
   @Environment(\.dismiss) private var dismiss
   @State private var newPlatform = ""
+  @State private var backupBusy = false
+  @State private var backupMessage: String?
+  @State private var backupShareItem: NativeShareItem?
 
   var body: some View {
     NavigationStack {
@@ -1831,6 +2851,26 @@ struct NativeSettingsView: View {
         }
 
         Section("Data") {
+          Button {
+            backupBusy = true
+            switch nativeCreateBackup(store: store) {
+            case .iCloud(let url):
+              backupMessage = "Backed up to iCloud Drive as \(url.lastPathComponent)."
+            case .share(let item):
+              backupShareItem = item
+            case .failed(let message):
+              backupMessage = message
+            }
+            backupBusy = false
+          } label: {
+            Label(backupBusy ? "Backing up..." : "Back up to iCloud", systemImage: "icloud.and.arrow.up")
+          }
+          .disabled(backupBusy)
+
+          Text("Creates a JSON backup in iCloud Drive. If iCloud is not available, Okkle opens the native share sheet so you can save the backup to Files.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+
           Button(role: .destructive) {
             store.resetAllData()
           } label: {
@@ -1850,6 +2890,17 @@ struct NativeSettingsView: View {
         }
       }
       .navigationTitle("Settings")
+      .sheet(item: $backupShareItem) { item in
+        NativeShareSheet(items: [item.url])
+      }
+      .alert("Backup", isPresented: Binding(
+        get: { backupMessage != nil },
+        set: { if !$0 { backupMessage = nil } }
+      )) {
+        Button("OK", role: .cancel) {}
+      } message: {
+        Text(backupMessage ?? "")
+      }
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
           Button("Done") { dismiss() }

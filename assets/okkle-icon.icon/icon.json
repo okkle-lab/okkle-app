@@ -1,0 +1,47 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.00000,0.78431,0.70196,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name" : "check_mark_badge_solid.svg",
+          "name" : "check_mark_badge_solid",
+          "position" : {
+            "scale" : 0.75,
+            "translation-in-points" : [
+              228.58147726488096,
+              214.5
+            ]
+          }
+        },
+        {
+          "image-name" : "delivery_van_glass.svg",
+          "name" : "delivery_van_glass",
+          "position" : {
+            "scale" : 1.2,
+            "translation-in-points" : [
+              13.481477264880937,
+              -41.58593749999994
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
