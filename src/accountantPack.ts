@@ -9,6 +9,7 @@ import { taxPosition, compareMethods, caRate, RATES_YEAR } from './db/taxcalc';
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel, regionLabel } from './db/tax';
 
 const VEHICLE_COST_WORDS = /fuel|petrol|diesel|tyre|tire|mot|service|servicing|repair|insurance|road tax|breakdown|oil|brake|battery/i;
+type RoutePoint = { lat: number; lng: number; t?: number };
 
 function esc(s: string): string {
   return (s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
@@ -30,12 +31,84 @@ async function imageDataUri(uri: string | null): Promise<string | null> {
   }
 }
 
+function routePoints(routeJson: string | null | undefined): RoutePoint[] {
+  if (!routeJson) return [];
+  try {
+    const raw = JSON.parse(routeJson);
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map(p => ({
+        lat: Number(p?.lat),
+        lng: Number(p?.lng),
+        t: typeof p?.t === 'number' ? p.t : undefined,
+      }))
+      .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  } catch {
+    return [];
+  }
+}
+
+function coord(p: RoutePoint | undefined): string {
+  return p ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : '—';
+}
+
+function pointTime(p: RoutePoint | undefined): string {
+  if (!p?.t) return '—';
+  try {
+    return new Date(p.t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '—';
+  }
+}
+
+function routeBounds(pts: RoutePoint[]): string {
+  if (!pts.length) return '—';
+  const lats = pts.map(p => p.lat);
+  const lngs = pts.map(p => p.lng);
+  return `${Math.min(...lats).toFixed(5)}, ${Math.min(...lngs).toFixed(5)} to ${Math.max(...lats).toFixed(5)}, ${Math.max(...lngs).toFixed(5)}`;
+}
+
+function routeSvg(pts: RoutePoint[]): string {
+  if (pts.length < 2) return '<p class="muted">No route sketch available.</p>';
+  const w = 260;
+  const h = 110;
+  const pad = 12;
+  const lats = pts.map(p => p.lat);
+  const lngs = pts.map(p => p.lng);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const latSpan = Math.max(maxLat - minLat, 0.0001);
+  const lngSpan = Math.max(maxLng - minLng, 0.0001);
+  const line = pts.map(p => {
+    const x = pad + ((p.lng - minLng) / lngSpan) * (w - pad * 2);
+    const y = pad + ((maxLat - p.lat) / latSpan) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const start = line.split(' ')[0];
+  const end = line.split(' ').slice(-1)[0];
+  return `
+    <svg class="route-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Downsampled GPS route sketch">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="8" fill="#f6fcfa" />
+      <polyline points="${line}" fill="none" stroke="#0e8e78" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="${start.split(',')[0]}" cy="${start.split(',')[1]}" r="4" fill="#1fb89a" />
+      <circle cx="${end.split(',')[0]}" cy="${end.split(',')[1]}" r="4" fill="#22302c" />
+    </svg>`;
+}
+
 export async function buildAccountantPackHtml(): Promise<string> {
   const user = getUser();
   const year = getTaxYearSummary();
   const bizMiles = getTaxYearMiles();
   const otherExpenses = getTaxYearExpenses();
   const start = taxYearStart();
+
+  // Optional identity the user added on the export screen (stored on-device).
+  const utr = (kvGet('utr') ?? '').trim();
+  const ni = (kvGet('ni_number') ?? '').trim();
+  const address = (kvGet('address') ?? '').trim();
+  const business = (kvGet('business_desc') ?? '').trim() || 'delivery courier';
 
   const method = compareMethods({
     businessMiles: bizMiles,
@@ -70,14 +143,38 @@ export async function buildAccountantPackHtml(): Promise<string> {
 
   const mileageMilesTotal = trips.reduce((s, t) => s + t.miles, 0);
   const mileageDedTotal = trips.reduce((s, t) => s + t.deduction, 0);
-  const mileageRows = trips.map(t => `
-    <tr>
-      <td>${ukDate(t.started_at)}</td>
-      <td>${esc(vehicleLabel(t.vehicle))}</td>
-      <td>${esc(t.platform)} delivery</td>
-      <td class="num">${t.miles.toFixed(1)}</td>
-      <td class="num">${fmtGbp(t.deduction)}</td>
-    </tr>`).join('');
+  const gpsTrips = trips
+    .map(t => ({ trip: t, pts: routePoints(t.route_json) }))
+    .filter(x => x.pts.length > 1);
+  const mileageDeductionHeader = usingActual ? 'Mileage evidence' : 'Deduction';
+  const mileageRows = trips.map(t => {
+    const pts = routePoints(t.route_json);
+    return `
+      <tr>
+        <td>${ukDate(t.started_at)}</td>
+        <td>${esc(vehicleLabel(t.vehicle))}</td>
+        <td>${esc(t.platform ? `${t.platform} delivery` : 'Business delivery')}</td>
+        <td class="num">${t.miles.toFixed(1)}</td>
+        <td class="num">${usingActual ? 'Miles only' : fmtGbp(t.deduction)}</td>
+        <td>${pts.length > 1 ? `${pts.length} GPS points` : 'Manual / no route'}</td>
+        <td>${esc(t.zone ?? '') || '—'}</td>
+      </tr>`;
+  }).join('');
+
+  const routeEvidence = gpsTrips.map(({ trip, pts }) => `
+    <div class="route-card">
+      <div class="route-main">
+        ${routeSvg(pts)}
+      </div>
+      <div class="route-meta">
+        <b>${ukDate(trip.started_at)} · ${esc(vehicleLabel(trip.vehicle))} · ${fmtMiles(trip.miles)}</b>
+        <div class="route-row"><span>Start</span><b>${coord(pts[0])} (${pointTime(pts[0])})</b></div>
+        <div class="route-row"><span>End</span><b>${coord(pts[pts.length - 1])} (${pointTime(pts[pts.length - 1])})</b></div>
+        <div class="route-row"><span>Bounds</span><b>${routeBounds(pts)}</b></div>
+        <div class="route-row"><span>Points</span><b>${pts.length} downsampled breadcrumbs</b></div>
+        ${trip.zone ? `<div class="route-row"><span>Area</span><b>${esc(trip.zone)}</b></div>` : ''}
+      </div>
+    </div>`).join('');
 
   const platformTotal = Object.values(byPlatform).reduce((s, v) => s + v, 0);
   const platformRows = Object.entries(byPlatform)
@@ -140,6 +237,14 @@ export async function buildAccountantPackHtml(): Promise<string> {
     .receipt { margin: 12px 0; page-break-inside: avoid; }
     .receipt-cap { font-size: 11px; color: #6b756f; margin-bottom: 4px; }
     .receipt img { max-width: 320px; max-height: 360px; border: 1px solid #ddd; border-radius: 6px; }
+    .route-card { display: flex; gap: 12px; align-items: flex-start; border: 1px solid #e2f6f1; border-radius: 10px; padding: 10px; margin: 10px 0; page-break-inside: avoid; }
+    .route-main { width: 270px; flex: 0 0 270px; }
+    .route-svg { width: 260px; height: 110px; border: 1px solid #d9eee8; border-radius: 8px; background: #f6fcfa; }
+    .route-meta { flex: 1; font-size: 11px; color: #6b756f; }
+    .route-meta > b { display: block; color: #22302c; margin-bottom: 4px; font-size: 12px; }
+    .route-row { display: grid; grid-template-columns: 56px 1fr; gap: 8px; padding: 2px 0; border-bottom: 1px solid #f1efea; }
+    .route-row span { color: #6b756f; }
+    .route-row b { color: #22302c; font-weight: 600; }
     .note { background: #f1efea; border-radius: 8px; padding: 14px; color: #6b756f; font-size: 11px; margin-top: 24px; line-height: 1.5; page-break-inside: avoid; }
     .cover { border-bottom: 3px solid #1fb89a; padding-bottom: 16px; margin-bottom: 8px; }
     .coverkv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin-top: 12px; font-size: 12px; }
@@ -148,10 +253,13 @@ export async function buildAccountantPackHtml(): Promise<string> {
   </style></head><body>
 
   <div class="cover">
-    <h1>Accountant Review Pack — Income &amp; Expenses Summary</h1>
-    <p class="sub">${esc(user?.name ?? 'Courier')} · Sole trader (delivery courier)</p>
-    <p class="sub">A review/evidence pack to support your accountant — not a final filing pack. Figures are estimates and need confirming before submission.</p>
+    <h1>HMRC-Ready Records Pack — Accountant Review</h1>
+    <p class="sub">${esc(user?.name ?? 'Courier')} · Sole trader (${esc(business)})</p>
+    <p class="sub">A record-keeping and evidence pack for accountant review. Okkle does not submit to HMRC; figures are estimates and need confirming before filing.</p>
     <div class="coverkv">
+      ${utr ? `<span>UTR</span><b>${esc(utr)}</b>` : ''}
+      ${ni ? `<span>National Insurance no.</span><b>${esc(ni)}</b>` : ''}
+      ${address ? `<span>Address</span><b>${esc(address)}</b>` : ''}
       <span>Accounting period</span><b>${ukDate(start)} to ${ukDate(periodEnd)} (${taxYearLabel()})</b>
       <span>Reference</span><b>${esc(ref)}</b>
       <span>Prepared</span><b>${today}</b>
@@ -195,12 +303,16 @@ export async function buildAccountantPackHtml(): Promise<string> {
   </table>
 
   <h2>Mileage log</h2>
-  <p class="sub">${fmtMiles(mileageMilesTotal)} business miles across ${trips.length} trips. Distances are GPS-measured from each trip, which helps support a contemporaneous mileage log. The client should review and confirm the trips; this does not by itself guarantee HMRC acceptance.</p>
+  <p class="sub">${fmtMiles(mileageMilesTotal)} business miles across ${trips.length} trips. ${gpsTrips.length} trips include downsampled GPS route evidence. The client should review and confirm the trips; this does not by itself guarantee HMRC acceptance.</p>
   <table>
-    <thead><tr><th>Date</th><th>Vehicle</th><th>Purpose</th><th class="num">Miles</th><th class="num">Deduction</th></tr></thead>
-    <tbody>${mileageRows || '<tr><td colspan="5" class="muted">No trips recorded.</td></tr>'}</tbody>
-    ${trips.length ? `<tfoot><tr><td colspan="3"><b>Total</b></td><td class="num"><b>${mileageMilesTotal.toFixed(1)}</b></td><td class="num"><b>${fmtGbp(mileageDedTotal)}</b></td></tr></tfoot>` : ''}
+    <thead><tr><th>Date</th><th>Vehicle</th><th>Purpose</th><th class="num">Miles</th><th class="num">${mileageDeductionHeader}</th><th>GPS evidence</th><th>Area</th></tr></thead>
+    <tbody>${mileageRows || '<tr><td colspan="7" class="muted">No trips recorded.</td></tr>'}</tbody>
+    ${trips.length ? `<tfoot><tr><td colspan="3"><b>Total</b></td><td class="num"><b>${mileageMilesTotal.toFixed(1)}</b></td><td class="num"><b>${usingActual ? 'Actual costs used above' : fmtGbp(mileageDedTotal)}</b></td><td colspan="2"></td></tr></tfoot>` : ''}
   </table>
+
+  <h2>GPS route evidence</h2>
+  <p class="sub">These route sketches are drawn from the GPS breadcrumbs saved on-device for each tracked trip. Points are downsampled for storage, so they are evidence of the route pattern and distance record rather than a turn-by-turn navigation history.</p>
+  ${routeEvidence || '<p class="muted">No GPS route data recorded for this tax year.</p>'}
 
   <h2>Expenses</h2>
   ${expenseTable(cleanExpenses)}

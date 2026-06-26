@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, radius, type } from '../src/theme';
 import { Card, Chip, PrimaryButton, VehicleChip, ModalHeader, ChipScroll } from '../src/components';
-import { VEHICLES, PLATFORMS, REGIONS, regionRate, regionLabel } from '../src/db/tax';
+import { VEHICLES, PLATFORMS } from '../src/db/tax';
 import { getUser, saveUser } from '../src/db';
 
 // Fixed (non-scrolling) layout: the whole form fits one screen and Save is
@@ -21,8 +21,6 @@ export default function SettingsAccount() {
   const [platforms, setPlatforms] = useState<string[]>(
     u?.platforms?.split(',').map(s => s.trim()).filter(p => p && p.toLowerCase() !== 'other') ?? ['Uber Eats'],
   );
-  const [region, setRegion] = useState(u?.region ?? 'ruk');
-  const [band, setBand] = useState<'basic' | 'higher'>((u?.tax_rate ?? 0.2) >= 0.4 ? 'higher' : 'basic');
 
   const toggle = (p: string) => setPlatforms(prev => (prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]));
   const toggleVehicle = (k: string) => setVehicles(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
@@ -41,7 +39,7 @@ export default function SettingsAccount() {
   function save() {
     const v = vehicles.length ? vehicles : ['car'];
     const cleaned = platforms.filter(p => p.trim() && p.toLowerCase() !== 'other');
-    saveUser({ name, vehicle: v[0], vehicles: v.join(','), platforms: cleaned.join(','), region, tax_rate: regionRate(region, band) });
+    saveUser({ name, vehicle: v[0], vehicles: v.join(','), platforms: cleaned.join(',') });
     router.back();
   }
 
@@ -73,22 +71,6 @@ export default function SettingsAccount() {
           </View>
         </Card>
 
-        <Card style={s.card}>
-          <View>
-            <Text style={s.label}>Where you live</Text>
-            <View style={s.chips}>
-              {REGIONS.map(r => <Chip key={r.key} label={r.label} selected={region === r.key} onPress={() => setRegion(r.key)} />)}
-            </View>
-          </View>
-          <View>
-            <Text style={s.label}>Income tax band</Text>
-            <View style={s.chips}>
-              <Chip label="Basic rate" selected={band === 'basic'} onPress={() => setBand('basic')} />
-              <Chip label="Higher rate" selected={band === 'higher'} onPress={() => setBand('higher')} />
-            </View>
-          </View>
-          <Text style={s.note}>Estimating take-home at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}).</Text>
-        </Card>
       </View>
 
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
@@ -108,5 +90,7 @@ const s = StyleSheet.create({
   addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.full, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bg },
   addChipText: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
   note: { ...type.caption, color: colors.textTertiary },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: spacing.md, paddingVertical: spacing.sm },
+  linkText: { ...type.bodyMedium, fontSize: 15, color: colors.textPrimary, flex: 1 },
   footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md },
 });

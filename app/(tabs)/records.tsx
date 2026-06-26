@@ -21,6 +21,7 @@ export default function RecordsScreen() {
   const [filter, setFilter] = React.useState<'all' | 'trips' | 'income' | 'expense'>('all');
   const [month, setMonth] = React.useState<string>('all'); // 'all' or 'YYYY-MM'
   const [mode, setMode] = React.useState<RecordsMode>(params.view === 'tax' ? 'tax' : 'records');
+  const [scrollResetKey, setScrollResetKey] = React.useState(0);
 
   React.useEffect(() => {
     if (params.view === 'tax') setMode('tax');
@@ -85,7 +86,10 @@ export default function RecordsScreen() {
     setItems(all);
   }
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  useFocusEffect(useCallback(() => {
+    load();
+    setScrollResetKey(k => k + 1);
+  }, []));
 
   function onRefresh() { setRefreshing(true); load(); setRefreshing(false); }
 
@@ -209,6 +213,7 @@ export default function RecordsScreen() {
         right={gear}
         refreshControl={mode === 'records' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} /> : undefined}
         keyboardShouldPersistTaps="handled"
+        resetScrollKey={scrollResetKey}
       >
         {renderModeSwitch()}
         {mode === 'tax' ? <TaxPanel /> : renderRecordsList()}

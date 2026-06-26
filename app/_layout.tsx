@@ -58,6 +58,8 @@ export default function RootLayout() {
         <Stack.Screen name="settings-about" options={modalOptions} />
         <Stack.Screen name="edit" options={modalOptions} />
         <Stack.Screen name="compare" options={modalOptions} />
+        <Stack.Screen name="tax-detail" options={modalOptions} />
+        <Stack.Screen name="tax-setup" options={modalOptions} />
         <Stack.Screen name="medals" options={modalOptions} />
         <Stack.Screen name="export" options={modalOptions} />
         <Stack.Screen name="feedback" options={modalOptions} />

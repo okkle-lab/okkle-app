@@ -142,6 +142,9 @@ export default function Onboarding() {
                 />
               ))}
             </View>
+            <Text style={s.note}>
+              Okkle works out your tax the simple way — HMRC’s flat-rate mileage (a set amount per mile that already covers fuel, insurance and repairs). It’s the easiest method and the best fit for most couriers. If you drive an expensive or electric car, the “actual costs” method can sometimes save more — worth asking an accountant.
+            </Text>
           </View>
         )}
 

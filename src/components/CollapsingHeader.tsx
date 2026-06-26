@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, Platform, View, StyleSheet, useColorScheme, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, Platform, ScrollView, View, StyleSheet, useColorScheme, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { colors, spacing, type } from '../theme';
@@ -16,13 +16,15 @@ type Props = {
   refreshControl?: React.ComponentProps<typeof Animated.ScrollView>['refreshControl'];
   keyboardShouldPersistTaps?: 'always' | 'never' | 'handled';
   contentStyle?: StyleProp<ViewStyle>;
+  resetScrollKey?: number | string;
 };
 
 // Starling-style header: a big title sits in the scroll content and slides away
 // as you scroll, while a compact pinned title + a translucent bar fade in. Smooth,
 // native-driven movement; right-hand actions stay put the whole time.
-export function CollapsingHeader({ title, subtitle, right, children, refreshControl, keyboardShouldPersistTaps, contentStyle }: Props) {
+export function CollapsingHeader({ title, subtitle, right, children, refreshControl, keyboardShouldPersistTaps, contentStyle, resetScrollKey }: Props) {
   const scrollY = React.useRef(new Animated.Value(0)).current;
+  const scrollRef = React.useRef<ScrollView>(null);
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
   const fadeColor = isDark ? '#101816' : '#FFFFFF';
@@ -35,9 +37,16 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
   const bigOpacity = scrollY.interpolate({ inputRange: [0, THRESH * 1.05], outputRange: [1, 0], extrapolate: 'clamp' });
   const bigTranslate = scrollY.interpolate({ inputRange: [0, THRESH], outputRange: [0, -18], extrapolate: 'clamp' });
 
+  React.useEffect(() => {
+    if (resetScrollKey === undefined) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    scrollY.setValue(0);
+  }, [resetScrollKey, scrollY]);
+
   return (
     <View style={s.screen}>
       <Animated.ScrollView
+        ref={scrollRef}
         refreshControl={refreshControl}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         scrollEventThrottle={16}

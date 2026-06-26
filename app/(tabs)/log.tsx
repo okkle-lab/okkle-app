@@ -158,6 +158,7 @@ export default function LogScreen() {
   const active = TABS[tabIndex];
   const steps = stepsFor(tab, myVehicles.length > 1, platformList.length > 1);
   const currentStep = steps[stepIndex] ?? 'kind';
+  const allowStepScroll = currentStep === 'receipt' || currentStep === 'details' || currentStep === 'date' || currentStep === 'review';
   const logNumberKeyboardDoneProps = {
     ...numberKeyboardDoneProps,
     onFocus: () => {
@@ -621,6 +622,22 @@ export default function LogScreen() {
 
   const titleTop = headerTitleTop(insets.top);
   const actionTop = headerActionTop(insets.top);
+  const stepContent = (
+    <Animated.View
+      style={[
+        s.page,
+        {
+          opacity: stepAnim,
+          transform: [{ translateX: stepAnim.interpolate({ inputRange: [0, 1], outputRange: [stepDirection.current * 28, 0] }) }],
+        },
+      ]}
+    >
+      <Text style={s.stepCount}>Step {stepIndex + 1} of {steps.length}</Text>
+      <Text style={s.questionTitle}>{stepTitle}</Text>
+      <Text style={s.questionSub}>{stepSub}</Text>
+      <View style={s.questionBody}>{renderStep()}</View>
+    </Animated.View>
+  );
 
   return (
     <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -636,27 +653,20 @@ export default function LogScreen() {
         <View style={[s.progressFill, { width: `${((stepIndex + 1) / steps.length) * 100}%` }]} />
       </View>
 
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 132 }]}
-      >
-        <Animated.View
-          style={[
-            s.page,
-            {
-              opacity: stepAnim,
-              transform: [{ translateX: stepAnim.interpolate({ inputRange: [0, 1], outputRange: [stepDirection.current * 28, 0] }) }],
-            },
-          ]}
+      {allowStepScroll ? (
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="never"
+          contentContainerStyle={[s.stepContent, { paddingBottom: insets.bottom + 132 }]}
         >
-          <Text style={s.stepCount}>Step {stepIndex + 1} of {steps.length}</Text>
-          <Text style={s.questionTitle}>{stepTitle}</Text>
-          <Text style={s.questionSub}>{stepSub}</Text>
-          <View style={s.questionBody}>{renderStep()}</View>
-        </Animated.View>
-      </ScrollView>
+          {stepContent}
+        </ScrollView>
+      ) : (
+        <View style={s.stepContent}>
+          {stepContent}
+        </View>
+      )}
 
       {renderFooter()}
       {renderSuccessNotice()}
@@ -686,8 +696,8 @@ const s = StyleSheet.create({
   headerTitle: { ...type.screenTitle, marginTop: 2 },
   progressTrack: { height: 4, marginHorizontal: spacing.xl, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.brand },
-  scrollContent: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
-  page: { minHeight: 500 },
+  stepContent: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xl + spacing.sm },
+  page: { flex: 1 },
   stepCount: { ...type.caption, color: colors.brandDeep, fontWeight: font.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
   questionTitle: { ...type.screenTitle, fontSize: 30, marginTop: spacing.sm },
   questionSub: { ...type.body, color: colors.textSecondary, lineHeight: 23, marginTop: spacing.sm },
