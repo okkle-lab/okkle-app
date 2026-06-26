@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uk.okkle.app",
+      "icon": "./assets/okkle-icon.icon",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Okkle uses your location to track delivery trip distance for HMRC mileage records.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Okkle uses your location in the background to track delivery trips accurately.",
@@ -24,9 +25,11 @@
       }
     },
     "android": {
+      "icon": "./assets/icon.png",
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/android-icon-foreground.png"
+        "backgroundImage": "./assets/android-icon-background.png",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
