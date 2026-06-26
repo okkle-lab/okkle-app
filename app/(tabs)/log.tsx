@@ -168,6 +168,9 @@ export default function LogScreen() {
       speed: 18,
       bounciness: 5,
     }).start();
+    // Briefly confirm "Saved to Records", then end — back to a fresh log screen.
+    const id = setTimeout(() => { resetEntryFields(); resetWorkflow(); }, 1300);
+    return () => clearTimeout(id);
   }, [submitted, successAnim]);
 
   async function pickReceipt(useCamera: boolean) {
@@ -567,14 +570,6 @@ export default function LogScreen() {
                 <Feather name="check" size={42} color="#fff" />
               </View>
               <Text style={s.successSub}>Saved to Records.</Text>
-            </View>
-
-            <View style={s.successActions}>
-              <NativeGreenButton label="Keep adding logs" onPress={addAnotherLog} />
-              <Pressable onPress={viewRecords} style={s.successSecondary}>
-                <Feather name="list" size={19} color={colors.brandDeep} />
-                <Text style={s.successSecondaryText}>View in Records</Text>
-              </Pressable>
             </View>
           </GlassPanel>
         </Animated.View>

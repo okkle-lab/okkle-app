@@ -56,8 +56,10 @@ export default function EditEntry() {
   // Platform lives on earnings only now — trips and mileage are platform-agnostic.
   const showPlatform = recordType === 'income';
   const showVehicle = kind === 'trip' || recordType === 'mileage';
-  // Only the vehicles the user chose at onboarding / in Settings.
-  const myVehicles = VEHICLES.filter(v => getVehicleKeys().includes(v.key));
+  // The user's chosen vehicles, plus this entry's own vehicle even if it's since
+  // been removed in Settings — so an old bike/van entry still shows and is editable.
+  const vehicleOptionKeys = Array.from(new Set([...getVehicleKeys(), ...(vehicle ? [vehicle] : [])]));
+  const myVehicles = VEHICLES.filter(v => vehicleOptionKeys.includes(v.key));
   const platformOptions = Array.from(new Set([...getPlatforms(), ...(platform ? [platform] : [])]));
   const showDescription = recordType === 'expense';
   const milesNum = parseFloat(miles) || 0;
