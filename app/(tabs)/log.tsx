@@ -295,7 +295,7 @@ export default function LogScreen() {
     currentStep === 'receipt' && !receiptUri ? 'Skip receipt' :
     'Continue';
 
-  const kindOptions = [TABS[2], TABS[0], TABS[1]];
+  const kindOptions = TABS;
   const stepTitle =
     currentStep === 'kind' ? 'What are you logging?' :
     currentStep === 'receipt' ? 'Add a receipt' :
