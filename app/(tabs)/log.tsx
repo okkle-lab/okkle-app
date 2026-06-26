@@ -65,11 +65,15 @@ const TABS: { key: Tab; label: string; icon: React.ComponentProps<typeof Feather
   { key: 'mileage', label: 'Mileage', icon: 'map', tone: 'blue', title: 'Add mileage', sub: 'Miles you drove without GPS tracking' },
 ];
 
-// Mileage has no receipt, and no platform — only a vehicle to pick (and only if
-// the user has more than one). So its flow skips those steps.
-function stepsFor(tab: Tab, multiVehicle: boolean): LogStep[] {
+// Only ask the things that have a choice: mileage skips receipt+platform and only
+// asks the vehicle when there's more than one; earnings only asks the platform
+// when the user works more than one. Expense always needs its category.
+function stepsFor(tab: Tab, multiVehicle: boolean, multiPlatform: boolean): LogStep[] {
   if (tab === 'mileage') {
     return multiVehicle ? ['kind', 'primary', 'details', 'date', 'review'] : ['kind', 'primary', 'date', 'review'];
+  }
+  if (tab === 'income') {
+    return multiPlatform ? ['kind', 'receipt', 'primary', 'details', 'date', 'review'] : ['kind', 'receipt', 'primary', 'date', 'review'];
   }
   return ['kind', 'receipt', 'primary', 'details', 'date', 'review'];
 }
@@ -97,7 +101,9 @@ export default function LogScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      setPlatformList(getPlatforms());
+      const plats = getPlatforms();
+      setPlatformList(plats);
+      setPlatform(current => plats.includes(current) ? current : (plats[0] ?? ''));
       const vehicleKeys = getVehicleKeys();
       const nextVehicles = VEHICLES.filter(v => vehicleKeys.includes(v.key));
       setMyVehicles(nextVehicles);
@@ -150,7 +156,7 @@ export default function LogScreen() {
 
   const tabIndex = Math.max(0, TABS.findIndex(t => t.key === tab));
   const active = TABS[tabIndex];
-  const steps = stepsFor(tab, myVehicles.length > 1);
+  const steps = stepsFor(tab, myVehicles.length > 1, platformList.length > 1);
   const currentStep = steps[stepIndex] ?? 'kind';
 
   React.useEffect(() => {
