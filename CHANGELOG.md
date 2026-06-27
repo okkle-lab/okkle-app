@@ -2,7 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
-## 0.3.1 - 2026-06-27 (Self-employed clarity, accountant pack & insights automation)
+## 0.3 - 2026-06-27 (Self-employed clarity, accountant pack & insights automation)
+
+_TestFlight build following 0.3 (13). The marketing version stays "0.3"; EAS auto-increments the build number._
+
 
 - **Tax section redesigned.** Records → Tax is now a glanceable summary — a "set aside for tax" hero with tap-to-detail cards (bill, tax saved, this year, deadlines) instead of one long scroll. All the detail is preserved behind taps. Tax inputs are consolidated into **Settings → Tax settings** (region, band, other income, method).
 - **Clearer that Okkle is for self-employed couriers.** Onboarding now states it's for couriers who file their own Self Assessment, with a note that employed (PAYE) drivers are taxed differently and the estimates won't apply. Tax support is simplified-mileage-only, made explicit in onboarding.
