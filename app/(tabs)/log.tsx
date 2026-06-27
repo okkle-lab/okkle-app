@@ -438,11 +438,6 @@ export default function LogScreen() {
         <Text style={s.amountHeroSub}>
           {tab === 'income' ? 'Gross pay before platform deductions.' : description || 'Receipt scans can prefill this.'}
         </Text>
-        {numberInputFocused && (
-          <Pressable onPress={dismissNumberInput} hitSlop={8} style={s.amountDoneButton}>
-            <Text style={s.amountDoneText}>Done</Text>
-          </Pressable>
-        )}
       </>
     );
   }
@@ -700,7 +695,7 @@ export default function LogScreen() {
 
   return (
     <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[s.header, { paddingTop: titleTop - LOG_TITLE_OFFSET }]}>
+      <View style={[s.header, { paddingTop: titleTop }]}>
         <View style={s.headerText}>
           <Text style={s.headerEyebrow}>Log entry</Text>
           <Text style={s.headerTitle}>{active.label}</Text>

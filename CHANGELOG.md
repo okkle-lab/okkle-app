@@ -11,6 +11,11 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
+## 0.3 (26) - 2026-06-27 (Log screen polish)
+
+- **Fixed the Log header tucking under the status bar / Dynamic Island** — it now uses the full safe-area top clearance.
+- **Removed the in-amount "Done" pill** when entering earnings/expense amounts — it looked out of place; the keyboard's own Done dismisses the keypad.
+
 ## 0.3 (25) - 2026-06-27 (Onboarding layout fix)
 
 - **Fixed the onboarding "Get started" button sitting too low / steps scrolling.** Each onboarding step is now a fixed (non-scrolling) layout with the button pinned above the home indicator using the safe-area inset, instead of a scroll view that pushed the button to the bottom edge.
