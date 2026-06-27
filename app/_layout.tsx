@@ -1,6 +1,7 @@
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 import '../src/autoTrip'; // registers the background trip-detection task at load
@@ -51,7 +52,7 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="onboarding" />
@@ -76,6 +77,6 @@ export default function RootLayout() {
         <Stack.Screen name="settings-auto-trip" options={modalOptions} />
       </Stack>
       <DeadlineAlert />
-    </>
+    </SafeAreaProvider>
   );
 }
