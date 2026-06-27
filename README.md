@@ -30,6 +30,26 @@ xcodebuild \
   build
 ```
 
+## Run Tests
+
+```bash
+xcodebuild \
+  -project ios/Okkle.xcodeproj \
+  -scheme Okkle \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  test
+```
+
+## Native Source Layout
+
+- `ios/Okkle/Native/App` - app shell and tab routing.
+- `ios/Okkle/Native/Models` - records, trips, settings, and history models.
+- `ios/Okkle/Native/Store` - app state, persistence, and legacy migration.
+- `ios/Okkle/Native/Services` - tax/date calculations.
+- `ios/Okkle/Native/Export` - accountant export and PDF generation.
+- `ios/Okkle/Native/*` view folders - Home, Log, Trip, Insights, Records, Settings, Onboarding, and shared Components.
+
 ## TestFlight
 
 Use Xcode:
@@ -61,4 +81,4 @@ For each PR, bump:
 - `MARKETING_VERSION`
 - `CFBundleVersion` / build number when preparing an App Store or TestFlight archive
 
-Current migration version: `0.4.2`.
+Current migration version: `0.4.5`.
