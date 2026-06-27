@@ -8,14 +8,23 @@ import Vision
 
 private enum OkkleColor {
   static let brand = Color(red: 0.03, green: 0.58, blue: 0.49)
-  static let brandDark = Color(red: 0.03, green: 0.36, blue: 0.31)
-  static let mint = Color(red: 0.83, green: 0.97, blue: 0.94)
-  static let ink = Color(red: 0.10, green: 0.16, blue: 0.14)
-  static let muted = Color(red: 0.43, green: 0.49, blue: 0.46)
-  static let line = Color.black.opacity(0.08)
+  static let brandDark = Color(UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.44, green: 0.90, blue: 0.80, alpha: 1)
+      : UIColor(red: 0.03, green: 0.36, blue: 0.31, alpha: 1)
+  })
+  static let mint = Color(UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.09, green: 0.24, blue: 0.21, alpha: 1)
+      : UIColor(red: 0.83, green: 0.97, blue: 0.94, alpha: 1)
+  })
+  static let ink = Color(uiColor: .label)
+  static let muted = Color(uiColor: .secondaryLabel)
+  static let line = Color(uiColor: .separator)
   static let amber = Color(red: 0.86, green: 0.50, blue: 0.08)
   static let red = Color(red: 0.82, green: 0.20, blue: 0.18)
   static let blue = Color(red: 0.18, green: 0.39, blue: 0.86)
+  static let fieldBackground = Color(uiColor: .secondarySystemBackground).opacity(0.82)
 }
 
 private let gbpFormatter: NumberFormatter = {
@@ -275,6 +284,11 @@ final class OkkleStore: ObservableObject {
     trips.insert(trip, at: 0)
   }
 
+  func updateTrip(_ trip: NativeTrip) {
+    guard let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
+    trips[index] = trip
+  }
+
   func deleteRecord(_ record: NativeRecord) {
     records.removeAll { $0.id == record.id }
   }
@@ -372,6 +386,11 @@ enum NativeHistoryItem: Identifiable, Equatable {
     case .trip(let trip): return trip.startedAt
     case .record(let record): return record.date
     }
+  }
+
+  var trip: NativeTrip? {
+    if case .trip(let trip) = self { return trip }
+    return nil
   }
 }
 
@@ -473,35 +492,19 @@ struct OkkleNativeRootView: View {
 
 enum NativeScreenStyle {
   case standard
-  case dark
 
   var titleColor: Color {
-    switch self {
-    case .standard: return OkkleColor.ink
-    case .dark: return .white
-    }
+    OkkleColor.ink
   }
 
   var subtitleColor: Color {
-    switch self {
-    case .standard: return OkkleColor.muted
-    case .dark: return Color.white.opacity(0.62)
-    }
+    OkkleColor.muted
   }
 
   var settingsColor: Color {
-    switch self {
-    case .standard: return OkkleColor.ink
-    case .dark: return .white
-    }
+    OkkleColor.ink
   }
 
-  var navigationColorScheme: ColorScheme {
-    switch self {
-    case .standard: return .light
-    case .dark: return .dark
-    }
-  }
 }
 
 struct NativeScreen<Content: View>: View {
@@ -535,17 +538,9 @@ struct NativeScreen<Content: View>: View {
         .padding(.bottom, 120)
       }
       .scrollIndicators(.hidden)
-      .background {
-        switch style {
-        case .standard:
-          NativeBackground()
-        case .dark:
-          Color.black.ignoresSafeArea()
-        }
-      }
+      .background { NativeBackground() }
       .navigationTitle(title)
       .navigationBarTitleDisplayMode(.large)
-      .toolbarColorScheme(style.navigationColorScheme, for: .navigationBar)
       .toolbar {
         ToolbarItem(placement: .navigationBarTrailing) {
           Button { showSettings = true } label: {
@@ -572,7 +567,7 @@ struct NativeScreen<Content: View>: View {
 struct NativeBackground: View {
   var body: some View {
     LinearGradient(
-      colors: [Color.white, Color(red: 0.96, green: 0.99, blue: 0.98)],
+      colors: [Color(uiColor: .systemBackground), Color(uiColor: .secondarySystemBackground)],
       startPoint: .top,
       endPoint: .bottom
     )
@@ -693,10 +688,10 @@ struct NativeFreeTextDropdown: View {
       .padding(.leading, 14)
       .padding(.trailing, 8)
       .padding(.vertical, 8)
-      .background(Color.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .background(OkkleColor.fieldBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
       .overlay(
         RoundedRectangle(cornerRadius: 18, style: .continuous)
-          .stroke((focused || expanded) ? OkkleColor.brand.opacity(0.45) : Color.black.opacity(0.08), lineWidth: 1)
+          .stroke((focused || expanded) ? OkkleColor.brand.opacity(0.45) : OkkleColor.line, lineWidth: 1)
       )
 
       if (focused || expanded) && !matches.isEmpty {
@@ -726,7 +721,7 @@ struct NativeFreeTextDropdown: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
           RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            .stroke(OkkleColor.line, lineWidth: 1)
         )
       }
     }
@@ -1120,7 +1115,7 @@ struct NativeLogView: View {
         .focused($focused, equals: field)
         .font(.system(size: 30, weight: .bold, design: .rounded))
         .padding(14)
-        .background(Color.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 18))
+        .background(OkkleColor.fieldBackground, in: RoundedRectangle(cornerRadius: 18))
     }
   }
 
@@ -1505,85 +1500,78 @@ struct NativeTripView: View {
   @State private var completedTrip: NativeTrip?
 
   var body: some View {
-    NativeScreen(title: "Trip", subtitle: "Track GPS miles for HMRC mileage relief.", style: .dark) {
-      VStack(spacing: 22) {
-        Picker("Vehicle", selection: $selectedVehicle) {
-          ForEach(NativeVehicle.allCases) { vehicle in
-            Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
-          }
-        }
-        .pickerStyle(.menu)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .disabled(session.phase == .live || session.phase == .paused)
-        .tint(.white)
-
-        ZStack {
-          Circle()
-            .stroke(OkkleColor.mint.opacity(0.18), lineWidth: 18)
-            .frame(width: 270, height: 270)
-          Circle()
-            .fill(
-              LinearGradient(colors: [OkkleColor.brand, OkkleColor.brandDark], startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .frame(width: 222, height: 222)
-            .shadow(color: OkkleColor.brand.opacity(0.45), radius: 34, y: 22)
-
-          VStack(spacing: 8) {
-            if session.phase == .setup {
-              Image(systemName: "location.north.fill")
-                .font(.system(size: 42, weight: .bold))
-              Text("Start")
-                .font(.system(size: 38, weight: .heavy, design: .rounded))
-            } else {
-              Text(miles(session.miles))
-                .font(.system(size: 44, weight: .heavy, design: .rounded))
-                .minimumScaleFactor(0.6)
-              Text(session.phase == .paused ? "Paused" : "Recording")
-                .font(.system(size: 16, weight: .bold))
+    NativeScreen(title: "Trip", subtitle: "Track GPS miles for HMRC mileage relief.") {
+      NativeGlassCard(cornerRadius: 34) {
+        VStack(spacing: 22) {
+          Picker("Vehicle", selection: $selectedVehicle) {
+            ForEach(NativeVehicle.allCases) { vehicle in
+              Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
             }
           }
-          .foregroundStyle(.white)
-        }
-        .frame(maxWidth: .infinity)
-        .contentShape(Circle())
-        .onTapGesture {
-          if session.phase == .setup {
-            session.start(vehicle: selectedVehicle)
+          .pickerStyle(.menu)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .disabled(session.phase == .live || session.phase == .paused)
+          .tint(OkkleColor.brand)
+
+          ZStack {
+            Circle()
+              .stroke(OkkleColor.mint, lineWidth: 18)
+              .frame(width: 270, height: 270)
+            Circle()
+              .fill(
+                LinearGradient(colors: [OkkleColor.brand, OkkleColor.brandDark], startPoint: .topLeading, endPoint: .bottomTrailing)
+              )
+              .frame(width: 222, height: 222)
+              .shadow(color: OkkleColor.brand.opacity(0.32), radius: 28, y: 20)
+
+            VStack(spacing: 8) {
+              if session.phase == .setup {
+                Image(systemName: "location.north.fill")
+                  .font(.system(size: 42, weight: .bold))
+                Text("Start")
+                  .font(.system(size: 38, weight: .heavy, design: .rounded))
+              } else {
+                Text(miles(session.miles))
+                  .font(.system(size: 44, weight: .heavy, design: .rounded))
+                  .minimumScaleFactor(0.6)
+                Text(session.phase == .paused ? "Paused" : "Recording")
+                  .font(.system(size: 16, weight: .bold))
+              }
+            }
+            .foregroundStyle(.white)
+          }
+          .frame(maxWidth: .infinity)
+          .contentShape(Circle())
+          .onTapGesture {
+            if session.phase == .setup {
+              session.start(vehicle: selectedVehicle)
+            }
+          }
+
+          HStack(spacing: 12) {
+            NativeMetricTile(title: "Tax deduction", value: gbp(store.calcDeduction(miles: session.miles, vehicle: selectedVehicle), whole: true), symbol: "sterlingsign.arrow.circlepath")
+            NativeMetricTile(title: "Elapsed", value: elapsedLabel(session.elapsed), symbol: "timer", color: OkkleColor.blue)
+          }
+
+          if !session.points.isEmpty {
+            NativeTripMap(points: session.points)
+              .frame(height: 190)
+              .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+          }
+
+          if let message = session.permissionMessage {
+            Label(message, systemImage: "location.slash")
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(OkkleColor.red)
+              .padding(12)
+              .background(OkkleColor.red.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
+          }
+
+          if session.phase != .setup {
+            tripControls
           }
         }
-
-        HStack(spacing: 12) {
-          NativeMetricTile(title: "Tax deduction", value: gbp(store.calcDeduction(miles: session.miles, vehicle: selectedVehicle), whole: true), symbol: "sterlingsign.arrow.circlepath")
-          NativeMetricTile(title: "Elapsed", value: elapsedLabel(session.elapsed), symbol: "timer", color: OkkleColor.blue)
-        }
-
-        if !session.points.isEmpty {
-          NativeTripMap(points: session.points)
-            .frame(height: 190)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        }
-
-        if let message = session.permissionMessage {
-          Label(message, systemImage: "location.slash")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(OkkleColor.red)
-            .padding(12)
-            .background(OkkleColor.red.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
-        }
-
-        if session.phase != .setup {
-          tripControls
-        }
       }
-      .padding(20)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(Color.black, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: 34, style: .continuous)
-          .stroke(Color.white.opacity(0.10), lineWidth: 1)
-      )
-      .shadow(color: .black.opacity(0.24), radius: 28, y: 16)
-      .colorScheme(.dark)
     }
     .alert("Save this trip?", isPresented: Binding(get: { completedTrip != nil }, set: { if !$0 { completedTrip = nil } })) {
       Button("Discard", role: .destructive) {
@@ -1688,6 +1676,441 @@ struct NativeTripMap: View {
     guard let last = points.last else { return }
     region = MKCoordinateRegion(center: last.coordinate, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02))
   }
+}
+
+private struct NativeHistoryDetailSheet: View {
+  let item: NativeHistoryItem
+
+  var body: some View {
+    switch item {
+    case .trip(let trip):
+      NativeTripDetailSheet(trip: trip)
+    case .record(let record):
+      NativeRecordDetailSheet(record: record)
+    }
+  }
+}
+
+private struct NativeTripDetailSheet: View {
+  let trip: NativeTrip
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          if hasMapDetails {
+            NativeRouteMapView(points: trip.points)
+              .frame(height: 280)
+              .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+              .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                  .stroke(.white.opacity(0.68), lineWidth: 1)
+              )
+          }
+
+          HStack(spacing: 12) {
+            NativeMetricTile(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
+            NativeMetricTile(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
+          }
+
+          NativeGlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+              tripDetailRow("Vehicle", value: trip.vehicle.label, symbol: trip.vehicle.symbol)
+              Divider()
+              tripDetailRow("Started", value: trip.startedAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()), symbol: "play.circle")
+              tripDetailRow("Ended", value: trip.endedAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()), symbol: "stop.circle")
+              tripDetailRow("Duration", value: nativeDurationLabel(trip.endedAt.timeIntervalSince(trip.startedAt)), symbol: "timer")
+            }
+          }
+
+          if hasMapDetails {
+            NativeGlassCard {
+              VStack(alignment: .leading, spacing: 14) {
+                Label("Map details", systemImage: "map.fill")
+                  .font(.system(size: 16, weight: .bold))
+                  .foregroundStyle(OkkleColor.ink)
+                if let startPoint {
+                  tripDetailRow("Start location", value: coordinateLabel(startPoint), symbol: "location.circle")
+                }
+                if let endPoint {
+                  tripDetailRow("End location", value: coordinateLabel(endPoint), symbol: "mappin.circle")
+                }
+                tripDetailRow("Route points", value: "\(trip.points.count)", symbol: "point.3.connected.trianglepath.dotted")
+              }
+            }
+          }
+        }
+        .padding(22)
+      }
+      .background(NativeBackground())
+      .navigationTitle("Trip details")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+            .fontWeight(.bold)
+        }
+      }
+    }
+  }
+
+  private var hasMapDetails: Bool {
+    !trip.points.isEmpty
+  }
+
+  private var startPoint: RoutePoint? {
+    trip.points.first
+  }
+
+  private var endPoint: RoutePoint? {
+    trip.points.last
+  }
+
+  private func coordinateLabel(_ point: RoutePoint) -> String {
+    String(format: "%.5f, %.5f", point.latitude, point.longitude)
+  }
+
+  private func tripDetailRow(_ title: String, value: String, symbol: String) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: symbol)
+        .font(.system(size: 16, weight: .bold))
+        .foregroundStyle(OkkleColor.brand)
+        .frame(width: 34, height: 34)
+        .background(OkkleColor.brand.opacity(0.13), in: Circle())
+      Text(title)
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+      Spacer()
+      Text(value)
+        .font(.system(size: 15, weight: .bold))
+        .foregroundStyle(OkkleColor.ink)
+        .multilineTextAlignment(.trailing)
+    }
+  }
+}
+
+private struct NativeRecordDetailSheet: View {
+  let record: NativeRecord
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          NativeGlassCard(cornerRadius: 30) {
+            HStack(alignment: .center, spacing: 14) {
+              Image(systemName: record.kind.symbol)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 54, height: 54)
+                .background(tint.opacity(0.14), in: Circle())
+              VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                  .font(.system(size: 24, weight: .bold, design: .rounded))
+                  .foregroundStyle(OkkleColor.ink)
+                Text(subtitle)
+                  .font(.system(size: 14, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+              Spacer(minLength: 10)
+              Text(primaryValue)
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .foregroundStyle(OkkleColor.ink)
+                .minimumScaleFactor(0.7)
+            }
+          }
+
+          NativeGlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+              recordDetailRow("Date", value: record.date.formatted(.dateTime.weekday(.abbreviated).day().month().year()), symbol: "calendar")
+              recordDetailRow("Period", value: record.period.label, symbol: "calendar.badge.clock")
+              Divider()
+              detailRows
+            }
+          }
+
+          if let image = receiptImage {
+            NativeGlassCard {
+              VStack(alignment: .leading, spacing: 12) {
+                Label("Receipt", systemImage: "photo")
+                  .font(.system(size: 16, weight: .bold))
+                  .foregroundStyle(OkkleColor.ink)
+                Image(uiImage: image)
+                  .resizable()
+                  .scaledToFill()
+                  .frame(height: 220)
+                  .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+              }
+            }
+          }
+        }
+        .padding(22)
+      }
+      .background(NativeBackground())
+      .navigationTitle("Log details")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+            .fontWeight(.bold)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var detailRows: some View {
+    switch record.kind {
+    case .income:
+      recordDetailRow("Platform", value: record.platform ?? "Earnings", symbol: "app.badge")
+      recordDetailRow("Amount", value: gbp(record.amount ?? 0), symbol: "sterlingsign.circle")
+    case .expense:
+      recordDetailRow("Category", value: record.category ?? "Expense", symbol: "tag")
+      if let merchant = record.merchant, !merchant.isEmpty {
+        recordDetailRow("Merchant", value: merchant, symbol: "building.2")
+      }
+      recordDetailRow("Amount", value: gbp(record.amount ?? 0), symbol: "receipt")
+    case .mileage:
+      recordDetailRow("Vehicle", value: record.vehicle?.label ?? "Vehicle", symbol: record.vehicle?.symbol ?? "car.fill")
+      recordDetailRow("Miles", value: miles(record.miles ?? 0), symbol: "road.lanes")
+      recordDetailRow("Deduction", value: gbp(record.deduction ?? 0, whole: true), symbol: "sterlingsign.circle")
+    }
+  }
+
+  private var title: String {
+    switch record.kind {
+    case .income: return record.platform ?? "Earnings"
+    case .expense: return record.category ?? "Expense"
+    case .mileage: return "Mileage"
+    }
+  }
+
+  private var subtitle: String {
+    switch record.kind {
+    case .income: return "Earnings"
+    case .expense:
+      if let merchant = record.merchant, !merchant.isEmpty {
+        return merchant
+      }
+      return "Expense"
+    case .mileage:
+      return record.vehicle?.label ?? "Vehicle"
+    }
+  }
+
+  private var primaryValue: String {
+    switch record.kind {
+    case .income, .expense:
+      return gbp(record.amount ?? 0)
+    case .mileage:
+      return miles(record.miles ?? 0)
+    }
+  }
+
+  private var tint: Color {
+    switch record.kind {
+    case .income: return .green
+    case .expense: return OkkleColor.amber
+    case .mileage: return OkkleColor.brand
+    }
+  }
+
+  private var receiptImage: UIImage? {
+    guard let data = record.receiptImageData else { return nil }
+    return UIImage(data: data)
+  }
+
+  private func recordDetailRow(_ title: String, value: String, symbol: String) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: symbol)
+        .font(.system(size: 16, weight: .bold))
+        .foregroundStyle(tint)
+        .frame(width: 34, height: 34)
+        .background(tint.opacity(0.13), in: Circle())
+      Text(title)
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+      Spacer()
+      Text(value)
+        .font(.system(size: 15, weight: .bold))
+        .foregroundStyle(OkkleColor.ink)
+        .multilineTextAlignment(.trailing)
+    }
+  }
+}
+
+private struct NativeTripEditSheet: View {
+  let trip: NativeTrip
+  let onSave: (NativeTrip) -> Void
+  @Environment(\.dismiss) private var dismiss
+  @EnvironmentObject private var store: OkkleStore
+  @State private var vehicle: NativeVehicle
+  @State private var milesText: String
+  @State private var startedAt: Date
+  @State private var endedAt: Date
+  @FocusState private var milesFocused: Bool
+
+  init(trip: NativeTrip, onSave: @escaping (NativeTrip) -> Void) {
+    self.trip = trip
+    self.onSave = onSave
+    _vehicle = State(initialValue: trip.vehicle)
+    _milesText = State(initialValue: String(format: "%.1f", trip.miles))
+    _startedAt = State(initialValue: trip.startedAt)
+    _endedAt = State(initialValue: trip.endedAt)
+  }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section("Trip") {
+          Picker("Vehicle", selection: $vehicle) {
+            ForEach(NativeVehicle.allCases) { item in
+              Label(item.label, systemImage: item.symbol).tag(item)
+            }
+          }
+
+          TextField("Miles", text: $milesText)
+            .keyboardType(.decimalPad)
+            .focused($milesFocused)
+        }
+
+        Section("Time") {
+          DatePicker("Started", selection: $startedAt)
+          DatePicker("Ended", selection: $endedAt)
+        }
+
+        Section("Preview") {
+          HStack {
+            Text("Deduction")
+            Spacer()
+            Text(gbp(previewDeduction, whole: true))
+              .fontWeight(.bold)
+          }
+          Text("Editing keeps the saved route points and recalculates the mileage deduction.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+      }
+      .navigationTitle("Edit trip")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Save") {
+            save()
+          }
+          .fontWeight(.bold)
+          .disabled(!canSave)
+        }
+        ToolbarItemGroup(placement: .keyboard) {
+          Spacer()
+          Button("Done") { hideKeyboard() }
+            .fontWeight(.bold)
+        }
+      }
+    }
+  }
+
+  private var milesValue: Double {
+    Double(milesText.replacingOccurrences(of: ",", with: ".")) ?? 0
+  }
+
+  private var canSave: Bool {
+    milesValue > 0 && endedAt >= startedAt
+  }
+
+  private var previewDeduction: Double {
+    store.calcDeduction(miles: milesValue, vehicle: vehicle, date: startedAt)
+  }
+
+  private func save() {
+    guard canSave else { return }
+    var updated = trip
+    updated.vehicle = vehicle
+    updated.miles = milesValue
+    updated.startedAt = startedAt
+    updated.endedAt = endedAt
+    updated.deduction = previewDeduction
+    onSave(updated)
+    dismiss()
+  }
+}
+
+private struct NativeRouteMapView: UIViewRepresentable {
+  let points: [RoutePoint]
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
+  func makeUIView(context: Context) -> MKMapView {
+    let mapView = MKMapView()
+    mapView.delegate = context.coordinator
+    mapView.pointOfInterestFilter = .excludingAll
+    mapView.showsCompass = false
+    return mapView
+  }
+
+  func updateUIView(_ mapView: MKMapView, context: Context) {
+    mapView.removeOverlays(mapView.overlays)
+    mapView.removeAnnotations(mapView.annotations)
+
+    let coordinates = points.map(\.coordinate)
+    guard let first = coordinates.first else {
+      mapView.setRegion(MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276),
+        span: MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
+      ), animated: false)
+      return
+    }
+
+    let startAnnotation = MKPointAnnotation()
+    startAnnotation.coordinate = first
+    startAnnotation.title = "Start"
+    mapView.addAnnotation(startAnnotation)
+
+    if let last = coordinates.last, coordinates.count > 1 {
+      let endAnnotation = MKPointAnnotation()
+      endAnnotation.coordinate = last
+      endAnnotation.title = "End"
+      mapView.addAnnotation(endAnnotation)
+
+      let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+      mapView.addOverlay(polyline)
+      mapView.setVisibleMapRect(
+        polyline.boundingMapRect,
+        edgePadding: UIEdgeInsets(top: 38, left: 30, bottom: 38, right: 30),
+        animated: false
+      )
+    } else {
+      mapView.setRegion(MKCoordinateRegion(center: first, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)), animated: false)
+    }
+  }
+
+  final class Coordinator: NSObject, MKMapViewDelegate {
+    func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+      guard let polyline = overlay as? MKPolyline else {
+        return MKOverlayRenderer(overlay: overlay)
+      }
+      let renderer = MKPolylineRenderer(polyline: polyline)
+      renderer.strokeColor = UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 1)
+      renderer.lineWidth = 5
+      renderer.lineCap = .round
+      renderer.lineJoin = .round
+      return renderer
+    }
+  }
+}
+
+private func nativeDurationLabel(_ seconds: TimeInterval) -> String {
+  let total = max(0, Int(seconds))
+  let hours = total / 3600
+  let minutes = (total % 3600) / 60
+  if hours > 0 { return "\(hours)h \(minutes)m" }
+  return "\(minutes)m"
 }
 
 private enum NativeTimeFilter: String, CaseIterable, Identifiable {
@@ -1932,7 +2355,7 @@ private struct NativeHeatFilterBar: View {
               .foregroundStyle(selection == filter ? Color.white : OkkleColor.muted)
               .padding(.horizontal, 14)
               .padding(.vertical, 9)
-              .background(selection == filter ? OkkleColor.brand : Color.white.opacity(0.72), in: Capsule())
+              .background(selection == filter ? OkkleColor.brand : OkkleColor.fieldBackground, in: Capsule())
               .overlay(
                 Capsule()
                   .stroke(selection == filter ? OkkleColor.brand : OkkleColor.line, lineWidth: 1)
@@ -2397,6 +2820,8 @@ struct NativeRecordsView: View {
   @State private var mode: RecordsMode = .history
   @State private var filter: RecordsFilter = .all
   @State private var itemPendingDeletion: NativeHistoryItem?
+  @State private var selectedHistoryItem: NativeHistoryItem?
+  @State private var tripPendingEdit: NativeTrip?
 
   enum RecordsMode: String, CaseIterable, Identifiable {
     case history
@@ -2435,14 +2860,29 @@ struct NativeRecordsView: View {
           NativeGlassCard {
             VStack(spacing: 0) {
               ForEach(filteredHistory) { item in
-                NativeHistoryRow(item: item)
-                  .contextMenu {
-                    Button(role: .destructive) {
-                      itemPendingDeletion = item
-                    } label: {
-                      Label("Delete", systemImage: "trash")
-                    }
+                if let trip = item.trip {
+                  NativeSwipeableTripRow(
+                    trip: trip,
+                    onSelect: { selectedHistoryItem = .trip($0) },
+                    onEdit: { tripPendingEdit = $0 },
+                    onDelete: { itemPendingDeletion = .trip($0) }
+                  )
+                } else {
+                  Button {
+                    selectedHistoryItem = item
+                  } label: {
+                    NativeHistoryRow(item: item)
                   }
+                  .buttonStyle(.plain)
+                  .contentShape(Rectangle())
+                    .contextMenu {
+                      Button(role: .destructive) {
+                        itemPendingDeletion = item
+                      } label: {
+                        Label("Delete", systemImage: "trash")
+                      }
+                    }
+                }
                 if item.id != filteredHistory.last?.id {
                   Divider().padding(.leading, 52)
                 }
@@ -2470,6 +2910,15 @@ struct NativeRecordsView: View {
     } message: {
       Text(pendingDeletionMessage)
     }
+    .sheet(item: $selectedHistoryItem) { item in
+      NativeHistoryDetailSheet(item: currentItem(matching: item) ?? item)
+    }
+    .sheet(item: $tripPendingEdit) { trip in
+      NativeTripEditSheet(trip: currentTrip(matching: trip) ?? trip) { updatedTrip in
+        store.updateTrip(updatedTrip)
+        tripPendingEdit = nil
+      }
+    }
   }
 
   private var filteredHistory: [NativeHistoryItem] {
@@ -2495,8 +2944,27 @@ struct NativeRecordsView: View {
     switch item {
     case .trip(let trip):
       store.deleteTrip(trip)
+      if tripPendingEdit?.id == trip.id {
+        tripPendingEdit = nil
+      }
     case .record(let record):
       store.deleteRecord(record)
+    }
+    if selectedHistoryItem?.id == item.id {
+      selectedHistoryItem = nil
+    }
+  }
+
+  private func currentTrip(matching trip: NativeTrip) -> NativeTrip? {
+    store.trips.first { $0.id == trip.id }
+  }
+
+  private func currentItem(matching item: NativeHistoryItem) -> NativeHistoryItem? {
+    switch item {
+    case .trip(let trip):
+      return store.trips.first { $0.id == trip.id }.map(NativeHistoryItem.trip)
+    case .record(let record):
+      return store.records.first { $0.id == record.id }.map(NativeHistoryItem.record)
     }
   }
 
@@ -2510,6 +2978,91 @@ struct NativeRecordsView: View {
     case .record(let record):
       return "This \(record.kind.label.lowercased()) entry will be removed from Records and tax totals. This cannot be undone."
     }
+  }
+}
+
+private struct NativeSwipeableTripRow: View {
+  let trip: NativeTrip
+  let onSelect: (NativeTrip) -> Void
+  let onEdit: (NativeTrip) -> Void
+  let onDelete: (NativeTrip) -> Void
+  @State private var isOpen = false
+  @State private var dragOffset: CGFloat = 0
+
+  private let actionWidth: CGFloat = 154
+
+  var body: some View {
+    ZStack(alignment: .trailing) {
+      HStack(spacing: 0) {
+        tripActionButton(title: "Edit", symbol: "pencil", color: OkkleColor.blue) {
+          close()
+          onEdit(trip)
+        }
+        tripActionButton(title: "Delete", symbol: "trash", color: OkkleColor.red) {
+          close()
+          onDelete(trip)
+        }
+      }
+      .frame(width: actionWidth, height: 64)
+      .frame(maxWidth: .infinity, alignment: .trailing)
+
+      NativeHistoryRow(item: .trip(trip))
+        .frame(minHeight: 64)
+        .background(.regularMaterial)
+        .contentShape(Rectangle())
+        .offset(x: rowOffset)
+        .simultaneousGesture(dragGesture)
+        .highPriorityGesture(TapGesture().onEnded {
+          if isOpen {
+            close()
+          } else {
+            onSelect(trip)
+          }
+        })
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens trip details. Swipe left to edit or delete.")
+    }
+    .clipped()
+  }
+
+  private var rowOffset: CGFloat {
+    min(0, max(-actionWidth, (isOpen ? -actionWidth : 0) + dragOffset))
+  }
+
+  private var dragGesture: some Gesture {
+    DragGesture(minimumDistance: 16)
+      .onChanged { value in
+        dragOffset = value.translation.width
+      }
+      .onEnded { value in
+        let finalOffset = min(0, max(-actionWidth, (isOpen ? -actionWidth : 0) + value.translation.width))
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+          isOpen = finalOffset < -actionWidth / 2
+          dragOffset = 0
+        }
+      }
+  }
+
+  private func close() {
+    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+      isOpen = false
+      dragOffset = 0
+    }
+  }
+
+  private func tripActionButton(title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      VStack(spacing: 4) {
+        Image(systemName: symbol)
+          .font(.system(size: 16, weight: .bold))
+        Text(title)
+          .font(.system(size: 11, weight: .bold))
+      }
+      .foregroundStyle(.white)
+      .frame(width: actionWidth / 2, height: 64)
+      .background(color)
+    }
+    .buttonStyle(.plain)
   }
 }
 
@@ -2686,7 +3239,7 @@ private enum NativeTaxExportKind: String, CaseIterable, Identifiable {
 
   var title: String {
     switch self {
-    case .accountantPack: return "Accountant pack"
+    case .accountantPack: return "Accountant pack PDF"
     case .freeAgent: return "FreeAgent CSV"
     case .selfAssessment: return "Self Assessment summary"
     case .mileageLog: return "HMRC mileage log"
@@ -2696,7 +3249,7 @@ private enum NativeTaxExportKind: String, CaseIterable, Identifiable {
 
   var subtitle: String {
     switch self {
-    case .accountantPack: return "Summary, mileage, expenses and records"
+    case .accountantPack: return "Summary, mileage, expenses, receipts and records"
     case .freeAgent: return "Income and expenses for bank import"
     case .selfAssessment: return "Turnover, expenses, profit and tax estimate"
     case .mileageLog: return "GPS and manual mileage claims"
@@ -2726,7 +3279,8 @@ private enum NativeTaxExportKind: String, CaseIterable, Identifiable {
 
   var fileExtension: String {
     switch self {
-    case .accountantPack, .selfAssessment: return "txt"
+    case .accountantPack: return "pdf"
+    case .selfAssessment: return "txt"
     case .freeAgent, .mileageLog, .allData: return "csv"
     }
   }
@@ -2803,12 +3357,16 @@ private struct NativeExportCard: View {
 
 @MainActor
 private func nativeMakeExport(_ kind: NativeTaxExportKind, store: OkkleStore) -> NativeShareItem? {
-  let content = nativeExportContents(kind, store: store)
   let fileName = "Okkle_\(kind.fileStem)_TaxYear-\(nativeTaxYearLabel(for: store.taxYear))_\(nativeTodayStamp()).\(kind.fileExtension)"
     .replacingOccurrences(of: "/", with: "-")
   let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
   do {
-    try content.write(to: url, atomically: true, encoding: .utf8)
+    if kind == .accountantPack {
+      try nativeAccountantPackPdfData(store: store).write(to: url, options: [.atomic])
+    } else {
+      let content = nativeExportContents(kind, store: store)
+      try content.write(to: url, atomically: true, encoding: .utf8)
+    }
     return NativeShareItem(url: url)
   } catch {
     return nil
@@ -2976,6 +3534,447 @@ private func nativeUkDateStamp(_ date: Date) -> String {
   formatter.calendar = Calendar(identifier: .gregorian)
   formatter.locale = Locale(identifier: "en_GB")
   formatter.dateFormat = "dd/MM/yyyy"
+  return formatter.string(from: date)
+}
+
+@MainActor
+private func nativeAccountantPackPdfData(store: OkkleStore) -> Data {
+  NativeAccountantPackPdfRenderer(store: store).render()
+}
+
+@MainActor
+private final class NativeAccountantPackPdfRenderer {
+  private let store: OkkleStore
+  private let pageRect = CGRect(x: 0, y: 0, width: 595.2, height: 841.8)
+  private let margin: CGFloat = 42
+  private let ink = UIColor(red: 0.10, green: 0.16, blue: 0.14, alpha: 1)
+  private let muted = UIColor(red: 0.42, green: 0.48, blue: 0.45, alpha: 1)
+  private let brand = UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 1)
+  private let pale = UIColor(red: 0.94, green: 0.98, blue: 0.97, alpha: 1)
+  private let line = UIColor(red: 0.84, green: 0.88, blue: 0.86, alpha: 1)
+  private var y: CGFloat = 42
+  private var page = 0
+  private var context: UIGraphicsPDFRendererContext?
+
+  init(store: OkkleStore) {
+    self.store = store
+  }
+
+  func render() -> Data {
+    let format = UIGraphicsPDFRendererFormat()
+    format.documentInfo = [
+      kCGPDFContextTitle as String: "Okkle Accountant Pack \(nativeTaxYearLabel(for: store.taxYear))",
+      kCGPDFContextCreator as String: "Okkle"
+    ]
+    let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
+    return renderer.pdfData { rendererContext in
+      context = rendererContext
+      beginPage()
+      drawCover()
+      drawBasis()
+      drawSelfAssessment()
+      drawIncome()
+      drawMileage()
+      drawExpenses()
+      drawReceipts()
+      drawLimitations()
+    }
+  }
+
+  private var contentWidth: CGFloat {
+    pageRect.width - (margin * 2)
+  }
+
+  private var bottomLimit: CGFloat {
+    pageRect.height - margin - 26
+  }
+
+  private var taxYearEndDate: Date {
+    Calendar.current.date(byAdding: .day, value: -1, to: store.taxYear.end) ?? store.taxYear.end
+  }
+
+  private var yearTrips: [NativeTrip] {
+    store.yearTrips.sorted { $0.startedAt < $1.startedAt }
+  }
+
+  private var yearRecords: [NativeRecord] {
+    store.yearRecords.sorted { $0.date < $1.date }
+  }
+
+  private var incomeRecords: [NativeRecord] {
+    yearRecords.filter { $0.kind == .income }
+  }
+
+  private var expenseRecords: [NativeRecord] {
+    yearRecords.filter { $0.kind == .expense }
+  }
+
+  private var manualMileageRecords: [NativeRecord] {
+    yearRecords.filter { $0.kind == .mileage }
+  }
+
+  private func beginPage() {
+    context?.beginPage()
+    page += 1
+    y = margin
+    drawFooter()
+  }
+
+  private func drawFooter() {
+    let text = "Okkle accountant pack - Page \(page)"
+    drawString(
+      text,
+      in: CGRect(x: margin, y: pageRect.height - margin + 4, width: contentWidth, height: 14),
+      font: .systemFont(ofSize: 8, weight: .medium),
+      color: muted,
+      alignment: .center
+    )
+  }
+
+  private func ensure(_ height: CGFloat) {
+    if y + height > bottomLimit {
+      beginPage()
+    }
+  }
+
+  private func drawCover() {
+    brand.setFill()
+    UIBezierPath(roundedRect: CGRect(x: margin, y: y, width: 86, height: 5), cornerRadius: 2.5).fill()
+    y += 20
+
+    drawWrapped("Accountant Review Pack", font: .systemFont(ofSize: 27, weight: .heavy), color: ink, spacingAfter: 4)
+    drawWrapped("Income, expenses, mileage and receipt evidence", font: .systemFont(ofSize: 14, weight: .semibold), color: muted, spacingAfter: 13)
+
+    let clientName = store.settings.name.isEmpty ? "Courier" : store.settings.name
+    drawWrapped("\(clientName) - Sole trader delivery records", font: .systemFont(ofSize: 12, weight: .medium), color: ink, spacingAfter: 18)
+
+    drawInfoBox([
+      ("Accounting period", "\(nativeUkDateStamp(store.taxYear.start)) to \(nativeUkDateStamp(taxYearEndDate))"),
+      ("Tax year", nativeTaxYearLabel(for: store.taxYear)),
+      ("Prepared", nativeLongDate(Date())),
+      ("Tax region", store.settings.region.label)
+    ])
+
+    drawWrapped(
+      "A review pack to support your accountant. Figures are generated on-device from records logged in Okkle and should be confirmed before filing.",
+      font: .systemFont(ofSize: 10.5, weight: .regular),
+      color: muted,
+      spacingAfter: 14
+    )
+  }
+
+  private func drawBasis() {
+    drawSectionTitle("Basis of preparation")
+    drawKeyValue("Accounting basis", "Cash basis")
+    drawKeyValue("Mileage method", "Simplified mileage using HMRC flat rates")
+    drawKeyValue("Records source", "Tracked trips and manual entries logged in Okkle")
+    drawKeyValue("Income entries", "\(incomeRecords.count)")
+    drawKeyValue("Expense entries", "\(expenseRecords.count) (\(expenseRecords.filter { $0.receiptImageData != nil }.count) with receipts)")
+    drawKeyValue("Mileage entries", "\(yearTrips.count) tracked trips, \(manualMileageRecords.count) manual entries")
+  }
+
+  private func drawSelfAssessment() {
+    let tax = store.taxPosition
+    drawSectionTitle("Self Assessment summary")
+    drawTable(
+      headers: ["SA103S box", "Description", "Amount"],
+      rows: [
+        ["9", "Turnover - business income", gbp(tax.turnover)],
+        ["20", "Allowable business expenses, including mileage deduction", gbp(tax.expenses)],
+        ["31", "Net profit", gbp(tax.profit)]
+      ],
+      widths: [0.18, 0.54, 0.28],
+      rightAligned: [2]
+    )
+    drawKeyValue("Income Tax estimate", gbp(tax.incomeTax))
+    drawKeyValue("Class 4 NIC estimate", gbp(tax.class4))
+    drawKeyValue("Estimated total due", gbp(tax.totalDue), highlighted: true)
+    if tax.paymentOnAccount > 0 {
+      drawKeyValue("Payment on account", "\(gbp(tax.paymentOnAccount)) each")
+    }
+    drawKeyValue("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
+  }
+
+  private func drawIncome() {
+    drawSectionTitle("Income by platform")
+    var totals: [String: Double] = [:]
+    incomeRecords.forEach { record in
+      totals[record.platform ?? "Other", default: 0] += record.amount ?? 0
+    }
+    let rows = totals
+      .sorted { $0.value > $1.value }
+      .map { [$0.key, gbp($0.value)] }
+    drawTable(
+      headers: ["Platform", "Amount"],
+      rows: rows,
+      widths: [0.66, 0.34],
+      rightAligned: [1],
+      emptyMessage: "No income records logged for this tax year."
+    )
+    drawKeyValue("Total turnover", gbp(store.taxPosition.turnover), highlighted: true)
+  }
+
+  private func drawMileage() {
+    drawSectionTitle("Mileage log")
+    let tripRows = yearTrips.map { trip in
+      [
+        nativeUkDateStamp(trip.startedAt),
+        trip.vehicle.label,
+        "GPS trip",
+        miles(trip.miles),
+        gbp(trip.deduction)
+      ]
+    }
+    let manualRows = manualMileageRecords.map { record in
+      [
+        nativeUkDateStamp(record.date),
+        record.vehicle?.label ?? "Vehicle",
+        "Manual",
+        miles(record.miles ?? 0),
+        gbp(record.deduction ?? 0)
+      ]
+    }
+    drawWrapped(
+      "Tracked trips with saved route points support a contemporaneous mileage log. Your accountant should review the business purpose and completeness.",
+      font: .systemFont(ofSize: 10.5, weight: .regular),
+      color: muted,
+      spacingAfter: 6
+    )
+    drawTable(
+      headers: ["Date", "Vehicle", "Source", "Miles", "Deduction"],
+      rows: tripRows + manualRows,
+      widths: [0.20, 0.22, 0.20, 0.16, 0.22],
+      rightAligned: [3, 4],
+      emptyMessage: "No mileage records logged for this tax year."
+    )
+    drawKeyValue("Business miles", miles(store.yearMiles), highlighted: true)
+    drawKeyValue("Mileage deduction", gbp(store.yearMileageDeduction), highlighted: true)
+  }
+
+  private func drawExpenses() {
+    drawSectionTitle("Expenses")
+    let reviewItems = expenseRecords.filter(nativeNeedsAccountantReview)
+    let regularItems = expenseRecords.filter { !nativeNeedsAccountantReview($0) }
+    drawExpenseTable(regularItems, emptyMessage: "No expense records logged for this tax year.")
+    drawKeyValue("Expense total", gbp(expenseRecords.reduce(0) { $0 + ($1.amount ?? 0) }))
+
+    if !reviewItems.isEmpty {
+      drawSectionTitle("Items flagged for review")
+      drawWrapped(
+        "These look like vehicle running costs. If simplified mileage is used, they may already be covered by the mileage rate.",
+        font: .systemFont(ofSize: 10.5, weight: .regular),
+        color: muted,
+        spacingAfter: 6
+      )
+      drawExpenseTable(reviewItems)
+    }
+  }
+
+  private func drawExpenseTable(_ records: [NativeRecord], emptyMessage: String = "None.") {
+    let rows = records.map { record in
+      [
+        nativeUkDateStamp(record.date),
+        nativeExpenseDescription(record),
+        gbp(record.amount ?? 0),
+        record.receiptImageData == nil ? "No" : "Attached"
+      ]
+    }
+    drawTable(
+      headers: ["Date", "Description", "Amount", "Receipt"],
+      rows: rows,
+      widths: [0.20, 0.44, 0.20, 0.16],
+      rightAligned: [2],
+      emptyMessage: emptyMessage
+    )
+  }
+
+  private func drawReceipts() {
+    let receipts = expenseRecords.compactMap { record -> (NativeRecord, UIImage)? in
+      guard let data = record.receiptImageData, let image = UIImage(data: data) else { return nil }
+      return (record, image)
+    }
+    guard !receipts.isEmpty else { return }
+
+    drawSectionTitle("Receipt images")
+    for (record, image) in receipts {
+      let caption = "\(nativeUkDateStamp(record.date)) - \(nativeExpenseDescription(record)) - \(gbp(record.amount ?? 0))"
+      let captionHeight = measuredHeight(caption, font: .systemFont(ofSize: 9.5, weight: .semibold), width: contentWidth)
+      let maxImageWidth = contentWidth
+      let maxImageHeight: CGFloat = 270
+      let scale = min(maxImageWidth / max(image.size.width, 1), maxImageHeight / max(image.size.height, 1), 1)
+      let imageSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+      ensure(captionHeight + imageSize.height + 20)
+      drawWrapped(caption, font: .systemFont(ofSize: 9.5, weight: .semibold), color: muted, spacingAfter: 5)
+      let imageRect = CGRect(x: margin, y: y, width: imageSize.width, height: imageSize.height)
+      image.draw(in: imageRect)
+      line.setStroke()
+      UIBezierPath(roundedRect: imageRect, cornerRadius: 5).stroke()
+      y += imageSize.height + 16
+    }
+  }
+
+  private func drawLimitations() {
+    drawSectionTitle("Basis and limitations")
+    drawWrapped(
+      "Prepared by Okkle from records kept on the user's device. Figures are estimates derived from logged data, have not been independently verified or reconciled to bank records, and do not constitute tax advice. Confirm completeness, categorisation and final figures before submission.",
+      font: .systemFont(ofSize: 10, weight: .regular),
+      color: muted,
+      spacingAfter: 0
+    )
+  }
+
+  private func drawInfoBox(_ rows: [(String, String)]) {
+    let rowHeight: CGFloat = 24
+    let boxHeight = CGFloat(rows.count) * rowHeight + 18
+    ensure(boxHeight)
+    let rect = CGRect(x: margin, y: y, width: contentWidth, height: boxHeight)
+    pale.setFill()
+    UIBezierPath(roundedRect: rect, cornerRadius: 10).fill()
+    line.setStroke()
+    UIBezierPath(roundedRect: rect, cornerRadius: 10).stroke()
+    y += 9
+    rows.forEach { label, value in
+      drawString(label, in: CGRect(x: margin + 12, y: y, width: 150, height: rowHeight), font: .systemFont(ofSize: 10.5, weight: .semibold), color: muted)
+      drawString(value, in: CGRect(x: margin + 170, y: y, width: contentWidth - 194, height: rowHeight), font: .systemFont(ofSize: 10.5, weight: .bold), color: ink, alignment: .right)
+      y += rowHeight
+    }
+    y += 13
+  }
+
+  private func drawSectionTitle(_ title: String) {
+    ensure(42)
+    y += y > margin + 2 ? 14 : 0
+    drawWrapped(title, font: .systemFont(ofSize: 15, weight: .heavy), color: brand, spacingAfter: 5)
+    brand.withAlphaComponent(0.22).setFill()
+    UIBezierPath(roundedRect: CGRect(x: margin, y: y, width: contentWidth, height: 2), cornerRadius: 1).fill()
+    y += 9
+  }
+
+  private func drawKeyValue(_ label: String, _ value: String, highlighted: Bool = false) {
+    let labelWidth = contentWidth * 0.48
+    let valueWidth = contentWidth - labelWidth
+    let labelFont = UIFont.systemFont(ofSize: 10.5, weight: .semibold)
+    let valueFont = UIFont.monospacedDigitSystemFont(ofSize: 10.5, weight: highlighted ? .bold : .semibold)
+    let height = max(
+      measuredHeight(label, font: labelFont, width: labelWidth),
+      measuredHeight(value, font: valueFont, width: valueWidth)
+    ) + 10
+    ensure(height)
+    if highlighted {
+      pale.setFill()
+      UIBezierPath(roundedRect: CGRect(x: margin - 6, y: y - 2, width: contentWidth + 12, height: height), cornerRadius: 6).fill()
+    }
+    drawString(label, in: CGRect(x: margin, y: y + 4, width: labelWidth, height: height), font: labelFont, color: muted)
+    drawString(value, in: CGRect(x: margin + labelWidth, y: y + 4, width: valueWidth, height: height), font: valueFont, color: highlighted ? brand : ink, alignment: .right)
+    y += height
+    drawHairline()
+  }
+
+  private func drawTable(
+    headers: [String],
+    rows: [[String]],
+    widths: [CGFloat],
+    rightAligned: Set<Int> = [],
+    emptyMessage: String = "None recorded."
+  ) {
+    let total = widths.reduce(0, +)
+    let columnWidths = widths.map { contentWidth * ($0 / total) }
+    drawTableRow(headers, widths: columnWidths, rightAligned: rightAligned, font: .systemFont(ofSize: 9.4, weight: .bold), textColor: ink, background: UIColor(red: 0.94, green: 0.94, blue: 0.92, alpha: 1))
+
+    if rows.isEmpty {
+      drawTableRow([emptyMessage], widths: [contentWidth], rightAligned: [], font: .systemFont(ofSize: 9.4, weight: .regular), textColor: muted, background: nil)
+    } else {
+      rows.forEach { row in
+        drawTableRow(row, widths: columnWidths, rightAligned: rightAligned, font: .systemFont(ofSize: 9.2, weight: .regular), textColor: ink, background: nil)
+      }
+    }
+    y += 5
+  }
+
+  private func drawTableRow(_ values: [String], widths: [CGFloat], rightAligned: Set<Int>, font: UIFont, textColor: UIColor, background: UIColor?) {
+    let padding: CGFloat = 6
+    let cellHeights = values.enumerated().map { index, value in
+      measuredHeight(value, font: font, width: max(1, widths[index] - padding * 2))
+    }
+    let rowHeight = max(24, (cellHeights.max() ?? 12) + padding * 2)
+    ensure(rowHeight)
+    if let background {
+      background.setFill()
+      UIBezierPath(rect: CGRect(x: margin, y: y, width: contentWidth, height: rowHeight)).fill()
+    }
+
+    var x = margin
+    for (index, value) in values.enumerated() {
+      let width = widths[index]
+      let rect = CGRect(x: x + padding, y: y + padding, width: width - padding * 2, height: rowHeight - padding)
+      drawString(value, in: rect, font: font, color: textColor, alignment: rightAligned.contains(index) ? .right : .left)
+      x += width
+    }
+    y += rowHeight
+    drawHairline()
+  }
+
+  private func drawHairline() {
+    line.setStroke()
+    let path = UIBezierPath()
+    path.move(to: CGPoint(x: margin, y: y))
+    path.addLine(to: CGPoint(x: margin + contentWidth, y: y))
+    path.lineWidth = 0.5
+    path.stroke()
+  }
+
+  @discardableResult
+  private func drawWrapped(_ value: String, font: UIFont, color: UIColor, spacingAfter: CGFloat) -> CGFloat {
+    let height = measuredHeight(value, font: font, width: contentWidth)
+    ensure(height + spacingAfter)
+    drawString(value, in: CGRect(x: margin, y: y, width: contentWidth, height: height), font: font, color: color)
+    y += height + spacingAfter
+    return height
+  }
+
+  private func drawString(_ value: String, in rect: CGRect, font: UIFont, color: UIColor, alignment: NSTextAlignment = .left) {
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = alignment
+    paragraph.lineBreakMode = .byWordWrapping
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: font,
+      .foregroundColor: color,
+      .paragraphStyle: paragraph
+    ]
+    (value as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes, context: nil)
+  }
+
+  private func measuredHeight(_ value: String, font: UIFont, width: CGFloat) -> CGFloat {
+    let rect = (value as NSString).boundingRect(
+      with: CGSize(width: width, height: .greatestFiniteMagnitude),
+      options: [.usesLineFragmentOrigin, .usesFontLeading],
+      attributes: [.font: font],
+      context: nil
+    )
+    return ceil(rect.height)
+  }
+}
+
+private func nativeExpenseDescription(_ record: NativeRecord) -> String {
+  [record.merchant, record.category ?? "Expense"]
+    .compactMap { value in
+      guard let value, !value.isEmpty else { return nil }
+      return value
+    }
+    .joined(separator: " - ")
+}
+
+private func nativeNeedsAccountantReview(_ record: NativeRecord) -> Bool {
+  let text = "\(record.category ?? "") \(record.merchant ?? "")".lowercased()
+  let terms = ["fuel", "petrol", "diesel", "tyre", "tire", "mot", "service", "servicing", "repair", "insurance", "road tax", "breakdown", "oil", "brake", "battery"]
+  return terms.contains { text.contains($0) }
+}
+
+private func nativeLongDate(_ date: Date) -> String {
+  let formatter = DateFormatter()
+  formatter.calendar = Calendar(identifier: .gregorian)
+  formatter.locale = Locale(identifier: "en_GB")
+  formatter.dateStyle = .long
   return formatter.string(from: date)
 }
 
