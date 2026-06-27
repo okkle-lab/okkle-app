@@ -2,7 +2,7 @@ import * as Print from 'expo-print';
 import { File } from 'expo-file-system';
 import { shareZipBundle, readFileBytes, exportFilename, shareFileAs } from './exportFile';
 import {
-  getUser, getTrips, getRecords, getTaxYearSummary, getTaxYearMiles,
+  getUser, getTripsForTaxYear, getRecordsForTaxYear, getTaxYearSummary, getTaxYearMiles,
   getTaxYearExpenses, kvGet, kvGetNum, kvSet, taxYearStart,
 } from './db';
 import { taxPosition, compareMethods, caRate, RATES_YEAR } from './db/taxcalc';
@@ -122,10 +122,8 @@ export async function buildAccountantPackHtml(): Promise<string> {
   const chosenDeduction = usingActual ? method.actual : method.simplified;
   const pos = taxPosition(year.earnings, chosenDeduction + otherExpenses, user?.region ?? 'ruk', kvGetNum('other_income'));
 
-  const trips = getTrips(1000)
-    .filter(t => t.started_at.slice(0, 10) >= start)
-    .sort((a, b) => a.started_at.localeCompare(b.started_at));
-  const records = getRecords(1000).filter(r => r.created_at.slice(0, 10) >= start);
+  const trips = getTripsForTaxYear();
+  const records = getRecordsForTaxYear();
   const income = records.filter(r => r.record_type === 'income');
   const expenses = records.filter(r => r.record_type === 'expense');
 
@@ -350,7 +348,7 @@ function buildPackCsv(): string {
   const safe = (s: string) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   type Line = { date: string; type: string; platform: string; vehicle: string; miles: string; deduction: string; amount: string; notes: string };
   const lines: Line[] = [];
-  for (const t of getTrips(2000)) {
+  for (const t of getTripsForTaxYear()) {
     lines.push({
       date: t.started_at, type: 'Mileage (GPS)', platform: '', vehicle: vehicleLabel(t.vehicle),
       miles: t.miles.toFixed(1), deduction: t.deduction.toFixed(2),
@@ -358,7 +356,7 @@ function buildPackCsv(): string {
       notes: t.vehicle === 'bike' ? 'NEEDS REVIEW: no self-employed simplified rate for cycles' : '',
     });
   }
-  for (const r of getRecords(2000)) {
+  for (const r of getRecordsForTaxYear()) {
     if (r.record_type === 'mileage') lines.push({
       date: r.created_at, type: 'Mileage (manual)', platform: '', vehicle: vehicleLabel(r.vehicle ?? 'car'),
       miles: (r.miles ?? 0).toFixed(1), deduction: (r.deduction ?? 0).toFixed(2), amount: '',

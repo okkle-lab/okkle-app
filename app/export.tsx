@@ -5,7 +5,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, IconBadge, ModalHeader, SectionHeader } from '../src/components';
 import {
-  getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTrips, getRecords, getUser,
+  getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTripsForTaxYear, getRecordsForTaxYear, getUser,
 } from '../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel } from '../src/db/tax';
 import { compareMethods, taxPosition, caRate } from '../src/db/taxcalc';
@@ -82,7 +82,7 @@ export default function ExportScreen() {
     shareTextExport('SelfAssessment-Summary', 'txt', lines.join('\n'));
   }
   function shareMileageLog() {
-    const trips = getTrips(500);
+    const trips = getTripsForTaxYear();
     const header = 'Date,Vehicle,Platform (purpose),Miles,Basis,Deduction (GBP)';
     const rows = trips.slice().sort((a, b) => a.started_at.localeCompare(b.started_at)).map(t =>
       `${t.started_at.slice(0, 10)},${vehicleLabel(t.vehicle)},${t.platform} delivery,${t.miles.toFixed(1)},GPS-measured (HMRC simplified),${t.deduction.toFixed(2)}`);
@@ -92,8 +92,8 @@ export default function ExportScreen() {
     const uk = (iso: string) => { const d = iso.slice(0, 10).split('-'); return `${d[2]}/${d[1]}/${d[0]}`; };
     const csvSafe = (s: string) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     const lines: { date: string; amount: number; desc: string }[] = [];
-    for (const t of getTrips(1000)) if (t.earnings && t.earnings > 0) lines.push({ date: t.started_at, amount: t.earnings, desc: `${t.platform} earnings` });
-    for (const r of getRecords(1000)) {
+    for (const t of getTripsForTaxYear()) if (t.earnings && t.earnings > 0) lines.push({ date: t.started_at, amount: t.earnings, desc: `${t.platform} earnings` });
+    for (const r of getRecordsForTaxYear()) {
       if (r.record_type === 'income' && r.amount) lines.push({ date: r.created_at, amount: r.amount, desc: `${r.platform ?? 'Platform'} earnings` });
       if (r.record_type === 'expense' && r.amount) lines.push({ date: r.created_at, amount: -Math.abs(r.amount), desc: r.category ?? r.notes ?? 'Expense' });
     }
@@ -102,7 +102,7 @@ export default function ExportScreen() {
     shareTextExport('FreeAgent-Import', 'csv', ['Date,Amount,Description', ...rows].join('\n'));
   }
   function shareCsv() {
-    const trips = getTrips(500); const records = getRecords(500);
+    const trips = getTripsForTaxYear(); const records = getRecordsForTaxYear();
     const header = 'date,type,platform,vehicle,miles,deduction,earnings,amount,notes';
     const tr = trips.map(t => `${t.started_at.slice(0,10)},trip,${t.platform},${t.vehicle},${t.miles.toFixed(2)},${t.deduction.toFixed(2)},${t.earnings ?? ''},,`);
     const rr = records.map(r => `${r.created_at.slice(0,10)},${r.record_type},${r.platform ?? ''},,,${r.deduction ?? ''},,${r.amount ?? ''},${r.notes ?? ''}`);

@@ -248,6 +248,29 @@ export function getRecords(limit = 100): Record[] {
   return db.getAllSync<Record>('SELECT * FROM records ORDER BY created_at DESC LIMIT ?', limit);
 }
 
+// --- Exports: tax-year-scoped, cap-free getters --------------------------------
+// The headline/SA figures are scoped to one tax year, so the CSV/pack exports
+// MUST be too, or a returning user's export won't reconcile with their summary.
+// No LIMIT here: list screens cap rows for performance, but exports must be
+// complete. Records use the same overlap predicate as the aggregations so the
+// exact same set of entries is included.
+export function getTripsForTaxYear(start = taxYearStart(), end = taxYearEnd()): Trip[] {
+  return db.getAllSync<Trip>(
+    'SELECT * FROM trips WHERE date(started_at) BETWEEN ? AND ? ORDER BY started_at',
+    start, end,
+  );
+}
+
+export function getRecordsForTaxYear(start = taxYearStart(), end = taxYearEnd()): Record[] {
+  return db.getAllSync<Record>(
+    `SELECT * FROM records WHERE
+       (period_start IS NOT NULL AND date(period_start) <= ? AND date(period_end) >= ?)
+       OR (period_start IS NULL AND date(created_at) BETWEEN ? AND ?)
+     ORDER BY created_at`,
+    end, start, start, end,
+  );
+}
+
 // Marker the passive shift tracker writes into `notes` for a freshly auto-logged
 // shift the driver hasn't reviewed yet.
 export const SHIFT_DRAFT_NOTE = 'Auto-tracked shift — tap to confirm';

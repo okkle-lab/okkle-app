@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (16) - 2026-06-27 (Export accuracy: tax-year-scoped, cap-free exports)
+
+- **Fixed exports not reconciling with the tax summary.** The FreeAgent CSV, HMRC mileage log, all-data CSV and Accountant Pack are now scoped to the tax year (like the Self Assessment figures), instead of dumping all history — so a returning user's export totals match their summary.
+- **Removed silent row caps on exports.** Exports previously truncated to the newest 500/1,000 rows, dropping older entries for high-volume couriers. Exports are now complete (new `getTripsForTaxYear` / `getRecordsForTaxYear` DB getters, no LIMIT).
+
 ## 0.3 (15) - 2026-06-27 (Polish: fixed tax tab, expense autocorrect & food/drink)
 
 - **Home screen no longer scrolls** — it's a fixed, glanceable view (nothing to scroll).
