@@ -865,6 +865,7 @@ export type QuarterSummary = {
   start: string;
   end: string;
   deadline: string;
+  deadlineISO: string; // yyyy-mm-dd, for adding the MTD deadline to the calendar
   income: number;
   expenses: number;
   profit: number;
@@ -877,10 +878,10 @@ export function getQuarterlySummaries(): QuarterSummary[] {
   const start = taxYearStart();
   const baseYear = parseInt(start.slice(0, 4), 10);
   const quarters = [
-    { label: 'Q1', start: `${baseYear}-04-06`, end: `${baseYear}-07-05`, deadline: `7 Aug ${baseYear}` },
-    { label: 'Q2', start: `${baseYear}-07-06`, end: `${baseYear}-10-05`, deadline: `7 Nov ${baseYear}` },
-    { label: 'Q3', start: `${baseYear}-10-06`, end: `${baseYear + 1}-01-05`, deadline: `7 Feb ${baseYear + 1}` },
-    { label: 'Q4', start: `${baseYear + 1}-01-06`, end: `${baseYear + 1}-04-05`, deadline: `7 May ${baseYear + 1}` },
+    { label: 'Q1', start: `${baseYear}-04-06`, end: `${baseYear}-07-05`, deadline: `7 Aug ${baseYear}`, deadlineISO: `${baseYear}-08-07` },
+    { label: 'Q2', start: `${baseYear}-07-06`, end: `${baseYear}-10-05`, deadline: `7 Nov ${baseYear}`, deadlineISO: `${baseYear}-11-07` },
+    { label: 'Q3', start: `${baseYear}-10-06`, end: `${baseYear + 1}-01-05`, deadline: `7 Feb ${baseYear + 1}`, deadlineISO: `${baseYear + 1}-02-07` },
+    { label: 'Q4', start: `${baseYear + 1}-01-06`, end: `${baseYear + 1}-04-05`, deadline: `7 May ${baseYear + 1}`, deadlineISO: `${baseYear + 1}-05-07` },
   ];
   const today = new Date().toISOString().slice(0, 10);
 
@@ -901,7 +902,7 @@ export function getQuarterlySummaries(): QuarterSummary[] {
     const income = (tripInc?.inc ?? 0) + recIncome;
     const expenses = (tripInc?.ded ?? 0) + recMileDed + recExp;
     return {
-      label: q.label, start: q.start, end: q.end, deadline: q.deadline,
+      label: q.label, start: q.start, end: q.end, deadline: q.deadline, deadlineISO: q.deadlineISO,
       income, expenses, profit: income - expenses,
       isCurrent: today >= q.start && today <= q.end,
     };

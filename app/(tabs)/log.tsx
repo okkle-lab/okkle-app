@@ -120,6 +120,16 @@ export default function LogScreen() {
       const nextVehicles = VEHICLES.filter(v => vehicleKeys.includes(v.key));
       setMyVehicles(nextVehicles);
       setVehicle(current => vehicleKeys.includes(current) ? current : (vehicleKeys[0] ?? 'car'));
+
+      // On leaving the Log tab: if nothing was entered (or it's already saved),
+      // reset to a clean slate so returning starts fresh at step one. If there's
+      // unsaved input, the draft is left intact so the user doesn't lose work.
+      return () => {
+        if (!dirtyRef.current) {
+          resetWorkflow();
+          resetEntryFields();
+        }
+      };
     }, []),
   );
   const [amount, setAmount] = useState('');
@@ -135,6 +145,12 @@ export default function LogScreen() {
   const [numberInputFocused, setNumberInputFocused] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  // "Dirty" = the user has actually entered something this session (not just
+  // opened the tab). Kept in a ref so the focus-effect cleanup reads the latest
+  // value when the tab loses focus.
+  const hasInput = !!miles || !!amount || !!description.trim() || !!receiptUri;
+  const dirtyRef = React.useRef(false);
+  dirtyRef.current = hasInput && !submitted;
   const stepAnim = React.useRef(new Animated.Value(1)).current;
   const stepDirection = React.useRef(1);
 
@@ -402,11 +418,6 @@ export default function LogScreen() {
         <Text style={s.amountHeroSub}>
           {miles ? `${fmtGbp(deduction)} tax deduction at the HMRC rate` : 'GPS tracking records miles more accurately in the Trip tab.'}
         </Text>
-        {numberInputFocused && (
-          <Pressable onPress={dismissNumberInput} hitSlop={8} style={s.amountDoneButton}>
-            <Text style={s.amountDoneText}>Done</Text>
-          </Pressable>
-        )}
       </>
     ) : renderAmountGlass(
       <>

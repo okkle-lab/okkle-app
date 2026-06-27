@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 import '../src/autoTrip'; // registers the background trip-detection task at load
+import { clearStaleTripState } from '../src/hooks/useTrip';
 
 const glassSheetOptions = {
   presentation: 'transparentModal' as const,
@@ -29,6 +30,10 @@ Notifications.setNotificationHandler({
 export default function RootLayout() {
   const router = useRouter();
   useEffect(() => { initDb(); }, []);
+  // Cold launch = no trip is actually running (live state is in-memory only), so
+  // clear any stale "tracking"/"finished this trip?" notifications and the
+  // trip_active flag left behind if the app was killed mid-trip.
+  useEffect(() => { clearStaleTripState(); }, []);
 
   // Tapping the "On the move — track this trip?" suggestion opens the Trip tab,
   // where the user confirms by hitting Start (we never auto-record).

@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (17) - 2026-06-27 (Deadlines layer, log polish & notification fix)
+
+- **One Deadlines layer.** MTD quarterly updates and the HMRC Self Assessment dates now sit on the same screen, each row with a "Remind" button that adds the deadline to your calendar (MTD deadlines previously had no reminder). Each section has a tappable (?) with a plain-English explanation, replacing the long footnotes.
+- **Fixed Tax saved screen spacing** — even rhythm between the cards (in-card notes no longer add a dangling bottom gap).
+- **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
+- **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
+
 ## 0.3 (16) - 2026-06-27 (Export accuracy: tax-year-scoped, cap-free exports)
 
 - **Fixed exports not reconciling with the tax summary.** The FreeAgent CSV, HMRC mileage log, all-data CSV and Accountant Pack are now scoped to the tax year (like the Self Assessment figures), instead of dumping all history — so a returning user's export totals match their summary.

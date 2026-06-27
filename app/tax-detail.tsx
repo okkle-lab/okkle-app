@@ -1,9 +1,10 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, ModalHeader } from '../src/components';
+import { addDeadlineToCalendar } from '../src/calendar';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries, kvGet, kvGetNum, type QuarterSummary,
@@ -18,6 +19,23 @@ const TITLES: Record<Which, string> = {
   year: 'This year',
   deadlines: 'Deadlines',
 };
+
+const MTD_INFO = 'Making Tax Digital (MTD) for Income Tax is HMRC’s new way of reporting. It’s mandatory if your self-employment income is over £50,000 (from April 2026) or over £30,000 (from April 2027) — you submit four digital updates a year through compatible software. Below the threshold you still file the usual annual Self Assessment.';
+const HMRC_INFO = 'The key dates for filing your own Self Assessment:\n\n• Register for Self Assessment by 5 October after your first year of self-employment.\n• File your online return and pay any tax due by 31 January.\n• If HMRC asks you for payments on account, the second instalment is due 31 July.\n\nEach date shows the next time it falls due.';
+
+// Real HMRC Self Assessment deadlines (month is 1-12).
+const KEY_DEADLINES: { title: string; month: number; day: number; note: string }[] = [
+  { title: 'Register for Self Assessment', month: 10, day: 5, note: 'Only if this was your first year self-employed.' },
+  { title: 'File your return & pay your tax', month: 1, day: 31, note: 'Online Self Assessment deadline for the previous tax year.' },
+  { title: 'Second payment on account', month: 7, day: 31, note: 'Only if HMRC asked you for payments on account.' },
+];
+function nextOccurrence(month: number, day: number): Date {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let d = new Date(now.getFullYear(), month - 1, day);
+  if (d < today) d = new Date(now.getFullYear() + 1, month - 1, day);
+  return d;
+}
 
 export default function TaxDetail() {
   const router = useRouter();
@@ -60,6 +78,21 @@ export default function TaxDetail() {
   const pos = taxPosition(year.earnings, chosenDeduction + otherExpenses, region, otherIncome);
   const isCarVan = user?.vehicle === 'car' || user?.vehicle === 'van';
 
+  async function addMtdReminder(label: string, deadlineISO: string, deadlineLabel: string) {
+    const when = new Date(`${deadlineISO}T09:00:00`);
+    try {
+      const ok = await addDeadlineToCalendar(`MTD: ${label} quarterly update`, when, 'Submit your Making Tax Digital quarterly update to HMRC.');
+      Alert.alert(ok ? 'Reminder added' : 'Couldn’t add it', ok ? `${label} update — due ${deadlineLabel}, with a reminder a week before.` : 'Please allow calendar access and try again.');
+    } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
+  }
+
+  async function addHmrcReminder(title: string, when: Date, note: string) {
+    try {
+      const ok = await addDeadlineToCalendar(`HMRC: ${title}`, when, note);
+      Alert.alert(ok ? 'Reminder added' : 'Couldn’t add it', ok ? `${title} — ${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.` : 'Please allow calendar access and try again.');
+    } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
+  }
+
   return (
     <View style={s.screen}>
       <ScrollView contentContainerStyle={s.content}>
@@ -87,7 +120,7 @@ export default function TaxDetail() {
         {which === 'saved' && (
           <>
             <SectionHeader icon="trending-up" title="How your tax saved is worked out" />
-            <Card style={{ padding: spacing.lg }}>
+            <Card style={{ padding: spacing.lg, marginBottom: spacing.lg }}>
               <View style={s.flow}>
                 <Cell value={fmtMiles(year.miles)} label="miles tracked" />
                 <Feather name="chevron-right" size={16} color={colors.textTertiary} />
@@ -95,11 +128,11 @@ export default function TaxDetail() {
                 <Feather name="chevron-right" size={16} color={colors.textTertiary} />
                 <Cell value={fmtGbp(year.taxSaved)} label="tax saved" accent />
               </View>
-              <Text style={s.note}>The HMRC mileage rate turns your miles into an allowable deduction; at your ~{Math.round((year.taxRate ?? 0.2) * 100)}% tax + NIC band that deduction is money you don’t pay.</Text>
+              <Text style={s.cardNote}>The HMRC mileage rate turns your miles into an allowable deduction; at your ~{Math.round((year.taxRate ?? 0.2) * 100)}% tax + NIC band that deduction is money you don’t pay.</Text>
             </Card>
 
             <SectionHeader icon="navigation" title="Mileage method" />
-            <Card style={{ gap: spacing.md }}>
+            <Card style={{ gap: spacing.md, marginBottom: spacing.lg }}>
               <View style={s.methodRow}>
                 <View style={{ flex: 1, paddingRight: spacing.md }}>
                   <Text style={s.methodName}>{usingActual && method.recommended === 'actual' ? 'Actual costs' : 'Simplified (flat rate)'}</Text>
@@ -107,7 +140,7 @@ export default function TaxDetail() {
                 </View>
                 <Text style={s.methodValue}>{fmtGbp(chosenDeduction)}</Text>
               </View>
-              <Text style={s.note}>Okkle uses HMRC’s simplified flat-rate mileage — the easiest method and the best fit for most couriers. If you think actual vehicle costs might save more, ask your accountant.</Text>
+              <Text style={s.cardNote}>Okkle uses HMRC’s simplified flat-rate mileage — the easiest method and the best fit for most couriers. If you think actual vehicle costs might save more, ask your accountant.</Text>
             </Card>
 
             {isCarVan && bizMiles > 0 && (
@@ -119,7 +152,7 @@ export default function TaxDetail() {
                     <Text style={s.rowValue}>{Math.round(Math.min(100, (bizMiles / 10000) * 100))}%</Text>
                   </View>
                   <View style={s.track}><View style={[s.fill, { width: `${Math.min(100, (bizMiles / 10000) * 100)}%`, backgroundColor: bizMiles >= 10000 ? colors.amber : colors.brand }]} /></View>
-                  <Text style={s.note}>{bizMiles < 10000 ? `${fmtMiles(10000 - bizMiles)} left before your rate drops at 10,000 miles.` : 'Past 10,000 miles — extra car/van miles are claimed at the lower rate.'}</Text>
+                  <Text style={s.cardNote}>{bizMiles < 10000 ? `${fmtMiles(10000 - bizMiles)} left before your rate drops at 10,000 miles.` : 'Past 10,000 miles — extra car/van miles are claimed at the lower rate.'}</Text>
                 </Card>
               </>
             )}
@@ -140,7 +173,13 @@ export default function TaxDetail() {
 
         {which === 'deadlines' && (
           <>
-            <SectionHeader icon="calendar" title="Making Tax Digital — quarterly updates" />
+            <View style={s.headRow}>
+              <Feather name="calendar" size={13} color={colors.brand} />
+              <Text style={s.headTitle}>Making Tax Digital — quarterly updates</Text>
+              <Pressable onPress={() => Alert.alert('Making Tax Digital', MTD_INFO)} hitSlop={8}>
+                <Feather name="help-circle" size={17} color={colors.textTertiary} />
+              </Pressable>
+            </View>
             <Card style={{ padding: 0, overflow: 'hidden', marginBottom: spacing.lg }}>
               {quarters.map((q, i) => (
                 <View key={q.label} style={[s.qRow, i < quarters.length - 1 && s.rowBorder, q.isCurrent && s.qCurrent]}>
@@ -149,21 +188,40 @@ export default function TaxDetail() {
                       <Text style={s.qLabel}>{q.label}</Text>
                       {q.isCurrent && <View style={s.qNowTag}><Text style={s.qNowText}>now</Text></View>}
                     </View>
-                    <Text style={s.qDates}>{fmtShort(q.start)} – {fmtShort(q.end)} · due {q.deadline}</Text>
+                    <Text style={s.qDates}>due {q.deadline} · {fmtGbp(q.profit)} profit</Text>
                   </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={s.qProfit}>{fmtGbp(q.profit)}</Text>
-                    <Text style={s.qProfitLabel}>profit</Text>
-                  </View>
+                  <Pressable onPress={() => addMtdReminder(q.label, q.deadlineISO, q.deadline)} style={s.calBtn} hitSlop={6}>
+                    <Feather name="bell" size={14} color={colors.brandDeep} />
+                    <Text style={s.calBtnText}>Remind</Text>
+                  </Pressable>
                 </View>
               ))}
             </Card>
-            <Pressable onPress={() => router.push('/key-dates')} style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.65 }]}>
-              <Feather name="calendar" size={18} color={colors.brandDeep} />
-              <Text style={s.linkText}>Key tax dates & HMRC deadlines</Text>
-              <Feather name="chevron-right" size={18} color={colors.textTertiary} />
-            </Pressable>
-            <Text style={s.note}>MTD for Income Tax is mandatory if your self-employment income is over £50,000 (from April 2026), or over £30,000 (from April 2027). You’ll submit these four updates digitally each year.</Text>
+
+            <View style={s.headRow}>
+              <Feather name="flag" size={13} color={colors.brand} />
+              <Text style={s.headTitle}>HMRC Self Assessment dates</Text>
+              <Pressable onPress={() => Alert.alert('Self Assessment dates', HMRC_INFO)} hitSlop={8}>
+                <Feather name="help-circle" size={17} color={colors.textTertiary} />
+              </Pressable>
+            </View>
+            <Card style={{ padding: 0, overflow: 'hidden' }}>
+              {KEY_DEADLINES.map((d, i) => {
+                const next = nextOccurrence(d.month, d.day);
+                return (
+                  <View key={d.title} style={[s.qRow, i < KEY_DEADLINES.length - 1 && s.rowBorder]}>
+                    <View style={{ flex: 1, paddingRight: spacing.md }}>
+                      <Text style={s.qLabel}>{d.title}</Text>
+                      <Text style={s.qDates}>{next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
+                    </View>
+                    <Pressable onPress={() => addHmrcReminder(d.title, next, d.note)} style={s.calBtn} hitSlop={6}>
+                      <Feather name="bell" size={14} color={colors.brandDeep} />
+                      <Text style={s.calBtnText}>Remind</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </Card>
           </>
         )}
 
@@ -202,6 +260,9 @@ const s = StyleSheet.create({
   rowValue: { ...tabular, fontSize: 15, fontWeight: font.medium, color: colors.textPrimary, textAlign: 'right' },
   rowSub: { ...type.caption, marginTop: 2 },
   note: { ...type.small, lineHeight: 17, marginTop: 10, marginBottom: spacing.lg },
+  // A note that sits as the last element inside a Card — no bottom margin, so the
+  // card's own padding provides the spacing (keeps the vertical rhythm even).
+  cardNote: { ...type.small, lineHeight: 17, marginTop: spacing.sm },
   poaBox: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   poaText: { ...type.caption, color: colors.textSecondary, flex: 1, lineHeight: 19 },
 
@@ -227,8 +288,13 @@ const s = StyleSheet.create({
   qDates: { ...type.caption, ...tabular, marginTop: 2 },
   qProfit: { ...tabular, fontSize: 15, fontWeight: font.semibold, color: colors.brandDeep },
   qProfitLabel: { ...type.small },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, marginTop: 4 },
+  headTitle: { flex: 1, fontSize: 13, fontWeight: font.semibold, color: colors.textSecondary, letterSpacing: 0.3 },
+  calBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full, backgroundColor: colors.brandLight },
+  calBtnText: { ...type.caption, color: colors.brandDeep, fontWeight: font.semibold },
 
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: spacing.sm, marginBottom: spacing.sm },
+  linkIcon: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandLight },
   linkText: { ...type.bodyMedium, fontSize: 15, color: colors.textPrimary, flex: 1 },
   foot: { ...type.small, color: colors.textTertiary, lineHeight: 17, marginTop: spacing.lg },
 });

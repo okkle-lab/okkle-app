@@ -7,6 +7,19 @@ import { setTripActive } from '../autoTrip';
 const TRIP_NOTIF_ID = 'okkle-trip-active';
 const TRIP_END_NUDGE_ID = 'okkle-trip-end-nudge';
 const END_NUDGE_AFTER_S = 18 * 60; // ask "finished?" ~18 min after last movement
+
+// Live trip state lives only in memory, so on a cold app launch there is never a
+// trip actually running. If the app was killed mid-trip, iOS keeps the sticky
+// "tracking" notification, the scheduled "finished this trip?" nudge, and a stuck
+// trip_active='1' flag (which would silently suppress every future "start a trip?"
+// prompt). Call this once at startup to clear all of that stale state — fixes
+// being nudged to stop a trip that isn't running, and never being nudged to start.
+export async function clearStaleTripState(): Promise<void> {
+  setTripActive(false);
+  Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
+  Notifications.cancelScheduledNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
+  Notifications.cancelScheduledNotificationAsync(TRIP_END_NUDGE_ID).catch(() => {});
+}
 const MAX_GPS_ACCURACY_M = 45;
 const MAX_REASONABLE_SPEED_MPS = 45; // ~100mph; anything above is almost certainly a GPS jump for courier use.
 
