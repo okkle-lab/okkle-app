@@ -23,6 +23,10 @@ const TITLES: Record<Which, string> = {
 const MTD_INFO = 'Making Tax Digital (MTD) for Income Tax is HMRC’s new way of reporting. It’s mandatory if your self-employment income is over £50,000 (from April 2026) or over £30,000 (from April 2027) — you submit four digital updates a year through compatible software. Below the threshold you still file the usual annual Self Assessment.';
 const HMRC_INFO = 'The key dates for filing your own Self Assessment:\n\n• Register for Self Assessment by 5 October after your first year of self-employment.\n• File your online return and pay any tax due by 31 January.\n• If HMRC asks you for payments on account, the second instalment is due 31 July.\n\nEach date shows the next time it falls due.';
 
+const BILL_INFO = 'A breakdown of what you’ll owe on your courier profit:\n\n• Income Tax — tax on your profit above the £12,570 personal allowance.\n• Class 4 NIC — National Insurance for the self-employed: 6% of profit between £12,570 and £50,270, then 2% above.\n• Effective rate — your total tax + NIC as a share of your income (usually lower than your headline tax band).\n• Payments on account — if your bill is over £1,000, HMRC asks you to pre-pay next year’s tax in two instalments (31 Jan and 31 Jul).\n\nAll estimates — confirm with your accountant.';
+
+const YEAR_INFO = 'Your Self Assessment figures for the year:\n\n• Turnover — your total income (all the pay you’ve logged).\n• Allowable expenses — what you can deduct, including your simplified mileage.\n• Net profit — turnover minus expenses; this is what you’re taxed on.\n• Trading allowance — instead of expenses you can deduct a flat £1,000; Okkle uses whichever is higher.';
+
 // Real HMRC Self Assessment deadlines (month is 1-12).
 const KEY_DEADLINES: { title: string; month: number; day: number; note: string }[] = [
   { title: 'Register for Self Assessment', month: 10, day: 5, note: 'Only if this was your first year self-employed.' },
@@ -100,7 +104,13 @@ export default function TaxDetail() {
 
         {which === 'bill' && (
           <>
-            <SectionHeader icon="percent" title="Income tax & National Insurance" />
+            <View style={s.headRow}>
+              <Feather name="percent" size={13} color={colors.brand} />
+              <Text style={s.headTitle}>Income tax & National Insurance</Text>
+              <Pressable onPress={() => Alert.alert('Your estimated bill', BILL_INFO)} hitSlop={8}>
+                <Feather name="help-circle" size={17} color={colors.textTertiary} />
+              </Pressable>
+            </View>
             <Card style={{ marginBottom: spacing.lg }}>
               <Row label="Income Tax" value={fmtGbp(pos.incomeTax)} />
               <Row label="Class 4 NIC" value={fmtGbp(pos.class4)} />
@@ -161,7 +171,13 @@ export default function TaxDetail() {
 
         {which === 'year' && (
           <>
-            <SectionHeader icon="bar-chart-2" title="Self Assessment summary" />
+            <View style={s.headRow}>
+              <Feather name="bar-chart-2" size={13} color={colors.brand} />
+              <Text style={s.headTitle}>Self Assessment summary</Text>
+              <Pressable onPress={() => Alert.alert('This year', YEAR_INFO)} hitSlop={8}>
+                <Feather name="help-circle" size={17} color={colors.textTertiary} />
+              </Pressable>
+            </View>
             <Card>
               <Row label="Turnover (income)" value={fmtGbp(pos.turnover)} />
               <Row label="Allowable expenses" value={fmtGbp(pos.expenses)} />
