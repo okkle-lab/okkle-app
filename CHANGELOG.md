@@ -13,6 +13,7 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 0.3 (23) - 2026-06-27 (White-screen fix + crash hardening)
 
+- **Fixed the blank screen on dark-mode phones** — Okkle is designed light-first, but followed the system theme, and dark mode wasn't fully wired across every surface (glass panels, gradients, maps), so it rendered unusable. The app is now locked to light appearance.
 - **Fixed the TestFlight white screen** — caused by the global deadline alert rendering before its safe-area provider in builds made before that fix landed. The fix is in, plus a root error boundary now shows a friendly "something went wrong — try again" screen instead of a blank white screen if anything ever throws in a release build.
 
 ## 0.3 (19) - 2026-06-27 (Global deadline alert + grid-cell hotspots)
