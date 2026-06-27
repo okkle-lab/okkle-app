@@ -4,6 +4,7 @@ import MapKit
 import PhotosUI
 import SwiftUI
 import UIKit
+import Vision
 
 private enum OkkleColor {
   static let brand = Color(red: 0.03, green: 0.58, blue: 0.49)
@@ -435,21 +436,35 @@ private func nativeClass4(profit: Double) -> Double {
   return main * 0.06 + upper * 0.02
 }
 
+enum NativeTab {
+  case home
+  case log
+  case trip
+  case insights
+  case records
+}
+
 struct OkkleNativeRootView: View {
   @StateObject private var store = OkkleStore()
+  @State private var selectedTab: NativeTab = .home
 
   var body: some View {
-    TabView {
+    TabView(selection: $selectedTab) {
       NativeHomeView()
         .tabItem { Label("Home", systemImage: "person.crop.circle") }
-      NativeLogView()
+        .tag(NativeTab.home)
+      NativeLogView(selectedTab: $selectedTab)
         .tabItem { Label("Log", systemImage: "square.and.pencil") }
+        .tag(NativeTab.log)
       NativeTripView()
         .tabItem { Label("Trip", systemImage: "location.north") }
+        .tag(NativeTab.trip)
       NativeInsightsView()
         .tabItem { Label("Insights", systemImage: "sparkles") }
+        .tag(NativeTab.insights)
       NativeRecordsView()
         .tabItem { Label("Records", systemImage: "archivebox") }
+        .tag(NativeTab.records)
     }
     .environmentObject(store)
     .tint(OkkleColor.brand)
@@ -480,6 +495,13 @@ enum NativeScreenStyle {
     case .dark: return .white
     }
   }
+
+  var navigationColorScheme: ColorScheme {
+    switch self {
+    case .standard: return .light
+    case .dark: return .dark
+    }
+  }
 }
 
 struct NativeScreen<Content: View>: View {
@@ -500,35 +522,19 @@ struct NativeScreen<Content: View>: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 6) {
-              Text(title)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(style.titleColor)
-              if let subtitle {
-                Text(subtitle)
-                  .font(.system(size: 16, weight: .medium))
-                  .foregroundStyle(style.subtitleColor)
-              }
-            }
-            Spacer(minLength: 16)
-            Button { showSettings = true } label: {
-              Image(systemName: "gearshape")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(style.settingsColor)
-                .frame(width: 50, height: 50)
-                .background(.ultraThinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.10), radius: 14, y: 8)
-            }
-            .accessibilityLabel("Settings")
+          if let subtitle {
+            Text(subtitle)
+              .font(.system(size: 17, weight: .medium))
+              .foregroundStyle(style.subtitleColor)
+              .padding(.top, 2)
           }
-          .padding(.top, 14)
 
           content
         }
         .padding(.horizontal, 22)
         .padding(.bottom, 120)
       }
+      .scrollIndicators(.hidden)
       .background {
         switch style {
         case .standard:
@@ -537,8 +543,17 @@ struct NativeScreen<Content: View>: View {
           Color.black.ignoresSafeArea()
         }
       }
-      .scrollIndicators(.hidden)
+      .navigationTitle(title)
+      .navigationBarTitleDisplayMode(.large)
+      .toolbarColorScheme(style.navigationColorScheme, for: .navigationBar)
       .toolbar {
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button { showSettings = true } label: {
+            Image(systemName: "gearshape")
+              .font(.system(size: 17, weight: .semibold))
+          }
+          .accessibilityLabel("Settings")
+        }
         ToolbarItemGroup(placement: .keyboard) {
           Spacer()
           Button("Done") {
@@ -838,6 +853,7 @@ private let nativeExpenseCategories = [
 
 struct NativeLogView: View {
   @EnvironmentObject private var store: OkkleStore
+  @Binding var selectedTab: NativeTab
   @State private var kind: NativeLogKind = .income
   @State private var amount = ""
   @State private var distance = ""
@@ -850,6 +866,8 @@ struct NativeLogView: View {
   @State private var receiptItem: PhotosPickerItem?
   @State private var receiptImage: UIImage?
   @State private var receiptData: Data?
+  @State private var receiptScanMessage = "Add a receipt and Okkle will try to fill the expense details."
+  @State private var receiptScanning = false
   @State private var showCamera = false
   @State private var savedRecord: NativeRecord?
   @FocusState private var focused: LogField?
@@ -872,6 +890,10 @@ struct NativeLogView: View {
           }
           .pickerStyle(.segmented)
           .onChange(of: kind) { _ in resetEntry(keepKind: true) }
+
+          if kind == .expense {
+            receiptBetaPanel
+          }
 
           if kind == .mileage {
             nativeNumberField(title: "Miles", text: $distance, placeholder: "0.0", field: .miles)
@@ -903,8 +925,6 @@ struct NativeLogView: View {
               options: merchantOptions,
               text: $merchant
             )
-
-            receiptBetaPanel
           }
 
           Picker("Period", selection: $period) {
@@ -916,7 +936,7 @@ struct NativeLogView: View {
             .datePickerStyle(.compact)
 
           Button(action: saveRecord) {
-            Label("Continue", systemImage: "arrow.right.circle.fill")
+            Label("Submit", systemImage: "arrow.right.circle.fill")
               .font(.system(size: 17, weight: .bold))
               .frame(maxWidth: .infinity)
               .padding(.vertical, 14)
@@ -936,10 +956,15 @@ struct NativeLogView: View {
       receiptData = data
       receiptImage = UIImage(data: data)
     }
+    .onChange(of: receiptData) { data in
+      guard let data else { return }
+      scanReceipt(data)
+    }
     .alert("Saved to records", isPresented: Binding(get: { savedRecord != nil }, set: { if !$0 { savedRecord = nil } })) {
-      Button("Done") {
+      Button("View records") {
         resetEntry()
         savedRecord = nil
+        selectedTab = .records
       }
     } message: {
       Text(savedMessage)
@@ -984,40 +1009,104 @@ struct NativeLogView: View {
   }
 
   private var receiptBetaPanel: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Label("Receipt scan beta", systemImage: "wand.and.stars")
-        .font(.system(size: 14, weight: .bold))
-        .foregroundStyle(OkkleColor.brandDark)
-      Text("Attach a receipt photo now. On-device reading can be layered into this native flow next.")
-        .font(.system(size: 13, weight: .medium))
-        .foregroundStyle(OkkleColor.muted)
+    NativeAiCard {
+      ZStack(alignment: .topTrailing) {
+        VStack(alignment: .leading, spacing: 12) {
+          Label("Receipt scan", systemImage: "wand.and.stars")
+            .font(.system(size: 15, weight: .heavy))
+            .foregroundStyle(OkkleColor.brandDark)
+            .padding(.trailing, 74)
+          Text(receiptScanning ? "Scanning receipt..." : receiptScanMessage)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .padding(.trailing, 8)
 
-      HStack(spacing: 10) {
-        PhotosPicker(selection: $receiptItem, matching: .images) {
-          Label("Photos (Beta)", systemImage: "photo")
-            .frame(maxWidth: .infinity)
+          HStack(spacing: 10) {
+            PhotosPicker(selection: $receiptItem, matching: .images) {
+              Label("Choose photo", systemImage: "photo")
+                .font(.system(size: 14, weight: .bold))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(OkkleColor.brand)
+
+            Button {
+              showCamera = true
+            } label: {
+              Label("Camera", systemImage: "camera")
+                .font(.system(size: 14, weight: .bold))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+          }
+
+          if let receiptImage {
+            Image(uiImage: receiptImage)
+              .resizable()
+              .scaledToFill()
+              .frame(height: 130)
+              .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+          }
         }
-        .buttonStyle(.bordered)
 
-        Button {
-          showCamera = true
-        } label: {
-          Label("Camera (Beta)", systemImage: "camera")
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-      }
-
-      if let receiptImage {
-        Image(uiImage: receiptImage)
-          .resizable()
-          .scaledToFill()
-          .frame(height: 130)
-          .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        Text("BETA")
+          .font(.system(size: 11, weight: .heavy, design: .rounded))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 6)
+          .background(.purple, in: Capsule())
+          .shadow(color: .purple.opacity(0.28), radius: 12, y: 6)
       }
     }
-    .padding(14)
-    .background(OkkleColor.mint.opacity(0.70), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+  }
+
+  private func scanReceipt(_ data: Data) {
+    guard kind == .expense, let image = UIImage(data: data), let cgImage = image.cgImage else { return }
+    receiptScanning = true
+    receiptScanMessage = "Scanning receipt..."
+
+    let request = VNRecognizeTextRequest { request, error in
+      let observations = request.results as? [VNRecognizedTextObservation] ?? []
+      let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+      let parsed = nativeParseReceipt(lines: lines)
+
+      DispatchQueue.main.async {
+        receiptScanning = false
+        applyReceiptScan(parsed)
+        if parsed.hasValues {
+          receiptScanMessage = parsed.summary
+        } else if let error {
+          receiptScanMessage = "Could not scan this receipt. \(error.localizedDescription)"
+        } else {
+          receiptScanMessage = "Could not confidently read amount, category or merchant. You can still enter them manually."
+        }
+      }
+    }
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = true
+
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
+      } catch {
+        DispatchQueue.main.async {
+          receiptScanning = false
+          receiptScanMessage = "Could not scan this receipt. \(error.localizedDescription)"
+        }
+      }
+    }
+  }
+
+  private func applyReceiptScan(_ result: NativeReceiptScanResult) {
+    if amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let parsedAmount = result.amount {
+      amount = String(format: "%.2f", parsedAmount)
+    }
+    if category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let parsedCategory = result.category {
+      category = parsedCategory
+    }
+    if merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let parsedMerchant = result.merchant {
+      merchant = parsedMerchant
+    }
   }
 
   private func nativeNumberField(title: String, text: Binding<String>, placeholder: String, field: LogField) -> some View {
@@ -1101,7 +1190,101 @@ struct NativeLogView: View {
     receiptImage = nil
     receiptData = nil
     receiptItem = nil
+    receiptScanMessage = "Add a receipt and Okkle will try to fill the expense details."
+    receiptScanning = false
   }
+}
+
+private struct NativeReceiptScanResult {
+  var amount: Double?
+  var category: String?
+  var merchant: String?
+
+  var hasValues: Bool {
+    amount != nil || category != nil || merchant != nil
+  }
+
+  var summary: String {
+    var parts: [String] = []
+    if let amount {
+      parts.append(gbp(amount))
+    }
+    if let category {
+      parts.append(category)
+    }
+    if let merchant {
+      parts.append(merchant)
+    }
+    return parts.isEmpty ? "Receipt scanned." : "Filled \(parts.joined(separator: " · "))."
+  }
+}
+
+private func nativeParseReceipt(lines: [String]) -> NativeReceiptScanResult {
+  let cleaned = lines
+    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    .filter { !$0.isEmpty }
+  let text = cleaned.joined(separator: "\n")
+  return NativeReceiptScanResult(
+    amount: nativeReceiptAmount(from: text),
+    category: nativeReceiptCategory(from: text),
+    merchant: nativeReceiptMerchant(from: cleaned)
+  )
+}
+
+private func nativeReceiptAmount(from text: String) -> Double? {
+  let pattern = #"(?i)(?:total|amount|paid|balance|card|sale)?[^\d£$]{0,12}[£$]?\s*(\d{1,4}[.,]\d{2})"#
+  guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+  let nsText = text as NSString
+  let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+  let scored = matches.compactMap { match -> (score: Int, value: Double)? in
+    guard match.numberOfRanges > 1 else { return nil }
+    let matchText = nsText.substring(with: match.range(at: 0)).lowercased()
+    let numberText = nsText.substring(with: match.range(at: 1)).replacingOccurrences(of: ",", with: ".")
+    guard let value = Double(numberText), value > 0 else { return nil }
+    var score = 0
+    if matchText.contains("total") { score += 4 }
+    if matchText.contains("amount") || matchText.contains("paid") || matchText.contains("card") { score += 2 }
+    if matchText.contains("subtotal") || matchText.contains("change") || matchText.contains("vat") { score -= 3 }
+    return (score, value)
+  }
+  return scored.sorted { left, right in
+    if left.score == right.score { return left.value > right.value }
+    return left.score > right.score
+  }.first?.value
+}
+
+private func nativeReceiptCategory(from text: String) -> String? {
+  let lower = text.lowercased()
+  let checks: [(String, [String])] = [
+    ("Fuel", ["fuel", "petrol", "diesel", "shell", "bp", "esso", "texaco", "jet ", "gulf"]),
+    ("Charging", ["ev charge", "charging", "chargepoint", "instavolt", "pod point", "tesla supercharger"]),
+    ("Parking", ["parking", "parkmobile", "ringgo", "paybyphone"]),
+    ("Phone", ["vodafone", "ee ", "o2", "three", "giffgaff", "mobile", "phone"]),
+    ("Insurance", ["insurance", "insurer", "policy"]),
+    ("Maintenance / repairs", ["repair", "service", "garage", "mot", "maintenance"]),
+    ("Tyres", ["tyre", "tire", "kwik fit", "national tyres"]),
+    ("Congestion charge", ["congestion"]),
+    ("ULEZ charge", ["ulez", "clean air zone", "caz"]),
+    ("Insulated bag", ["insulated bag", "thermal bag"]),
+    ("Helmet / safety", ["helmet", "hi-vis", "safety"]),
+    ("App subscription", ["subscription", "app store", "google play"])
+  ]
+  return checks.first { _, keywords in keywords.contains { lower.contains($0) } }?.0
+}
+
+private func nativeReceiptMerchant(from lines: [String]) -> String? {
+  let ignored = ["receipt", "invoice", "tax", "vat", "total", "amount", "card", "visa", "mastercard", "auth", "date", "time"]
+  for line in lines.prefix(8) {
+    let clean = line
+      .replacingOccurrences(of: #"[^A-Za-z0-9 '&.-]"#, with: "", options: .regularExpression)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let lower = clean.lowercased()
+    guard clean.count >= 2, clean.count <= 34 else { continue }
+    guard !ignored.contains(where: { lower.contains($0) }) else { continue }
+    guard clean.rangeOfCharacter(from: .letters) != nil else { continue }
+    return clean.capitalized
+  }
+  return nil
 }
 
 private func uniqueStrings(_ values: [String]) -> [String] {
@@ -2213,6 +2396,7 @@ struct NativeRecordsView: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var mode: RecordsMode = .history
   @State private var filter: RecordsFilter = .all
+  @State private var itemPendingDeletion: NativeHistoryItem?
 
   enum RecordsMode: String, CaseIterable, Identifiable {
     case history
@@ -2254,7 +2438,7 @@ struct NativeRecordsView: View {
                 NativeHistoryRow(item: item)
                   .contextMenu {
                     Button(role: .destructive) {
-                      delete(item)
+                      itemPendingDeletion = item
                     } label: {
                       Label("Delete", systemImage: "trash")
                     }
@@ -2269,6 +2453,22 @@ struct NativeRecordsView: View {
       } else {
         NativeTaxSummaryView()
       }
+    }
+    .alert("Delete this entry?", isPresented: Binding(
+      get: { itemPendingDeletion != nil },
+      set: { if !$0 { itemPendingDeletion = nil } }
+    )) {
+      Button("Cancel", role: .cancel) {
+        itemPendingDeletion = nil
+      }
+      Button("Delete", role: .destructive) {
+        if let item = itemPendingDeletion {
+          delete(item)
+        }
+        itemPendingDeletion = nil
+      }
+    } message: {
+      Text(pendingDeletionMessage)
     }
   }
 
@@ -2297,6 +2497,18 @@ struct NativeRecordsView: View {
       store.deleteTrip(trip)
     case .record(let record):
       store.deleteRecord(record)
+    }
+  }
+
+  private var pendingDeletionMessage: String {
+    guard let item = itemPendingDeletion else {
+      return "This cannot be undone."
+    }
+    switch item {
+    case .trip:
+      return "This trip, route and mileage deduction will be removed from Records. This cannot be undone."
+    case .record(let record):
+      return "This \(record.kind.label.lowercased()) entry will be removed from Records and tax totals. This cannot be undone."
     }
   }
 }
@@ -2825,6 +3037,8 @@ struct NativeSettingsView: View {
   @State private var backupBusy = false
   @State private var backupMessage: String?
   @State private var backupShareItem: NativeShareItem?
+  @State private var showClearDataWarning = false
+  @State private var showDataClearedConfirmation = false
 
   var body: some View {
     NavigationStack {
@@ -2898,7 +3112,7 @@ struct NativeSettingsView: View {
             .foregroundStyle(.secondary)
 
           Button(role: .destructive) {
-            store.resetAllData()
+            showClearDataWarning = true
           } label: {
             Label("Clear records and trips", systemImage: "trash")
           }
@@ -2926,6 +3140,20 @@ struct NativeSettingsView: View {
         Button("OK", role: .cancel) {}
       } message: {
         Text(backupMessage ?? "")
+      }
+      .alert("Clear records and trips?", isPresented: $showClearDataWarning) {
+        Button("Cancel", role: .cancel) {}
+        Button("Clear data", role: .destructive) {
+          store.resetAllData()
+          showDataClearedConfirmation = true
+        }
+      } message: {
+        Text("This permanently deletes every saved trip, earning, expense, mileage entry and route from this device. Create a backup first if you might need the data later.")
+      }
+      .alert("Data cleared", isPresented: $showDataClearedConfirmation) {
+        Button("OK", role: .cancel) {}
+      } message: {
+        Text("Your records and trips have been removed.")
       }
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
