@@ -11,10 +11,11 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
-## 0.3 (23) - 2026-06-27 (White-screen fix + crash hardening)
+## 0.3 (24) - 2026-06-27 (White-screen fix verified on device)
 
-- **Fixed the blank screen on dark-mode phones** — Okkle is designed light-first, but followed the system theme, and dark mode wasn't fully wired across every surface (glass panels, gradients, maps), so it rendered unusable. The app is now locked to light appearance.
-- **Fixed the TestFlight white screen** — caused by the global deadline alert rendering before its safe-area provider in builds made before that fix landed. The fix is in, plus a root error boundary now shows a friendly "something went wrong — try again" screen instead of a blank white screen if anything ever throws in a release build.
+- **Fixed the TestFlight white screen** — the committed native `ios/` project was a stale prebuild that no longer matched `expo-modules-core`, so Expo's native modules (ExpoAsset, ExpoConstants…) failed to register at launch and the JS threw before rendering. Regenerated the native project (`expo prebuild --clean`); verified on a simulator that a fresh/empty install launches correctly. (EAS Build does this clean prebuild automatically — the recommended way to ship.)
+- **Locked to light appearance** — Okkle is designed light-first; following the system theme rendered blank on dark-mode phones. Now always light.
+- **Crash hardening** — a root error boundary shows a friendly "something went wrong — try again" screen instead of a blank white screen if anything ever throws in a release build, plus the deadline alert is wrapped in a safe-area provider and try/catch.
 
 ## 0.3 (19) - 2026-06-27 (Global deadline alert + grid-cell hotspots)
 
