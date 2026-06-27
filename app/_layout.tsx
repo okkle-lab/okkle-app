@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 import '../src/autoTrip'; // registers the background trip-detection task at load
 import { clearStaleTripState } from '../src/hooks/useTrip';
+import { DeadlineAlert } from '../src/components';
 
 const glassSheetOptions = {
   presentation: 'transparentModal' as const,
@@ -74,6 +75,7 @@ export default function RootLayout() {
         <Stack.Screen name="settings-earnings-shortcut" options={modalOptions} />
         <Stack.Screen name="settings-auto-trip" options={modalOptions} />
       </Stack>
+      <DeadlineAlert />
     </>
   );
 }

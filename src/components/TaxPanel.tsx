@@ -110,7 +110,13 @@ export function TaxPanel() {
         <View style={s.rowIcon}><Feather name="calendar" size={18} color={colors.textSecondary} /></View>
         <View style={{ flex: 1 }}>
           <Text style={s.rowTitle}>Deadlines</Text>
-          <Text style={s.rowSub}>{nextQuarter ? `Next update due ${nextQuarter.deadline}` : 'Self Assessment & MTD dates'}</Text>
+          {due ? (
+            <Text style={s.rowSub} numberOfLines={1}>
+              {due.title} · <Text style={[s.dueDays, due.days <= 14 && { color: colors.red }]}>{due.days === 0 ? 'due today' : due.days === 1 ? 'tomorrow' : `in ${due.days} days`}</Text>
+            </Text>
+          ) : (
+            <Text style={s.rowSub}>{nextQuarter ? `Next update due ${nextQuarter.deadline}` : 'Self Assessment & MTD dates'}</Text>
+          )}
         </View>
         <Feather name="chevron-right" size={18} color={colors.textTertiary} />
       </Pressable>
@@ -169,6 +175,7 @@ const s = StyleSheet.create({
   rowTitle: { ...type.bodyMedium, fontSize: 15 },
   rowSub: { ...type.caption, marginTop: 2 },
   rowValue: { ...tabular, fontSize: 15, fontWeight: font.bold, color: colors.textPrimary },
+  dueDays: { fontWeight: font.bold, color: colors.textSecondary },
 
   deadline: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: spacing.lg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, marginBottom: spacing.lg },
 

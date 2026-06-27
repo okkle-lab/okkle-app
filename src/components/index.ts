@@ -6,6 +6,7 @@ export { NativeGreenButton } from './NativeGreenButton';
 export { GlassPanel } from './GlassPanel';
 export { AiGlowPanel } from './AiGlowPanel';
 export { SectionHeader } from './SectionHeader';
+export { DeadlineAlert } from './DeadlineAlert';
 export { SlideToConfirm } from './SlideToConfirm';
 export { Icon, VehicleIcon } from './Icon';
 export { VehicleChip } from './VehicleChip';
