@@ -6,6 +6,7 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 - **One Deadlines layer.** MTD quarterly updates and the HMRC Self Assessment dates now sit on the same screen, each row with a "Remind" button that adds the deadline to your calendar (MTD deadlines previously had no reminder). Each section has a tappable (?) with a plain-English explanation, replacing the long footnotes.
 - **Plain-English (?) tooltips on the tax screens.** The estimated-bill section (Income Tax, Class 4 NIC, effective rate, payments on account) and the Self Assessment summary (turnover, allowable expenses, net profit, trading allowance) now each have a (?) explaining the jargon.
+- **Deadline polish.** Dropped the heavy green highlight on the current MTD quarter (which hid its button); buttons are now a clear "Add" with a calendar icon, and Settings → Reminders opens the same unified Deadlines screen (MTD + HMRC) instead of a separate, differently-styled list.
 - **Fixed Tax saved screen spacing** — even rhythm between the cards (in-card notes no longer add a dangling bottom gap).
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.

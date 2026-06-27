@@ -66,10 +66,10 @@ export default function SettingsReminders() {
           <Switch value={deadlinesOn} onValueChange={setDeadlinesOn} trackColor={{ true: colors.brand, false: colors.borderStrong }} />
         </View>
         <View style={s.divider} />
-        <Pressable onPress={() => router.push('/key-dates')} style={({ pressed }) => [s.rowBetween, pressed && { opacity: 0.6 }]}>
+        <Pressable onPress={() => router.push({ pathname: '/tax-detail', params: { which: 'deadlines' } })} style={({ pressed }) => [s.rowBetween, pressed && { opacity: 0.6 }]}>
           <View style={{ flex: 1 }}>
-            <Text style={s.rowTitle}>Key tax dates</Text>
-            <Text style={s.rowSub}>View HMRC deadlines & add to calendar</Text>
+            <Text style={s.rowTitle}>Tax deadlines & key dates</Text>
+            <Text style={s.rowSub}>MTD quarters, HMRC dates & add to calendar</Text>
           </View>
           <Feather name="chevron-right" size={20} color={colors.textTertiary} />
         </Pressable>

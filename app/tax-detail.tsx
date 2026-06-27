@@ -86,14 +86,14 @@ export default function TaxDetail() {
     const when = new Date(`${deadlineISO}T09:00:00`);
     try {
       const ok = await addDeadlineToCalendar(`MTD: ${label} quarterly update`, when, 'Submit your Making Tax Digital quarterly update to HMRC.');
-      Alert.alert(ok ? 'Reminder added' : 'Couldn’t add it', ok ? `${label} update — due ${deadlineLabel}, with a reminder a week before.` : 'Please allow calendar access and try again.');
+      Alert.alert(ok ? 'Added to your calendar' : 'Couldn’t add it', ok ? `${label} update — due ${deadlineLabel}, with a reminder a week before.` : 'Please allow calendar access and try again.');
     } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
   }
 
   async function addHmrcReminder(title: string, when: Date, note: string) {
     try {
       const ok = await addDeadlineToCalendar(`HMRC: ${title}`, when, note);
-      Alert.alert(ok ? 'Reminder added' : 'Couldn’t add it', ok ? `${title} — ${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.` : 'Please allow calendar access and try again.');
+      Alert.alert(ok ? 'Added to your calendar' : 'Couldn’t add it', ok ? `${title} — ${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.` : 'Please allow calendar access and try again.');
     } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
   }
 
@@ -198,7 +198,7 @@ export default function TaxDetail() {
             </View>
             <Card style={{ padding: 0, overflow: 'hidden', marginBottom: spacing.lg }}>
               {quarters.map((q, i) => (
-                <View key={q.label} style={[s.qRow, i < quarters.length - 1 && s.rowBorder, q.isCurrent && s.qCurrent]}>
+                <View key={q.label} style={[s.qRow, i < quarters.length - 1 && s.rowBorder]}>
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Text style={s.qLabel}>{q.label}</Text>
@@ -207,8 +207,8 @@ export default function TaxDetail() {
                     <Text style={s.qDates}>due {q.deadline} · {fmtGbp(q.profit)} profit</Text>
                   </View>
                   <Pressable onPress={() => addMtdReminder(q.label, q.deadlineISO, q.deadline)} style={s.calBtn} hitSlop={6}>
-                    <Feather name="bell" size={14} color={colors.brandDeep} />
-                    <Text style={s.calBtnText}>Remind</Text>
+                    <Feather name="calendar" size={14} color={colors.brandDeep} />
+                    <Text style={s.calBtnText}>Add</Text>
                   </Pressable>
                 </View>
               ))}
@@ -231,8 +231,8 @@ export default function TaxDetail() {
                       <Text style={s.qDates}>{next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
                     </View>
                     <Pressable onPress={() => addHmrcReminder(d.title, next, d.note)} style={s.calBtn} hitSlop={6}>
-                      <Feather name="bell" size={14} color={colors.brandDeep} />
-                      <Text style={s.calBtnText}>Remind</Text>
+                      <Feather name="calendar" size={14} color={colors.brandDeep} />
+                      <Text style={s.calBtnText}>Add</Text>
                     </Pressable>
                   </View>
                 );
