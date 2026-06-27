@@ -2,6 +2,7 @@ import CoreLocation
 import EventKit
 import MapKit
 import PhotosUI
+import SQLite3
 import SwiftUI
 import UIKit
 import Vision
@@ -48,6 +49,10 @@ private let wholeGbpFormatter: NumberFormatter = {
 private func gbp(_ value: Double, whole: Bool = false) -> String {
   let formatter = whole ? wholeGbpFormatter : gbpFormatter
   return formatter.string(from: NSNumber(value: value)) ?? "GBP \(value)"
+}
+
+private func headlineGbp(_ value: Double) -> String {
+  abs(value) < 100 ? gbp(value) : gbp(value, whole: true)
 }
 
 private func miles(_ value: Double) -> String {
@@ -161,6 +166,7 @@ struct RoutePoint: Identifiable, Codable, Equatable {
 
 struct NativeRecord: Identifiable, Codable, Equatable {
   var id = UUID()
+  var legacyID: String? = nil
   var kind: NativeLogKind
   var platform: String?
   var vehicle: NativeVehicle?
@@ -171,11 +177,14 @@ struct NativeRecord: Identifiable, Codable, Equatable {
   var merchant: String? = nil
   var date: Date
   var period: NativePayPeriod
+  var periodStart: Date? = nil
+  var periodEnd: Date? = nil
   var receiptImageData: Data?
 }
 
 struct NativeTrip: Identifiable, Codable, Equatable {
   var id = UUID()
+  var legacyID: String? = nil
   var vehicle: NativeVehicle
   var miles: Double
   var deduction: Double
@@ -232,6 +241,7 @@ final class OkkleStore: ObservableObject {
   @Published var trips: [NativeTrip] = [] { didSet { save() } }
 
   private let key = "uk.okkle.native.swiftui.snapshot.v1"
+  private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v1"
   private var isLoading = false
 
   init() {
@@ -240,15 +250,28 @@ final class OkkleStore: ObservableObject {
 
   func load() {
     isLoading = true
-    defer { isLoading = false }
-    guard let data = UserDefaults.standard.data(forKey: key) else { return }
-    do {
-      let snapshot = try JSONDecoder().decode(NativeSnapshot.self, from: data)
-      settings = snapshot.settings
-      records = snapshot.records
-      trips = snapshot.trips
-    } catch {
-      UserDefaults.standard.removeObject(forKey: key)
+    var shouldPersist = false
+    defer {
+      isLoading = false
+      if shouldPersist { save() }
+    }
+
+    if let data = UserDefaults.standard.data(forKey: key) {
+      do {
+        let snapshot = try JSONDecoder().decode(NativeSnapshot.self, from: data)
+        settings = snapshot.settings
+        records = snapshot.records
+        trips = snapshot.trips
+      } catch {
+        UserDefaults.standard.removeObject(forKey: key)
+      }
+    }
+
+    if !UserDefaults.standard.bool(forKey: legacyMigrationKey),
+       let imported = NativeLegacySQLiteImporter.importSnapshot() {
+      merge(imported)
+      UserDefaults.standard.set(true, forKey: legacyMigrationKey)
+      shouldPersist = true
     }
   }
 
@@ -312,7 +335,7 @@ final class OkkleStore: ObservableObject {
   }
 
   var yearRecords: [NativeRecord] {
-    records.filter { taxYear.contains($0.date) }
+    records.filter { recordOverlapsTaxYear($0) }
   }
 
   var yearTrips: [NativeTrip] {
@@ -320,19 +343,19 @@ final class OkkleStore: ObservableObject {
   }
 
   var yearMiles: Double {
-    yearTrips.reduce(0) { $0 + $1.miles } + yearRecords.reduce(0) { $0 + ($1.kind == .mileage ? ($1.miles ?? 0) : 0) }
+    yearTrips.reduce(0) { $0 + $1.miles } + yearRecords.reduce(0) { $0 + mileageForTaxYear($1) }
   }
 
   var yearMileageDeduction: Double {
-    yearTrips.reduce(0) { $0 + $1.deduction } + yearRecords.reduce(0) { $0 + ($1.deduction ?? 0) }
+    yearTrips.reduce(0) { $0 + deduction(for: $1) } + yearRecords.reduce(0) { $0 + deductionForTaxYear($1) }
   }
 
   var yearIncome: Double {
-    yearRecords.reduce(0) { $0 + ($1.kind == .income ? ($1.amount ?? 0) : 0) }
+    yearRecords.reduce(0) { $0 + incomeForTaxYear($1) }
   }
 
   var yearExpenses: Double {
-    yearRecords.reduce(0) { $0 + ($1.kind == .expense ? ($1.amount ?? 0) : 0) } + yearMileageDeduction
+    yearRecords.reduce(0) { $0 + expenseForTaxYear($1) } + yearMileageDeduction
   }
 
   var taxSaved: Double {
@@ -347,6 +370,21 @@ final class OkkleStore: ObservableObject {
     let tripItems = trips.map(NativeHistoryItem.trip)
     let recordItems = records.map(NativeHistoryItem.record)
     return (tripItems + recordItems).sorted { $0.date > $1.date }
+  }
+
+  func periodBounds(for date: Date, period: NativePayPeriod) -> (start: Date, end: Date) {
+    let calendar = Calendar.current
+    let day = calendar.startOfDay(for: date)
+    switch period {
+    case .day:
+      return (day, day)
+    case .week:
+      let weekday = calendar.component(.weekday, from: day)
+      let mondayOffset = weekday == 1 ? -6 : 2 - weekday
+      let start = calendar.date(byAdding: .day, value: mondayOffset, to: day) ?? day
+      let end = calendar.date(byAdding: .day, value: 6, to: start) ?? day
+      return (start, end)
+    }
   }
 
   func calcDeduction(miles: Double, vehicle: NativeVehicle, totalBefore: Double = 0, date: Date = Date()) -> Double {
@@ -373,6 +411,437 @@ final class OkkleStore: ObservableObject {
     }
     return DateInterval(start: start, end: end)
   }
+
+  private func merge(_ imported: NativeLegacyImportResult) {
+    if let importedSettings = imported.settings {
+      settings = importedSettings
+    }
+
+    let existingTripLegacyIDs = Set(trips.compactMap(\.legacyID))
+    let newTrips = imported.trips.filter { trip in
+      if let legacyID = trip.legacyID, existingTripLegacyIDs.contains(legacyID) {
+        return false
+      }
+      return !trips.contains { likelySameTrip($0, trip) }
+    }
+    if !newTrips.isEmpty {
+      trips = (trips + newTrips).sorted { $0.startedAt > $1.startedAt }
+    }
+
+    let existingRecordLegacyIDs = Set(records.compactMap(\.legacyID))
+    let newRecords = imported.records.filter { record in
+      if let legacyID = record.legacyID, existingRecordLegacyIDs.contains(legacyID) {
+        return false
+      }
+      return !records.contains { likelySameRecord($0, record) }
+    }
+    if !newRecords.isEmpty {
+      records = (records + newRecords).sorted { $0.date > $1.date }
+    }
+  }
+
+  private func recordInterval(_ record: NativeRecord) -> DateInterval {
+    let calendar = Calendar.current
+    let bounds: (start: Date, end: Date)
+    if let periodStart = record.periodStart, let periodEnd = record.periodEnd {
+      bounds = (calendar.startOfDay(for: periodStart), calendar.startOfDay(for: periodEnd))
+    } else {
+      bounds = periodBounds(for: record.date, period: record.period)
+    }
+    let exclusiveEnd = calendar.date(byAdding: .day, value: 1, to: bounds.end) ?? bounds.end
+    return DateInterval(start: bounds.start, end: exclusiveEnd)
+  }
+
+  private func likelySameTrip(_ lhs: NativeTrip, _ rhs: NativeTrip) -> Bool {
+    lhs.vehicle == rhs.vehicle &&
+      abs(lhs.miles - rhs.miles) < 0.01 &&
+      abs(lhs.startedAt.timeIntervalSince(rhs.startedAt)) < 60
+  }
+
+  private func likelySameRecord(_ lhs: NativeRecord, _ rhs: NativeRecord) -> Bool {
+    guard lhs.kind == rhs.kind,
+          Calendar.current.isDate(lhs.date, inSameDayAs: rhs.date) else {
+      return false
+    }
+
+    switch lhs.kind {
+    case .income:
+      return abs((lhs.amount ?? 0) - (rhs.amount ?? 0)) < 0.01 &&
+        (lhs.platform ?? "") == (rhs.platform ?? "")
+    case .expense:
+      return abs((lhs.amount ?? 0) - (rhs.amount ?? 0)) < 0.01 &&
+        (lhs.category ?? "") == (rhs.category ?? "")
+    case .mileage:
+      return lhs.vehicle == rhs.vehicle &&
+        abs((lhs.miles ?? 0) - (rhs.miles ?? 0)) < 0.01
+    }
+  }
+
+  private func recordOverlapsTaxYear(_ record: NativeRecord) -> Bool {
+    recordInterval(record).intersects(taxYear)
+  }
+
+  private func taxYearShare(for record: NativeRecord) -> Double {
+    let interval = recordInterval(record)
+    guard interval.duration > 0, let overlap = interval.intersection(with: taxYear) else { return 0 }
+    return min(1, max(0, overlap.duration / interval.duration))
+  }
+
+  private func mileageForTaxYear(_ record: NativeRecord) -> Double {
+    guard record.kind == .mileage else { return 0 }
+    return (record.miles ?? 0) * taxYearShare(for: record)
+  }
+
+  private func deduction(for trip: NativeTrip) -> Double {
+    if trip.deduction > 0 || trip.miles <= 0 { return trip.deduction }
+    return calcDeduction(miles: trip.miles, vehicle: trip.vehicle, date: trip.startedAt)
+  }
+
+  private func deductionForTaxYear(_ record: NativeRecord) -> Double {
+    guard record.kind == .mileage else { return 0 }
+    let base = (record.deduction ?? 0) > 0
+      ? (record.deduction ?? 0)
+      : calcDeduction(miles: record.miles ?? 0, vehicle: record.vehicle ?? settings.defaultVehicle, date: record.date)
+    return base * taxYearShare(for: record)
+  }
+
+  private func incomeForTaxYear(_ record: NativeRecord) -> Double {
+    guard record.kind == .income else { return 0 }
+    return (record.amount ?? 0) * taxYearShare(for: record)
+  }
+
+  private func expenseForTaxYear(_ record: NativeRecord) -> Double {
+    guard record.kind == .expense else { return 0 }
+    return (record.amount ?? 0) * taxYearShare(for: record)
+  }
+}
+
+private struct NativeLegacyImportResult {
+  var settings: NativeSettings?
+  var records: [NativeRecord]
+  var trips: [NativeTrip]
+}
+
+private enum NativeLegacySQLiteImporter {
+  static func importSnapshot() -> NativeLegacyImportResult? {
+    for url in candidateDatabaseURLs() {
+      guard FileManager.default.fileExists(atPath: url.path) else { continue }
+
+      var db: OpaquePointer?
+      guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else {
+        sqlite3_close(db)
+        continue
+      }
+      defer { sqlite3_close(db) }
+
+      let settings = readSettings(from: db)
+      let trips = readTrips(from: db)
+      let records = readRecords(from: db)
+      if settings != nil || !trips.isEmpty || !records.isEmpty {
+        return NativeLegacyImportResult(settings: settings, records: records, trips: trips)
+      }
+    }
+    return nil
+  }
+
+  private static func candidateDatabaseURLs() -> [URL] {
+    let manager = FileManager.default
+    let roots = [
+      manager.urls(for: .documentDirectory, in: .userDomainMask).first,
+      manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+      manager.urls(for: .libraryDirectory, in: .userDomainMask).first,
+    ].compactMap { $0 }
+
+    var urls: [URL] = []
+    for root in roots {
+      urls.append(root.appendingPathComponent("SQLite", isDirectory: true).appendingPathComponent("okkle.db"))
+      if let enumerator = manager.enumerator(
+        at: root,
+        includingPropertiesForKeys: [.isRegularFileKey],
+        options: [.skipsHiddenFiles, .skipsPackageDescendants]
+      ) {
+        for case let url as URL in enumerator where url.lastPathComponent == "okkle.db" {
+          urls.append(url)
+        }
+      }
+    }
+
+    var seen = Set<String>()
+    return urls.filter { url in
+      let key = url.standardizedFileURL.path
+      guard !seen.contains(key) else { return false }
+      seen.insert(key)
+      return true
+    }
+  }
+
+  private static func readSettings(from db: OpaquePointer) -> NativeSettings? {
+    guard let row = rows(from: db, sql: "SELECT * FROM user LIMIT 1").first else { return nil }
+    var settings = NativeSettings()
+    settings.name = string(row["name"]) ?? ""
+    settings.defaultVehicle = vehicle(from: string(row["vehicle"])) ?? .car
+    settings.region = NativeRegion(rawValue: string(row["region"]) ?? "") ?? .ruk
+
+    let platforms = splitList(string(row["platforms"]))
+    if !platforms.isEmpty {
+      settings.platforms = platforms
+    }
+
+    if let enabled = int(row["reminder_enabled"]) {
+      settings.loggingReminder = enabled != 0
+    }
+    if let reminderDay = string(row["reminder_day"]) {
+      settings.reminderDay = weekdayIndex(from: reminderDay)
+    }
+    if let frequency = NativeLogFrequency(rawValue: string(row["log_frequency"]) ?? "") {
+      settings.logFrequency = frequency
+    }
+
+    return settings
+  }
+
+  private static func readTrips(from db: OpaquePointer) -> [NativeTrip] {
+    rows(from: db, sql: "SELECT * FROM trips").compactMap { row in
+      guard let id = int(row["id"]),
+            let vehicle = vehicle(from: string(row["vehicle"])),
+            let startedAt = date(row["started_at"]),
+            let endedAt = date(row["ended_at"]) ?? date(row["started_at"]) else {
+        return nil
+      }
+
+      let miles = double(row["miles"]) ?? 0
+      let storedDeduction = double(row["deduction"]) ?? 0
+      return NativeTrip(
+        legacyID: "sqlite-trip-\(id)",
+        vehicle: vehicle,
+        miles: miles,
+        deduction: storedDeduction > 0 ? storedDeduction : calculatedDeduction(miles: miles, vehicle: vehicle, date: startedAt),
+        startedAt: startedAt,
+        endedAt: endedAt,
+        points: routePoints(from: string(row["route_json"]))
+      )
+    }
+  }
+
+  private static func readRecords(from db: OpaquePointer) -> [NativeRecord] {
+    rows(from: db, sql: "SELECT * FROM records").compactMap { row in
+      guard let id = int(row["id"]),
+            let kind = NativeLogKind(rawValue: string(row["record_type"]) ?? "") else {
+        return nil
+      }
+
+      let createdAt = date(row["created_at"]) ?? date(row["period_start"]) ?? Date()
+      let periodStart = dateOnly(row["period_start"])
+      let periodEnd = dateOnly(row["period_end"])
+      let period = periodKind(start: periodStart, end: periodEnd)
+      let recordVehicle = vehicle(from: string(row["vehicle"]))
+      let miles = double(row["miles"])
+      let storedDeduction = double(row["deduction"])
+      let deduction: Double?
+      if kind == .mileage {
+        let vehicle = recordVehicle ?? .car
+        let mileage = miles ?? 0
+        deduction = (storedDeduction ?? 0) > 0
+          ? storedDeduction
+          : calculatedDeduction(miles: mileage, vehicle: vehicle, date: createdAt)
+      } else {
+        deduction = storedDeduction
+      }
+
+      return NativeRecord(
+        legacyID: "sqlite-record-\(id)",
+        kind: kind,
+        platform: nonEmpty(string(row["platform"])),
+        vehicle: recordVehicle,
+        amount: double(row["amount"]),
+        miles: miles,
+        deduction: deduction,
+        category: nonEmpty(string(row["category"]) ?? string(row["notes"])),
+        merchant: nil,
+        date: createdAt,
+        period: period,
+        periodStart: periodStart,
+        periodEnd: periodEnd,
+        receiptImageData: receiptData(from: string(row["receipt_uri"]))
+      )
+    }
+  }
+
+  private static func rows(from db: OpaquePointer, sql: String) -> [[String: String?]] {
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+      sqlite3_finalize(statement)
+      return []
+    }
+    defer { sqlite3_finalize(statement) }
+
+    let columnCount = sqlite3_column_count(statement)
+    var result: [[String: String?]] = []
+    while sqlite3_step(statement) == SQLITE_ROW {
+      var row: [String: String?] = [:]
+      for index in 0..<columnCount {
+        guard let namePointer = sqlite3_column_name(statement, index) else { continue }
+        let name = String(cString: namePointer)
+        if sqlite3_column_type(statement, index) == SQLITE_NULL {
+          row[name] = nil
+        } else if let textPointer = sqlite3_column_text(statement, index) {
+          row[name] = String(cString: textPointer)
+        }
+      }
+      result.append(row)
+    }
+    return result
+  }
+
+  private static func routePoints(from raw: String?) -> [RoutePoint] {
+    guard let raw,
+          let data = raw.data(using: .utf8),
+          let values = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+      return []
+    }
+
+    return values.compactMap { value in
+      let latitude = value["lat"] as? Double ?? value["latitude"] as? Double
+      let longitude = value["lng"] as? Double ?? value["longitude"] as? Double
+      guard let latitude, let longitude else { return nil }
+      return RoutePoint(latitude: latitude, longitude: longitude)
+    }
+  }
+
+  private static func receiptData(from raw: String?) -> Data? {
+    guard let raw = nonEmpty(raw) else { return nil }
+    let url: URL
+    if raw.hasPrefix("file://"), let parsed = URL(string: raw) {
+      url = parsed
+    } else {
+      url = URL(fileURLWithPath: raw)
+    }
+    return try? Data(contentsOf: url)
+  }
+
+  private static func string(_ value: String??) -> String? {
+    guard let value = value ?? nil else { return nil }
+    return value
+  }
+
+  private static func nonEmpty(_ value: String?) -> String? {
+    let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return clean.isEmpty ? nil : clean
+  }
+
+  private static func double(_ value: String??) -> Double? {
+    guard let value = string(value) else { return nil }
+    return Double(value)
+  }
+
+  private static func int(_ value: String??) -> Int? {
+    guard let value = string(value) else { return nil }
+    return Int(value)
+  }
+
+  private static func splitList(_ raw: String?) -> [String] {
+    var seen = Set<String>()
+    return (raw ?? "")
+      .split(separator: ",")
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { value in
+        guard !value.isEmpty else { return false }
+        let key = value.lowercased()
+        guard !seen.contains(key) else { return false }
+        seen.insert(key)
+        return true
+      }
+  }
+
+  private static func weekdayIndex(from raw: String) -> Int {
+    let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let names = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+    return names.firstIndex { value.hasPrefix($0) } ?? 1
+  }
+
+  private static func vehicle(from raw: String?) -> NativeVehicle? {
+    switch raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+    case "car", "auto":
+      return .car
+    case "motorbike", "motorcycle", "scooter", "moped":
+      return .motorbike
+    case "bike", "bicycle", "cycle", "e-bike", "ebike":
+      return .bike
+    case "van":
+      return .van
+    default:
+      return nil
+    }
+  }
+
+  private static func periodKind(start: Date?, end: Date?) -> NativePayPeriod {
+    guard let start, let end else { return .day }
+    let days = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+    return days >= 1 ? .week : .day
+  }
+
+  private static func calculatedDeduction(miles: Double, vehicle: NativeVehicle, date: Date) -> Double {
+    let band = vehicle.rateBand(on: date)
+    return miles * band.first
+  }
+
+  private static func date(_ value: String??) -> Date? {
+    guard let raw = nonEmpty(string(value)) else { return nil }
+    return date(from: raw)
+  }
+
+  private static func date(from raw: String) -> Date? {
+    if let parsed = legacyISOFormatter.date(from: raw) {
+      return parsed
+    }
+
+    if let parsed = legacyFractionalISOFormatter.date(from: raw) {
+      return parsed
+    }
+    if let parsed = legacyISOFormatter.date(from: raw.replacingOccurrences(of: " ", with: "T") + "Z") {
+      return parsed
+    }
+    if let parsed = legacyFractionalISOFormatter.date(from: raw.replacingOccurrences(of: " ", with: "T") + "Z") {
+      return parsed
+    }
+    if let parsed = legacySQLiteDateTimeFormatter.date(from: raw) {
+      return parsed
+    }
+    return legacyDateOnlyFormatter.date(from: String(raw.prefix(10)))
+  }
+
+  private static func dateOnly(_ value: String??) -> Date? {
+    guard let raw = nonEmpty(string(value)) else { return nil }
+    return legacyDateOnlyFormatter.date(from: String(raw.prefix(10))) ?? date(from: raw)
+  }
+
+  private static let legacyISOFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter
+  }()
+
+  private static let legacyFractionalISOFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+  }()
+
+  private static let legacySQLiteDateTimeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    return formatter
+  }()
+
+  private static let legacyDateOnlyFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter
+  }()
 }
 
 enum NativeHistoryItem: Identifiable, Equatable {
@@ -582,16 +1051,18 @@ struct NativeBackground: View {
 
 struct NativeGlassCard<Content: View>: View {
   var cornerRadius: CGFloat = 26
+  var contentPadding: CGFloat = 20
   var content: Content
 
-  init(cornerRadius: CGFloat = 26, @ViewBuilder content: () -> Content) {
+  init(cornerRadius: CGFloat = 26, contentPadding: CGFloat = 20, @ViewBuilder content: () -> Content) {
     self.cornerRadius = cornerRadius
+    self.contentPadding = contentPadding
     self.content = content()
   }
 
   var body: some View {
     content
-      .padding(20)
+      .padding(contentPadding)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
       .overlay(
@@ -767,7 +1238,7 @@ struct NativeHomeView: View {
               .font(.caption.weight(.semibold))
               .foregroundStyle(OkkleColor.muted)
           }
-          Text(gbp(store.taxSaved, whole: true))
+          Text(headlineGbp(store.taxSaved))
             .font(.system(size: 58, weight: .heavy, design: .rounded))
             .foregroundStyle(OkkleColor.ink)
             .minimumScaleFactor(0.55)
@@ -1127,6 +1598,7 @@ struct NativeLogView: View {
   private func saveRecord() {
     let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+    let bounds = store.periodBounds(for: date, period: period)
     let record: NativeRecord
     switch kind {
     case .mileage:
@@ -1142,6 +1614,8 @@ struct NativeLogView: View {
         merchant: nil,
         date: date,
         period: period,
+        periodStart: bounds.start,
+        periodEnd: bounds.end,
         receiptImageData: nil
       )
     case .income:
@@ -1156,6 +1630,8 @@ struct NativeLogView: View {
         merchant: nil,
         date: date,
         period: period,
+        periodStart: bounds.start,
+        periodEnd: bounds.end,
         receiptImageData: receiptData
       )
     case .expense:
@@ -1170,6 +1646,8 @@ struct NativeLogView: View {
         merchant: cleanMerchant.isEmpty ? nil : cleanMerchant,
         date: date,
         period: period,
+        periodStart: bounds.start,
+        periodEnd: bounds.end,
         receiptImageData: receiptData
       )
     }
@@ -2155,8 +2633,11 @@ private struct NativeRecordEditSheet: View {
   private func save() {
     guard canSave else { return }
     var updated = record
+    let bounds = store.periodBounds(for: date, period: period)
     updated.date = date
     updated.period = period
+    updated.periodStart = bounds.start
+    updated.periodEnd = bounds.end
 
     switch record.kind {
     case .income:
@@ -3097,7 +3578,7 @@ struct NativeRecordsView: View {
         if filteredHistory.isEmpty {
           NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Trips, earnings and expenses appear here after you save them.")
         } else {
-          NativeGlassCard {
+          NativeGlassCard(contentPadding: 0) {
             VStack(spacing: 0) {
               ForEach(filteredHistory) { item in
                 NativeEditableHistoryRow(
@@ -3107,7 +3588,7 @@ struct NativeRecordsView: View {
                   onDelete: { itemPendingDeletion = item }
                 )
                 if item.id != filteredHistory.last?.id {
-                  Divider().padding(.leading, 52)
+                  Divider().padding(.leading, 70)
                 }
               }
             }
@@ -3234,7 +3715,8 @@ private struct NativeEditableHistoryRow: View {
   @State private var isOpen = false
   @State private var dragOffset: CGFloat = 0
 
-  private let actionWidth: CGFloat = 154
+  private let actionWidth: CGFloat = 156
+  private let rowHeight: CGFloat = 82
 
   var body: some View {
     ZStack(alignment: .trailing) {
@@ -3248,18 +3730,18 @@ private struct NativeEditableHistoryRow: View {
           onDelete()
         }
       }
-      .frame(width: actionWidth, height: 64)
-      .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-      .opacity(isOpen || dragOffset < 0 ? 1 : 0)
+      .frame(width: actionWidth, height: rowHeight)
+      .opacity(rowOffset < -2 ? 1 : 0)
+      .allowsHitTesting(isOpen)
       .frame(maxWidth: .infinity, alignment: .trailing)
 
       NativeHistoryRow(item: item)
-        .frame(minHeight: 64)
-        .padding(.horizontal, 2)
-        .background(rowBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 18)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+        .background(rowBackground)
         .contentShape(Rectangle())
         .offset(x: rowOffset)
-        .simultaneousGesture(dragGesture)
+        .gesture(dragGesture)
         .highPriorityGesture(TapGesture().onEnded {
           if isOpen {
             close()
@@ -3268,7 +3750,8 @@ private struct NativeEditableHistoryRow: View {
           }
         })
     }
-    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+    .clipped()
     .contextMenu {
       Button(action: onEdit) {
         Label("Edit", systemImage: "pencil")
@@ -3282,7 +3765,7 @@ private struct NativeEditableHistoryRow: View {
   }
 
   private var rowBackground: Color {
-    Color(uiColor: .systemBackground)
+    Color(uiColor: .secondarySystemGroupedBackground)
   }
 
   private var rowOffset: CGFloat {
@@ -3292,7 +3775,7 @@ private struct NativeEditableHistoryRow: View {
   private var dragGesture: some Gesture {
     DragGesture(minimumDistance: 16)
       .onChanged { value in
-        dragOffset = min(0, value.translation.width)
+        dragOffset = value.translation.width
       }
       .onEnded { value in
         let finalOffset = min(0, max(-actionWidth, (isOpen ? -actionWidth : 0) + value.translation.width))
@@ -3319,7 +3802,7 @@ private struct NativeEditableHistoryRow: View {
           .font(.system(size: 11, weight: .bold))
       }
       .foregroundStyle(.white)
-      .frame(width: actionWidth / 2, height: 64)
+      .frame(width: actionWidth / 2, height: rowHeight)
       .background(color)
     }
     .buttonStyle(.plain)
