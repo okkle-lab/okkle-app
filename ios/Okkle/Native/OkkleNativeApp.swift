@@ -289,6 +289,11 @@ final class OkkleStore: ObservableObject {
     trips[index] = trip
   }
 
+  func updateRecord(_ record: NativeRecord) {
+    guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
+    records[index] = record
+  }
+
   func deleteRecord(_ record: NativeRecord) {
     records.removeAll { $0.id == record.id }
   }
@@ -1349,26 +1354,25 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   private let manager = CLLocationManager()
   private var lastLocation: CLLocation?
+  private var lastRoutePointLocation: CLLocation?
   private var startedAt: Date?
   private var timer: Timer?
   private var waitingForAuthorization = false
+  private let routePointDistance: CLLocationDistance = 30
+  private let timerInterval: TimeInterval = 5
 
   override init() {
     super.init()
     manager.delegate = self
-    manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-    manager.distanceFilter = 5
+    manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+    manager.distanceFilter = 20
     manager.activityType = .automotiveNavigation
-    manager.pausesLocationUpdatesAutomatically = false
-    let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
-    if backgroundModes.contains("location") {
-      manager.allowsBackgroundLocationUpdates = true
-      manager.showsBackgroundLocationIndicator = true
-    }
+    manager.pausesLocationUpdatesAutomatically = true
   }
 
   func start(vehicle: NativeVehicle) {
     self.vehicle = vehicle
+    configureLocationManager(for: vehicle)
     permissionMessage = nil
     let status = manager.authorizationStatus
     if status == .notDetermined {
@@ -1388,8 +1392,10 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     elapsed = 0
     points = []
     lastLocation = nil
+    lastRoutePointLocation = nil
     startedAt = Date()
     phase = .live
+    setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
     waitingForAuthorization = false
@@ -1399,12 +1405,14 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     guard phase == .live else { return }
     phase = .paused
     manager.stopUpdatingLocation()
+    setBackgroundTrackingEnabled(false)
     stopTimer()
   }
 
   func resume() {
     guard phase == .paused else { return }
     phase = .live
+    setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
   }
@@ -1413,8 +1421,12 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   func end(store: OkkleStore) -> NativeTrip? {
     guard let startedAt else { return nil }
     manager.stopUpdatingLocation()
+    setBackgroundTrackingEnabled(false)
     stopTimer()
     phase = .summary
+    if let lastLocation {
+      appendRoutePoint(for: lastLocation, force: true)
+    }
     let trip = NativeTrip(
       vehicle: vehicle,
       miles: miles,
@@ -1428,12 +1440,14 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   func discard() {
     manager.stopUpdatingLocation()
+    setBackgroundTrackingEnabled(false)
     stopTimer()
     waitingForAuthorization = false
     miles = 0
     elapsed = 0
     points = []
     lastLocation = nil
+    lastRoutePointLocation = nil
     startedAt = nil
     phase = .setup
   }
@@ -1463,7 +1477,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
         }
       }
       lastLocation = location
-      points.append(RoutePoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude))
+      appendRoutePoint(for: location)
     }
   }
 
@@ -1481,15 +1495,40 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   private func startTimer() {
     stopTimer()
-    timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+    timer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { [weak self] _ in
       guard let self, let startedAt = self.startedAt else { return }
       self.elapsed = Date().timeIntervalSince(startedAt)
     }
+    timer?.tolerance = 2
   }
 
   private func stopTimer() {
     timer?.invalidate()
     timer = nil
+  }
+
+  private func configureLocationManager(for vehicle: NativeVehicle) {
+    manager.activityType = vehicle == .bike ? .fitness : .automotiveNavigation
+  }
+
+  private func setBackgroundTrackingEnabled(_ enabled: Bool) {
+    guard supportsBackgroundLocation else { return }
+    manager.allowsBackgroundLocationUpdates = enabled
+    manager.showsBackgroundLocationIndicator = enabled
+  }
+
+  private var supportsBackgroundLocation: Bool {
+    let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+    return backgroundModes.contains("location")
+  }
+
+  private func appendRoutePoint(for location: CLLocation, force: Bool = false) {
+    if let lastRoutePointLocation {
+      let distance = location.distance(from: lastRoutePointLocation)
+      guard force ? distance > 1 : distance >= routePointDistance else { return }
+    }
+    points.append(RoutePoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude))
+    lastRoutePointLocation = location
   }
 }
 
@@ -1937,6 +1976,206 @@ private struct NativeRecordDetailSheet: View {
         .foregroundStyle(OkkleColor.ink)
         .multilineTextAlignment(.trailing)
     }
+  }
+}
+
+private struct NativeRecordEditSheet: View {
+  let record: NativeRecord
+  let onSave: (NativeRecord) -> Void
+  @Environment(\.dismiss) private var dismiss
+  @EnvironmentObject private var store: OkkleStore
+  @State private var amountText: String
+  @State private var milesText: String
+  @State private var platform: String
+  @State private var vehicle: NativeVehicle
+  @State private var category: String
+  @State private var merchant: String
+  @State private var date: Date
+  @State private var period: NativePayPeriod
+  @FocusState private var focusedField: Field?
+
+  private enum Field {
+    case amount
+    case miles
+  }
+
+  init(record: NativeRecord, onSave: @escaping (NativeRecord) -> Void) {
+    self.record = record
+    self.onSave = onSave
+    _amountText = State(initialValue: record.amount.map { String(format: "%.2f", $0) } ?? "")
+    _milesText = State(initialValue: record.miles.map { String(format: "%.1f", $0) } ?? "")
+    _platform = State(initialValue: record.platform ?? "Uber Eats")
+    _vehicle = State(initialValue: record.vehicle ?? .car)
+    _category = State(initialValue: record.category ?? "")
+    _merchant = State(initialValue: record.merchant ?? "")
+    _date = State(initialValue: record.date)
+    _period = State(initialValue: record.period)
+  }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section(record.kind.label) {
+          switch record.kind {
+          case .income:
+            TextField("Amount", text: $amountText)
+              .keyboardType(.decimalPad)
+              .focused($focusedField, equals: .amount)
+            Picker("Platform", selection: $platform) {
+              ForEach(platformOptions, id: \.self) { item in
+                Text(item).tag(item)
+              }
+            }
+          case .expense:
+            TextField("Amount", text: $amountText)
+              .keyboardType(.decimalPad)
+              .focused($focusedField, equals: .amount)
+            NativeFreeTextDropdown(
+              title: "Category",
+              placeholder: "Choose or type a category",
+              options: categoryOptions,
+              text: $category
+            )
+            NativeFreeTextDropdown(
+              title: "Merchant",
+              placeholder: "Choose or type a merchant",
+              options: merchantOptions,
+              text: $merchant
+            )
+          case .mileage:
+            TextField("Miles", text: $milesText)
+              .keyboardType(.decimalPad)
+              .focused($focusedField, equals: .miles)
+            Picker("Vehicle", selection: $vehicle) {
+              ForEach(NativeVehicle.allCases) { item in
+                Label(item.label, systemImage: item.symbol).tag(item)
+              }
+            }
+          }
+        }
+
+        Section("Date") {
+          DatePicker("Date", selection: $date, displayedComponents: .date)
+          Picker("Period", selection: $period) {
+            ForEach(NativePayPeriod.allCases) { item in
+              Text(item.label).tag(item)
+            }
+          }
+        }
+
+        if record.kind == .mileage {
+          Section("Preview") {
+            HStack {
+              Text("Deduction")
+              Spacer()
+              Text(gbp(previewDeduction, whole: true))
+                .fontWeight(.bold)
+            }
+          }
+        }
+
+        if let receiptImage {
+          Section("Receipt") {
+            Image(uiImage: receiptImage)
+              .resizable()
+              .scaledToFill()
+              .frame(height: 170)
+              .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+          }
+        }
+      }
+      .navigationTitle("Edit log")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Save") {
+            save()
+          }
+          .fontWeight(.bold)
+          .disabled(!canSave)
+        }
+        ToolbarItemGroup(placement: .keyboard) {
+          Spacer()
+          Button("Done") { hideKeyboard() }
+            .fontWeight(.bold)
+        }
+      }
+    }
+  }
+
+  private var platformOptions: [String] {
+    uniqueStrings([platform] + store.settings.platforms)
+  }
+
+  private var categoryOptions: [String] {
+    let recent = store.records
+      .filter { $0.kind == .expense }
+      .compactMap { $0.category }
+    return uniqueStrings([category] + recent + nativeExpenseCategories)
+  }
+
+  private var merchantOptions: [String] {
+    let recent = store.records
+      .filter { $0.kind == .expense }
+      .compactMap { $0.merchant }
+    return uniqueStrings([merchant] + recent)
+  }
+
+  private var amountValue: Double {
+    Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0
+  }
+
+  private var milesValue: Double {
+    Double(milesText.replacingOccurrences(of: ",", with: ".")) ?? 0
+  }
+
+  private var previewDeduction: Double {
+    store.calcDeduction(miles: milesValue, vehicle: vehicle, date: date)
+  }
+
+  private var canSave: Bool {
+    switch record.kind {
+    case .income:
+      return amountValue > 0
+    case .expense:
+      return amountValue > 0 && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    case .mileage:
+      return milesValue > 0
+    }
+  }
+
+  private var receiptImage: UIImage? {
+    guard let data = record.receiptImageData else { return nil }
+    return UIImage(data: data)
+  }
+
+  private func save() {
+    guard canSave else { return }
+    var updated = record
+    updated.date = date
+    updated.period = period
+
+    switch record.kind {
+    case .income:
+      updated.platform = platform
+      updated.amount = amountValue
+    case .expense:
+      let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
+      let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+      updated.amount = amountValue
+      updated.category = cleanCategory
+      updated.merchant = cleanMerchant.isEmpty ? nil : cleanMerchant
+    case .mileage:
+      updated.vehicle = vehicle
+      updated.miles = milesValue
+      updated.deduction = previewDeduction
+    }
+
+    onSave(updated)
+    dismiss()
   }
 }
 
@@ -2822,6 +3061,7 @@ struct NativeRecordsView: View {
   @State private var itemPendingDeletion: NativeHistoryItem?
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
+  @State private var recordPendingEdit: NativeRecord?
 
   enum RecordsMode: String, CaseIterable, Identifiable {
     case history
@@ -2860,29 +3100,12 @@ struct NativeRecordsView: View {
           NativeGlassCard {
             VStack(spacing: 0) {
               ForEach(filteredHistory) { item in
-                if let trip = item.trip {
-                  NativeSwipeableTripRow(
-                    trip: trip,
-                    onSelect: { selectedHistoryItem = .trip($0) },
-                    onEdit: { tripPendingEdit = $0 },
-                    onDelete: { itemPendingDeletion = .trip($0) }
-                  )
-                } else {
-                  Button {
-                    selectedHistoryItem = item
-                  } label: {
-                    NativeHistoryRow(item: item)
-                  }
-                  .buttonStyle(.plain)
-                  .contentShape(Rectangle())
-                    .contextMenu {
-                      Button(role: .destructive) {
-                        itemPendingDeletion = item
-                      } label: {
-                        Label("Delete", systemImage: "trash")
-                      }
-                    }
-                }
+                NativeEditableHistoryRow(
+                  item: item,
+                  onSelect: { selectedHistoryItem = item },
+                  onEdit: { edit(item) },
+                  onDelete: { itemPendingDeletion = item }
+                )
                 if item.id != filteredHistory.last?.id {
                   Divider().padding(.leading, 52)
                 }
@@ -2919,6 +3142,12 @@ struct NativeRecordsView: View {
         tripPendingEdit = nil
       }
     }
+    .sheet(item: $recordPendingEdit) { record in
+      NativeRecordEditSheet(record: currentRecord(matching: record) ?? record) { updatedRecord in
+        store.updateRecord(updatedRecord)
+        recordPendingEdit = nil
+      }
+    }
   }
 
   private var filteredHistory: [NativeHistoryItem] {
@@ -2949,14 +3178,30 @@ struct NativeRecordsView: View {
       }
     case .record(let record):
       store.deleteRecord(record)
+      if recordPendingEdit?.id == record.id {
+        recordPendingEdit = nil
+      }
     }
     if selectedHistoryItem?.id == item.id {
       selectedHistoryItem = nil
     }
   }
 
+  private func edit(_ item: NativeHistoryItem) {
+    switch item {
+    case .trip(let trip):
+      tripPendingEdit = currentTrip(matching: trip) ?? trip
+    case .record(let record):
+      recordPendingEdit = currentRecord(matching: record) ?? record
+    }
+  }
+
   private func currentTrip(matching trip: NativeTrip) -> NativeTrip? {
     store.trips.first { $0.id == trip.id }
+  }
+
+  private func currentRecord(matching record: NativeRecord) -> NativeRecord? {
+    store.records.first { $0.id == record.id }
   }
 
   private func currentItem(matching item: NativeHistoryItem) -> NativeHistoryItem? {
@@ -2981,11 +3226,11 @@ struct NativeRecordsView: View {
   }
 }
 
-private struct NativeSwipeableTripRow: View {
-  let trip: NativeTrip
-  let onSelect: (NativeTrip) -> Void
-  let onEdit: (NativeTrip) -> Void
-  let onDelete: (NativeTrip) -> Void
+private struct NativeEditableHistoryRow: View {
+  let item: NativeHistoryItem
+  let onSelect: () -> Void
+  let onEdit: () -> Void
+  let onDelete: () -> Void
   @State private var isOpen = false
   @State private var dragOffset: CGFloat = 0
 
@@ -2994,21 +3239,24 @@ private struct NativeSwipeableTripRow: View {
   var body: some View {
     ZStack(alignment: .trailing) {
       HStack(spacing: 0) {
-        tripActionButton(title: "Edit", symbol: "pencil", color: OkkleColor.blue) {
+        actionButton(title: "Edit", symbol: "pencil", color: OkkleColor.blue) {
           close()
-          onEdit(trip)
+          onEdit()
         }
-        tripActionButton(title: "Delete", symbol: "trash", color: OkkleColor.red) {
+        actionButton(title: "Delete", symbol: "trash", color: OkkleColor.red) {
           close()
-          onDelete(trip)
+          onDelete()
         }
       }
       .frame(width: actionWidth, height: 64)
+      .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .opacity(isOpen || dragOffset < 0 ? 1 : 0)
       .frame(maxWidth: .infinity, alignment: .trailing)
 
-      NativeHistoryRow(item: .trip(trip))
+      NativeHistoryRow(item: item)
         .frame(minHeight: 64)
-        .background(.regularMaterial)
+        .padding(.horizontal, 2)
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .contentShape(Rectangle())
         .offset(x: rowOffset)
         .simultaneousGesture(dragGesture)
@@ -3016,13 +3264,25 @@ private struct NativeSwipeableTripRow: View {
           if isOpen {
             close()
           } else {
-            onSelect(trip)
+            onSelect()
           }
         })
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Opens trip details. Swipe left to edit or delete.")
     }
-    .clipped()
+    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .contextMenu {
+      Button(action: onEdit) {
+        Label("Edit", systemImage: "pencil")
+      }
+      Button(role: .destructive, action: onDelete) {
+        Label("Delete", systemImage: "trash")
+      }
+    }
+    .accessibilityAddTraits(.isButton)
+    .accessibilityHint("Opens details. Swipe left to edit or delete.")
+  }
+
+  private var rowBackground: Color {
+    Color(uiColor: .systemBackground)
   }
 
   private var rowOffset: CGFloat {
@@ -3032,7 +3292,7 @@ private struct NativeSwipeableTripRow: View {
   private var dragGesture: some Gesture {
     DragGesture(minimumDistance: 16)
       .onChanged { value in
-        dragOffset = value.translation.width
+        dragOffset = min(0, value.translation.width)
       }
       .onEnded { value in
         let finalOffset = min(0, max(-actionWidth, (isOpen ? -actionWidth : 0) + value.translation.width))
@@ -3050,7 +3310,7 @@ private struct NativeSwipeableTripRow: View {
     }
   }
 
-  private func tripActionButton(title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
+  private func actionButton(title: String, symbol: String, color: Color, action: @escaping () -> Void) -> some View {
     Button(action: action) {
       VStack(spacing: 4) {
         Image(systemName: symbol)

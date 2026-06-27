@@ -3,25 +3,25 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 46;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		67B1F750A2414908A6003337 /* okkle-icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B190E1D6D6B546898FFD440D /* okkle-icon.icon */; };
 		776D5203A14744E1B38451F8 /* OkkleNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D10FCA5E3F947B89609CF87 /* OkkleNativeApp.swift */; };
+		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* Okkle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Okkle.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Okkle/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Okkle/Info.plist; sourceTree = "<group>"; };
+		7D10FCA5E3F947B89609CF87 /* OkkleNativeApp.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; path = OkkleNativeApp.swift; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Okkle/SplashScreen.storyboard; sourceTree = "<group>"; };
+		B190E1D6D6B546898FFD440D /* okkle-icon.icon */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = "okkle-icon.icon"; path = "Okkle/okkle-icon.icon"; sourceTree = "<group>"; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Okkle/AppDelegate.swift; sourceTree = "<group>"; };
-		B190E1D6D6B546898FFD440D /* okkle-icon.icon */ = {isa = PBXFileReference; name = "okkle-icon.icon"; path = "Okkle/okkle-icon.icon"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		7D10FCA5E3F947B89609CF87 /* OkkleNativeApp.swift */ = {isa = PBXFileReference; name = "OkkleNativeApp.swift"; path = "OkkleNativeApp.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -36,24 +36,33 @@
 
 /* Begin PBXGroup section */
 		13B07FAE1A68108700A75B9A /* Okkle */ = {
-				isa = PBXGroup;
-				children = (
-					F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-					13B07FB51A68108700A75B9A /* Images.xcassets */,
-					13B07FB61A68108700A75B9A /* Info.plist */,
-					AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
+			isa = PBXGroup;
+			children = (
+				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
+				13B07FB51A68108700A75B9A /* Images.xcassets */,
+				13B07FB61A68108700A75B9A /* Info.plist */,
+				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				B190E1D6D6B546898FFD440D /* okkle-icon.icon */,
 				5F50C0FCF03A4A159E41F1F7 /* Native */,
 			);
 			name = Okkle;
 			sourceTree = "<group>";
 		};
-			2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
-				isa = PBXGroup;
-				children = (
-				);
-				name = Frameworks;
-				sourceTree = "<group>";
+		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		5F50C0FCF03A4A159E41F1F7 /* Native */ = {
+			isa = PBXGroup;
+			children = (
+				7D10FCA5E3F947B89609CF87 /* OkkleNativeApp.swift */,
+			);
+			name = Native;
+			path = Okkle/Native;
+			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
 			isa = PBXGroup;
@@ -83,27 +92,18 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-			5F50C0FCF03A4A159E41F1F7 /* Native */ = {
-				isa = "PBXGroup";
-				children = (
-				7D10FCA5E3F947B89609CF87 /* OkkleNativeApp.swift */,
-			);
-			name = Native;
-			sourceTree = "<group>";
-			path = Okkle/Native;
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		13B07F861A680F5B00A75B9A /* Okkle */ = {
-				isa = PBXNativeTarget;
-				buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "Okkle" */;
-				buildPhases = (
-					13B07F871A680F5B00A75B9A /* Sources */,
-					13B07F8C1A680F5B00A75B9A /* Frameworks */,
-					13B07F8E1A680F5B00A75B9A /* Resources */,
-				);
-				buildRules = (
+			isa = PBXNativeTarget;
+			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "Okkle" */;
+			buildPhases = (
+				13B07F871A680F5B00A75B9A /* Sources */,
+				13B07F8C1A680F5B00A75B9A /* Frameworks */,
+				13B07F8E1A680F5B00A75B9A /* Resources */,
+			);
+			buildRules = (
 			);
 			dependencies = (
 			);
@@ -121,6 +121,7 @@
 				LastUpgradeCheck = 1130;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
+						DevelopmentTeam = W8BTY4XGB4;
 						LastSwiftMigration = 1250;
 					};
 				};
@@ -145,12 +146,12 @@
 
 /* Begin PBXResourcesBuildPhase section */
 		13B07F8E1A680F5B00A75B9A /* Resources */ = {
-				isa = PBXResourcesBuildPhase;
-				buildActionMask = 2147483647;
-				files = (
-					13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
-					3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-					67B1F750A2414908A6003337 /* okkle-icon.icon in Resources */,
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
+				67B1F750A2414908A6003337 /* okkle-icon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -172,54 +173,46 @@
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-					ASSETCATALOG_COMPILER_APPICON_NAME = okkle-icon;
-					CLANG_ENABLE_MODULES = YES;
-					CURRENT_PROJECT_VERSION = 1;
-					ENABLE_BITCODE = NO;
-					INFOPLIST_FILE = Okkle/Info.plist;
-					IPHONEOS_DEPLOYMENT_TARGET = 16.4;
-					LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 13.4;
-				MARKETING_VERSION = 0.4.3;
-					OTHER_LDFLAGS = (
-						"$(inherited)",
-					);
-					PRODUCT_BUNDLE_IDENTIFIER = "uk.okkle.app";
-					PRODUCT_NAME = "Okkle";
-					SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-					SWIFT_VERSION = 5.0;
-				VERSIONING_SYSTEM = "apple-generic";
-				TARGETED_DEVICE_FAMILY = "1";
+				ASSETCATALOG_COMPILER_APPICON_NAME = "okkle-icon";
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Okkle/Okkle.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W8BTY4XGB4;
+				ENABLE_BITCODE = NO;
+				INFOPLIST_FILE = Okkle/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 13.4;
+				MARKETING_VERSION = 0.4.4;
+				OTHER_LDFLAGS = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = uk.okkle.app;
+				PRODUCT_NAME = Okkle;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = okkle-icon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "okkle-icon";
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Okkle/Okkle.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W8BTY4XGB4;
 				INFOPLIST_FILE = Okkle/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.4;
-				MARKETING_VERSION = 0.4.3;
-					OTHER_LDFLAGS = (
-						"$(inherited)",
-					);
-					PRODUCT_BUNDLE_IDENTIFIER = "uk.okkle.app";
-					PRODUCT_NAME = "Okkle";
-					SWIFT_VERSION = 5.0;
+				MARKETING_VERSION = 0.4.4;
+				OTHER_LDFLAGS = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = uk.okkle.app;
+				PRODUCT_NAME = Okkle;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
-				TARGETED_DEVICE_FAMILY = "1";
-				CODE_SIGN_ENTITLEMENTS = Okkle/Okkle.entitlements;
 			};
 			name = Release;
 		};
@@ -271,10 +264,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
-				LD_RUNPATH_SEARCH_PATHS = (
-					/usr/lib/swift,
-					"$(inherited)",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "/usr/lib/swift $(inherited)";
 				LIBRARY_SEARCH_PATHS = "\"$(inherited)\"";
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -323,10 +313,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
-				LD_RUNPATH_SEARCH_PATHS = (
-					/usr/lib/swift,
-					"$(inherited)",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "/usr/lib/swift $(inherited)";
 				LIBRARY_SEARCH_PATHS = "\"$(inherited)\"";
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
