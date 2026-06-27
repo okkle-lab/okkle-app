@@ -7,13 +7,13 @@ export type TaxDeadline = { month: number; day: number; title: string; body: str
 
 // month is 1-12. Real HMRC Self Assessment + MTD for Income Tax dates.
 export const TAX_DEADLINES: TaxDeadline[] = [
-  { month: 10, day: 5, kind: 'sa', title: 'Register for Self Assessment', body: 'Register with HMRC by 5 October if this was your first year self-employed.' },
-  { month: 1, day: 31, kind: 'sa', title: 'Self Assessment: file & pay', body: 'File your online Self Assessment and pay your tax by 31 January.' },
-  { month: 7, day: 31, kind: 'sa', title: 'Second payment on account', body: 'Your second payment on account is due 31 July (only if HMRC asked for one).' },
-  { month: 8, day: 7, kind: 'mtd', title: 'MTD quarterly update — Q1', body: 'Your 6 Apr–5 Jul Making Tax Digital update is due 7 August.' },
-  { month: 11, day: 7, kind: 'mtd', title: 'MTD quarterly update — Q2', body: 'Your 6 Jul–5 Oct Making Tax Digital update is due 7 November.' },
-  { month: 2, day: 7, kind: 'mtd', title: 'MTD quarterly update — Q3', body: 'Your 6 Oct–5 Jan Making Tax Digital update is due 7 February.' },
-  { month: 5, day: 7, kind: 'mtd', title: 'MTD quarterly update — Q4', body: 'Your 6 Jan–5 Apr Making Tax Digital update is due 7 May.' },
+  { month: 10, day: 5, kind: 'sa', title: 'Register for Self Assessment', body: 'First year self-employed? Pop over to HMRC and register by 5 October — it only takes a few minutes 🙂' },
+  { month: 1, day: 31, kind: 'sa', title: 'Self Assessment: file & pay', body: 'Time to file and settle up by 31 January. Your Okkle figures and Accountant Pack are ready whenever you are 🛵' },
+  { month: 7, day: 31, kind: 'sa', title: 'Second payment on account', body: 'Heads-up — if HMRC asked for payments on account, your second one is due 31 July. No surprises this way 👍' },
+  { month: 8, day: 7, kind: 'mtd', title: 'MTD quarterly update — Q1', body: 'Your 6 Apr–5 Jul update is due 7 August. A couple of minutes keeps Making Tax Digital ticking along ✨' },
+  { month: 11, day: 7, kind: 'mtd', title: 'MTD quarterly update — Q2', body: 'Your 6 Jul–5 Oct update is due 7 November. Quick one to stay on track with HMRC 🙌' },
+  { month: 2, day: 7, kind: 'mtd', title: 'MTD quarterly update — Q3', body: 'Your 6 Oct–5 Jan update is due 7 February. A couple of minutes keeps everything tidy 📒' },
+  { month: 5, day: 7, kind: 'mtd', title: 'MTD quarterly update — Q4', body: 'Your 6 Jan–5 Apr update is due 7 May — the last one of the year. Nearly there! 🎉' },
 ];
 
 // Lead-time options the user can pick (how far ahead to be reminded).
