@@ -23,7 +23,8 @@ export const LEAD_OPTIONS: { label: string; days: number }[] = [
   { label: '1 week', days: 7 },
   { label: '1 day', days: 1 },
 ];
-const DEFAULT_LEAD_DAYS = [30, 7];
+// Default: remind at every lead time — 1 month, 2 weeks, 1 week and 1 day before.
+const DEFAULT_LEAD_DAYS = [30, 14, 7, 1];
 
 export function getLeadDays(): number[] {
   try {

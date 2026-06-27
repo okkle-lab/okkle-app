@@ -13,7 +13,7 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 
 ## 0.3 (18) - 2026-06-27 (Configurable deadline reminders + in-app banner)
 
-- **Choose your reminder lead times.** Settings → Reminders now lets you pick how far ahead to be nudged about tax deadlines — 1 month / 2 weeks / 1 week / 1 day — and you can pick several, so you get staged reminders (default: 1 month + 1 week). Each fires as its own notification before every Self Assessment and MTD date.
+- **Choose your reminder lead times.** Settings → Reminders now lets you pick how far ahead to be nudged about tax deadlines — 1 month / 2 weeks / 1 week / 1 day — and you can pick several, so you get staged reminders (default: all four). Each fires as its own notification before every Self Assessment and MTD date.
 - **In-app deadline banner.** The Tax screen now shows a "due in X days" banner for the nearest upcoming deadline (within 30 days), so you're reminded even if a push notification was missed — tap it to open the Deadlines screen.
 - Single source of truth for all tax deadlines (`src/taxDeadlines.ts`), shared by the scheduler, the banner and the Deadlines screen.
 
