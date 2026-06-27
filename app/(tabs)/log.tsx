@@ -49,7 +49,13 @@ const EXPENSE_CATEGORIES: Cat[] = [
   { name: 'Helmet / safety', icon: 'shield' },
   { name: 'Phone mount', icon: 'crosshair' },
   { name: 'App subscription', icon: 'repeat' },
+  { name: 'Food & drink', icon: 'coffee' },
 ];
+
+// Subsistence (food/drink) is only allowable for the self-employed in limited
+// cases — itinerant trades or journeys outside your normal area — and routine
+// meals aren't claimable. Log it, but flag it for the accountant to confirm.
+const SUBSISTENCE_REVIEW = new Set(['Food & drink']);
 
 // Costs the HMRC simplified flat-rate mileage already covers (fuel, electricity,
 // insurance, servicing, repairs, tyres, depreciation). Okkle only supports the
@@ -455,6 +461,9 @@ export default function LogScreen() {
               onChangeText={setDescription}
               onFocus={() => setDescFocus(true)}
               onBlur={() => setDescFocus(false)}
+              autoCorrect={false}
+              autoCapitalize="words"
+              spellCheck={false}
             />
           </View>
           {descFocus && suggestions.length > 0 && (
@@ -475,6 +484,13 @@ export default function LogScreen() {
               <Feather name="alert-triangle" size={15} color={colors.amber} />
               <Text style={[s.noticeText, s.noticeWarnText]}>
                 {description.trim()} is already covered by HMRC simplified mileage. Okkle uses the simplified method, so this will be saved and flagged for your accountant to review rather than double-claimed.
+              </Text>
+            </View>
+          ) : SUBSISTENCE_REVIEW.has(description.trim()) ? (
+            <View style={[s.notice, s.noticeWarn]}>
+              <Feather name="alert-triangle" size={15} color={colors.amber} />
+              <Text style={[s.noticeText, s.noticeWarnText]}>
+                Food &amp; drink isn’t always claimable for the self-employed — routine meals don’t count, but reasonable costs on longer shifts away from your normal area sometimes do. Saved and flagged for your accountant to confirm.
               </Text>
             </View>
           ) : (

@@ -51,12 +51,6 @@ export default function TaxSetup() {
           <Text style={s.note}>Wages or other income (e.g. a PAYE job). Your courier profit is taxed on top of it, so this keeps the estimate accurate.</Text>
         </Card>
 
-        <Pressable onPress={() => router.push('/compare')} style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.65 }]}>
-          <Feather name="trending-up" size={18} color={colors.brandDeep} />
-          <Text style={s.linkText}>Mileage method — simplified vs actual costs</Text>
-          <Feather name="chevron-right" size={18} color={colors.textTertiary} />
-        </Pressable>
-
         <PrimaryButton label="Save" onPress={save} style={{ marginTop: spacing.lg }} />
       </ScrollView>
     </View>

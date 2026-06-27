@@ -17,12 +17,13 @@ type Props = {
   keyboardShouldPersistTaps?: 'always' | 'never' | 'handled';
   contentStyle?: StyleProp<ViewStyle>;
   resetScrollKey?: number | string;
+  scrollEnabled?: boolean;
 };
 
 // Starling-style header: a big title sits in the scroll content and slides away
 // as you scroll, while a compact pinned title + a translucent bar fade in. Smooth,
 // native-driven movement; right-hand actions stay put the whole time.
-export function CollapsingHeader({ title, subtitle, right, children, refreshControl, keyboardShouldPersistTaps, contentStyle, resetScrollKey }: Props) {
+export function CollapsingHeader({ title, subtitle, right, children, refreshControl, keyboardShouldPersistTaps, contentStyle, resetScrollKey, scrollEnabled }: Props) {
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const scrollRef = React.useRef<ScrollView>(null);
   const insets = useSafeAreaInsets();
@@ -48,6 +49,7 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
       <Animated.ScrollView
         ref={scrollRef}
         refreshControl={refreshControl}
+        scrollEnabled={scrollEnabled}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}

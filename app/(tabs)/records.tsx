@@ -212,6 +212,7 @@ export default function RecordsScreen() {
         subtitle="Your logs, tax estimate and exports in one place."
         right={gear}
         refreshControl={mode === 'records' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} /> : undefined}
+        scrollEnabled={mode !== 'tax'}
         keyboardShouldPersistTaps="handled"
         resetScrollKey={scrollResetKey}
       >

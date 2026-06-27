@@ -107,11 +107,7 @@ export default function TaxDetail() {
                 </View>
                 <Text style={s.methodValue}>{fmtGbp(chosenDeduction)}</Text>
               </View>
-              <Pressable onPress={() => router.push('/compare')} style={s.compareCta}>
-                <Feather name="trending-up" size={16} color={colors.brandDeep} />
-                <Text style={s.compareText}>{usingActual ? 'Review method comparison' : 'Could actual costs save you more?'}</Text>
-                <Feather name="chevron-right" size={18} color={colors.brandDeep} />
-              </Pressable>
+              <Text style={s.note}>Okkle uses HMRC’s simplified flat-rate mileage — the easiest method and the best fit for most couriers. If you think actual vehicle costs might save more, ask your accountant.</Text>
             </Card>
 
             {isCarVan && bizMiles > 0 && (
