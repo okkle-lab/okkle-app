@@ -5,6 +5,7 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 ## 0.3 (15) - 2026-06-27 (Polish: fixed tax tab, expense autocorrect & food/drink)
 
 - **Home screen no longer scrolls** — it's a fixed, glanceable view (nothing to scroll).
+- **Insights scrolls back to the top** when you leave the tab and return.
 - **Records → Tax tab no longer scrolls** — the tax summary is a fixed, glanceable view; History still scrolls and pull-to-refreshes.
 - **Fixed expense description being autocorrected.** The category field disabled iOS autocorrect/spellcheck, so what you type is kept exactly (it was sometimes swapped for a different word).
 - **Added "Food & drink" expense category** — flagged for accountant review, since subsistence is only allowable for the self-employed in limited cases (itinerant work / longer shifts away from your normal area), not routine meals.

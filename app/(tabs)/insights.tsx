@@ -30,6 +30,8 @@ export default function InsightsScreen() {
   const [nudgesOn, setNudgesOn] = React.useState(isAutoTripEnabled());
   const [remindersOn, setRemindersOn] = React.useState((getUser()?.reminder_enabled ?? 1) === 1);
   const [setupBusy, setSetupBusy] = React.useState(false);
+  // Bumped each time the tab regains focus so the view scrolls back to the top.
+  const [scrollResetKey, setScrollResetKey] = React.useState(0);
 
   React.useEffect(() => {
     setZones(getZoneStats(filter));
@@ -45,6 +47,7 @@ export default function InsightsScreen() {
     setPoints(getHeatPoints(filter));
     setNudgesOn(isAutoTripEnabled());
     setRemindersOn((getUser()?.reminder_enabled ?? 1) === 1);
+    setScrollResetKey(k => k + 1);
   }, [filter]));
 
   async function enableNudges() {
@@ -92,6 +95,7 @@ export default function InsightsScreen() {
       title="Insights"
       subtitle="Where, when and what pays — patterns from your work."
       right={<SettingsGlassButton onPress={() => router.push('/settings')} />}
+      resetScrollKey={scrollResetKey}
     >
         {/* Headline takeaway — always visible above the categories */}
         {best && (
