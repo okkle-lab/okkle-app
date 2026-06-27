@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import {
-  View, Text, TextInput, ScrollView, KeyboardAvoidingView,
+  View, Text, TextInput, KeyboardAvoidingView,
   Platform, Pressable, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { colors, font, radius, spacing, type } from '../src/theme';
 import { VEHICLES, PLATFORMS, REGIONS, regionFromArea, regionRate, regionLabel } from '../src/db/tax';
@@ -16,6 +17,7 @@ const STEPS = ['Welcome', 'Name', 'Vehicle', 'Platforms', 'Region', 'Ready'];
 
 export default function Onboarding() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const [name, setName] = useState('');
   const [vehicles, setVehicles] = useState<string[]>(['car']);
@@ -73,7 +75,7 @@ export default function Onboarding() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
+      <View style={[s.container, { paddingTop: insets.top + 16 }]}>
         <View style={s.progress}>
           {STEPS.map((_, i) => (
             <View key={i} style={[s.dot, i <= step && s.dotActive, i === step && s.dotCurrent]} />
@@ -245,7 +247,7 @@ export default function Onboarding() {
           </View>
         )}
 
-        <View style={s.footer}>
+        <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           {step === STEPS.length - 1 ? (
             <>
               <PrimaryButton label="Start my first trip" onPress={finishToTrip} />
@@ -264,13 +266,13 @@ export default function Onboarding() {
             </>
           )}
         </View>
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flexGrow: 1, padding: spacing.xl, paddingTop: 64 },
+  container: { flex: 1, paddingHorizontal: spacing.xl },
   progress: { flexDirection: 'row', gap: 5, marginBottom: spacing.xxl },
   dot: { height: 5, flex: 1, borderRadius: radius.full, backgroundColor: colors.border },
   dotActive: { backgroundColor: colors.brandMid },

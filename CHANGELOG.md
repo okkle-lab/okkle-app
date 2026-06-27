@@ -11,6 +11,10 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
+## 0.3 (25) - 2026-06-27 (Onboarding layout fix)
+
+- **Fixed the onboarding "Get started" button sitting too low / steps scrolling.** Each onboarding step is now a fixed (non-scrolling) layout with the button pinned above the home indicator using the safe-area inset, instead of a scroll view that pushed the button to the bottom edge.
+
 ## 0.3 (24) - 2026-06-27 (White-screen fix verified on device)
 
 - **Fixed the TestFlight white screen** — the committed native `ios/` project was a stale prebuild that no longer matched `expo-modules-core`, so Expo's native modules (ExpoAsset, ExpoConstants…) failed to register at launch and the JS threw before rendering. Regenerated the native project (`expo prebuild --clean`); verified on a simulator that a fresh/empty install launches correctly. (EAS Build does this clean prebuild automatically — the recommended way to ship.)
