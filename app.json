@@ -9,7 +9,7 @@
     "scheme": "okkle",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "uk.okkle.app",
+      "bundleIdentifier": "okklelab.app",
       "icon": "./assets/okkle-icon.icon",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Okkle uses your location to track delivery trip distance for HMRC mileage records.",
@@ -22,7 +22,8 @@
           "location"
         ],
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "22"
     },
     "android": {
       "icon": "./assets/icon.png",

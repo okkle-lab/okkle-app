@@ -19,12 +19,12 @@ export function DeadlineAlert() {
   const slide = React.useRef(new Animated.Value(-160)).current;
 
   const evaluate = React.useCallback(() => {
-    const next = upcomingDeadline(ALERT_WITHIN_DAYS);
-    const dismissedFor = kvGet('deadline_alert_dismissed');
-    if (next && next.date.toISOString().slice(0, 10) !== dismissedFor) {
-      setDue(next);
-    } else {
-      setDue(null);
+    try {
+      const next = upcomingDeadline(ALERT_WITHIN_DAYS);
+      const dismissedFor = kvGet('deadline_alert_dismissed');
+      setDue(next && next.date.toISOString().slice(0, 10) !== dismissedFor ? next : null);
+    } catch {
+      setDue(null); // never let the banner take down the app
     }
   }, []);
 
