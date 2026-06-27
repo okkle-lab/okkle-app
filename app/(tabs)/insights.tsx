@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Linking } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Card, SectionHeader, HeatMapView, IconBadge, CollapsingHeader, SettingsGlassButton } from '../../src/components';
-import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../../src/db';
+import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, getUser, saveUser, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../../src/db';
 import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
+import { enableAutoTrip, isAutoTripEnabled } from '../../src/autoTrip';
+import { syncReminders } from '../../src/notifications';
 
 type InsightsTab = 'where' | 'when' | 'money';
 const TABS: { key: InsightsTab; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
@@ -24,6 +26,10 @@ export default function InsightsScreen() {
   const [best, setBest] = React.useState<BestSpot | null>(null);
   const [pnl, setPnl] = React.useState<YearPnL | null>(null);
   const [platforms, setPlatforms] = React.useState<PlatformStat[]>([]);
+  // Optional automations the user can switch on right here. Hidden once enabled.
+  const [nudgesOn, setNudgesOn] = React.useState(isAutoTripEnabled());
+  const [remindersOn, setRemindersOn] = React.useState((getUser()?.reminder_enabled ?? 1) === 1);
+  const [setupBusy, setSetupBusy] = React.useState(false);
 
   React.useEffect(() => {
     setZones(getZoneStats(filter));
@@ -37,7 +43,43 @@ export default function InsightsScreen() {
     setPlatforms(getPlatformStats());
     setZones(getZoneStats(filter));
     setPoints(getHeatPoints(filter));
+    setNudgesOn(isAutoTripEnabled());
+    setRemindersOn((getUser()?.reminder_enabled ?? 1) === 1);
   }, [filter]));
+
+  async function enableNudges() {
+    if (setupBusy) return;
+    setSetupBusy(true);
+    const res = await enableAutoTrip();
+    if (res.ok) {
+      setNudgesOn(true);
+    } else if (res.reason === 'background') {
+      Alert.alert(
+        'Allow “Always”',
+        'To nudge you while Okkle is closed, iOS needs location set to “Always”. Open Settings to change it.',
+        [{ text: 'Not now' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
+      );
+    } else if (res.reason === 'foreground') {
+      Alert.alert('Location needed', 'Allow location access to detect when you start driving.');
+    } else {
+      Alert.alert('Couldn’t enable', 'Something went wrong turning this on. Please try again.');
+    }
+    setSetupBusy(false);
+  }
+
+  async function enableReminders() {
+    if (setupBusy) return;
+    setSetupBusy(true);
+    try {
+      saveUser({ reminder_enabled: 1 });
+      const u = getUser();
+      if (u) await syncReminders(u);
+      setRemindersOn(true);
+    } catch {
+      Alert.alert('Couldn’t enable', 'Something went wrong turning this on. Please try again.');
+    }
+    setSetupBusy(false);
+  }
 
   const anyEarnings = zones.some(z => z.earnings > 0);
   const anyPerHour = zones.some(z => z.perHour > 0);
@@ -198,7 +240,49 @@ export default function InsightsScreen() {
             </Text>
           </Card>
         )}
+
+        {/* Optional automations — only shown while they're still off, gone once on. */}
+        {(!nudgesOn || !remindersOn) && (
+          <View style={{ marginTop: spacing.xl }}>
+            <SectionHeader icon="zap" title="Get more from Okkle" />
+            <Card style={{ gap: 0 }}>
+              {!nudgesOn && (
+                <SetupPrompt
+                  icon="navigation" tone="blue" title="Trip nudges"
+                  sub="Get a tap-to-track reminder when you start driving, so you never miss your miles."
+                  busy={setupBusy} onEnable={enableNudges}
+                />
+              )}
+              {!nudgesOn && !remindersOn && <View style={s.setupDivider} />}
+              {!remindersOn && (
+                <SetupPrompt
+                  icon="bell" tone="amber" title="Logging reminders"
+                  sub="A regular nudge to log your pay and miles, so your tax stays up to date."
+                  busy={setupBusy} onEnable={enableReminders}
+                />
+              )}
+            </Card>
+            <Text style={s.note}>Turn these on here, or fine-tune them anytime in Settings.</Text>
+          </View>
+        )}
     </CollapsingHeader>
+  );
+}
+
+function SetupPrompt({ icon, tone, title, sub, busy, onEnable }: {
+  icon: React.ComponentProps<typeof Feather>['name']; tone: any; title: string; sub: string; busy: boolean; onEnable: () => void;
+}) {
+  return (
+    <View style={s.setupRow}>
+      <IconBadge icon={icon} tone={tone} size={38} />
+      <View style={{ flex: 1 }}>
+        <Text style={s.setupTitle}>{title}</Text>
+        <Text style={s.setupSub}>{sub}</Text>
+      </View>
+      <Pressable onPress={onEnable} disabled={busy} style={({ pressed }) => [s.enableBtn, (pressed || busy) && { opacity: 0.6 }]}>
+        <Text style={s.enableText}>Turn on</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -271,4 +355,11 @@ const s = StyleSheet.create({
   heatTrack: { flex: 1, height: 14, backgroundColor: colors.bgSoft, borderRadius: radius.full, overflow: 'hidden' },
   heatFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
   heatVal: { ...type.caption, ...tabular, color: colors.textPrimary, width: 56, textAlign: 'right', fontWeight: font.medium },
+
+  setupRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: spacing.sm },
+  setupDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  setupTitle: { ...type.bodyMedium, fontSize: 15 },
+  setupSub: { ...type.caption, marginTop: 2, lineHeight: 18 },
+  enableBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: radius.full, backgroundColor: colors.brand },
+  enableText: { color: '#fff', fontSize: 13, fontWeight: font.bold },
 });

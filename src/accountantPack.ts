@@ -1,6 +1,6 @@
 import * as Print from 'expo-print';
 import { File } from 'expo-file-system';
-import { shareFileAs } from './exportFile';
+import { shareZipBundle, readFileBytes, exportFilename, shareFileAs } from './exportFile';
 import {
   getUser, getTrips, getRecords, getTaxYearSummary, getTaxYearMiles,
   getTaxYearExpenses, kvGet, kvGetNum, kvSet, taxYearStart,
@@ -143,6 +143,11 @@ export async function buildAccountantPackHtml(): Promise<string> {
 
   const mileageMilesTotal = trips.reduce((s, t) => s + t.miles, 0);
   const mileageDedTotal = trips.reduce((s, t) => s + t.deduction, 0);
+  // Bicycle/e-bike miles have no self-employed HMRC simplified flat rate (the 20p
+  // figure is the employee cycle rate), so call them out for accountant review.
+  const cycleTrips = trips.filter(t => t.vehicle === 'bike');
+  const cycleMiles = cycleTrips.reduce((s, t) => s + t.miles, 0);
+  const cycleDed = cycleTrips.reduce((s, t) => s + t.deduction, 0);
   const gpsTrips = trips
     .map(t => ({ trip: t, pts: routePoints(t.route_json) }))
     .filter(x => x.pts.length > 1);
@@ -304,6 +309,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
 
   <h2>Mileage log</h2>
   <p class="sub">${fmtMiles(mileageMilesTotal)} business miles across ${trips.length} trips. ${gpsTrips.length} trips include downsampled GPS route evidence. The client should review and confirm the trips; this does not by itself guarantee HMRC acceptance.</p>
+  ${cycleMiles > 0 ? `<p class="sub" style="color:#8A5510"><b>Needs review:</b> ${fmtMiles(cycleMiles)} of the above are bicycle/e-bike miles (${fmtGbp(cycleDed)} at 20p/mile). HMRC's simplified flat-rate scheme does not cover cycles for the self-employed — the 20p shown is the employee cycle rate, included here as an estimate only. Please advise whether to claim actual cycle costs instead.</p>` : ''}
   <table>
     <thead><tr><th>Date</th><th>Vehicle</th><th>Purpose</th><th class="num">Miles</th><th class="num">${mileageDeductionHeader}</th><th>GPS evidence</th><th>Area</th></tr></thead>
     <tbody>${mileageRows || '<tr><td colspan="7" class="muted">No trips recorded.</td></tr>'}</tbody>
@@ -337,10 +343,57 @@ export async function buildAccountantPackHtml(): Promise<string> {
   </body></html>`;
 }
 
-export async function shareAccountantPack(): Promise<void> {
+// A flat transactions CSV the accountant can import into bookkeeping software —
+// the same figures as the PDF, but as data rather than a printed page.
+function buildPackCsv(): string {
+  const uk = (iso: string) => { const d = iso.slice(0, 10).split('-'); return `${d[2]}/${d[1]}/${d[0]}`; };
+  const safe = (s: string) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  type Line = { date: string; type: string; platform: string; vehicle: string; miles: string; deduction: string; amount: string; notes: string };
+  const lines: Line[] = [];
+  for (const t of getTrips(2000)) {
+    lines.push({
+      date: t.started_at, type: 'Mileage (GPS)', platform: '', vehicle: vehicleLabel(t.vehicle),
+      miles: t.miles.toFixed(1), deduction: t.deduction.toFixed(2),
+      amount: t.earnings ? t.earnings.toFixed(2) : '',
+      notes: t.vehicle === 'bike' ? 'NEEDS REVIEW: no self-employed simplified rate for cycles' : '',
+    });
+  }
+  for (const r of getRecords(2000)) {
+    if (r.record_type === 'mileage') lines.push({
+      date: r.created_at, type: 'Mileage (manual)', platform: '', vehicle: vehicleLabel(r.vehicle ?? 'car'),
+      miles: (r.miles ?? 0).toFixed(1), deduction: (r.deduction ?? 0).toFixed(2), amount: '',
+      notes: (r.vehicle ?? 'car') === 'bike' ? 'NEEDS REVIEW: no self-employed simplified rate for cycles' : '',
+    });
+    else if (r.record_type === 'income') lines.push({
+      date: r.created_at, type: 'Income', platform: r.platform ?? '', vehicle: '', miles: '', deduction: '',
+      amount: (r.amount ?? 0).toFixed(2), notes: r.notes ?? '',
+    });
+    else if (r.record_type === 'expense') lines.push({
+      date: r.created_at, type: 'Expense', platform: '', vehicle: '', miles: '', deduction: '',
+      amount: (-Math.abs(r.amount ?? 0)).toFixed(2), notes: r.category ?? r.notes ?? 'Expense',
+    });
+  }
+  lines.sort((a, b) => a.date.localeCompare(b.date));
+  const header = 'Date,Type,Platform,Vehicle,Miles,Mileage deduction (GBP),Amount (GBP),Notes';
+  const rows = lines.map(l => [uk(l.date), l.type, safe(l.platform), safe(l.vehicle), l.miles, l.deduction, l.amount, safe(l.notes)].join(','));
+  return [header, ...rows].join('\n');
+}
+
+export type PackFormat = 'pdf' | 'bundle';
+
+export async function shareAccountantPack(format: PackFormat = 'bundle'): Promise<void> {
   const html = await buildAccountantPackHtml();
   const { uri } = await Print.printToFileAsync({ html });
   kvSet('pack_exported', 1); // unlocks the "Audit-ready" achievement
-  // Re-share under a clear, dated, accountant-friendly filename.
-  await shareFileAs(uri, 'Self-Assessment-Summary', 'pdf');
+  if (format === 'pdf') {
+    // Just the readable review pack, under a clear dated filename.
+    await shareFileAs(uri, 'Self-Assessment-Summary', 'pdf');
+    return;
+  }
+  // Bundle the readable PDF + an importable transactions CSV in one share, so the
+  // accountant gets both the review pack and the raw data in a single message.
+  await shareZipBundle('Accountant-Pack', [
+    { name: exportFilename('Self-Assessment-Summary', 'pdf'), data: readFileBytes(uri) },
+    { name: exportFilename('Transactions', 'csv'), data: buildPackCsv() },
+  ]);
 }

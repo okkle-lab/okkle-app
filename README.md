@@ -1,6 +1,6 @@
 # Okkle — UK Courier Tax Tracker (iOS)
 
-A React Native / Expo iPhone app for UK gig-economy delivery couriers (Uber Eats, Deliveroo, Just Eat, Stuart, Amazon Flex). Tracks mileage via GPS, estimates your HMRC Self Assessment bill in real time, and produces a one-tap Accountant Pack PDF — all on-device, zero server cost.
+A React Native / Expo iPhone app for **self-employed** UK gig-economy delivery couriers (Uber Eats, Deliveroo, Just Eat, Stuart, Amazon Flex) who file their own Self Assessment. Tracks mileage via GPS, estimates your HMRC Self Assessment bill in real time, and produces a one-tap Accountant Pack — shareable as a PDF or as a PDF + importable transactions CSV bundled in one ZIP — all on-device, zero server cost.
 
 **Stack:** React Native · Expo SDK 56 · expo-router · expo-sqlite · expo-location · expo-print · expo-sharing · expo-notifications · TypeScript
 
@@ -36,7 +36,8 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - **Simplified mileage rates** (HMRC approved):
   - Car / Van: 45p/mi (first 10,000 mi), 25p/mi after
   - Motorbike: 24p/mi flat
-  - Bicycle: 20p/mi flat
+  - Bicycle / e-bike: 20p/mi shown as an **estimate only** — HMRC's simplified scheme doesn't cover cycles for the self-employed (20p is the employee rate), so it's flagged for accountant review across logging, edit and the Accountant Pack
+  - (Note: rates are versioned by tax year; cars/vans are 55p/25p from 6 Apr 2026)
 - **Actual costs comparison** — enter running costs, vehicle value and personal miles; Okkle works out which method saves more tax and shows the difference.
 - **HMRC method-lock warning** — once you claim actual costs on a vehicle you cannot switch back; the app surfaces this clearly.
 - **Capital allowances** (for actual costs): EV 100% FYA, low-emission car ≤50g 18% WDA, other car 6% WDA, van/motorbike 100% AIA.

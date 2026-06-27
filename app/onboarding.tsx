@@ -88,7 +88,7 @@ export default function Onboarding() {
             <Text style={s.logo}>Okkle</Text>
             <Text style={s.hero}>Drive smarter.{'\n'}Keep more of it.</Text>
             <Text style={s.sub}>
-              Built for UK delivery couriers. Okkle tracks your trips, shows you where the money is, and keeps you ready for the taxman — without the spreadsheet.
+              Built for self-employed UK delivery couriers — the ones who file their own Self Assessment. Okkle tracks your trips, shows you where the money is, and keeps you ready for the taxman — without the spreadsheet.
             </Text>
             <View style={s.welcomeList}>
               {[
@@ -103,7 +103,7 @@ export default function Onboarding() {
                 </View>
               ))}
             </View>
-            <Text style={s.note}>Your data stays on your phone.</Text>
+            <Text style={s.note}>For self-employed couriers. If you’re employed (taxed through PAYE on a payslip), your tax is handled differently and Okkle’s estimates won’t apply to you. Your data stays on your phone.</Text>
           </View>
         )}
 
@@ -145,6 +145,14 @@ export default function Onboarding() {
             <Text style={s.note}>
               Okkle works out your tax the simple way — HMRC’s flat-rate mileage (a set amount per mile that already covers fuel, insurance and repairs). It’s the easiest method and the best fit for most couriers. If you drive an expensive or electric car, the “actual costs” method can sometimes save more — worth asking an accountant.
             </Text>
+            {vehicles.includes('bike') && (
+              <View style={s.streakNote}>
+                <Feather name="alert-triangle" size={16} color={colors.amber} />
+                <Text style={s.streakNoteText}>
+                  Heads up: HMRC’s simplified flat rate doesn’t officially cover bicycles or e-bikes for the self-employed. Okkle shows the 20p/mile cycle figure as an estimate only — your accountant should confirm how to claim your actual cycle costs.
+                </Text>
+              </View>
+            )}
           </View>
         )}
 

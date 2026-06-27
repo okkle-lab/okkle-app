@@ -27,9 +27,9 @@ const tabLabel = Platform.OS === 'ios'
 
 const tabs: TabItem[] = [
   { name: 'index', label: 'Home', feather: 'user', sf: { default: 'person.crop.circle', selected: 'person.crop.circle.fill' } },
-  { name: 'log', label: 'Log', feather: 'edit-3', sf: { default: 'square.and.pencil', selected: 'square.and.pencil' } },
-  { name: 'trip', label: 'Trip', feather: 'navigation', sf: { default: 'location.north', selected: 'location.north.fill' } },
   { name: 'insights', label: 'Insights', feather: 'zap', sf: { default: 'sparkles', selected: 'sparkles' } },
+  { name: 'trip', label: 'Trip', feather: 'navigation', sf: { default: 'location.north', selected: 'location.north.fill' } },
+  { name: 'log', label: 'Log', feather: 'edit-3', sf: { default: 'square.and.pencil', selected: 'square.and.pencil' } },
   { name: 'records', label: 'Records', feather: 'archive', sf: { default: 'archivebox', selected: 'archivebox.fill' } },
 ];
 

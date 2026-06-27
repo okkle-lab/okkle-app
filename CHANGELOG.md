@@ -2,6 +2,19 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3.1 - 2026-06-27 (Self-employed clarity, accountant pack & insights automation)
+
+- **Tax section redesigned.** Records → Tax is now a glanceable summary — a "set aside for tax" hero with tap-to-detail cards (bill, tax saved, this year, deadlines) instead of one long scroll. All the detail is preserved behind taps. Tax inputs are consolidated into **Settings → Tax settings** (region, band, other income, method).
+- **Clearer that Okkle is for self-employed couriers.** Onboarding now states it's for couriers who file their own Self Assessment, with a note that employed (PAYE) drivers are taxed differently and the estimates won't apply. Tax support is simplified-mileage-only, made explicit in onboarding.
+- **Bicycle / e-bike mileage is flagged for review.** HMRC's simplified flat-rate scheme doesn't cover cycles for the self-employed (the 20p/mile is the employee rate), so Okkle keeps it as an estimate and flags it across onboarding, logging, the edit screen and the Accountant Pack — for the accountant to confirm actual-cost treatment.
+- **Expenses the flat rate already covers are flagged.** Logging a vehicle running cost (fuel, insurance, repairs…) on the simplified method now warns it's covered by the mileage rate and flags it for accountant review rather than double-claiming.
+- **"Business miles" wording.** The mileage step now asks for *business* miles (leave out personal trips) instead of asking users to guess a personal-mileage deduction.
+- **Export & share rebuilt.** Clear sections (Accountant Pack / Individual files). The Accountant Pack can be shared as a **PDF**, or as a **PDF + importable transactions CSV bundled in one ZIP** — review pack and raw data in a single share.
+- **Accountant details live in Profile.** UTR, NI number, address and nature of business are edited in Settings → Profile and added to the pack's cover page. Export shows a short "add your details" prompt only while they're incomplete, then hides it.
+- **Insights stays insights — with optional automation.** Trip nudges and reminders panels moved back to Settings; Insights now offers inline **Turn on** prompts for Trip nudges and Logging reminders that disappear once enabled.
+- **GPS accuracy fix.** Trip tracking now rejects low-accuracy fixes and impossible "teleport" jumps and uses best-for-navigation accuracy, so routes no longer cut across blocks and miles aren't inflated by stray points.
+- **Bottom tab order** is now Home · Insights · Trip · Log · Records.
+
 ## 2.0.0 - 2026-06-25 (Guided logging and liquid glass UI)
 
 - **Redesigned Log as a guided flow.** Logging now asks one question per page, supports receipt/photo upload first, attempts on-device receipt parsing, and resets cleanly after saving or navigating to Records.

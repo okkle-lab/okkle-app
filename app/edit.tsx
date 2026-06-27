@@ -183,6 +183,17 @@ export default function EditEntry() {
             <SectionHeader title="Miles" />
             <TextInput style={s.input} value={miles} onChangeText={setMiles} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.textTertiary} {...numberKeyboardDoneProps} />
             {milesNum > 0 ? <Text style={s.preview}>Deduction: {fmtGbp(previewDeduction)}</Text> : null}
+            {vehicle === 'bike' && (
+              <View style={s.reviewBox}>
+                <Feather name="alert-triangle" size={16} color={colors.amber} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.reviewTitle}>Flagged for your accountant</Text>
+                  <Text style={s.reviewText}>
+                    HMRC’s simplified flat-rate mileage scheme officially covers cars, vans and motorcycles — not bicycles or e-bikes for the self-employed. The 20p/mile shown is the employee cycle rate, so Okkle keeps this as an estimate only. Your accountant should confirm whether to claim your actual cycle costs instead.
+                  </Text>
+                </View>
+              </View>
+            )}
           </>
         )}
 
@@ -238,6 +249,9 @@ const s = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   preview: { ...type.caption, color: colors.brandDeep, marginBottom: spacing.lg },
+  reviewBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.lg, marginBottom: spacing.lg },
+  reviewTitle: { ...type.label, color: colors.amberDark, marginBottom: 3 },
+  reviewText: { ...type.caption, color: colors.amberDark, lineHeight: 19 },
   receipt: { width: '100%', height: 240, borderRadius: radius.md, backgroundColor: colors.bgSoft, marginBottom: spacing.lg },
   deleteBtn: { marginTop: spacing.lg, alignItems: 'center', paddingVertical: spacing.md },
   deleteText: { ...type.label, color: colors.red },

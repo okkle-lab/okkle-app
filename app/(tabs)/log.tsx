@@ -51,6 +51,12 @@ const EXPENSE_CATEGORIES: Cat[] = [
   { name: 'App subscription', icon: 'repeat' },
 ];
 
+// Costs the HMRC simplified flat-rate mileage already covers (fuel, electricity,
+// insurance, servicing, repairs, tyres, depreciation). Okkle only supports the
+// simplified method, so claiming these as separate expenses would double-claim —
+// we still let couriers log them, but flag them for their accountant to review.
+const MILEAGE_COVERED = new Set(['Fuel', 'Charging', 'Insurance', 'Maintenance / repairs', 'Tyres']);
+
 function getCatCounts(): Record<string, number> {
   try { return JSON.parse(kvGet('expense_cat_counts') || '{}'); } catch { return {}; }
 }
@@ -303,7 +309,7 @@ export default function LogScreen() {
   const stepTitle =
     currentStep === 'kind' ? 'What are you logging?' :
     currentStep === 'receipt' ? 'Add a receipt' :
-    currentStep === 'primary' ? (tab === 'mileage' ? 'How many miles?' : tab === 'income' ? 'How much did you earn?' : 'How much was it?') :
+    currentStep === 'primary' ? (tab === 'mileage' ? 'How many business miles?' : tab === 'income' ? 'How much did you earn?' : 'How much was it?') :
     currentStep === 'details' ? (tab === 'expense' ? 'What was it for?' : tab === 'mileage' ? 'Which vehicle?' : 'Which platform?') :
     currentStep === 'date' ? 'When was it?' :
     'Review and save';
@@ -311,7 +317,7 @@ export default function LogScreen() {
   const stepSub =
     currentStep === 'kind' ? 'Okkle will ask one thing at a time.' :
     currentStep === 'receipt' ? (tab === 'expense' ? 'Choose a receipt photo. AI fills numbers and category, and keeps the image for accounting.' : 'Optional. Choose a receipt or screenshot and Okkle will fill what it can.') :
-    currentStep === 'primary' ? (tab === 'mileage' ? 'Use the manually driven miles for this log.' : 'You can edit anything Okkle read from the receipt.') :
+    currentStep === 'primary' ? (tab === 'mileage' ? 'Only the miles you drove while working — leave out personal trips.' : 'You can edit anything Okkle read from the receipt.') :
     currentStep === 'details' ? (tab === 'expense' ? 'Pick a category or type your own.' : tab === 'mileage' ? 'Which vehicle did you drive?' : 'Which app paid you?') :
     currentStep === 'date' ? 'Choose a day, or log the amount across a whole pay week.' :
     'Check the details before adding it to your records.';
@@ -464,9 +470,19 @@ export default function LogScreen() {
               })}
             </View>
           )}
-          <View style={s.notice}>
-            <Text style={s.noticeText}>Vehicle running costs are flagged for accountant review when you use simplified mileage.</Text>
-          </View>
+          {MILEAGE_COVERED.has(description.trim()) ? (
+            <View style={[s.notice, s.noticeWarn]}>
+              <Feather name="alert-triangle" size={15} color={colors.amber} />
+              <Text style={[s.noticeText, s.noticeWarnText]}>
+                {description.trim()} is already covered by HMRC simplified mileage. Okkle uses the simplified method, so this will be saved and flagged for your accountant to review rather than double-claimed.
+              </Text>
+            </View>
+          ) : (
+            <View style={s.notice}>
+              <Feather name="info" size={15} color={colors.textTertiary} />
+              <Text style={s.noticeText}>Okkle calculates tax with HMRC simplified mileage. Costs the flat rate already covers (fuel, insurance, repairs) are flagged for your accountant.</Text>
+            </View>
+          )}
         </View>
       );
     }
@@ -483,6 +499,14 @@ export default function LogScreen() {
               ))}
             </View>
           </View>
+          {vehicle === 'bike' && (
+            <View style={[s.notice, s.noticeWarn]}>
+              <Feather name="alert-triangle" size={15} color={colors.amber} />
+              <Text style={[s.noticeText, s.noticeWarnText]}>
+                HMRC’s simplified flat rate doesn’t officially cover bicycles or e-bikes for the self-employed. This 20p/mile figure is an estimate — flagged for your accountant to confirm your actual cycle costs.
+              </Text>
+            </View>
+          )}
         </View>
       );
     }
@@ -539,6 +563,14 @@ export default function LogScreen() {
             <Text style={s.reviewValue}>{value}</Text>
           </View>
         ))}
+        {tab === 'mileage' && vehicle === 'bike' && (
+          <View style={[s.notice, s.noticeWarn, { marginTop: spacing.md }]}>
+            <Feather name="alert-triangle" size={15} color={colors.amber} />
+            <Text style={[s.noticeText, s.noticeWarnText]}>
+              Needs review: there’s no HMRC simplified flat rate for bicycles or e-bikes for the self-employed. This 20p/mile figure is saved as an estimate and flagged for your accountant.
+            </Text>
+          </View>
+        )}
       </View>
     );
   }
@@ -800,8 +832,10 @@ const s = StyleSheet.create({
   quickChipText: { fontSize: 12.5, fontWeight: font.semibold, color: colors.textSecondary },
   quickChipTextOn: { color: '#fff' },
 
-  notice: { backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.md },
-  noticeText: { fontSize: 13, color: colors.amberDark, lineHeight: 19 },
+  notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: colors.bgSoft, borderRadius: radius.md, padding: spacing.md },
+  noticeText: { flex: 1, fontSize: 13, color: colors.textSecondary, lineHeight: 19 },
+  noticeWarn: { backgroundColor: colors.amberLight },
+  noticeWarnText: { color: colors.amberDark },
   receiptButtons: { flexDirection: 'row', gap: spacing.sm },
   receiptBtn: {
     flex: 1, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,

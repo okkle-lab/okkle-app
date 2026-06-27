@@ -1,31 +1,36 @@
 import React from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, IconBadge, ModalHeader } from '../src/components';
+import { Card, IconBadge, ModalHeader, SectionHeader } from '../src/components';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses, getTrips, getRecords, getUser,
 } from '../src/db';
 import { fmtGbp, fmtMiles, taxYearLabel, vehicleLabel } from '../src/db/tax';
 import { compareMethods, taxPosition, caRate } from '../src/db/taxcalc';
-import { kvGet, kvGetNum, kvSet } from '../src/db';
+import { kvGet, kvGetNum } from '../src/db';
 import { shareAccountantPack } from '../src/accountantPack';
 import { shareTextExport } from '../src/exportFile';
 
+// Which pack-identity fields the user has filled (edited in Settings → Profile).
+function readPackDetails() {
+  const has = (k: string) => (kvGet(k) ?? '').trim().length > 0;
+  return { utr: has('utr'), ni: has('ni_number'), address: has('address'), business: has('business_desc') };
+}
+
 export default function ExportScreen() {
+  const router = useRouter();
   const [packBusy, setPackBusy] = React.useState(false);
-  const [showDetails, setShowDetails] = React.useState(false);
-  // Optional identity for the pack — stored on-device, only added to your export.
-  const [utr, setUtr] = React.useState(kvGet('utr') ?? '');
-  const [ni, setNi] = React.useState(kvGet('ni_number') ?? '');
-  const [address, setAddress] = React.useState(kvGet('address') ?? '');
-  const [business, setBusiness] = React.useState(kvGet('business_desc') ?? '');
-  const setField = (key: string, set: (v: string) => void) => (v: string) => { set(v); kvSet(key, v); };
+  // Optional identity for the pack — edited in Settings → Profile, stored on-device.
+  // Re-read on focus so completing it in Profile updates this screen.
+  const [details, setDetails] = React.useState(() => readPackDetails());
+  useFocusEffect(React.useCallback(() => { setDetails(readPackDetails()); }, []));
   const detailItems = [
-    { label: 'UTR', done: utr.trim().length > 0 },
-    { label: 'NI number', done: ni.trim().length > 0 },
-    { label: 'Address', done: address.trim().length > 0 },
-    { label: 'Business', done: business.trim().length > 0 },
+    { label: 'UTR', done: details.utr },
+    { label: 'NI number', done: details.ni },
+    { label: 'Address', done: details.address },
+    { label: 'Business', done: details.business },
   ];
   const detailCount = detailItems.filter(i => i.done).length;
   const detailsReady = detailCount === detailItems.length;
@@ -45,10 +50,21 @@ export default function ExportScreen() {
   const chosenDeduction = usingActual ? method.actual : method.simplified;
   const pos = taxPosition(year.earnings, chosenDeduction + getTaxYearExpenses(), user?.region ?? 'ruk', kvGetNum('other_income'));
 
-  async function makePack() {
+  async function runPack(format: 'pdf' | 'bundle') {
     setPackBusy(true);
-    try { await shareAccountantPack(); } catch { /* cancelled */ }
+    try { await shareAccountantPack(format); } catch { /* cancelled */ }
     setPackBusy(false);
+  }
+  function makePack() {
+    Alert.alert(
+      'Share Accountant Pack',
+      'Choose how to send it. The bundle adds an importable transactions CSV your accountant can load into their software.',
+      [
+        { text: 'PDF + data (ZIP)', onPress: () => runPack('bundle') },
+        { text: 'PDF only', onPress: () => runPack('pdf') },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
   }
   function shareSA() {
     const lines = [
@@ -97,63 +113,46 @@ export default function ExportScreen() {
     <View style={s.screen}>
       <ScrollView contentContainerStyle={s.content}>
         <ModalHeader title="Export & share" />
-        <Text style={s.sub}>Everything your accountant needs, {taxYearLabel()}.</Text>
+        <Text style={s.sub}>Everything your accountant needs for {taxYearLabel()}, ready to send.</Text>
 
+        <SectionHeader title="ACCOUNTANT PACK" icon="file-text" />
         <Pressable onPress={makePack} disabled={packBusy} style={({ pressed }) => [s.packBtn, pressed && { opacity: 0.9 }]}>
-          <Feather name="file-text" size={22} color="#fff" />
+          <View style={s.packIcon}><Feather name="file-text" size={22} color="#fff" /></View>
           <View style={{ flex: 1 }}>
-            <Text style={s.packTitle}>{packBusy ? 'Preparing…' : 'Accountant Pack (PDF)'}</Text>
-            <Text style={s.packSub}>SA summary, mileage log, expenses &amp; receipts in one file</Text>
+            <Text style={s.packTitle}>{packBusy ? 'Preparing…' : 'Accountant Pack'}</Text>
+            <Text style={s.packSub}>Send as a PDF, or bundle it with an importable transactions CSV</Text>
           </View>
           <Feather name="share" size={18} color="#fff" />
         </Pressable>
 
-        <Pressable onPress={() => setShowDetails(v => !v)} style={({ pressed }) => [s.detailsCard, pressed && { opacity: 0.76 }]}>
-          <View style={s.detailsIcon}>
-            <Feather name="user-check" size={20} color={colors.brandDeep} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={s.detailsTitleRow}>
-              <Text style={s.detailsTitle}>Your details</Text>
-              <View style={[s.readyPill, detailsReady && s.readyPillOn]}>
-                <Text style={[s.readyPillText, detailsReady && s.readyPillTextOn]}>
-                  {detailsReady ? 'Ready' : `${detailCount}/4`}
-                </Text>
-              </View>
+        {!detailsReady && (
+          <Pressable onPress={() => router.push('/settings-account')} style={({ pressed }) => [s.detailsCard, pressed && { opacity: 0.76 }]}>
+            <View style={s.detailsIcon}>
+              <Feather name="user-plus" size={18} color={colors.brandDeep} />
             </View>
-            <Text style={s.detailsSub}>
-              Optional details your accountant may expect on a Self Assessment pack.
-            </Text>
-            <View style={s.detailChecklist}>
-              {detailItems.map(item => (
-                <View key={item.label} style={s.detailCheck}>
-                  <Feather name={item.done ? 'check-circle' : 'circle'} size={13} color={item.done ? colors.brandDeep : colors.textTertiary} />
-                  <Text style={[s.detailCheckText, item.done && s.detailCheckTextOn]}>{item.label}</Text>
+            <View style={{ flex: 1 }}>
+              <View style={s.detailsTitleRow}>
+                <Text style={s.detailsTitle}>Add your details</Text>
+                <View style={s.readyPill}>
+                  <Text style={s.readyPillText}>{detailCount}/4</Text>
                 </View>
-              ))}
+              </View>
+              <Text style={s.detailsSub}>
+                Your UTR, NI number &amp; address make the pack filing-ready. Add them in Settings → Profile.
+              </Text>
             </View>
-          </View>
-          <Feather name={showDetails ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textTertiary} />
-        </Pressable>
-        {showDetails && (
-          <Card style={s.detailsForm}>
-            <Text style={s.formIntro}>Optional. Included on the PDF cover page only and stored on this phone.</Text>
-            <Field label="UTR" value={utr} onChange={setField('utr', setUtr)} placeholder="10-digit HMRC reference" keyboard="number-pad" />
-            <Field label="National Insurance number" value={ni} onChange={setField('ni_number', setNi)} placeholder="QQ 12 34 56 C" autoCap="characters" />
-            <Field label="Address" value={address} onChange={setField('address', setAddress)} placeholder="Home or business address" multiline />
-            <Field label="Nature of business" value={business} onChange={setField('business_desc', setBusiness)} placeholder="Delivery courier" />
-            <View style={s.detailsNoteBox}>
-              <Feather name="shield" size={14} color={colors.brandDeep} />
-              <Text style={s.detailsNote}>Okkle does not file to HMRC. Your accountant should confirm the figures before submission.</Text>
-            </View>
-          </Card>
+            <Feather name="chevron-right" size={20} color={colors.textTertiary} />
+          </Pressable>
         )}
 
-        <Card style={{ gap: spacing.md, marginTop: spacing.md }}>
+        <View style={{ marginTop: spacing.xl }}>
+          <SectionHeader title="INDIVIDUAL FILES" icon="download" />
+        </View>
+        <Card style={{ gap: spacing.lg }}>
           <Row icon="upload-cloud" tone="mint" title="FreeAgent bank-import CSV" subtitle="Income & expenses only — skip rows that already arrive via your bank feed" onPress={shareFreeAgentCsv} />
-          <Row icon="file-text" tone="mint" title="Self Assessment summary" onPress={shareSA} />
           <Row icon="map" tone="green" title="HMRC mileage log (CSV)" subtitle="Mileage claims only — keep these out of the bank-import file" onPress={shareMileageLog} />
-          <Row icon="database" tone="neutral" title="All data (CSV)" onPress={shareCsv} />
+          <Row icon="file-text" tone="mint" title="Self Assessment summary" subtitle="A plain-text overview of your figures for the year" onPress={shareSA} />
+          <Row icon="database" tone="neutral" title="All data (CSV)" subtitle="A full backup of every trip and record" onPress={shareCsv} />
         </Card>
 
         <View style={s.disclaimer}>
@@ -178,27 +177,6 @@ function Row({ icon, tone, title, subtitle, onPress }: { icon: any; tone: any; t
   );
 }
 
-function Field({ label, value, onChange, placeholder, keyboard, autoCap, multiline }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
-  keyboard?: 'default' | 'number-pad'; autoCap?: 'none' | 'characters'; multiline?: boolean;
-}) {
-  return (
-    <View>
-      <Text style={s.fieldLabel}>{label}</Text>
-      <TextInput
-        style={[s.fieldInput, multiline && s.fieldInputMultiline]}
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        keyboardType={keyboard ?? 'default'}
-        autoCapitalize={autoCap ?? 'sentences'}
-        multiline={multiline}
-        textAlignVertical={multiline ? 'top' : 'center'}
-      />
-    </View>
-  );
-}
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
@@ -207,6 +185,7 @@ const s = StyleSheet.create({
   title: { ...type.screenTitle },
   sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.xl },
   packBtn: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: colors.brand, borderRadius: radius.lg, padding: spacing.lg },
+  packIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' },
   packTitle: { color: '#fff', fontSize: 16, fontWeight: font.bold },
   packSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
   exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },

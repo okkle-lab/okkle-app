@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, Alert, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, radius, type } from '../src/theme';
 import { Card, Chip, PrimaryButton, VehicleChip, ModalHeader, ChipScroll } from '../src/components';
 import { VEHICLES, PLATFORMS } from '../src/db/tax';
-import { getUser, saveUser } from '../src/db';
+import { getUser, saveUser, kvGet, kvSet } from '../src/db';
 
 // Fixed (non-scrolling) layout: the whole form fits one screen and Save is
 // pinned to the bottom, so Settings never needs to scroll.
@@ -21,6 +21,11 @@ export default function SettingsAccount() {
   const [platforms, setPlatforms] = useState<string[]>(
     u?.platforms?.split(',').map(s => s.trim()).filter(p => p && p.toLowerCase() !== 'other') ?? ['Uber Eats'],
   );
+  // Identity for the Accountant Pack — optional, stored on-device only.
+  const [utr, setUtr] = useState(kvGet('utr') ?? '');
+  const [ni, setNi] = useState(kvGet('ni_number') ?? '');
+  const [address, setAddress] = useState(kvGet('address') ?? '');
+  const [business, setBusiness] = useState(kvGet('business_desc') ?? '');
 
   const toggle = (p: string) => setPlatforms(prev => (prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]));
   const toggleVehicle = (k: string) => setVehicles(prev => (prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]));
@@ -40,13 +45,17 @@ export default function SettingsAccount() {
     const v = vehicles.length ? vehicles : ['car'];
     const cleaned = platforms.filter(p => p.trim() && p.toLowerCase() !== 'other');
     saveUser({ name, vehicle: v[0], vehicles: v.join(','), platforms: cleaned.join(',') });
+    kvSet('utr', utr.trim());
+    kvSet('ni_number', ni.trim());
+    kvSet('address', address.trim());
+    kvSet('business_desc', business.trim());
     router.back();
   }
 
   return (
     <View style={[s.screen, { paddingTop: insets.top + 8 }]}>
-      <View style={s.body}>
-        <ModalHeader title="Profile & tax" />
+      <ScrollView style={s.body} contentContainerStyle={s.bodyContent} keyboardShouldPersistTaps="handled">
+        <ModalHeader title="Profile" />
 
         <Card style={s.card}>
           <View>
@@ -71,7 +80,30 @@ export default function SettingsAccount() {
           </View>
         </Card>
 
-      </View>
+        <Text style={s.sectionHead}>Details for your accountant pack</Text>
+        <Card style={s.card}>
+          <View>
+            <Text style={s.label}>Unique Taxpayer Reference (UTR)</Text>
+            <TextInput style={s.input} value={utr} onChangeText={setUtr} placeholder="10-digit HMRC reference" placeholderTextColor={colors.textTertiary} keyboardType="number-pad" />
+          </View>
+          <View>
+            <Text style={s.label}>National Insurance number</Text>
+            <TextInput style={s.input} value={ni} onChangeText={setNi} placeholder="QQ 12 34 56 C" placeholderTextColor={colors.textTertiary} autoCapitalize="characters" />
+          </View>
+          <View>
+            <Text style={s.label}>Address</Text>
+            <TextInput style={[s.input, s.inputMultiline]} value={address} onChangeText={setAddress} placeholder="Home or business address" placeholderTextColor={colors.textTertiary} multiline textAlignVertical="top" />
+          </View>
+          <View>
+            <Text style={s.label}>Nature of business</Text>
+            <TextInput style={s.input} value={business} onChangeText={setBusiness} placeholder="Delivery courier" placeholderTextColor={colors.textTertiary} />
+          </View>
+          <View style={s.privacyRow}>
+            <Feather name="lock" size={14} color={colors.brandDeep} />
+            <Text style={s.privacyText}>Optional. Stored only on this phone and added to your exported Accountant Pack. Okkle never uploads it and does not file to HMRC.</Text>
+          </View>
+        </Card>
+      </ScrollView>
 
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <PrimaryButton label="Save changes" onPress={save} />
@@ -82,10 +114,15 @@ export default function SettingsAccount() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  body: { flex: 1, paddingHorizontal: spacing.xl, gap: spacing.md },
+  body: { flex: 1 },
+  bodyContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.md },
   card: { gap: spacing.md },
+  sectionHead: { ...type.label, color: colors.textSecondary, marginTop: spacing.sm, marginLeft: 2 },
   label: { ...type.label, marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg },
+  inputMultiline: { minHeight: 76, paddingTop: spacing.md },
+  privacyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md },
+  privacyText: { ...type.small, color: colors.brandDeep, lineHeight: 17, flex: 1 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   addChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.full, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bg },
   addChipText: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },

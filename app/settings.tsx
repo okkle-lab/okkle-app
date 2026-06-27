@@ -103,7 +103,7 @@ export default function Settings() {
           </View>
 
           <View style={s.group}>
-            <Row icon="user" tone="mint" title="Profile" sub="Name, vehicles & platforms" onPress={go('/settings-account')} />
+            <Row icon="user" tone="mint" title="Profile" sub="Name, vehicles, platforms & accountant details" onPress={go('/settings-account')} />
             <Row icon="percent" tone="amber" title="Tax settings" sub="Region, band, other income & method" onPress={go('/tax-setup')} />
             <Row icon="navigation" tone="blue" title="Trip nudges" sub="Reminders to start & end a trip" onPress={go('/settings-auto-trip')} />
             <Row icon="bell" tone="violet" title="Reminders" sub="Logging nudges & deadline alerts" onPress={go('/settings-reminders')} />
