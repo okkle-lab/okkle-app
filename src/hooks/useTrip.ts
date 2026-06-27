@@ -7,6 +7,8 @@ import { setTripActive } from '../autoTrip';
 const TRIP_NOTIF_ID = 'okkle-trip-active';
 const TRIP_END_NUDGE_ID = 'okkle-trip-end-nudge';
 const END_NUDGE_AFTER_S = 18 * 60; // ask "finished?" ~18 min after last movement
+const MAX_GPS_ACCURACY_M = 45;
+const MAX_REASONABLE_SPEED_MPS = 45; // ~100mph; anything above is almost certainly a GPS jump for courier use.
 
 // A lock-screen notification while a trip is tracking, so it's visible when the
 // phone is locked and one tap brings you back to the live screen.
@@ -83,7 +85,16 @@ export function useTrip() {
   const pointsRef = useRef<GeoPoint[]>([]);
   const lastSampleRef = useRef<Location.LocationObject | null>(null);
 
+  function usableLocation(loc: Location.LocationObject): boolean {
+    const { latitude, longitude, accuracy, speed } = loc.coords;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+    if (accuracy != null && accuracy > MAX_GPS_ACCURACY_M) return false;
+    if (speed != null && speed > MAX_REASONABLE_SPEED_MPS) return false;
+    return true;
+  }
+
   function samplePoint(loc: Location.LocationObject) {
+    if (!usableLocation(loc)) return;
     const prev = lastSampleRef.current;
     // Keep a point roughly every 40m, capped so storage stays tiny.
     if (prev) {
@@ -117,6 +128,7 @@ export function useTrip() {
     const startedAt = new Date();
     pointsRef.current = [];
     lastSampleRef.current = null;
+    lastPosRef.current = null;
     setTripActive(true); // pause auto-trip suggestions while we're tracking
     showTripNotification();
     armTripEndNudge();   // arm the "finished this trip?" half of the nudge
@@ -128,18 +140,23 @@ export function useTrip() {
 
     watchRef.current = await Location.watchPositionAsync(
       {
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.BestForNavigation,
         distanceInterval: 20,
         // Background continuation comes from UIBackgroundModes "location" +
         // the "Always" permission (configured in app.json) — dev build only.
       },
       (loc) => {
+        if (!usableLocation(loc)) return;
         const spd = loc.coords.speed; // m/s; -1 or null when unknown
         const mph = spd != null && spd > 0 ? spd * 2.236936 : 0;
         if (lastPosRef.current) {
           const d = haversineKm(lastPosRef.current.coords, loc.coords);
           const meters = d * 1000;
-          const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
+          const seconds = Math.max(1, ((loc.timestamp || Date.now()) - (lastPosRef.current.timestamp || Date.now())) / 1000);
+          const jumpy = meters / seconds > MAX_REASONABLE_SPEED_MPS;
+          if (jumpy) return;
+          const noiseFloor = Math.max(8, Math.min(30, ((lastPosRef.current.coords.accuracy ?? 12) + (loc.coords.accuracy ?? 12)) / 2));
+          const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < noiseFloor;
           if (!stationary) armTripEndNudge(); // moving → push the "finished?" nudge back
           setTrip(t => {
             const miles = stationary ? t.miles : t.miles + d * 0.621371;
@@ -171,18 +188,23 @@ export function useTrip() {
 
     watchRef.current = await Location.watchPositionAsync(
       {
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.BestForNavigation,
         distanceInterval: 20,
         // Background continuation comes from UIBackgroundModes "location" +
         // the "Always" permission (configured in app.json) — dev build only.
       },
       (loc) => {
+        if (!usableLocation(loc)) return;
         const spd = loc.coords.speed; // m/s; -1 or null when unknown
         const mph = spd != null && spd > 0 ? spd * 2.236936 : 0;
         if (lastPosRef.current) {
           const d = haversineKm(lastPosRef.current.coords, loc.coords);
           const meters = d * 1000;
-          const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
+          const seconds = Math.max(1, ((loc.timestamp || Date.now()) - (lastPosRef.current.timestamp || Date.now())) / 1000);
+          const jumpy = meters / seconds > MAX_REASONABLE_SPEED_MPS;
+          if (jumpy) return;
+          const noiseFloor = Math.max(8, Math.min(30, ((lastPosRef.current.coords.accuracy ?? 12) + (loc.coords.accuracy ?? 12)) / 2));
+          const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < noiseFloor;
           if (!stationary) armTripEndNudge(); // moving → push the "finished?" nudge back
           setTrip(t => {
             const miles = stationary ? t.miles : t.miles + d * 0.621371;
