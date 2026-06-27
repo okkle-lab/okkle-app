@@ -90,7 +90,7 @@ export default function Onboarding() {
             <Text style={s.logo}>Okkle</Text>
             <Text style={s.hero}>Drive smarter.{'\n'}Keep more of it.</Text>
             <Text style={s.sub}>
-              Built for self-employed UK delivery couriers — the ones who file their own Self Assessment. Okkle tracks your trips, shows you where the money is, and keeps you ready for the taxman — without the spreadsheet.
+              Built for self-employed UK delivery couriers. Okkle tracks your trips and estimates your tax using HMRC’s simplified flat-rate mileage — so you’re ready for Self Assessment, without the spreadsheet. (You or your accountant still file the return.)
             </Text>
             <View style={s.welcomeList}>
               {[

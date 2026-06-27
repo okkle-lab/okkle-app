@@ -34,14 +34,14 @@ async function persistImage(uri: string): Promise<string> {
 // for fast scanning). Default order roughly follows how often couriers claim
 // each one; this is then personalised by the user's own usage.
 type Cat = { name: string; icon: React.ComponentProps<typeof Feather>['name'] };
+// Default order is tuned for the simplified method: the costs you can claim ON
+// TOP of the flat-rate mileage come first (parking, tolls, phone, kit). The
+// vehicle running costs the flat rate already covers (fuel, charging, insurance,
+// servicing, tyres) come last — they're flagged for accountant review when
+// picked, so they shouldn't be the headline choices.
 const EXPENSE_CATEGORIES: Cat[] = [
-  { name: 'Fuel', icon: 'droplet' },
-  { name: 'Charging', icon: 'battery-charging' },
   { name: 'Parking', icon: 'map-pin' },
   { name: 'Phone / data', icon: 'smartphone' },
-  { name: 'Insurance', icon: 'shield' },
-  { name: 'Maintenance / repairs', icon: 'tool' },
-  { name: 'Tyres', icon: 'disc' },
   { name: 'Congestion charge', icon: 'alert-circle' },
   { name: 'ULEZ charge', icon: 'wind' },
   { name: 'Insulated bag', icon: 'shopping-bag' },
@@ -50,6 +50,11 @@ const EXPENSE_CATEGORIES: Cat[] = [
   { name: 'Phone mount', icon: 'crosshair' },
   { name: 'App subscription', icon: 'repeat' },
   { name: 'Food & drink', icon: 'coffee' },
+  { name: 'Fuel', icon: 'droplet' },
+  { name: 'Charging', icon: 'battery-charging' },
+  { name: 'Insurance', icon: 'shield' },
+  { name: 'Maintenance / repairs', icon: 'tool' },
+  { name: 'Tyres', icon: 'disc' },
 ];
 
 // Subsistence (food/drink) is only allowable for the self-employed in limited

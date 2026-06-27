@@ -11,6 +11,11 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
+## 0.3 (27) - 2026-06-27 (Simplified-method clarity)
+
+- **Expense categories reordered for the simplified method.** Costs you can claim on top of flat-rate mileage (parking, phone, congestion/ULEZ, kit) now lead; the vehicle running costs the flat rate already covers (fuel, charging, insurance, servicing, tyres) moved to the end since they're flagged as double-claims.
+- **Clearer onboarding claim.** The welcome screen now says Okkle estimates your tax using HMRC's simplified flat-rate mileage and gets you ready for Self Assessment — and that you/your accountant still file the return — instead of implying it does full Self Assessment.
+
 ## 0.3 (26) - 2026-06-27 (Log screen polish)
 
 - **Fixed the Log header tucking under the status bar / Dynamic Island** — it now uses the full safe-area top clearance.
