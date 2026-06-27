@@ -2,9 +2,7 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
-## 0.3 - 2026-06-27 (Self-employed clarity, accountant pack & insights automation)
-
-_TestFlight build following 0.3 (13). The marketing version stays "0.3"; EAS auto-increments the build number._
+## 0.3 (14) - 2026-06-27 (Self-employed clarity, accountant pack & insights automation)
 
 
 - **Tax section redesigned.** Records → Tax is now a glanceable summary — a "set aside for tax" hero with tap-to-detail cards (bill, tax saved, this year, deadlines) instead of one long scroll. All the detail is preserved behind taps. Tax inputs are consolidated into **Settings → Tax settings** (region, band, other income, method).
