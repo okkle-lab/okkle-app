@@ -2,20 +2,10 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { User } from './db';
 import { kvGet } from './db';
+import { TAX_DEADLINES, getLeadDays, dateMinusDays } from './taxDeadlines';
 
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
-// Key UK Self Assessment / MTD dates. We remind ~2 weeks ahead, yearly.
-// month is 1-12.
-const TAX_DEADLINES: { month: number; day: number; title: string; body: string }[] = [
-  { month: 9, day: 21, title: 'Register for Self Assessment', body: 'If this was your first year self-employed, register with HMRC by 5 October.' },
-  { month: 1, day: 17, title: 'Tax return & payment due soon', body: 'File your online Self Assessment and pay your tax by 31 January.' },
-  { month: 7, day: 17, title: 'Second payment on account', body: 'Your 31 July payment on account is due in two weeks.' },
-  { month: 7, day: 31, title: 'MTD quarterly update (Q1)', body: 'Your 6 Apr–5 Jul quarterly update is due 7 August.' },
-  { month: 10, day: 31, title: 'MTD quarterly update (Q2)', body: 'Your 6 Jul–5 Oct quarterly update is due 7 November.' },
-  { month: 1, day: 31, title: 'MTD quarterly update (Q3)', body: 'Your 6 Oct–5 Jan quarterly update is due 7 February.' },
-  { month: 4, day: 30, title: 'MTD quarterly update (Q4)', body: 'Your 6 Jan–5 Apr quarterly update is due 7 May.' },
-];
 // expo-notifications weekday: 1 = Sunday … 7 = Saturday
 const WEEKDAY_TO_NUM: { [k: string]: number } = {
   sun: 1, mon: 2, tue: 3, wed: 4, thu: 5, fri: 6, sat: 7,
@@ -90,16 +80,22 @@ export async function syncReminders(user: User): Promise<void> {
     }
   }
 
-  // Tax-deadline reminders (on by default; toggle stored in kv).
+  // Tax-deadline reminders (on by default; toggle stored in kv). Fire once at
+  // each lead time the user picked (e.g. 1 month AND 1 week before each date).
   if ((kvGet('deadline_reminders') ?? 'on') !== 'off') {
+    const leadDays = getLeadDays();
     for (const d of TAX_DEADLINES) {
-      await Notifications.scheduleNotificationAsync({
-        content: { title: d.title, body: d.body },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.YEARLY,
-          month: d.month, day: d.day, hour: 9, minute: 0,
-        },
-      });
+      for (const lead of leadDays) {
+        const fire = dateMinusDays(d.month, d.day, lead);
+        const ahead = lead === 1 ? 'due tomorrow' : lead === 30 ? 'in 1 month' : `in ${lead} days`;
+        await Notifications.scheduleNotificationAsync({
+          content: { title: `${d.title} — ${ahead}`, body: d.body },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.YEARLY,
+            month: fire.month, day: fire.day, hour: 9, minute: 0,
+          },
+        });
+      }
     }
   }
 }

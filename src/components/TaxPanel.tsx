@@ -10,6 +10,7 @@ import {
 } from '../db';
 import { fmtGbp, fmtMiles, taxYearLabel } from '../db/tax';
 import { compareMethods, taxPosition, caRate } from '../db/taxcalc';
+import { upcomingDeadline } from '../taxDeadlines';
 
 // Tax summary: a calm hero number + a few glanceable cards. The heavy detail
 // (bill breakdown, SA summary, deadlines) lives one tap deeper on /tax-detail,
@@ -22,6 +23,7 @@ export function TaxPanel() {
   const [quarters, setQuarters] = React.useState<QuarterSummary[]>([]);
   const [methodInputs, setMethodInputs] = React.useState({ personalMiles: 0, runningCosts: 0, vehicleValue: 0, caBasis: 'low' });
   const [otherIncome, setOtherIncome] = React.useState(0);
+  const [due, setDue] = React.useState(upcomingDeadline(30));
   const user = getUser();
 
   useFocusEffect(useCallback(() => {
@@ -29,6 +31,7 @@ export function TaxPanel() {
     setBizMiles(getTaxYearMiles());
     setOtherExpenses(getTaxYearExpenses());
     setQuarters(getQuarterlySummaries());
+    setDue(upcomingDeadline(30));
     setOtherIncome(kvGetNum('other_income'));
     setMethodInputs({
       personalMiles: kvGetNum('personal_miles'),
@@ -60,6 +63,17 @@ export function TaxPanel() {
 
   return (
     <>
+      {/* In-app deadline reminder — a safety net for missed notifications */}
+      {due && (
+        <Pressable onPress={open('deadlines')} style={({ pressed }) => [s.dueBanner, pressed && { opacity: 0.9 }]}>
+          <Feather name="bell" size={16} color={colors.amberDark} />
+          <Text style={s.dueText}>
+            <Text style={{ fontWeight: font.bold }}>{due.title}</Text> — {due.days === 0 ? 'due today' : due.days === 1 ? 'due tomorrow' : `due in ${due.days} days`}
+          </Text>
+          <Feather name="chevron-right" size={16} color={colors.amberDark} />
+        </Pressable>
+      )}
+
       {/* Hero — what to set aside; tap for the full bill breakdown */}
       <Pressable onPress={open('bill')} style={({ pressed }) => pressed && { opacity: 0.94 }}>
         <GlassPanel tone="amber" style={s.hero} contentStyle={s.heroContent}>
@@ -132,6 +146,8 @@ function SummaryRow({ icon, tone, title, sub, value, valueColor, onPress, last }
 }
 
 const s = StyleSheet.create({
+  dueBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.amberLight, borderRadius: radius.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, marginBottom: spacing.md },
+  dueText: { ...type.caption, color: colors.amberDark, flex: 1, lineHeight: 18 },
   hero: { marginBottom: spacing.md },
   heroContent: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   heroIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.amberLight, alignItems: 'center', justifyContent: 'center' },

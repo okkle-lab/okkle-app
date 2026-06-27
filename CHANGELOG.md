@@ -11,6 +11,12 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
+## 0.3 (18) - 2026-06-27 (Configurable deadline reminders + in-app banner)
+
+- **Choose your reminder lead times.** Settings → Reminders now lets you pick how far ahead to be nudged about tax deadlines — 1 month / 2 weeks / 1 week / 1 day — and you can pick several, so you get staged reminders (default: 1 month + 1 week). Each fires as its own notification before every Self Assessment and MTD date.
+- **In-app deadline banner.** The Tax screen now shows a "due in X days" banner for the nearest upcoming deadline (within 30 days), so you're reminded even if a push notification was missed — tap it to open the Deadlines screen.
+- Single source of truth for all tax deadlines (`src/taxDeadlines.ts`), shared by the scheduler, the banner and the Deadlines screen.
+
 ## 0.3 (16) - 2026-06-27 (Export accuracy: tax-year-scoped, cap-free exports)
 
 - **Fixed exports not reconciling with the tax summary.** The FreeAgent CSV, HMRC mileage log, all-data CSV and Accountant Pack are now scoped to the tax year (like the Self Assessment figures), instead of dumping all history — so a returning user's export totals match their summary.
