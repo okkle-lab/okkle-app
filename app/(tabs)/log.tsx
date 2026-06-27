@@ -338,7 +338,7 @@ export default function LogScreen() {
 
   const stepSub =
     currentStep === 'kind' ? 'Okkle will ask one thing at a time.' :
-    currentStep === 'receipt' ? (tab === 'expense' ? 'Choose a receipt photo. AI fills numbers and category, and keeps the image for accounting.' : 'Optional. Choose a receipt or screenshot and Okkle will fill what it can.') :
+    currentStep === 'receipt' ? (tab === 'expense' ? 'Choose a receipt photo. Okkle reads the amount and category on your phone, and keeps the image for accounting.' : 'Optional. Choose a receipt or screenshot and Okkle will fill what it can.') :
     currentStep === 'primary' ? (tab === 'mileage' ? 'Only the miles you drove while working — leave out personal trips.' : 'You can edit anything Okkle read from the receipt.') :
     currentStep === 'details' ? (tab === 'expense' ? 'Pick a category or type your own.' : tab === 'mileage' ? 'Which vehicle did you drive?' : 'Which app paid you?') :
     currentStep === 'date' ? 'Choose a day, or log the amount across a whole pay week.' :

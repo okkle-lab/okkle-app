@@ -9,7 +9,7 @@ A React Native / Expo iPhone app for **self-employed** UK gig-economy delivery c
 ## Features
 
 ### Trip tracking
-- **Passive whole-shift tracking** (`src/shift.ts`) — the recommended mode for couriers. Just drive: Okkle counts every business mile of the shift in the background (to the restaurant, to the customer, and the dead miles between offers), auto-starts on detected driving, auto-closes after ~12 min stationary, and logs a **draft** mileage record with a "tap to review" notification. Nothing is finalised without you confirming. Built battery-first — it reuses the low-power background location task (Balanced accuracy, automotive activity type, 60s deferred/batched updates, auto-pause when still), never a continuous high-accuracy fix. Toggle under Settings → Auto-detect trips.
+- **Trip nudges (two-way, optional)** — when enabled, Okkle nudges you to start tracking when it senses you've begun driving, and to end & save once you've been parked a while (~18 min). You confirm each nudge; nothing is recorded automatically, so personal drives are simply ignored. Toggle under Settings → Trip nudges. (An earlier fully-passive auto-shift mode was removed — it could pick up commutes/school runs.)
 - **Log weekly pay** — dedicated screen for logging weekly platform bank transfers (Uber Eats / Deliveroo / Just Eat all pay weekly, not per trip). Pre-fills the platform from your last selection.
 - **Today's summary bar** — shows today's trips / miles / saved / earned on the trip setup screen as soon as you've completed a trip. Day-level view without leaving the tab.
 - **One-tap GPS trips** — tap Start, ride, tap End. Distance accumulates via `watchPositionAsync` with a stationary jitter filter (ignores GPS drift when speed < 0.5 m/s or movement < 8 m).
@@ -33,14 +33,11 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - **Per-vehicle breakdown** — miles, trips and deduction per car / motorbike / bike / van.
 
 ### HMRC tax engine
-- **Simplified mileage rates** (HMRC approved):
-  - Car / Van: 45p/mi (first 10,000 mi), 25p/mi after
+- **Simplified mileage rates** (HMRC approved), versioned by tax year so back-dated entries use the rate that applied on their date:
+  - Car / Van: 55p/mi for the first 10,000 mi from 6 Apr 2026 (45p before), 25p/mi after
   - Motorbike: 24p/mi flat
   - Bicycle / e-bike: 20p/mi shown as an **estimate only** — HMRC's simplified scheme doesn't cover cycles for the self-employed (20p is the employee rate), so it's flagged for accountant review across logging, edit and the Accountant Pack
-  - (Note: rates are versioned by tax year; cars/vans are 55p/25p from 6 Apr 2026)
-- **Actual costs comparison** — enter running costs, vehicle value and personal miles; Okkle works out which method saves more tax and shows the difference.
-- **HMRC method-lock warning** — once you claim actual costs on a vehicle you cannot switch back; the app surfaces this clearly.
-- **Capital allowances** (for actual costs): EV 100% FYA, low-emission car ≤50g 18% WDA, other car 6% WDA, van/motorbike 100% AIA.
+- **Simplified method only (current UI)** — Okkle calculates tax with HMRC's simplified flat rate, the best fit for most couriers. An actual-cost comparison engine (`compare.tsx`, `compareMethods`) exists in the codebase but its links are hidden while the app is simplified-only; vehicle running-cost expenses are flagged so they aren't double-claimed.
 - **Progressive income tax** with personal allowance (£12,570) and taper above £100k:
   - England / Wales / NI bands
   - Scottish bands (slightly higher higher rate)

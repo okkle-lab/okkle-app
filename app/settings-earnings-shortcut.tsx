@@ -118,7 +118,7 @@ export default function EarningsShortcut() {
         <Feather name="lock" size={14} color={colors.textTertiary} />
         <Text style={s.noteText}>
           Private by design: the screenshot is read on your device with Apple's text recognition —
-          no servers, no AI, nothing leaves your phone. You confirm every figure before it's saved.
+          no servers, no cloud, nothing leaves your phone. You confirm every figure before it's saved.
         </Text>
       </View>
     </ScrollView>

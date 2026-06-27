@@ -77,7 +77,7 @@ export default function HomeScreen() {
     { title: '👤  Home', body: 'Your tax saved this year and your progress live here — simple, focused and easy to check at a glance.' },
     { title: '✍️  Log', body: 'Add your weekly pay and any costs — fuel, parking, phone. Snap a receipt and Okkle reads the amount for you.' },
     { title: '🧭  Trip', body: 'Tap Start before you set off. GPS turns your distance into a tax-free mileage deduction — automatically, nothing to write down.' },
-    { title: '💡  Insights', body: 'AI-powered guidance highlights your best zones, hours, platforms and next actions as your data grows.' },
+    { title: '💡  Insights', body: 'Okkle spots your best zones, hours and platforms from your own trips as your data grows.' },
     { title: '🗄  Records', body: 'Everything you’ve logged, plus your tax estimate and accountant exports, in one place.' },
   ];
   function dismissCoach() { kvSet('coach_seen', 1); setShowCoach(false); }

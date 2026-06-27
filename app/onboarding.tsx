@@ -92,7 +92,7 @@ export default function Onboarding() {
             </Text>
             <View style={s.welcomeList}>
               {[
-                { icon: 'navigation' as const, text: 'Track every trip automatically with GPS' },
+                { icon: 'navigation' as const, text: 'Track your miles with GPS — tap Start and go' },
                 { icon: 'trending-up' as const, text: 'See where and when you earn the most' },
                 { icon: 'shield' as const, text: 'Stay HMRC-ready — and know what to set aside' },
                 { icon: 'award' as const, text: 'Build streaks, earn medals, level up' },
