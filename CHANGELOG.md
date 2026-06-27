@@ -11,6 +11,10 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
+## 0.3 (23) - 2026-06-27 (White-screen fix + crash hardening)
+
+- **Fixed the TestFlight white screen** — caused by the global deadline alert rendering before its safe-area provider in builds made before that fix landed. The fix is in, plus a root error boundary now shows a friendly "something went wrong — try again" screen instead of a blank white screen if anything ever throws in a release build.
+
 ## 0.3 (19) - 2026-06-27 (Global deadline alert + grid-cell hotspots)
 
 - **Unmissable deadline alert.** When a tax deadline is within 14 days, a banner now drops in from the top over any screen (re-checks when you reopen the app, dismissible per deadline). The Tax screen's Deadlines row also shows the countdown, turning red within 14 days.
