@@ -183,7 +183,7 @@ export default function InsightsScreen() {
                     </View>
                   ))}
                 </Card>
-                <Text style={s.note}>Your busiest areas, clustered from your GPS trail — so it stays accurate even when you track a whole shift as one trip. £ is your logged pay spread across where you drove (an estimate).</Text>
+                <Text style={s.note}>Your busiest areas, clustered from your GPS trail — so it stays accurate even when you track a whole shift as one trip. The £ is only a rough guide: your logged pay is split across that period’s trips, since pay logged at the end of a day or week can’t be tied to an exact spot.</Text>
               </>
             )}
             <View style={{ marginTop: spacing.lg }}>
@@ -199,7 +199,7 @@ export default function InsightsScreen() {
                   </View>
                   <Text style={s.legendText}>Busier</Text>
                 </View>
-                <Text style={s.note}>Where you drive, from your GPS trips. £ shading is estimated by spreading your logged pay across your trips. Built on-device — nothing leaves your phone.</Text>
+                <Text style={s.note}>Where you drive, from your GPS trips. The £ shading is only a rough guide — your logged pay is spread across that day or week’s trips, so it hints at where your money came from rather than measuring it spot by spot.</Text>
               </Card>
             </View>
           </>
