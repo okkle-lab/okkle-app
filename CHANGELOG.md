@@ -11,6 +11,11 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
+## 0.3 (19) - 2026-06-27 (Global deadline alert + grid-cell hotspots)
+
+- **Unmissable deadline alert.** When a tax deadline is within 14 days, a banner now drops in from the top over any screen (re-checks when you reopen the app, dismissible per deadline). The Tax screen's Deadlines row also shows the countdown, turning red within 14 days.
+- **Smarter hotspots.** The "Where" ranking now clusters your GPS breadcrumb into ~450m cells instead of tagging each trip to one area — so it stays accurate even when you track a whole shift as a single trip. Areas are reverse-geocoded to friendly names (cached) and £-weighted by your logged pay.
+
 ## 0.3 (18) - 2026-06-27 (Configurable deadline reminders + in-app banner)
 
 - **Choose your reminder lead times.** Settings → Reminders now lets you pick how far ahead to be nudged about tax deadlines — 1 month / 2 weeks / 1 week / 1 day — and you can pick several, so you get staged reminders (default: all four). Each fires as its own notification before every Self Assessment and MTD date.

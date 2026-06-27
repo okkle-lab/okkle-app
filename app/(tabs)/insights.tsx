@@ -4,7 +4,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Card, SectionHeader, HeatMapView, IconBadge, CollapsingHeader, SettingsGlassButton } from '../../src/components';
-import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, getUser, saveUser, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../../src/db';
+import * as Location from 'expo-location';
+import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, getHotspotCells, getUser, saveUser, kvGet, kvSet, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat, type HotspotCell } from '../../src/db';
 import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
 import { enableAutoTrip, isAutoTripEnabled } from '../../src/autoTrip';
 import { syncReminders } from '../../src/notifications';
@@ -26,6 +27,8 @@ export default function InsightsScreen() {
   const [best, setBest] = React.useState<BestSpot | null>(null);
   const [pnl, setPnl] = React.useState<YearPnL | null>(null);
   const [platforms, setPlatforms] = React.useState<PlatformStat[]>([]);
+  const [hotspots, setHotspots] = React.useState<HotspotCell[]>([]);
+  const [cellNames, setCellNames] = React.useState<Record<string, string>>({});
   // Optional automations the user can switch on right here. Hidden once enabled.
   const [nudgesOn, setNudgesOn] = React.useState(isAutoTripEnabled());
   const [remindersOn, setRemindersOn] = React.useState((getUser()?.reminder_enabled ?? 1) === 1);
@@ -36,7 +39,32 @@ export default function InsightsScreen() {
   React.useEffect(() => {
     setZones(getZoneStats(filter));
     setPoints(getHeatPoints(filter));
+    setHotspots(getHotspotCells(filter));
   }, [filter]);
+
+  // Reverse-geocode each hotspot cell's centroid to a friendly name, cached in
+  // kv so it's a one-time lookup per area (no repeated geocoding).
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const names: Record<string, string> = {};
+      for (const c of hotspots) {
+        const cached = kvGet(`cellname_${c.key}`);
+        if (cached) { names[c.key] = cached; continue; }
+        try {
+          const places = await Location.reverseGeocodeAsync({ latitude: c.lat, longitude: c.lng });
+          const pl: any = places[0] ?? {};
+          const local = pl.subLocality || pl.district || pl.city || pl.name;
+          const outward = pl.postalCode ? String(pl.postalCode).split(' ')[0] : '';
+          const label = [local, outward].filter(Boolean).join(' · ') || 'Busy area';
+          kvSet(`cellname_${c.key}`, label);
+          names[c.key] = label;
+        } catch { names[c.key] = 'Busy area'; }
+      }
+      if (!cancelled) setCellNames(prev => ({ ...prev, ...names }));
+    })();
+    return () => { cancelled = true; };
+  }, [hotspots]);
 
   useFocusEffect(React.useCallback(() => {
     setBuckets(getEarningsByTimeOfDay());
@@ -45,6 +73,7 @@ export default function InsightsScreen() {
     setPlatforms(getPlatformStats());
     setZones(getZoneStats(filter));
     setPoints(getHeatPoints(filter));
+    setHotspots(getHotspotCells(filter));
     setNudgesOn(isAutoTripEnabled());
     setRemindersOn((getUser()?.reminder_enabled ?? 1) === 1);
     setScrollResetKey(k => k + 1);
@@ -86,9 +115,10 @@ export default function InsightsScreen() {
 
   const anyEarnings = zones.some(z => z.earnings > 0);
   const anyPerHour = zones.some(z => z.perHour > 0);
+  const anyHotspotEarnings = hotspots.some(c => c.earnings > 0);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
   const anyBucketEarnings = buckets.some(b => b.earnings > 0);
-  const hasData = zones.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.earnings > 0) || !!pnl?.hasData;
+  const hasData = zones.length > 0 || hotspots.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.earnings > 0) || !!pnl?.hasData;
 
   return (
     <CollapsingHeader
@@ -137,23 +167,24 @@ export default function InsightsScreen() {
                 ))}
               </ScrollView>
             )}
-            {zones.length > 0 && (
-              <Card style={{ padding: 0, overflow: 'hidden' }}>
-                {zones.slice(0, 6).map((z, i, arr) => (
-                  <View key={z.zone} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
-                    <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
-                      <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
+            {hotspots.length > 0 && (
+              <>
+                <Card style={{ padding: 0, overflow: 'hidden' }}>
+                  {hotspots.map((c, i, arr) => (
+                    <View key={c.key} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
+                      <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
+                        <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.zoneName}>{cellNames[c.key] ?? 'Finding area…'}</Text>
+                        <Text style={s.zoneSub}>{anyHotspotEarnings ? 'estimated earnings here' : 'where you drive most'}</Text>
+                      </View>
+                      <Text style={s.zoneVal}>{anyHotspotEarnings ? fmtGbp(c.earnings) : `#${i + 1}`}</Text>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.zoneName}>{z.zone}</Text>
-                      <Text style={s.zoneSub}>
-                        {z.trips} {z.trips === 1 ? 'trip' : 'trips'} · {fmtMiles(z.miles)}{z.earnings > 0 ? ` · ${fmtGbp(z.earnings)}` : ''}
-                      </Text>
-                    </View>
-                    <Text style={s.zoneVal}>{anyPerHour ? fmtPerHour(z.perHour) : anyEarnings ? fmtGbp(z.earnings) : fmtMiles(z.miles)}</Text>
-                  </View>
-                ))}
-              </Card>
+                  ))}
+                </Card>
+                <Text style={s.note}>Your busiest areas, clustered from your GPS trail — so it stays accurate even when you track a whole shift as one trip. £ is your logged pay spread across where you drove (an estimate).</Text>
+              </>
             )}
             <View style={{ marginTop: spacing.lg }}>
               <SectionHeader icon="map" title="Hotspot map" />

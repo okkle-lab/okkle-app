@@ -1227,6 +1227,43 @@ export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
   return out;
 }
 
+// Grid-cell hotspots — rank the places you actually drive by clustering the GPS
+// breadcrumb into ~450m cells, weighted by apportioned earnings. Unlike the
+// per-trip `zone`, this works even when a whole shift is one long trip, because
+// it ranks the breadcrumb points themselves rather than one label per trip.
+export type HotspotCell = { key: string; lat: number; lng: number; visits: number; earnings: number };
+
+export function getHotspotCells(filter: TimeFilter = 'all', limit = 6): HotspotCell[] {
+  const est = estimatedTripEarnings();
+  const rows = db.getAllSync<{ id: number; route_json: string | null; started_at: string }>(
+    `SELECT id, route_json, started_at FROM trips WHERE route_json IS NOT NULL`);
+  const CELL = 0.004; // ~450m at UK latitudes
+  const agg = new Map<string, { latSum: number; lngSum: number; visits: number; earnings: number }>();
+  for (const r of rows) {
+    if (!hourInFilter(r.started_at, filter)) continue;
+    let pts: { lat: number; lng: number }[] = [];
+    try { pts = JSON.parse(r.route_json as string); } catch { continue; }
+    if (!Array.isArray(pts) || pts.length === 0) continue;
+    const e = est.get(r.id) ?? 0;
+    const w = e > 0 ? e / pts.length : 0;
+    for (const p of pts) {
+      if (typeof p?.lat !== 'number' || typeof p?.lng !== 'number') continue;
+      const clat = Math.round(p.lat / CELL) * CELL;
+      const clng = Math.round(p.lng / CELL) * CELL;
+      const key = `${clat.toFixed(3)},${clng.toFixed(3)}`;
+      const a = agg.get(key) ?? { latSum: 0, lngSum: 0, visits: 0, earnings: 0 };
+      a.latSum += p.lat; a.lngSum += p.lng; a.visits += 1; a.earnings += w;
+      agg.set(key, a);
+    }
+  }
+  const cells = Array.from(agg.entries()).map(([key, a]) => ({
+    key, lat: a.latSum / a.visits, lng: a.lngSum / a.visits, visits: a.visits, earnings: a.earnings,
+  }));
+  const anyEarnings = cells.some(c => c.earnings > 0);
+  cells.sort((a, b) => (anyEarnings ? b.earnings - a.earnings : b.visits - a.visits));
+  return cells.slice(0, limit);
+}
+
 // ---- XP / levels (local, no backend) ---------------------------------------
 // XP rewards engagement (activity), never income — keeps it fair and private.
 export type XpInfo = { xp: number; level: number; into: number; span: number; progress: number; medals: number };
