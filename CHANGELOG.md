@@ -2,6 +2,13 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.4.2 - 2026-06-26 (Native SwiftUI iOS migration)
+
+- Rebuilt Okkle as a SwiftUI-only iOS app under `ios/Okkle.xcodeproj`, removing the Expo/React Native runtime, Metro bundling, npm dependencies, CocoaPods build phases and EAS build requirement.
+- Added the native Home, Trip, Log, Records, Insights and Settings flows in Swift, including on-device persistence, trip tracking, receipt selection, tax estimates and export/share support.
+- Preserved the trip-tracking accuracy fix from 0.4 by accepting realistic GPS fixes, using navigation-grade location updates and keeping the location manager active during live trips.
+- Updated the native app version to 0.4.2 for this PR.
+
 ## 2.0.0 - 2026-06-25 (Guided logging and liquid glass UI)
 
 - **Redesigned Log as a guided flow.** Logging now asks one question per page, supports receipt/photo upload first, attempts on-device receipt parsing, and resets cleanly after saving or navigating to Records.

@@ -1,3 +1,5 @@
-# Expo HAS CHANGED
+# Native Swift app
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v56.0.0/ before writing any code.
+Okkle is now a native SwiftUI iOS app. Prefer editing the committed Xcode project in `ios/`.
+
+Before changing iOS behaviour, inspect the relevant Swift source and verify with `xcodebuild -project ios/Okkle.xcodeproj -scheme Okkle`.
