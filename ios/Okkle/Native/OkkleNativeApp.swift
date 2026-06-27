@@ -241,7 +241,7 @@ final class OkkleStore: ObservableObject {
   @Published var trips: [NativeTrip] = [] { didSet { save() } }
 
   private let key = "uk.okkle.native.swiftui.snapshot.v1"
-  private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v1"
+  private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v2"
   private var isLoading = false
 
   init() {
@@ -536,7 +536,7 @@ private enum NativeLegacySQLiteImporter {
 
       let settings = readSettings(from: db)
       let trips = readTrips(from: db)
-      let records = readRecords(from: db)
+      let records = readRecords(from: db) + readTripEarningsRecords(from: db)
       if settings != nil || !trips.isEmpty || !records.isEmpty {
         return NativeLegacyImportResult(settings: settings, records: records, trips: trips)
       }
@@ -663,6 +663,35 @@ private enum NativeLegacySQLiteImporter {
         periodStart: periodStart,
         periodEnd: periodEnd,
         receiptImageData: receiptData(from: string(row["receipt_uri"]))
+      )
+    }
+  }
+
+  private static func readTripEarningsRecords(from db: OpaquePointer) -> [NativeRecord] {
+    rows(from: db, sql: "SELECT id, platform, earnings, started_at FROM trips WHERE earnings IS NOT NULL AND earnings > 0").compactMap { row in
+      guard let id = int(row["id"]),
+            let amount = double(row["earnings"]),
+            amount > 0 else {
+        return nil
+      }
+
+      let date = date(row["started_at"]) ?? Date()
+      let day = Calendar.current.startOfDay(for: date)
+      return NativeRecord(
+        legacyID: "sqlite-trip-earnings-\(id)",
+        kind: .income,
+        platform: nonEmpty(string(row["platform"])),
+        vehicle: nil,
+        amount: amount,
+        miles: nil,
+        deduction: nil,
+        category: nil,
+        merchant: nil,
+        date: date,
+        period: .day,
+        periodStart: day,
+        periodEnd: day,
+        receiptImageData: nil
       )
     }
   }
@@ -871,6 +900,8 @@ enum NativeHistoryItem: Identifiable, Equatable {
 struct NativeTaxPosition {
   var turnover: Double
   var expenses: Double
+  var deductionApplied: Double
+  var businessProfit: Double
   var profit: Double
   var incomeTax: Double
   var class4: Double
@@ -881,20 +912,24 @@ struct NativeTaxPosition {
 
 private func estimateTax(turnover: Double, expenses: Double, region: NativeRegion) -> NativeTaxPosition {
   let tradingAllowance = 1_000.0
-  let deductible = min(turnover, max(expenses, tradingAllowance))
+  let useTradingAllowance = tradingAllowance > expenses
+  let deductible = min(turnover, useTradingAllowance ? tradingAllowance : expenses)
+  let businessProfit = max(0, turnover - expenses)
   let profit = max(0, turnover - deductible)
   let incomeTax = nativeIncomeTax(profit: profit, region: region)
   let class4 = nativeClass4(profit: profit)
   let total = incomeTax + class4
   return NativeTaxPosition(
     turnover: turnover,
-    expenses: deductible,
+    expenses: expenses,
+    deductionApplied: deductible,
+    businessProfit: businessProfit,
     profit: profit,
     incomeTax: incomeTax,
     class4: class4,
     totalDue: total,
     paymentOnAccount: total > 1_000 ? total * 0.5 : 0,
-    usesTradingAllowance: tradingAllowance > expenses
+    usesTradingAllowance: useTradingAllowance
   )
 }
 
@@ -1065,10 +1100,6 @@ struct NativeGlassCard<Content: View>: View {
       .padding(contentPadding)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-          .stroke(.white.opacity(0.68), lineWidth: 1)
-      )
       .shadow(color: .black.opacity(0.07), radius: 22, y: 12)
   }
 }
@@ -1165,10 +1196,6 @@ struct NativeFreeTextDropdown: View {
       .padding(.trailing, 8)
       .padding(.vertical, 8)
       .background(OkkleColor.fieldBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-          .stroke((focused || expanded) ? OkkleColor.brand.opacity(0.45) : OkkleColor.line, lineWidth: 1)
-      )
 
       if (focused || expanded) && !matches.isEmpty {
         VStack(spacing: 0) {
@@ -1195,10 +1222,6 @@ struct NativeFreeTextDropdown: View {
           }
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .stroke(OkkleColor.line, lineWidth: 1)
-        )
       }
     }
   }
@@ -2220,10 +2243,6 @@ private struct NativeTripDetailSheet: View {
             NativeRouteMapView(points: trip.points)
               .frame(height: 280)
               .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-              .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                  .stroke(.white.opacity(0.68), lineWidth: 1)
-              )
           }
 
           HStack(spacing: 12) {
@@ -3076,10 +3095,6 @@ private struct NativeHeatFilterBar: View {
               .padding(.horizontal, 14)
               .padding(.vertical, 9)
               .background(selection == filter ? OkkleColor.brand : OkkleColor.fieldBackground, in: Capsule())
-              .overlay(
-                Capsule()
-                  .stroke(selection == filter ? OkkleColor.brand : OkkleColor.line, lineWidth: 1)
-              )
           }
           .buttonStyle(.plain)
         }
@@ -3109,10 +3124,6 @@ private struct NativeHeatMapView: View {
               .fill(nativeHeatColor(bubble.normalized).opacity(0.42))
               .frame(width: bubble.diameter, height: bubble.diameter)
               .blur(radius: 5)
-              .overlay(
-                Circle()
-                  .stroke(Color.white.opacity(0.20), lineWidth: 1)
-              )
               .allowsHitTesting(false)
           }
         }
@@ -4732,7 +4743,7 @@ struct NativeTaxSummaryView: View {
           Label("Estimated tax due", systemImage: "shield.lefthalf.filled")
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(OkkleColor.brandDark)
-          Text(gbp(tax.totalDue, whole: true))
+          Text(headlineGbp(tax.totalDue))
             .font(.system(size: 52, weight: .heavy, design: .rounded))
           Text("Estimate only, not tax advice. Built from your logged earnings, expenses and mileage.")
             .font(.system(size: 14, weight: .medium))
@@ -4741,16 +4752,18 @@ struct NativeTaxSummaryView: View {
       }
 
       HStack(spacing: 12) {
-        NativeMetricTile(title: "Turnover", value: gbp(tax.turnover, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
-        NativeMetricTile(title: "Expenses", value: gbp(tax.expenses, whole: true), symbol: "minus.circle.fill", color: OkkleColor.amber)
+        NativeMetricTile(title: "Turnover", value: headlineGbp(tax.turnover), symbol: "sterlingsign.circle.fill", color: .green)
+        NativeMetricTile(title: "Logged expenses", value: headlineGbp(tax.expenses), symbol: "minus.circle.fill", color: OkkleColor.amber)
       }
 
       NativeGlassCard {
         VStack(spacing: 12) {
-          taxRow("Profit", gbp(tax.profit, whole: true))
-          taxRow("Income tax", gbp(tax.incomeTax, whole: true))
-          taxRow("Class 4 NIC", gbp(tax.class4, whole: true))
-          taxRow("Payment on account", gbp(tax.paymentOnAccount, whole: true))
+          taxRow("Business profit", headlineGbp(tax.businessProfit))
+          taxRow("Deduction applied", headlineGbp(tax.deductionApplied))
+          taxRow("Taxable profit", headlineGbp(tax.profit))
+          taxRow("Income tax", headlineGbp(tax.incomeTax))
+          taxRow("Class 4 NIC", headlineGbp(tax.class4))
+          taxRow("Payment on account", headlineGbp(tax.paymentOnAccount))
           taxRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
         }
       }
