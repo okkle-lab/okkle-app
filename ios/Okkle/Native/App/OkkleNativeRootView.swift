@@ -28,6 +28,10 @@ struct OkkleNativeRootView: View {
     }
     .environmentObject(store)
     .tint(OkkleColor.brand)
+    .onAppear(perform: routeWidgetTripRequestIfNeeded)
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+      routeWidgetTripRequestIfNeeded()
+    }
   }
 
   private var appTabs: some View {
@@ -47,6 +51,13 @@ struct OkkleNativeRootView: View {
       NativeRecordsView()
         .tabItem { Label("Records", systemImage: "archivebox") }
         .tag(NativeTab.records)
+    }
+  }
+
+  private func routeWidgetTripRequestIfNeeded() {
+    guard store.settings.hasCompletedOnboarding else { return }
+    if NativeTripWidgetStore.hasPendingAction {
+      selectedTab = .trip
     }
   }
 }

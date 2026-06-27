@@ -147,6 +147,10 @@ struct NativeTripView: View {
     }
     .onAppear {
       selectedVehicle = store.settings.defaultVehicle
+      applyWidgetRequestIfNeeded()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+      applyWidgetRequestIfNeeded()
     }
   }
 
@@ -251,6 +255,25 @@ struct NativeTripView: View {
 
   private func finishTripForReview() {
     completedTrip = session.end(store: store)
+  }
+
+  private func applyWidgetRequestIfNeeded() {
+    guard let action = NativeTripWidgetStore.consumePendingAction() else { return }
+    switch action {
+    case .start:
+      if session.phase == .setup || session.phase == .summary {
+        selectedVehicle = store.settings.defaultVehicle
+        session.start(vehicle: selectedVehicle)
+      } else if session.phase == .paused {
+        session.resume()
+      }
+    case .end:
+      if session.phase == .live || session.phase == .paused {
+        finishTripForReview()
+      } else {
+        NativeTripWidgetStore.markTripEnded()
+      }
+    }
   }
 
   private func elapsedLabel(_ seconds: TimeInterval) -> String {

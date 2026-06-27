@@ -51,6 +51,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     }
     guard status == .authorizedAlways || status == .authorizedWhenInUse else {
       permissionMessage = "Location permission is needed to track trip distance."
+      NativeTripWidgetStore.markTripEnded()
       return
     }
     beginTracking()
@@ -64,6 +65,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     lastRoutePointLocation = nil
     startedAt = Date()
     phase = .live
+    NativeTripWidgetStore.markTripStarted(startedAt: startedAt ?? Date())
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
@@ -73,6 +75,9 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   func pause() {
     guard phase == .live else { return }
     phase = .paused
+    if let startedAt {
+      NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
+    }
     manager.stopUpdatingLocation()
     setBackgroundTrackingEnabled(false)
     stopTimer()
@@ -81,6 +86,9 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   func resume() {
     guard phase == .paused else { return }
     phase = .live
+    if let startedAt {
+      NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
+    }
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
@@ -89,6 +97,9 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   func continueTrackingAfterEndReview() {
     guard phase == .summary else { return }
     phase = .live
+    if let startedAt {
+      NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
+    }
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
@@ -101,6 +112,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     setBackgroundTrackingEnabled(false)
     stopTimer()
     phase = .summary
+    NativeTripWidgetStore.markTripEnded()
     if let lastLocation {
       appendRoutePoint(for: lastLocation, force: true)
     }
@@ -127,6 +139,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     lastRoutePointLocation = nil
     startedAt = nil
     phase = .setup
+    NativeTripWidgetStore.markTripEnded()
   }
 
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -141,6 +154,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     } else if status == .denied || status == .restricted {
       waitingForAuthorization = false
       permissionMessage = "Location permission is needed to track trip distance."
+      NativeTripWidgetStore.markTripEnded()
     }
   }
 
