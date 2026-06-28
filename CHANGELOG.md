@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (39) - 2026-06-28 (Diagnostics for the crash + calendar issue)
+
+- **The "Something went wrong" screen now shows the actual error** (message + stack) and saves it, so a crash on a real device can be screenshotted and fixed — release builds otherwise hide the cause.
+- **Calendar "Add" now reports why it failed** — the alert includes a short `[diag: …]` reason (permission status / exception / no writable calendar) so we can see why the Calendars toggle isn't appearing in Settings. Temporary diagnostic.
+
 ## 0.3 (38) - 2026-06-28 (Live tracking notification)
 
 - **The tracking notification now shows live miles.** While a trip records, the lock-screen/notification updates (quietly, about once a minute) with your distance and tax back so far — a clear sign Okkle is still working in the background. (A full Dynamic Island Live Activity needs a native widget extension — noted as a follow-up.)

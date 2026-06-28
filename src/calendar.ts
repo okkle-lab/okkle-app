@@ -1,7 +1,17 @@
 import * as Calendar from 'expo-calendar';
 import { Platform } from 'react-native';
+import { kvSet } from './db';
 
 export type CalendarResult = 'added' | 'denied' | 'error';
+
+// Diagnostic: the reason the last calendar attempt failed, surfaced in the
+// "couldn't add it" alert and persisted, so a real-device failure can be seen.
+let lastReason = '';
+export function getLastCalendarError(): string { return lastReason; }
+function note(reason: string) {
+  lastReason = reason;
+  try { kvSet('last_calendar_error', `${new Date().toISOString()} ${reason}`); } catch { /* ignore */ }
+}
 
 // Add a tax deadline to the user's device calendar, with a reminder a week ahead.
 // Returns 'added' on success, 'denied' when calendar access isn't granted (so the
@@ -9,14 +19,16 @@ export type CalendarResult = 'added' | 'denied' | 'error';
 // we never see the calendar.
 export async function addDeadlineToCalendar(title: string, date: Date, notes?: string): Promise<CalendarResult> {
   try {
-    // Okkle only ever *writes* events, never reads. Prefer the lighter "write-only"
-    // calendar access where the installed expo-calendar build exposes it (friendlier
-    // iOS prompt); otherwise fall back to the standard request.
-    const requestAccess = (Calendar as any).requestCalendarWriteOnlyAccessAsync
+    const hasWriteOnly = typeof (Calendar as any).requestCalendarWriteOnlyAccessAsync === 'function';
+    const requestAccess = hasWriteOnly
       ? (Calendar as any).requestCalendarWriteOnlyAccessAsync.bind(Calendar)
       : Calendar.requestCalendarPermissionsAsync.bind(Calendar);
-    const { status } = await requestAccess();
-    if (status !== 'granted') return 'denied';
+    const res = await requestAccess();
+    const status = res?.status;
+    if (status !== 'granted') {
+      note(`perm not granted (status=${status}, canAskAgain=${res?.canAskAgain}, writeOnlyApi=${hasWriteOnly})`);
+      return 'denied';
+    }
 
     // Find a calendar we can write to. The default-for-new-events calendar is the
     // natural choice, but it can be missing (e.g. no account set up), so fall back
@@ -26,15 +38,19 @@ export async function addDeadlineToCalendar(title: string, date: Date, notes?: s
       try {
         const def = await Calendar.getDefaultCalendarAsync();
         calendarId = def?.id;
-      } catch {
-        // getDefaultCalendarAsync can throw under limited access — fall through.
+      } catch (e) {
+        note(`getDefaultCalendar threw: ${String((e as any)?.message ?? e)}`);
       }
     }
     if (!calendarId) {
-      const cals = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-      calendarId = (cals.find(c => c.allowsModifications) ?? cals[0])?.id;
+      try {
+        const cals = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+        calendarId = (cals.find(c => c.allowsModifications) ?? cals[0])?.id;
+      } catch (e) {
+        note(`getCalendars threw: ${String((e as any)?.message ?? e)}`);
+      }
     }
-    if (!calendarId) return 'error';
+    if (!calendarId) { note('no writable calendar found'); return 'error'; }
 
     const start = new Date(date); start.setHours(9, 0, 0, 0);
     const end = new Date(date); end.setHours(9, 30, 0, 0);
@@ -45,8 +61,10 @@ export async function addDeadlineToCalendar(title: string, date: Date, notes?: s
       notes,
       alarms: [{ relativeOffset: -60 * 24 * 7 }], // remind 7 days before
     });
+    note('added ok');
     return 'added';
-  } catch {
+  } catch (e) {
+    note(`exception: ${String((e as any)?.message ?? e)}`);
     return 'error';
   }
 }

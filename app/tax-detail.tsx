@@ -4,7 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, ModalHeader } from '../src/components';
-import { addDeadlineToCalendar } from '../src/calendar';
+import { addDeadlineToCalendar, getLastCalendarError } from '../src/calendar';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries, kvGet, kvGetNum, type QuarterSummary,
@@ -88,13 +88,13 @@ export default function TaxDetail() {
     } else if (res === 'denied') {
       Alert.alert(
         'Allow calendar access',
-        'Tap Open Settings, then turn on Calendars to add this deadline.',
+        `Tap Open Settings, then turn on Calendars to add this deadline.\n\n[diag: ${getLastCalendarError()}]`,
         [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
       );
     } else {
       Alert.alert(
         'Couldn’t add it',
-        'Tap Open Settings, then turn on Calendars and try again.',
+        `Tap Open Settings, then turn on Calendars and try again.\n\n[diag: ${getLastCalendarError()}]`,
         [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
       );
     }
