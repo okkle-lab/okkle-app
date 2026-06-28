@@ -17,13 +17,14 @@
         "NSPhotoLibraryUsageDescription": "Okkle saves receipts to your photo library.",
         "NSCameraUsageDescription": "Okkle lets you photograph receipts and pay statements.",
         "NSCalendarsUsageDescription": "Okkle adds your HMRC tax deadlines to your calendar so you don't miss them.",
+        "NSCalendarsWriteOnlyAccessUsageDescription": "Okkle adds your HMRC tax deadlines to your calendar so you don't miss them.",
         "NSMotionUsageDescription": "Okkle uses motion to tell when you've started driving, so it can offer to track the trip.",
         "UIBackgroundModes": [
           "location"
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "34"
+      "buildNumber": "35"
     },
     "android": {
       "icon": "./assets/icon.png",

@@ -51,9 +51,9 @@ export default function KeyDatesScreen() {
                     if (res === 'added') {
                       Alert.alert('Added to your calendar', `${d.title} — ${next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.`);
                     } else if (res === 'denied') {
-                      Alert.alert('Allow calendar access', 'Okkle needs access to your calendar to add this deadline. You can turn it on in Settings.', [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
+                      Alert.alert('Allow calendar access', 'Tap Open Settings, then turn on Calendars to add this deadline.', [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
                     } else {
-                      Alert.alert('Couldn’t add it', 'Something went wrong adding this to your calendar. Please try again.');
+                      Alert.alert('Couldn’t add it', 'Tap Open Settings, then turn on Calendars and try again.', [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
                     }
                   }}
                   style={s.calBtn}

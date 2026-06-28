@@ -9,14 +9,28 @@ export type CalendarResult = 'added' | 'denied' | 'error';
 // we never see the calendar.
 export async function addDeadlineToCalendar(title: string, date: Date, notes?: string): Promise<CalendarResult> {
   try {
-    const { status } = await Calendar.requestCalendarPermissionsAsync();
+    // Okkle only ever *writes* events, never reads. Prefer the lighter "write-only"
+    // calendar access where the installed expo-calendar build exposes it (friendlier
+    // iOS prompt); otherwise fall back to the standard request.
+    const requestAccess = (Calendar as any).requestCalendarWriteOnlyAccessAsync
+      ? (Calendar as any).requestCalendarWriteOnlyAccessAsync.bind(Calendar)
+      : Calendar.requestCalendarPermissionsAsync.bind(Calendar);
+    const { status } = await requestAccess();
     if (status !== 'granted') return 'denied';
 
+    // Find a calendar we can write to. The default-for-new-events calendar is the
+    // natural choice, but it can be missing (e.g. no account set up), so fall back
+    // to the first modifiable calendar before giving up.
     let calendarId: string | undefined;
     if (Platform.OS === 'ios') {
-      const def = await Calendar.getDefaultCalendarAsync();
-      calendarId = def?.id;
-    } else {
+      try {
+        const def = await Calendar.getDefaultCalendarAsync();
+        calendarId = def?.id;
+      } catch {
+        // getDefaultCalendarAsync can throw under limited access — fall through.
+      }
+    }
+    if (!calendarId) {
       const cals = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
       calendarId = (cals.find(c => c.allowsModifications) ?? cals[0])?.id;
     }

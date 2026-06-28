@@ -11,6 +11,13 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
+## 0.3 (35) - 2026-06-28 (Calendar add reliability)
+
+- **"Open Settings" now appears on every calendar failure, not just a clean "denied".** On iOS, restricted/write-only access can surface as a hard error rather than a tidy "denied"; that case used to leave you at an OK-only dead end. Both the Deadlines and Key tax dates screens now always offer "Open Settings".
+- **Clearer prompt copy.** The dialog now says "Tap Open Settings, then turn on Calendars" so there's no hunting — Open Settings lands on Okkle's own permission page where the Calendars toggle lives.
+- **More reliable event creation.** Okkle now falls back to the first writable calendar when there's no default-for-new-events calendar (or it can't be read under limited access), instead of giving up.
+- **Lighter permission where supported.** Okkle only ever *adds* events, so it requests write-only calendar access on builds that expose it (with the matching `NSCalendarsWriteOnlyAccessUsageDescription` key), falling back to standard access otherwise.
+
 ## 0.3 (34) - 2026-06-28 (Calendar permission escape hatch)
 
 - **"Add to calendar" now offers Open Settings if access is denied.** Previously if calendar access was off, tapping Add just showed "couldn't add it" and left you stuck (iOS won't re-prompt once denied). Now it shows an "Open Settings" button to enable it directly.
