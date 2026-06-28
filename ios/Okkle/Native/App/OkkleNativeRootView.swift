@@ -32,6 +32,9 @@ struct OkkleNativeRootView: View {
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
     }
+    .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
+      routeWidgetTripRequestIfNeeded()
+    }
   }
 
   private var appTabs: some View {

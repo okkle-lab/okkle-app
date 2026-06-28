@@ -8,6 +8,9 @@ import UIKit
 import Vision
 struct NativeHomeView: View {
   @EnvironmentObject private var store: OkkleStore
+  @State private var showMedals = false
+  @State private var medalAlert: NativeMedalAchievement?
+  @State private var seenMedalKeys = Set<String>()
 
   var body: some View {
     NativeScreen(
@@ -49,6 +52,9 @@ struct NativeHomeView: View {
           progressRow("First 10k mileage band", value: min(1, store.yearMiles / 10_000), trailing: "\(Int(min(10_000, store.yearMiles)).formatted()) / 10,000 mi")
           progressRow("Records logged", value: min(1, Double(store.records.count) / 24), trailing: "\(store.records.count) entries")
           progressRow("Trips tracked", value: min(1, Double(store.trips.count) / 20), trailing: "\(store.trips.count) trips")
+          NativeMedalPreviewCard(achievements: NativeMedalEngine.achievements(store: store)) {
+            showMedals = true
+          }
         }
       }
 
@@ -67,6 +73,32 @@ struct NativeHomeView: View {
           }
         }
       }
+    }
+    .sheet(isPresented: $showMedals) {
+      NativeMedalsView()
+        .environmentObject(store)
+    }
+    .overlay {
+      if let medalAlert {
+        NativeMedalUnlockedOverlay(achievement: medalAlert) {
+          withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            self.medalAlert = nil
+          }
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            showNewMedalIfNeeded()
+          }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+      }
+    }
+    .onAppear {
+      prepareMedalAlerts()
+    }
+    .onChange(of: store.records) { _ in
+      showNewMedalIfNeeded()
+    }
+    .onChange(of: store.trips) { _ in
+      showNewMedalIfNeeded()
     }
   }
 
@@ -95,7 +127,35 @@ struct NativeHomeView: View {
     let end = Calendar.current.component(.year, from: interval.end)
     return "\(start)/\(String(end).suffix(2))"
   }
+
+  private func prepareMedalAlerts() {
+    let unlockedKeys = Set(NativeMedalEngine.achievements(store: store).filter(\.unlocked).map(\.key))
+    if let savedKeys = UserDefaults.standard.array(forKey: nativeSeenMedalsKey) as? [String] {
+      seenMedalKeys = Set(savedKeys)
+      showNewMedalIfNeeded()
+    } else {
+      seenMedalKeys = unlockedKeys
+      saveSeenMedalKeys()
+    }
+  }
+
+  private func showNewMedalIfNeeded() {
+    guard medalAlert == nil else { return }
+    let unlocked = NativeMedalEngine.achievements(store: store).filter(\.unlocked)
+    guard let achievement = unlocked.first(where: { !seenMedalKeys.contains($0.key) }) else { return }
+    seenMedalKeys.insert(achievement.key)
+    saveSeenMedalKeys()
+    withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+      medalAlert = achievement
+    }
+  }
+
+  private func saveSeenMedalKeys() {
+    UserDefaults.standard.set(Array(seenMedalKeys).sorted(), forKey: nativeSeenMedalsKey)
+  }
 }
+
+let nativeSeenMedalsKey = "uk.okkle.native.medals.seen.v1"
 
 let nativeExpenseCategories = [
   "Fuel",

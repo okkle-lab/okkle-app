@@ -107,6 +107,7 @@ final class OkkleStore: ObservableObject {
     records = []
     trips = []
     isLoading = false
+    UserDefaults.standard.removeObject(forKey: nativeSeenMedalsKey)
     save()
   }
 

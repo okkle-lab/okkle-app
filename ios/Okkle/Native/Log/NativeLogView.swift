@@ -62,9 +62,12 @@ struct NativeLogView: View {
           }
 
           if kind == .income {
-            Picker("Platform", selection: $platform) {
-              ForEach(store.settings.platforms, id: \.self) { Text($0).tag($0) }
-            }
+            NativeFreeTextDropdown(
+              title: "Platform",
+              placeholder: "Choose or type a delivery service",
+              options: platformOptions,
+              text: $platform
+            )
           }
 
           if kind == .expense {
@@ -132,10 +135,17 @@ struct NativeLogView: View {
     case .mileage:
       return Double(distance) ?? 0 > 0
     case .income:
-      return Double(amount) ?? 0 > 0
+      return Double(amount) ?? 0 > 0 && !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .expense:
       return (Double(amount) ?? 0 > 0) && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+  }
+
+  private var platformOptions: [String] {
+    let recent = store.records
+      .filter { $0.kind == .income }
+      .compactMap { $0.platform }
+    return uniqueStrings([platform] + store.settings.platforms + recent)
   }
 
   private var categoryOptions: [String] {
@@ -283,6 +293,7 @@ struct NativeLogView: View {
   private func saveRecord() {
     let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanPlatform = platform.trimmingCharacters(in: .whitespacesAndNewlines)
     let bounds = store.periodBounds(for: date, period: period)
     let record: NativeRecord
     switch kind {
@@ -306,7 +317,7 @@ struct NativeLogView: View {
     case .income:
       record = NativeRecord(
         kind: .income,
-        platform: platform,
+        platform: cleanPlatform,
         vehicle: nil,
         amount: Double(amount) ?? 0,
         miles: nil,
@@ -319,6 +330,7 @@ struct NativeLogView: View {
         periodEnd: bounds.end,
         receiptImageData: receiptData
       )
+      store.settings.platforms = uniqueStrings(store.settings.platforms + [cleanPlatform])
     case .expense:
       record = NativeRecord(
         kind: .expense,

@@ -346,11 +346,12 @@ struct NativeRecordEditSheet: View {
             TextField("Amount", text: $amountText)
               .keyboardType(.decimalPad)
               .focused($focusedField, equals: .amount)
-            Picker("Platform", selection: $platform) {
-              ForEach(platformOptions, id: \.self) { item in
-                Text(item).tag(item)
-              }
-            }
+            NativeFreeTextDropdown(
+              title: "Platform",
+              placeholder: "Choose or type a delivery service",
+              options: platformOptions,
+              text: $platform
+            )
           case .expense:
             TextField("Amount", text: $amountText)
               .keyboardType(.decimalPad)
@@ -428,7 +429,10 @@ struct NativeRecordEditSheet: View {
   }
 
   private var platformOptions: [String] {
-    uniqueStrings([platform] + store.settings.platforms)
+    let recent = store.records
+      .filter { $0.kind == .income }
+      .compactMap { $0.platform }
+    return uniqueStrings([platform] + store.settings.platforms + recent)
   }
 
   private var categoryOptions: [String] {
@@ -460,7 +464,7 @@ struct NativeRecordEditSheet: View {
   private var canSave: Bool {
     switch record.kind {
     case .income:
-      return amountValue > 0
+      return amountValue > 0 && !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .expense:
       return amountValue > 0 && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .mileage:
@@ -484,8 +488,10 @@ struct NativeRecordEditSheet: View {
 
     switch record.kind {
     case .income:
-      updated.platform = platform
+      let cleanPlatform = platform.trimmingCharacters(in: .whitespacesAndNewlines)
+      updated.platform = cleanPlatform
       updated.amount = amountValue
+      store.settings.platforms = uniqueStrings(store.settings.platforms + [cleanPlatform])
     case .expense:
       let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
       let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)

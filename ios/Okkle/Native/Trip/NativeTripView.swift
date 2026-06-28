@@ -71,6 +71,9 @@ struct NativeTripView: View {
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       applyWidgetRequestIfNeeded()
     }
+    .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
+      applyWidgetRequestIfNeeded()
+    }
     .toolbar(shouldShowTrackingMap ? .hidden : .visible, for: .tabBar)
   }
 

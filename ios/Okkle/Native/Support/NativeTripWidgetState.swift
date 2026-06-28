@@ -28,6 +28,8 @@ struct NativeTripWidgetState: Codable, Equatable {
 
 enum NativeTripWidgetStore {
   static let appGroupID = "group.okklelab.app"
+  static let urlScheme = "okkle"
+  static let widgetURLHost = "widget-trip"
 
   private static let stateKey = "nativeTripWidgetState"
 
@@ -74,6 +76,25 @@ enum NativeTripWidgetStore {
     write(state)
   }
 
+  static func request(_ action: NativeTripWidgetAction) {
+    switch action {
+    case .start:
+      requestStartFromWidget()
+    case .end:
+      requestEndFromWidget()
+    }
+  }
+
+  static func widgetURL(for action: NativeTripWidgetAction) -> URL {
+    URL(string: "\(urlScheme)://\(widgetURLHost)/\(action.rawValue)")!
+  }
+
+  static func requestFromWidgetURL(_ url: URL) -> Bool {
+    guard let action = action(from: url) else { return false }
+    request(action)
+    return true
+  }
+
   static func consumePendingAction() -> NativeTripWidgetAction? {
     var state = read()
     guard let action = state.pendingAction else { return nil }
@@ -86,6 +107,15 @@ enum NativeTripWidgetStore {
 
   static var hasPendingAction: Bool {
     read().pendingAction != nil
+  }
+
+  private static func action(from url: URL) -> NativeTripWidgetAction? {
+    guard url.scheme?.caseInsensitiveCompare(urlScheme) == .orderedSame,
+          url.host?.caseInsensitiveCompare(widgetURLHost) == .orderedSame else {
+      return nil
+    }
+    let actionName = url.pathComponents.dropFirst().first
+    return actionName.flatMap(NativeTripWidgetAction.init(rawValue:))
   }
 
   private static var defaults: UserDefaults {
@@ -103,4 +133,8 @@ enum NativeTripWidgetStore {
     WidgetCenter.shared.reloadAllTimelines()
     #endif
   }
+}
+
+extension Notification.Name {
+  static let nativeTripWidgetActionReceived = Notification.Name("nativeTripWidgetActionReceived")
 }

@@ -48,6 +48,7 @@
 		F6BD210B4BDE81D801BAAADC /* NativeOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E4AD8D685F34F5071DFB016 /* NativeOnboardingView.swift */; };
 		D3A9F6319C794EBD7BF510E2 /* NativeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B488443B25BC5ED20A3CBD6C /* NativeComponents.swift */; };
 		F8F483635DF782492C3978B9 /* NativeHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */; };
+		5AD9A5A2C9E34D75A74B0101 /* NativeMedalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */; };
 		67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D16F24230562870410B37EC /* NativeLogView.swift */; };
 		A34D4BFD69A2170618621603 /* NativeTripSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */; };
 		FE6D4353236B1159D9C339DF /* NativeTripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A407DAF5733F81FA8B3EFCD /* NativeTripView.swift */; };
@@ -83,6 +84,7 @@
 		4E4AD8D685F34F5071DFB016 /* NativeOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOnboardingView.swift; sourceTree = "<group>"; };
 		B488443B25BC5ED20A3CBD6C /* NativeComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeComponents.swift; sourceTree = "<group>"; };
 		38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHomeView.swift; sourceTree = "<group>"; };
+		5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMedalsView.swift; sourceTree = "<group>"; };
 		1D16F24230562870410B37EC /* NativeLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogView.swift; sourceTree = "<group>"; };
 		9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSession.swift; sourceTree = "<group>"; };
 		1A407DAF5733F81FA8B3EFCD /* NativeTripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripView.swift; sourceTree = "<group>"; };
@@ -201,6 +203,7 @@
 			isa = PBXGroup;
 			children = (
 				38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */,
+				5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -490,6 +493,7 @@
 				D3A9F6319C794EBD7BF510E2 /* NativeComponents.swift in Sources */,
 				B5E90F322D5F4D43B37C9B02 /* NativeTripWidgetState.swift in Sources */,
 				F8F483635DF782492C3978B9 /* NativeHomeView.swift in Sources */,
+				5AD9A5A2C9E34D75A74B0101 /* NativeMedalsView.swift in Sources */,
 				67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */,
 				A34D4BFD69A2170618621603 /* NativeTripSession.swift in Sources */,
 				FE6D4353236B1159D9C339DF /* NativeTripView.swift in Sources */,

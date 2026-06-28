@@ -14,4 +14,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     window?.makeKeyAndVisible()
     return true
   }
+
+  func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    guard NativeTripWidgetStore.requestFromWidgetURL(url) else { return false }
+    NotificationCenter.default.post(name: .nativeTripWidgetActionReceived, object: nil)
+    return true
+  }
 }

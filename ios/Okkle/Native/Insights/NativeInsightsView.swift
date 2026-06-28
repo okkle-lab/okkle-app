@@ -47,156 +47,51 @@ enum NativeTimeFilter: String, CaseIterable, Identifiable {
   }
 }
 
-struct NativeHeatPoint: Identifiable, Equatable {
-  let id: String
-  let latitude: Double
-  let longitude: Double
-  let weight: Double
+struct NativeHeatSummary {
+  let tripCount: Int
+  let miles: Double
+  let deduction: Double
 
-  var coordinate: CLLocationCoordinate2D {
-    CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+  var hasData: Bool {
+    tripCount > 0
   }
 }
 
-struct NativeHeatBubble: Identifiable {
-  let id: String
-  let latitude: Double
-  let longitude: Double
-  let weight: Double
-  let normalized: Double
-
-  var coordinate: CLLocationCoordinate2D {
-    CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-  }
-
-  var diameter: CGFloat {
-    CGFloat(34 + (normalized * 54))
+func nativeHeatTrips(from trips: [NativeTrip], filter: NativeTimeFilter) -> [NativeTrip] {
+  trips.filter { trip in
+    filter.includes(trip.startedAt) && trip.points.count > 1
   }
 }
 
-func nativeHeatPoints(from trips: [NativeTrip], filter: NativeTimeFilter) -> [NativeHeatPoint] {
-  var points: [NativeHeatPoint] = []
-  for trip in trips where filter.includes(trip.startedAt) {
-    guard !trip.points.isEmpty else { continue }
-    let stride = max(1, trip.points.count / 160)
-    let sampled = trip.points.enumerated().filter { $0.offset % stride == 0 }
-    let weight = max(0.35, trip.miles / Double(max(sampled.count, 1)))
-    for item in sampled {
-      points.append(NativeHeatPoint(
-        id: "\(trip.id.uuidString)-\(item.offset)",
-        latitude: item.element.latitude,
-        longitude: item.element.longitude,
-        weight: weight
-      ))
-    }
-  }
-  return points
-}
-
-func nativeDistinctCoordinateCount(_ points: [NativeHeatPoint]) -> Int {
-  Set(points.map { "\(String(format: "%.3f", $0.latitude)),\(String(format: "%.3f", $0.longitude))" }).count
-}
-
-func nativeHeatRegion(for points: [NativeHeatPoint]) -> MKCoordinateRegion {
-  guard !points.isEmpty else {
-    return MKCoordinateRegion(
-      center: CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276),
-      span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-    )
-  }
-
-  var minLat = Double.infinity
-  var maxLat = -Double.infinity
-  var minLng = Double.infinity
-  var maxLng = -Double.infinity
-
-  for point in points {
-    minLat = min(minLat, point.latitude)
-    maxLat = max(maxLat, point.latitude)
-    minLng = min(minLng, point.longitude)
-    maxLng = max(maxLng, point.longitude)
-  }
-
-  return MKCoordinateRegion(
-    center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLng + maxLng) / 2),
-    span: MKCoordinateSpan(
-      latitudeDelta: max((maxLat - minLat) * 1.7, 0.012),
-      longitudeDelta: max((maxLng - minLng) * 1.7, 0.012)
-    )
+func nativeHeatSummary(from trips: [NativeTrip], filter: NativeTimeFilter) -> NativeHeatSummary {
+  let filteredTrips = nativeHeatTrips(from: trips, filter: filter)
+  return NativeHeatSummary(
+    tripCount: filteredTrips.count,
+    miles: filteredTrips.reduce(0) { $0 + $1.miles },
+    deduction: filteredTrips.reduce(0) { $0 + $1.deduction }
   )
 }
 
-func nativeHeatBubbles(from points: [NativeHeatPoint]) -> [NativeHeatBubble] {
-  guard !points.isEmpty else { return [] }
-
-  var minLat = Double.infinity
-  var maxLat = -Double.infinity
-  var minLng = Double.infinity
-  var maxLng = -Double.infinity
-
-  for point in points {
-    minLat = min(minLat, point.latitude)
-    maxLat = max(maxLat, point.latitude)
-    minLng = min(minLng, point.longitude)
-    maxLng = max(maxLng, point.longitude)
-  }
-
-  let cols = 18
-  let rows = 18
-  let latSpan = max(maxLat - minLat, 0.0001)
-  let lngSpan = max(maxLng - minLng, 0.0001)
-
-  struct Accumulator {
-    var latitude = 0.0
-    var longitude = 0.0
-    var weight = 0.0
-  }
-
-  var buckets: [String: Accumulator] = [:]
-  for point in points {
-    let col = min(cols - 1, max(0, Int(((point.longitude - minLng) / lngSpan) * Double(cols))))
-    let row = min(rows - 1, max(0, Int(((maxLat - point.latitude) / latSpan) * Double(rows))))
-    let key = "\(row)-\(col)"
-    var bucket = buckets[key] ?? Accumulator()
-    bucket.latitude += point.latitude * point.weight
-    bucket.longitude += point.longitude * point.weight
-    bucket.weight += point.weight
-    buckets[key] = bucket
-  }
-
-  let maxWeight = max(buckets.values.map(\.weight).max() ?? 1, 1)
-  return buckets.map { key, bucket in
-    let safeWeight = max(bucket.weight, 0.0001)
-    return NativeHeatBubble(
-      id: key,
-      latitude: bucket.latitude / safeWeight,
-      longitude: bucket.longitude / safeWeight,
-      weight: bucket.weight,
-      normalized: min(1, bucket.weight / maxWeight)
-    )
-  }
-  .sorted { $0.weight > $1.weight }
-  .prefix(90)
-  .map { $0 }
-}
-
-func nativeHeatColor(_ value: Double) -> Color {
-  switch value {
-  case ..<0.2:
-    return Color(red: 0.61, green: 0.89, blue: 0.82)
-  case ..<0.4:
-    return Color(red: 0.37, green: 0.82, blue: 0.73)
-  case ..<0.6:
-    return Color(red: 0.91, green: 0.78, blue: 0.42)
-  case ..<0.8:
-    return Color(red: 0.88, green: 0.59, blue: 0.12)
-  default:
-    return Color(red: 0.89, green: 0.38, blue: 0.29)
-  }
+func nativeStrongestHeatFilter(from trips: [NativeTrip]) -> NativeTimeFilter? {
+  NativeTimeFilter.allCases
+    .filter { $0 != .all }
+    .map { filter in
+      (filter: filter, summary: nativeHeatSummary(from: trips, filter: filter))
+    }
+    .filter { $0.summary.hasData }
+    .max {
+      if $0.summary.miles == $1.summary.miles {
+        return $0.summary.tripCount < $1.summary.tripCount
+      }
+      return $0.summary.miles < $1.summary.miles
+    }?
+    .filter
 }
 
 struct NativeHeatMapCard: View {
-  let points: [NativeHeatPoint]
+  let trips: [NativeTrip]
+  let summary: NativeHeatSummary
+  let strongestFilter: NativeTimeFilter?
   let showsFilters: Bool
   @Binding var filter: NativeTimeFilter
 
@@ -216,20 +111,69 @@ struct NativeHeatMapCard: View {
         Text("See where your work clusters")
           .font(.system(size: 26, weight: .bold, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
-        Text("Okkle maps your saved GPS trips so you can spot the areas you keep returning to.")
+        Text("Okkle shows the routes you have actually tracked. Repeated routes become stronger, while the map stays readable.")
           .font(.system(size: 15, weight: .medium))
           .foregroundStyle(OkkleColor.muted)
+        if summary.hasData {
+          NativeHeatStatsRow(summary: summary)
+          if filter == .all, let strongestFilter {
+            Label("Most tracked mileage is currently around \(strongestFilter.label.lowercased()).", systemImage: "clock.fill")
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.brandDark)
+              .padding(.horizontal, 12)
+              .padding(.vertical, 10)
+              .background(OkkleColor.brand.opacity(0.11), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+          }
+        }
         if showsFilters {
           NativeHeatFilterBar(selection: $filter)
         }
-        NativeHeatMapView(points: points)
+        NativeHeatRouteMapView(trips: trips)
         NativeHeatLegend()
-        Text("Built on-device from your trip breadcrumbs.")
+        Text("Built on-device from your tracked routes.")
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
           .fixedSize(horizontal: false, vertical: true)
       }
     }
+  }
+}
+
+struct NativeHeatStatsRow: View {
+  let summary: NativeHeatSummary
+
+  var body: some View {
+    HStack(spacing: 10) {
+      NativeHeatStatChip(title: "Trips", value: "\(summary.tripCount)", symbol: "location.north.line.fill", color: OkkleColor.brand)
+      NativeHeatStatChip(title: "Miles", value: miles(summary.miles), symbol: "road.lanes", color: OkkleColor.blue)
+      NativeHeatStatChip(title: "Deduction", value: gbp(summary.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
+    }
+  }
+}
+
+struct NativeHeatStatChip: View {
+  let title: String
+  let value: String
+  let symbol: String
+  let color: Color
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      Image(systemName: symbol)
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(color)
+      Text(value)
+        .font(.system(size: 17, weight: .bold, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+      Text(title)
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(12)
+    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
   }
 }
 
@@ -257,52 +201,13 @@ struct NativeHeatFilterBar: View {
   }
 }
 
-struct NativeHeatMapView: View {
-  let points: [NativeHeatPoint]
-  @State private var region = nativeHeatRegion(for: [])
-
-  private var hasEnoughPoints: Bool {
-    points.count >= 2 && nativeDistinctCoordinateCount(points) >= 2
-  }
-
-  private var signature: String {
-    "\(points.count)-\(points.first?.id ?? "none")-\(points.last?.id ?? "none")"
-  }
-
-  var body: some View {
-    Group {
-      if hasEnoughPoints {
-        Map(coordinateRegion: $region, annotationItems: nativeHeatBubbles(from: points)) { bubble in
-          MapAnnotation(coordinate: bubble.coordinate) {
-            Circle()
-              .fill(nativeHeatColor(bubble.normalized).opacity(0.42))
-              .frame(width: bubble.diameter, height: bubble.diameter)
-              .blur(radius: 5)
-              .allowsHitTesting(false)
-          }
-        }
-        .frame(height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .onAppear(perform: updateRegion)
-        .onChange(of: signature) { _ in updateRegion() }
-      } else {
-        NativeHeatMapEmpty()
-      }
-    }
-  }
-
-  private func updateRegion() {
-    region = nativeHeatRegion(for: points)
-  }
-}
-
 struct NativeHeatMapEmpty: View {
   var body: some View {
     VStack(spacing: 10) {
       Image(systemName: "map")
         .font(.system(size: 30, weight: .bold))
         .foregroundStyle(OkkleColor.brand)
-      Text("Track a few GPS trips and your hotspots will appear here.")
+      Text("Track a few GPS trips and your routes will appear here.")
         .font(.system(size: 15, weight: .semibold))
         .multilineTextAlignment(.center)
         .foregroundStyle(OkkleColor.muted)
@@ -310,34 +215,104 @@ struct NativeHeatMapEmpty: View {
     }
     .frame(maxWidth: .infinity)
     .frame(height: 220)
-    .background(Color(red: 0.94, green: 0.97, blue: 0.96), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    .background(Color(uiColor: .secondarySystemBackground).opacity(0.86), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+  }
+}
+
+struct NativeHeatRouteMapView: View {
+  let trips: [NativeTrip]
+
+  private var hasEnoughRoutes: Bool {
+    trips.contains { $0.points.count > 1 }
+  }
+
+  var body: some View {
+    Group {
+      if hasEnoughRoutes {
+        NativeHeatRouteMapRepresentable(trips: trips)
+          .frame(height: 240)
+          .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+      } else {
+        NativeHeatMapEmpty()
+      }
+    }
+  }
+}
+
+struct NativeHeatRouteMapRepresentable: UIViewRepresentable {
+  let trips: [NativeTrip]
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
+  func makeUIView(context: Context) -> MKMapView {
+    let mapView = MKMapView()
+    mapView.delegate = context.coordinator
+    mapView.showsCompass = false
+    mapView.showsScale = true
+    mapView.isPitchEnabled = false
+    return mapView
+  }
+
+  func updateUIView(_ mapView: MKMapView, context: Context) {
+    mapView.removeOverlays(mapView.overlays)
+
+    var visibleRect = MKMapRect.null
+    for trip in trips {
+      let coordinates = trip.points.map(\.coordinate)
+      guard coordinates.count > 1 else { continue }
+      let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+      mapView.addOverlay(polyline)
+      visibleRect = visibleRect.isNull ? polyline.boundingMapRect : visibleRect.union(polyline.boundingMapRect)
+    }
+
+    if visibleRect.isNull {
+      mapView.setRegion(MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276),
+        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+      ), animated: false)
+    } else {
+      mapView.setVisibleMapRect(
+        visibleRect,
+        edgePadding: UIEdgeInsets(top: 38, left: 30, bottom: 38, right: 30),
+        animated: false
+      )
+    }
+  }
+
+  final class Coordinator: NSObject, MKMapViewDelegate {
+    func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+      guard let polyline = overlay as? MKPolyline else {
+        return MKOverlayRenderer(overlay: overlay)
+      }
+      let renderer = MKPolylineRenderer(polyline: polyline)
+      renderer.strokeColor = UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 0.42)
+      renderer.lineWidth = 5
+      renderer.lineCap = .round
+      renderer.lineJoin = .round
+      return renderer
+    }
   }
 }
 
 struct NativeHeatLegend: View {
-  private let colors = [
-    Color(red: 0.61, green: 0.89, blue: 0.82),
-    Color(red: 0.37, green: 0.82, blue: 0.73),
-    Color(red: 0.91, green: 0.78, blue: 0.42),
-    Color(red: 0.88, green: 0.59, blue: 0.12),
-    Color(red: 0.89, green: 0.38, blue: 0.29)
-  ]
-
   var body: some View {
     HStack(spacing: 8) {
-      Text("Quieter")
+      Text("Fewer")
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(OkkleColor.muted)
-      HStack(spacing: 0) {
-        ForEach(colors.indices, id: \.self) { index in
-          colors[index]
-            .frame(maxWidth: .infinity)
-        }
-      }
+      Capsule()
+        .fill(
+          LinearGradient(
+            colors: [OkkleColor.brand.opacity(0.18), OkkleColor.brand.opacity(0.72)],
+            startPoint: .leading,
+            endPoint: .trailing
+          )
+        )
       .frame(maxWidth: .infinity)
       .frame(height: 8)
-      .clipShape(Capsule())
-      Text("Busier")
+      Text("More")
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(OkkleColor.muted)
     }
@@ -348,16 +323,28 @@ struct NativeInsightsView: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var heatFilter: NativeTimeFilter = .all
   private let weekdays = Calendar.current.shortWeekdaySymbols
-  private var selectedHeatPoints: [NativeHeatPoint] {
-    nativeHeatPoints(from: store.trips, filter: heatFilter)
+  private var selectedHeatTrips: [NativeTrip] {
+    nativeHeatTrips(from: store.trips, filter: heatFilter)
   }
-  private var hasAnyHeatPoints: Bool {
-    !nativeHeatPoints(from: store.trips, filter: .all).isEmpty
+  private var selectedHeatSummary: NativeHeatSummary {
+    nativeHeatSummary(from: store.trips, filter: heatFilter)
+  }
+  private var strongestHeatFilter: NativeTimeFilter? {
+    nativeStrongestHeatFilter(from: store.trips)
+  }
+  private var hasAnyHeatTrips: Bool {
+    !nativeHeatTrips(from: store.trips, filter: .all).isEmpty
   }
 
   var body: some View {
     NativeScreen(title: "Insights", subtitle: "AI guidance, smart nudges and patterns from your work.") {
-      NativeHeatMapCard(points: selectedHeatPoints, showsFilters: hasAnyHeatPoints, filter: $heatFilter)
+      NativeHeatMapCard(
+        trips: selectedHeatTrips,
+        summary: selectedHeatSummary,
+        strongestFilter: strongestHeatFilter,
+        showsFilters: hasAnyHeatTrips,
+        filter: $heatFilter
+      )
 
       NativeAiCard {
         VStack(alignment: .leading, spacing: 16) {

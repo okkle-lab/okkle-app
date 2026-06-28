@@ -1,4 +1,3 @@
-import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -22,34 +21,12 @@ struct OkkleTripWidgetProvider: TimelineProvider {
   }
 }
 
-struct ToggleTripWidgetIntent: AppIntent {
-  static var title: LocalizedStringResource = "Toggle trip"
-  static var description = IntentDescription("Starts or ends an Okkle trip from the widget.")
-  static var openAppWhenRun = true
-
-  @Parameter(title: "Trip is active")
-  var tripIsActive: Bool
-
-  init() {
-    tripIsActive = false
-  }
-
-  init(tripIsActive: Bool) {
-    self.tripIsActive = tripIsActive
-  }
-
-  func perform() async throws -> some IntentResult {
-    if tripIsActive {
-      NativeTripWidgetStore.requestEndFromWidget()
-    } else {
-      NativeTripWidgetStore.requestStartFromWidget()
-    }
-    return .result()
-  }
-}
-
 struct OkkleTripWidgetView: View {
   let entry: OkkleTripWidgetEntry
+
+  private var widgetAction: NativeTripWidgetAction {
+    entry.state.isTripActive ? .end : .start
+  }
 
   private var buttonTitle: String {
     entry.state.isTripActive ? "End Trip" : "Start Trip"
@@ -60,7 +37,7 @@ struct OkkleTripWidgetView: View {
   }
 
   var body: some View {
-    Button(intent: ToggleTripWidgetIntent(tripIsActive: entry.state.isTripActive)) {
+    Link(destination: NativeTripWidgetStore.widgetURL(for: widgetAction)) {
       VStack(spacing: 12) {
         ZStack {
           Circle()
@@ -79,6 +56,7 @@ struct OkkleTripWidgetView: View {
       .foregroundStyle(.white)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+    .widgetURL(NativeTripWidgetStore.widgetURL(for: widgetAction))
     .buttonStyle(.plain)
     .accessibilityLabel(buttonTitle)
     .containerBackground(for: .widget) {
