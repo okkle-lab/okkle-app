@@ -8,6 +8,8 @@ import UIKit
 import Vision
 @MainActor
 final class OkkleStore: ObservableObject {
+  static let shared = OkkleStore()
+
   @Published var settings = NativeSettings() { didSet { save() } }
   @Published var records: [NativeRecord] = [] { didSet { save() } }
   @Published var trips: [NativeTrip] = [] { didSet { save() } }
@@ -111,7 +113,7 @@ final class OkkleStore: ObservableObject {
     save()
   }
 
-  func completeOnboarding(name: String, defaultVehicle: NativeVehicle, platforms: [String], region: NativeRegion) {
+  func completeOnboarding(name: String, defaultVehicle: NativeVehicle, platforms: [String], region: NativeRegion, incomeBracket: NativeIncomeBracket) {
     var updated = settings
     updated.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
     updated.defaultVehicle = defaultVehicle
@@ -120,6 +122,7 @@ final class OkkleStore: ObservableObject {
       updated.platforms = ["Uber Eats"]
     }
     updated.region = region
+    updated.incomeBracket = incomeBracket
     updated.hasCompletedOnboarding = true
     settings = updated
   }
@@ -153,11 +156,11 @@ final class OkkleStore: ObservableObject {
   }
 
   var taxSaved: Double {
-    yearMileageDeduction * 0.20
+    yearMileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
   }
 
   var taxPosition: NativeTaxPosition {
-    TaxCalculator.estimate(turnover: yearIncome, expenses: yearExpenses, region: settings.region)
+    TaxCalculator.estimate(turnover: yearIncome, expenses: yearExpenses, region: settings.region, incomeBracket: settings.incomeBracket)
   }
 
   var history: [NativeHistoryItem] {

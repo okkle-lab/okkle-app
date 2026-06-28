@@ -15,7 +15,7 @@ enum NativeTab {
 }
 
 struct OkkleNativeRootView: View {
-  @StateObject private var store = OkkleStore()
+  @StateObject private var store = OkkleStore.shared
   @State private var selectedTab: NativeTab = .home
 
   var body: some View {

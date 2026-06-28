@@ -125,6 +125,19 @@ struct NativeSettingsView: View {
             ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
           }
 
+          Picker("Income tax band", selection: Binding(
+            get: { store.settings.incomeBracket },
+            set: { store.settings.incomeBracket = $0 }
+          )) {
+            ForEach(NativeIncomeBracket.allCases) { bracket in
+              Text(bracket.label).tag(bracket)
+            }
+          }
+
+          Text("Used for tax saved and estimated tax due. Choose Higher if courier profit sits on top of higher-rate income.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+
           Picker("Default vehicle", selection: Binding(
             get: { store.settings.defaultVehicle },
             set: { store.settings.defaultVehicle = $0 }
@@ -132,6 +145,12 @@ struct NativeSettingsView: View {
             ForEach(NativeVehicle.allCases) { vehicle in
               Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
             }
+          }
+
+          NavigationLink {
+            NativeAccountantDetailsSettingsView()
+          } label: {
+            Label("Accountant details", systemImage: "person.text.rectangle")
           }
         }
 
@@ -213,6 +232,46 @@ struct NativeSettingsView: View {
     }
   }
 
+}
+
+struct NativeAccountantDetailsSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    Form {
+      Section {
+        TextField("10-digit HMRC reference", text: Binding(
+          get: { store.settings.accountantUTR },
+          set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        ))
+        .keyboardType(.numberPad)
+
+        TextField("QQ 12 34 56 C", text: Binding(
+          get: { store.settings.accountantNINumber },
+          set: { store.settings.accountantNINumber = $0.uppercased() }
+        ))
+        .textInputAutocapitalization(.characters)
+
+        TextField("Home or business address", text: Binding(
+          get: { store.settings.accountantAddress },
+          set: { store.settings.accountantAddress = $0 }
+        ), axis: .vertical)
+        .lineLimit(2...4)
+
+        TextField("Delivery courier", text: Binding(
+          get: { store.settings.accountantBusinessDescription },
+          set: { store.settings.accountantBusinessDescription = $0 }
+        ))
+      } header: {
+        Text("Accountant pack details")
+      } footer: {
+        Text("Optional. These stay on this phone and appear on the accountant pack PDF cover page when you export it.")
+      }
+    }
+    .navigationTitle("Accountant details")
+    .navigationBarTitleDisplayMode(.inline)
+    .nativeKeyboardDoneToolbar()
+  }
 }
 
 struct NativeEmptyState: View {

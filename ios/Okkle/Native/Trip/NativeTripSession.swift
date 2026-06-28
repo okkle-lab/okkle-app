@@ -7,6 +7,8 @@ import SwiftUI
 import UIKit
 import Vision
 final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDelegate {
+  static let shared = NativeTripSession()
+
   enum Phase {
     case setup
     case live

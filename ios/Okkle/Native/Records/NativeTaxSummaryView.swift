@@ -19,7 +19,7 @@ struct NativeTaxSummaryView: View {
             .foregroundStyle(OkkleColor.brandDark)
           Text(headlineGbp(tax.totalDue))
             .font(.system(size: 52, weight: .heavy, design: .rounded))
-          Text("Estimate only, not tax advice. Built from your logged earnings, expenses and mileage.")
+          Text("Estimate only, not tax advice. Built from your logged earnings, expenses, mileage and selected tax band.")
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
         }
@@ -35,6 +35,7 @@ struct NativeTaxSummaryView: View {
           taxRow("Business profit", headlineGbp(tax.businessProfit))
           taxRow("Deduction applied", headlineGbp(tax.deductionApplied))
           taxRow("Taxable profit", headlineGbp(tax.profit))
+          taxRow("Income tax band", store.settings.incomeBracket.label)
           taxRow("Income tax", headlineGbp(tax.incomeTax))
           taxRow("Class 4 NIC", headlineGbp(tax.class4))
           taxRow("Payment on account", headlineGbp(tax.paymentOnAccount))

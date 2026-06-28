@@ -126,6 +126,7 @@ func nativeSelfAssessmentText(store: OkkleStore) -> String {
     "Turnover (income):        \(gbp(tax.turnover))",
     "Allowable expenses:       \(gbp(tax.expenses))",
     "Net profit:               \(gbp(tax.profit))",
+    "Income tax band:          \(store.settings.incomeBracket.label)",
     "",
     "Estimated Income Tax:     \(gbp(tax.incomeTax))",
     "Estimated Class 4 NIC:    \(gbp(tax.class4))",
@@ -333,6 +334,10 @@ final class NativeAccountantPackPdfRenderer {
     yearRecords.filter { $0.kind == .mileage }
   }
 
+  private var incomeBracketLine: String {
+    "\(store.settings.incomeBracket.label) (\(Int(store.settings.incomeBracket.marginalRate(region: store.settings.region) * 100))% marginal estimate)"
+  }
+
   private func beginPage() {
     context?.beginPage()
     page += 1
@@ -358,6 +363,10 @@ final class NativeAccountantPackPdfRenderer {
   }
 
   private func drawCover() {
+    func clean(_ value: String) -> String {
+      value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     brand.setFill()
     UIBezierPath(roundedRect: CGRect(x: margin, y: y, width: 86, height: 5), cornerRadius: 2.5).fill()
     y += 20
@@ -366,14 +375,25 @@ final class NativeAccountantPackPdfRenderer {
     drawWrapped("Income, expenses, mileage and receipt evidence", font: .systemFont(ofSize: 14, weight: .semibold), color: muted, spacingAfter: 13)
 
     let clientName = store.settings.name.isEmpty ? "Courier" : store.settings.name
-    drawWrapped("\(clientName) - Sole trader delivery records", font: .systemFont(ofSize: 12, weight: .medium), color: ink, spacingAfter: 18)
+    let business = clean(store.settings.accountantBusinessDescription)
+    let businessLine = business.isEmpty ? "Sole trader delivery records" : "Sole trader (\(business))"
+    drawWrapped("\(clientName) - \(businessLine)", font: .systemFont(ofSize: 12, weight: .medium), color: ink, spacingAfter: 18)
 
-    drawInfoBox([
+    var coverRows: [(String, String)] = []
+    let utr = clean(store.settings.accountantUTR)
+    let niNumber = clean(store.settings.accountantNINumber)
+    let address = clean(store.settings.accountantAddress).replacingOccurrences(of: "\n", with: ", ")
+    if !utr.isEmpty { coverRows.append(("UTR", utr)) }
+    if !niNumber.isEmpty { coverRows.append(("National Insurance no.", niNumber)) }
+    if !address.isEmpty { coverRows.append(("Address", address)) }
+    coverRows.append(contentsOf: [
       ("Accounting period", "\(nativeUkDateStamp(store.taxYear.start)) to \(nativeUkDateStamp(taxYearEndDate))"),
       ("Tax year", nativeTaxYearLabel(for: store.taxYear)),
       ("Prepared", nativeLongDate(Date())),
-      ("Tax region", store.settings.region.label)
+      ("Tax region", store.settings.region.label),
+      ("Income tax band", incomeBracketLine)
     ])
+    drawInfoBox(coverRows)
 
     drawWrapped(
       "A review pack to support your accountant. Figures are generated on-device from records logged in Okkle and should be confirmed before filing.",
@@ -388,6 +408,7 @@ final class NativeAccountantPackPdfRenderer {
     drawKeyValue("Accounting basis", "Cash basis")
     drawKeyValue("Mileage method", "Simplified mileage using HMRC flat rates")
     drawKeyValue("Records source", "Tracked trips and manual entries logged in Okkle")
+    drawKeyValue("Income tax band", incomeBracketLine)
     drawKeyValue("Income entries", "\(incomeRecords.count)")
     drawKeyValue("Expense entries", "\(expenseRecords.count) (\(expenseRecords.filter { $0.receiptImageData != nil }.count) with receipts)")
     drawKeyValue("Mileage entries", "\(yearTrips.count) tracked trips, \(manualMileageRecords.count) manual entries")
@@ -544,8 +565,18 @@ final class NativeAccountantPackPdfRenderer {
   }
 
   private func drawInfoBox(_ rows: [(String, String)]) {
-    let rowHeight: CGFloat = 24
-    let boxHeight = CGFloat(rows.count) * rowHeight + 18
+    let labelFont = UIFont.systemFont(ofSize: 10.5, weight: .semibold)
+    let valueFont = UIFont.systemFont(ofSize: 10.5, weight: .bold)
+    let labelWidth: CGFloat = 150
+    let valueWidth = contentWidth - 194
+    let rowHeights = rows.map { label, value in
+      max(
+        24,
+        measuredHeight(label, font: labelFont, width: labelWidth),
+        measuredHeight(value, font: valueFont, width: valueWidth)
+      ) + 7
+    }
+    let boxHeight = rowHeights.reduce(18, +)
     ensure(boxHeight)
     let rect = CGRect(x: margin, y: y, width: contentWidth, height: boxHeight)
     pale.setFill()
@@ -553,9 +584,10 @@ final class NativeAccountantPackPdfRenderer {
     line.setStroke()
     UIBezierPath(roundedRect: rect, cornerRadius: 10).stroke()
     y += 9
-    rows.forEach { label, value in
-      drawString(label, in: CGRect(x: margin + 12, y: y, width: 150, height: rowHeight), font: .systemFont(ofSize: 10.5, weight: .semibold), color: muted)
-      drawString(value, in: CGRect(x: margin + 170, y: y, width: contentWidth - 194, height: rowHeight), font: .systemFont(ofSize: 10.5, weight: .bold), color: ink, alignment: .right)
+    for (index, row) in rows.enumerated() {
+      let rowHeight = rowHeights[index]
+      drawString(row.0, in: CGRect(x: margin + 12, y: y, width: labelWidth, height: rowHeight), font: labelFont, color: muted)
+      drawString(row.1, in: CGRect(x: margin + 170, y: y, width: valueWidth, height: rowHeight), font: valueFont, color: ink, alignment: .right)
       y += rowHeight
     }
     y += 13

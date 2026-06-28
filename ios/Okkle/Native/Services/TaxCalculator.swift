@@ -52,13 +52,14 @@ enum TaxCalculator {
     return first * band.first + second * band.after
   }
 
-  static func estimate(turnover: Double, expenses: Double, region: NativeRegion) -> NativeTaxPosition {
+  static func estimate(turnover: Double, expenses: Double, region: NativeRegion, incomeBracket: NativeIncomeBracket) -> NativeTaxPosition {
     let tradingAllowance = 1_000.0
     let useTradingAllowance = tradingAllowance > expenses
     let deductible = min(turnover, useTradingAllowance ? tradingAllowance : expenses)
     let businessProfit = max(0, turnover - expenses)
     let profit = max(0, turnover - deductible)
-    let incomeTax = incomeTax(profit: profit, region: region)
+    let otherIncome = incomeBracket.assumedOtherIncome(region: region)
+    let incomeTax = incomeTax(income: otherIncome + profit, region: region) - incomeTax(income: otherIncome, region: region)
     let class4 = class4(profit: profit)
     let total = incomeTax + class4
     return NativeTaxPosition(
@@ -75,9 +76,9 @@ enum TaxCalculator {
     )
   }
 
-  static func incomeTax(profit: Double, region: NativeRegion) -> Double {
-    let allowance = 12_570.0
-    let taxable = max(0, profit - allowance)
+  static func incomeTax(income: Double, region: NativeRegion) -> Double {
+    let allowance = personalAllowance(for: income)
+    let taxable = max(0, income - allowance)
     let bands: [(Double, Double)]
     switch region {
     case .ruk:
@@ -97,6 +98,12 @@ enum TaxCalculator {
       if taxable <= band.0 { break }
     }
     return max(0, tax)
+  }
+
+  static func personalAllowance(for income: Double) -> Double {
+    let allowance = 12_570.0
+    guard income > 100_000 else { return allowance }
+    return max(0, allowance - ((income - 100_000) / 2))
   }
 
   static func class4(profit: Double) -> Double {

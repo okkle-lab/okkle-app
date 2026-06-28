@@ -22,9 +22,13 @@ private struct NativeTopRoundedRectangle: Shape {
 
 struct NativeTripView: View {
   @EnvironmentObject private var store: OkkleStore
-  @StateObject private var session = NativeTripSession()
+  @ObservedObject private var session: NativeTripSession
   @State private var selectedVehicle: NativeVehicle = .car
   @State private var completedTrip: NativeTrip?
+
+  init(session: NativeTripSession = .shared) {
+    self.session = session
+  }
 
   var body: some View {
     Group {

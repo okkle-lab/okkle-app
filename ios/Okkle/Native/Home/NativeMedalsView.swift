@@ -316,7 +316,7 @@ enum NativeMedalEngine {
     return NativeMedalStats(
       trips: trips.count,
       miles: tripMiles + recordMiles,
-      taxSaved: (tripDeduction + recordDeduction) * 0.20,
+      taxSaved: (tripDeduction + recordDeduction) * store.settings.incomeBracket.marginalRate(region: store.settings.region),
       earnings: incomeRecords.reduce(0) { $0 + max(0, $1.amount ?? 0) },
       streak: streak(days: days),
       hours: hours,

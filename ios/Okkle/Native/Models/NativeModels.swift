@@ -59,6 +59,37 @@ enum NativeRegion: String, CaseIterable, Identifiable, Codable {
   }
 }
 
+enum NativeIncomeBracket: String, CaseIterable, Identifiable, Codable {
+  case basic
+  case higher
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .basic: return "Basic rate"
+    case .higher: return "Higher rate"
+    }
+  }
+
+  func marginalRate(region: NativeRegion) -> Double {
+    switch (self, region) {
+    case (.basic, _): return 0.20
+    case (.higher, .ruk): return 0.40
+    case (.higher, .scotland): return 0.42
+    }
+  }
+
+  func assumedOtherIncome(region: NativeRegion) -> Double {
+    switch self {
+    case .basic:
+      return 12_570
+    case .higher:
+      return region == .scotland ? 43_663 : 50_270
+    }
+  }
+}
+
 enum NativeLogKind: String, CaseIterable, Identifiable, Codable {
   case income
   case expense
@@ -142,7 +173,12 @@ struct NativeSettings: Codable, Equatable {
   var name = ""
   var defaultVehicle: NativeVehicle = .car
   var region: NativeRegion = .ruk
+  var incomeBracket: NativeIncomeBracket = .basic
   var platforms = ["Uber Eats", "Deliveroo", "Just Eat"]
+  var accountantUTR = ""
+  var accountantNINumber = ""
+  var accountantAddress = ""
+  var accountantBusinessDescription = ""
   var loggingReminder = true
   var reminderDay = 1
   var logFrequency: NativeLogFrequency = .weekly
@@ -156,7 +192,12 @@ struct NativeSettings: Codable, Equatable {
     case name
     case defaultVehicle
     case region
+    case incomeBracket
     case platforms
+    case accountantUTR
+    case accountantNINumber
+    case accountantAddress
+    case accountantBusinessDescription
     case loggingReminder
     case reminderDay
     case logFrequency
@@ -170,7 +211,12 @@ struct NativeSettings: Codable, Equatable {
     name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
     defaultVehicle = try container.decodeIfPresent(NativeVehicle.self, forKey: .defaultVehicle) ?? .car
     region = try container.decodeIfPresent(NativeRegion.self, forKey: .region) ?? .ruk
+    incomeBracket = try container.decodeIfPresent(NativeIncomeBracket.self, forKey: .incomeBracket) ?? .basic
     platforms = try container.decodeIfPresent([String].self, forKey: .platforms) ?? ["Uber Eats", "Deliveroo", "Just Eat"]
+    accountantUTR = try container.decodeIfPresent(String.self, forKey: .accountantUTR) ?? ""
+    accountantNINumber = try container.decodeIfPresent(String.self, forKey: .accountantNINumber) ?? ""
+    accountantAddress = try container.decodeIfPresent(String.self, forKey: .accountantAddress) ?? ""
+    accountantBusinessDescription = try container.decodeIfPresent(String.self, forKey: .accountantBusinessDescription) ?? ""
     loggingReminder = try container.decodeIfPresent(Bool.self, forKey: .loggingReminder) ?? true
     reminderDay = try container.decodeIfPresent(Int.self, forKey: .reminderDay) ?? 1
     logFrequency = try container.decodeIfPresent(NativeLogFrequency.self, forKey: .logFrequency) ?? .weekly

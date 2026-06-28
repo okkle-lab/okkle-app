@@ -12,6 +12,7 @@ enum NativeOnboardingStep: Int, CaseIterable {
   case vehicle
   case platforms
   case region
+  case incomeBracket
   case ready
 }
 
@@ -101,6 +102,7 @@ struct NativeOnboardingView: View {
   @State private var selectedPlatforms: Set<String> = ["Uber Eats"]
   @State private var customPlatformName = ""
   @State private var region: NativeRegion = .ruk
+  @State private var incomeBracket: NativeIncomeBracket = .basic
   @State private var didSeed = false
   @FocusState private var nameFocused: Bool
   @FocusState private var customPlatformFocused: Bool
@@ -340,6 +342,33 @@ struct NativeOnboardingView: View {
         }
       }
 
+    case .incomeBracket:
+      VStack(alignment: .leading, spacing: 18) {
+        NativeOnboardingHeader(
+          eyebrow: "Tax band",
+          title: "Which tax band should Okkle use?",
+          subtitle: "This keeps your tax saved and estimated tax due closer when courier work sits on top of other income."
+        )
+
+        VStack(spacing: 10) {
+          ForEach(NativeIncomeBracket.allCases) { bracket in
+            NativeOnboardingOptionButton(
+              title: bracket.label,
+              subtitle: incomeBracketSubtitle(for: bracket),
+              symbol: bracket == .basic ? "percent" : "chart.line.uptrend.xyaxis",
+              selected: incomeBracket == bracket
+            ) {
+              incomeBracket = bracket
+            }
+          }
+        }
+
+        Text("You can change this later in Settings. Your accountant should confirm the final numbers before filing.")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
     case .ready:
       VStack(alignment: .leading, spacing: 22) {
         Image(systemName: "checkmark.circle.fill")
@@ -424,6 +453,7 @@ struct NativeOnboardingView: View {
     name = store.settings.name
     vehicle = store.settings.defaultVehicle
     region = store.settings.region
+    incomeBracket = store.settings.incomeBracket
     selectedPlatforms = Set(store.settings.platforms.isEmpty ? ["Uber Eats"] : store.settings.platforms)
   }
 
@@ -447,7 +477,8 @@ struct NativeOnboardingView: View {
       name: name,
       defaultVehicle: vehicle,
       platforms: orderedPlatforms,
-      region: region
+      region: region,
+      incomeBracket: incomeBracket
     )
   }
 
@@ -475,6 +506,15 @@ struct NativeOnboardingView: View {
     selectedPlatforms.remove("Other")
     customPlatformName = ""
     customPlatformFocused = false
+  }
+
+  private func incomeBracketSubtitle(for bracket: NativeIncomeBracket) -> String {
+    switch bracket {
+    case .basic:
+      return "Uses a 20% marginal estimate"
+    case .higher:
+      return region == .scotland ? "Uses a 42% Scottish higher-rate estimate" : "Uses a 40% higher-rate estimate"
+    }
   }
 
 }

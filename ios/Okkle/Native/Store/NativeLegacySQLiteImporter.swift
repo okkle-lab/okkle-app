@@ -66,11 +66,19 @@ enum NativeLegacySQLiteImporter {
   }
 
   private static func readSettings(from db: OpaquePointer) -> NativeSettings? {
-    guard let row = rows(from: db, sql: "SELECT * FROM user LIMIT 1").first else { return nil }
+    let keyValues = readKeyValues(from: db)
+    guard let row = rows(from: db, sql: "SELECT * FROM user LIMIT 1").first else {
+      guard !keyValues.isEmpty else { return nil }
+      var settings = NativeSettings()
+      applyAccountantDetails(keyValues, to: &settings)
+      applyIncomeBracket(taxRate: legacyTaxRate(from: keyValues), to: &settings)
+      return settings
+    }
     var settings = NativeSettings()
     settings.name = string(row["name"]) ?? ""
     settings.defaultVehicle = vehicle(from: string(row["vehicle"])) ?? .car
     settings.region = NativeRegion(rawValue: string(row["region"]) ?? "") ?? .ruk
+    applyIncomeBracket(taxRate: double(row["tax_rate"]) ?? legacyTaxRate(from: keyValues), to: &settings)
     settings.hasCompletedOnboarding = (int(row["onboarded"]) ?? 1) != 0
 
     let platforms = splitList(string(row["platforms"]))
@@ -87,8 +95,33 @@ enum NativeLegacySQLiteImporter {
     if let frequency = NativeLogFrequency(rawValue: string(row["log_frequency"]) ?? "") {
       settings.logFrequency = frequency
     }
+    applyAccountantDetails(keyValues, to: &settings)
 
     return settings
+  }
+
+  private static func readKeyValues(from db: OpaquePointer) -> [String: String] {
+    rows(from: db, sql: "SELECT key, value FROM kv").reduce(into: [:]) { result, row in
+      guard let key = nonEmpty(string(row["key"])),
+            let value = string(row["value"]) else { return }
+      result[key] = value
+    }
+  }
+
+  private static func applyAccountantDetails(_ values: [String: String], to settings: inout NativeSettings) {
+    settings.accountantUTR = nonEmpty(values["utr"]) ?? ""
+    settings.accountantNINumber = nonEmpty(values["ni_number"]) ?? ""
+    settings.accountantAddress = nonEmpty(values["address"]) ?? ""
+    settings.accountantBusinessDescription = nonEmpty(values["business_desc"]) ?? ""
+  }
+
+  private static func applyIncomeBracket(taxRate: Double?, to settings: inout NativeSettings) {
+    guard let taxRate else { return }
+    settings.incomeBracket = taxRate >= 0.40 ? .higher : .basic
+  }
+
+  private static func legacyTaxRate(from values: [String: String]) -> Double? {
+    values["tax_rate"].flatMap { Double($0) }
   }
 
   private static func readTrips(from db: OpaquePointer) -> [NativeTrip] {

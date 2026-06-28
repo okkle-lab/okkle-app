@@ -38,6 +38,8 @@
 		67B1F750A2414908A6003337 /* okkle-icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B190E1D6D6B546898FFD440D /* okkle-icon.icon */; };
 		776D5203A14744E1B38451F8 /* OkkleNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D10FCA5E3F947B89609CF87 /* OkkleNativeApp.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
+		A1C4F9022D68000000000002 /* OkkleSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9012D68000000000001 /* OkkleSceneDelegate.swift */; };
+		A1C4F9052D68000000000005 /* OkkleCarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */; };
 		EEF0E7F2C444B59A63FFAE1E /* NativeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A628D4BFD2B5C16D136B62 /* NativeSupport.swift */; };
 		EFB29A0C18DB58B2B7065BD1 /* NativeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F305144FBFF499D0171ED96C /* NativeModels.swift */; };
 		3BB846212B22596820BA8297 /* NativeHistoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA7CF6DC51582C5B309BCC83 /* NativeHistoryItem.swift */; };
@@ -74,6 +76,8 @@
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Okkle/SplashScreen.storyboard; sourceTree = "<group>"; };
 		B190E1D6D6B546898FFD440D /* okkle-icon.icon */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = "okkle-icon.icon"; path = "Okkle/okkle-icon.icon"; sourceTree = "<group>"; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Okkle/AppDelegate.swift; sourceTree = "<group>"; };
+		A1C4F9012D68000000000001 /* OkkleSceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleSceneDelegate.swift; sourceTree = "<group>"; };
+		A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleCarPlaySceneDelegate.swift; sourceTree = "<group>"; };
 		49A628D4BFD2B5C16D136B62 /* NativeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSupport.swift; sourceTree = "<group>"; };
 		F305144FBFF499D0171ED96C /* NativeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeModels.swift; sourceTree = "<group>"; };
 		CA7CF6DC51582C5B309BCC83 /* NativeHistoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryItem.swift; sourceTree = "<group>"; };
@@ -179,8 +183,17 @@
 			isa = PBXGroup;
 			children = (
 				7840FA4691610C5A1ECDBB5B /* OkkleNativeRootView.swift */,
+				A1C4F9012D68000000000001 /* OkkleSceneDelegate.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		A1C4F9032D68000000000003 /* CarPlay */ = {
+			isa = PBXGroup;
+			children = (
+				A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */,
+			);
+			path = CarPlay;
 			sourceTree = "<group>";
 		};
 		E54D23970403319F95166248 /* Components */ = {
@@ -298,6 +311,7 @@
 			isa = PBXGroup;
 			children = (
 				7BD06F6BB66F1C538D7B0306 /* App */,
+				A1C4F9032D68000000000003 /* CarPlay */,
 				E54D23970403319F95166248 /* Components */,
 				50589A9E67C0D991FED09AC1 /* Export */,
 				0FAF8CA30B915234260C4D80 /* Home */,
@@ -481,6 +495,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
+				A1C4F9022D68000000000002 /* OkkleSceneDelegate.swift in Sources */,
+				A1C4F9052D68000000000005 /* OkkleCarPlaySceneDelegate.swift in Sources */,
 				776D5203A14744E1B38451F8 /* OkkleNativeApp.swift in Sources */,
 				EEF0E7F2C444B59A63FFAE1E /* NativeSupport.swift in Sources */,
 				EFB29A0C18DB58B2B7065BD1 /* NativeModels.swift in Sources */,
@@ -539,7 +555,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.4;
-				MARKETING_VERSION = 0.4.5;
+				MARKETING_VERSION = 0.4.6;
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app;
 				PRODUCT_NAME = Okkle;
@@ -562,7 +578,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.4;
-				MARKETING_VERSION = 0.4.5;
+				MARKETING_VERSION = 0.4.6;
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app;
 				PRODUCT_NAME = Okkle;
@@ -584,7 +600,7 @@
 				INFOPLIST_FILE = OkkleWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 0.4.5;
+				MARKETING_VERSION = 0.4.6;
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -607,7 +623,7 @@
 				INFOPLIST_FILE = OkkleWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 0.4.5;
+				MARKETING_VERSION = 0.4.6;
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
