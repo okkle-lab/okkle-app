@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (36) - 2026-06-28 (Log save polish & number-input hardening)
+
+- **Save confirmation auto-dismisses.** The "Saved to Records" card no longer has a floating "Done" button — it confirms the save, then clears itself and returns to a fresh Log form.
+- **Number inputs are sanitised.** Miles and amount fields now accept only digits and a single decimal point (guards pastes and malformed values like "1.2.3"), and a log can't be saved unless the value is a real number greater than zero — so a stray or empty value can never reach your records.
+
 ## 0.3 (17) - 2026-06-27 (Deadlines layer, log polish & notification fix)
 
 - **One Deadlines layer.** MTD quarterly updates and the HMRC Self Assessment dates now sit on the same screen, each row with a "Remind" button that adds the deadline to your calendar (MTD deadlines previously had no reminder). Each section has a tappable (?) with a plain-English explanation, replacing the long footnotes.

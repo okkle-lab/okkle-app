@@ -68,6 +68,17 @@ const SUBSISTENCE_REVIEW = new Set(['Food & drink']);
 // we still let couriers log them, but flag them for their accountant to review.
 const MILEAGE_COVERED = new Set(['Fuel', 'Charging', 'Insurance', 'Maintenance / repairs', 'Tyres']);
 
+// Keep numeric inputs clean: digits and a single decimal point only. decimal-pad
+// covers normal typing, but this also guards pastes (and the simulator's hardware
+// keyboard) so the saved value is never NaN or malformed (e.g. "1.2.3").
+function sanitizeDecimal(s: string): string {
+  const cleaned = s.replace(/[^0-9.]/g, '');
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot === -1) return cleaned;
+  // Keep the first dot, strip any later ones.
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+}
+
 function getCatCounts(): Record<string, number> {
   try { return JSON.parse(kvGet('expense_cat_counts') || '{}'); } catch { return {}; }
 }
@@ -271,14 +282,17 @@ export default function LogScreen() {
     const ps = period === 'week' ? wb.start.toISOString() : null;
     const pe = period === 'week' ? wb.end.toISOString() : null;
     if (tab === 'mileage') {
-      if (!miles) { Alert.alert('Enter miles'); return; }
-      saveRecord({ record_type: 'mileage', platform: null, vehicle, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
+      const m = parseFloat(miles);
+      if (!(m > 0)) { Alert.alert('Enter miles'); return; }
+      saveRecord({ record_type: 'mileage', platform: null, vehicle, miles: m, deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
     } else if (tab === 'income') {
-      if (!amount) { Alert.alert('Enter amount'); return; }
-      saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: null }, createdAt);
+      const a = parseFloat(amount);
+      if (!(a > 0)) { Alert.alert('Enter amount'); return; }
+      saveRecord({ record_type: 'income', platform, amount: a, miles: null, deduction: null, category: null, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: null }, createdAt);
     } else {
-      if (!amount || !description) { Alert.alert('Enter amount and description'); return; }
-      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: description }, createdAt);
+      const a = parseFloat(amount);
+      if (!(a > 0) || !description) { Alert.alert('Enter amount and description'); return; }
+      saveRecord({ record_type: 'expense', platform: null, amount: a, miles: null, deduction: null, category: description, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: description }, createdAt);
       bumpCat(description); setCatCounts(getCatCounts());
       // Learn: this merchant → this category, so the next receipt nails it.
       if (scannedMerchant) learnCategory(scannedMerchant, description);
@@ -288,7 +302,7 @@ export default function LogScreen() {
     setSubmitted(true);
   }
 
-  const canSave = tab === 'mileage' ? !!miles : tab === 'income' ? !!amount : (!!amount && !!description);
+  const canSave = tab === 'mileage' ? parseFloat(miles) > 0 : tab === 'income' ? parseFloat(amount) > 0 : (parseFloat(amount) > 0 && !!description);
 
   function goToStep(next: number) {
     const bounded = Math.max(0, Math.min(steps.length - 1, next));
@@ -319,10 +333,18 @@ export default function LogScreen() {
     resetWorkflow();
   }
 
+  // The success card has no button now — it confirms the save, then auto-dismisses
+  // and returns to a clean Log form (the same reset the old "Done" button did).
+  React.useEffect(() => {
+    if (!submitted) return;
+    const t = setTimeout(() => addAnotherLog(), 1600);
+    return () => clearTimeout(t);
+  }, [submitted]);
+
   const canContinue =
     currentStep === 'kind' ? !!tab :
     currentStep === 'receipt' ? !scanning :
-    currentStep === 'primary' ? (tab === 'mileage' ? !!miles : !!amount) :
+    currentStep === 'primary' ? (tab === 'mileage' ? parseFloat(miles) > 0 : parseFloat(amount) > 0) :
     currentStep === 'details' ? (tab === 'expense' ? !!description.trim() : true) :
     currentStep === 'review' ? canSave :
     true;
@@ -414,7 +436,7 @@ export default function LogScreen() {
             placeholderTextColor={colors.textTertiary}
             keyboardType="decimal-pad"
             value={miles}
-            onChangeText={setMiles}
+            onChangeText={t => setMiles(sanitizeDecimal(t))}
             autoFocus
             {...logNumberKeyboardDoneProps}
           />
@@ -435,7 +457,7 @@ export default function LogScreen() {
             placeholderTextColor={colors.textTertiary}
             keyboardType="decimal-pad"
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={t => setAmount(sanitizeDecimal(t))}
             autoFocus
             {...logNumberKeyboardDoneProps}
           />
@@ -648,7 +670,6 @@ export default function LogScreen() {
             </View>
             <Text style={s.successKicker}>Saved to Records</Text>
             <Text style={s.successSub}>Your log has been added.</Text>
-            <NativeGreenButton label="Done" onPress={addAnotherLog} style={s.successDone} />
           </GlassPanel>
         </View>
       </Modal>
@@ -746,7 +767,6 @@ const s = StyleSheet.create({
   },
   successKicker: { ...type.label, color: colors.brandDeep, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 12, marginTop: spacing.sm },
   successSub: { ...type.screenTitle, fontSize: 24, color: colors.textPrimary, textAlign: 'center', lineHeight: 30, marginBottom: spacing.sm },
-  successDone: { alignSelf: 'stretch' },
   header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, backgroundColor: colors.bg },
   headerText: { paddingRight: HEADER_TITLE_SIDE_CLEARANCE },
   headerSettings: { position: 'absolute', right: spacing.xl },
