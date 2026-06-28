@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Chip, VehicleChip, DatePickerField, IconBadge, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll, NativeGreenButton, GlassPanel } from '../../src/components';
 import { HEADER_TITLE_SIDE_CLEARANCE, headerActionTop, headerTitleTop } from '../../src/components/headerLayout';
 import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
-import { saveRecord, getUser, kvGet, kvSet, getPlatforms, getVehicleKeys, getLearnedCategory, learnCategory } from '../../src/db';
+import { saveRecord, getUser, kvGet, kvSet, getPlatforms, getVehicleKeys, getLearnedCategory, learnCategory, getRecords } from '../../src/db';
 import { recognizeText } from '../../modules/okkle-vision';
 import { parseReceipt } from '../../src/receiptParse';
 
@@ -56,6 +56,16 @@ const EXPENSE_CATEGORIES: Cat[] = [
   { name: 'Maintenance / repairs', icon: 'tool' },
   { name: 'Tyres', icon: 'disc' },
 ];
+const DEFAULT_TOP_EXPENSES = [
+  'Fuel',
+  'Parking',
+  'Phone / data',
+  'Charging',
+  'Insurance',
+  'Maintenance / repairs',
+];
+const PERSONALIZE_AFTER_DAYS = 30;
+const PERSONALIZE_AFTER_LOGS = 6;
 
 // Subsistence (food/drink) is only allowable for the self-employed in limited
 // cases — itinerant trades or journeys outside your normal area — and routine
@@ -200,12 +210,31 @@ export default function LogScreen() {
   const wb = weekBounds(date);
   const fmtShort = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
-  // Most-used categories first, then the default priority order (benchmark apps
-  // surface what you reach for most so you're not hunting every time).
-  const sortedCats = React.useMemo(
-    () => EXPENSE_CATEGORIES.map((c, i) => ({ c, i })).sort((a, b) => (catCounts[b.c.name] || 0) - (catCounts[a.c.name] || 0) || a.i - b.i).map(x => x.c),
-    [catCounts],
-  );
+  const topExpenseCats = React.useMemo(() => {
+    const expenseRecords = getRecords(500).filter(r => r.record_type === 'expense' && r.category);
+    const hasMonthOfUsage =
+      expenseRecords.length >= PERSONALIZE_AFTER_LOGS &&
+      expenseRecords.some(r => Date.now() - new Date(r.created_at).getTime() >= PERSONALIZE_AFTER_DAYS * 24 * 60 * 60 * 1000);
+
+    if (!hasMonthOfUsage) {
+      return DEFAULT_TOP_EXPENSES
+        .map(name => EXPENSE_CATEGORIES.find(c => c.name === name))
+        .filter(Boolean) as Cat[];
+    }
+
+    const historyCounts: Record<string, number> = {};
+    for (const r of expenseRecords) {
+      const name = (r.category ?? '').trim();
+      if (!name) continue;
+      historyCounts[name] = (historyCounts[name] || 0) + 1;
+    }
+
+    return EXPENSE_CATEGORIES
+      .map((c, i) => ({ c, i, count: (historyCounts[c.name] || 0) + (catCounts[c.name] || 0) }))
+      .sort((a, b) => b.count - a.count || a.i - b.i)
+      .slice(0, 6)
+      .map(x => x.c);
+  }, [catCounts]);
 
   const tabIndex = Math.max(0, TABS.findIndex(t => t.key === tab));
   const active = TABS[tabIndex];
@@ -482,17 +511,20 @@ export default function LogScreen() {
     if (tab === 'expense') {
       return (
         <View style={s.stepStack}>
-          <ChipScroll>
-            {sortedCats.map(cat => {
-              const on = description === cat.name;
-              return (
-                <Pressable key={cat.name} onPress={() => setDescription(cat.name)} style={[s.catChip, on && s.catChipActive]}>
-                  <Feather name={cat.icon} size={15} color={on ? colors.brandDeep : colors.textSecondary} />
-                  <Text style={[s.catChipText, on && s.catChipTextActive]}>{cat.name}</Text>
-                </Pressable>
-              );
-            })}
-          </ChipScroll>
+          <View style={s.choiceGroup}>
+            <Text style={s.groupLabel}>Top categories</Text>
+            <View style={s.topCategoryGrid}>
+              {topExpenseCats.map(cat => {
+                const on = description === cat.name;
+                return (
+                  <Pressable key={cat.name} onPress={() => setDescription(cat.name)} style={[s.catTile, on && s.catTileActive]}>
+                    <Feather name={cat.icon} size={15} color={on ? colors.brandDeep : colors.textSecondary} />
+                    <Text style={[s.catTileText, on && s.catTileTextActive]}>{cat.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
           <View style={s.searchWrap}>
             <Feather name="search" size={16} color={colors.textTertiary} />
             <TextInput
@@ -862,7 +894,6 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
     padding: spacing.md, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.bg,
   },
-  chipRow: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.lg },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.sm, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, backgroundColor: colors.bg },
   searchInput: { flex: 1, fontSize: 16, color: colors.textPrimary, paddingVertical: 12 },
   suggestBox: { marginTop: spacing.sm, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' },
@@ -914,13 +945,16 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full,
   },
   receiptRemoveText: { color: '#fff', fontSize: 13, fontWeight: font.medium },
-  catChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full,
+  topCategoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  catTile: {
+    width: '48%',
+    minHeight: 48,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10, borderRadius: radius.lg,
     borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bg,
   },
-  catChipActive: { borderColor: colors.brand, backgroundColor: colors.brandLight },
-  catChipText: { fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
-  catChipTextActive: { color: colors.brandDeep },
+  catTileActive: { borderColor: colors.brand, backgroundColor: colors.brandLight },
+  catTileText: { flex: 1, fontSize: 13, fontWeight: font.medium, color: colors.textSecondary },
+  catTileTextActive: { color: colors.brandDeep },
 
 });
