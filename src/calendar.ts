@@ -1,6 +1,7 @@
 import * as Calendar from 'expo-calendar';
 import { Platform } from 'react-native';
 import { kvSet } from './db';
+import { logEvent } from './diagnostics';
 
 export type CalendarResult = 'added' | 'denied' | 'error';
 
@@ -11,6 +12,7 @@ export function getLastCalendarError(): string { return lastReason; }
 function note(reason: string) {
   lastReason = reason;
   try { kvSet('last_calendar_error', `${new Date().toISOString()} ${reason}`); } catch { /* ignore */ }
+  if (reason !== 'added ok') logEvent('calendar', reason);
 }
 
 // Add a tax deadline to the user's device calendar, with a reminder a week ahead.

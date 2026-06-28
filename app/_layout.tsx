@@ -6,6 +6,7 @@ import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 import '../src/autoTrip'; // registers the background trip-detection task at load
 import { clearStaleTripState } from '../src/hooks/useTrip';
+import { installGlobalErrorLogging } from '../src/diagnostics';
 import { DeadlineAlert, AppErrorBoundary } from '../src/components';
 
 const glassSheetOptions = {
@@ -31,6 +32,7 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   const router = useRouter();
+  useEffect(() => { installGlobalErrorLogging(); }, []);
   useEffect(() => { initDb(); }, []);
   // Cold launch = no trip is actually running (live state is in-memory only), so
   // clear any stale "tracking"/"finished this trip?" notifications and the
@@ -76,6 +78,7 @@ export default function RootLayout() {
         <Stack.Screen name="log-earnings" options={modalOptions} />
         <Stack.Screen name="settings-earnings-shortcut" options={modalOptions} />
         <Stack.Screen name="settings-auto-trip" options={modalOptions} />
+        <Stack.Screen name="settings-diagnostics" options={modalOptions} />
       </Stack>
       <DeadlineAlert />
       </AppErrorBoundary>

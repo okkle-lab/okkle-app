@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type } from '../theme';
 import { kvSet } from '../db';
+import { logError } from '../diagnostics';
 
 // Catches any render/runtime error in the tree below it and shows a friendly
 // fallback instead of a blank white screen. Release (App Store / TestFlight)
@@ -29,8 +30,9 @@ export class AppErrorBoundary extends React.Component<Props, State> {
       (errorInfo?.componentStack ?? '').split('\n').slice(0, 8).join('\n'),
     ].filter(Boolean).join('\n');
     this.setState({ info: detail });
-    // Persist so it can be retrieved later even after "Try again".
+    // Persist so it can be retrieved later (Settings → Diagnostics) even after "Try again".
     try { kvSet('last_crash', `${new Date().toISOString()}\n${detail}`); } catch { /* ignore */ }
+    logError('render-crash', error);
     console.error('Okkle crashed:', error);
   }
 

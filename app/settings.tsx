@@ -109,7 +109,8 @@ export default function Settings() {
             <Row icon="bell" tone="violet" title="Reminders" sub="Logging nudges & deadline alerts" onPress={go('/settings-reminders')} />
             <Row icon="upload" tone="green" title="Export & share" sub="Accountant pack & FreeAgent CSV" onPress={go('/export')} />
             <Row icon="database" tone="blue" title="Data & backup" sub="Back up, restore or delete" onPress={go('/settings-data')} />
-            <Row icon="help-circle" tone="neutral" title="Help & feedback" sub="Support, tour & app info" onPress={go('/settings-help')} last />
+            <Row icon="help-circle" tone="neutral" title="Help & feedback" sub="Support, tour & app info" onPress={go('/settings-help')} />
+            <Row icon="activity" tone="amber" title="Diagnostics" sub="Capture & share issues if something breaks" onPress={go('/settings-diagnostics')} last />
           </View>
         </View>
       </View>

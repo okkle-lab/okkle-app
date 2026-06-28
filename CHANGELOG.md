@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (41) - 2026-06-28 (In-app diagnostics)
+
+- **New Settings → Diagnostics screen.** When anything breaks, it captures what happened (crashes, calendar failures, and any fatal JS error) into an on-device log — with app version/build, OS, context and stack — and lets you send it all in one tap with **Share diagnostics**. No backend; nothing leaves the phone until you share it. This replaces having to reproduce a bug on cue and screenshot a fleeting alert.
+
 ## 0.3 (40) - 2026-06-28 (Log flow fixes)
 
 - **Fixed the blank/white Log screen.** A step's content opacity was tied to its slide-in animation; if that animation was interrupted (by the keyboard appearing mid-transition) it could stick at 0 and render the whole step invisible until you left and came back. Content is now always visible.
