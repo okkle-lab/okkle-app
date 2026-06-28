@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (38) - 2026-06-28 (Live tracking notification)
+
+- **The tracking notification now shows live miles.** While a trip records, the lock-screen/notification updates (quietly, about once a minute) with your distance and tax back so far — a clear sign Okkle is still working in the background. (A full Dynamic Island Live Activity needs a native widget extension — noted as a follow-up.)
+
 ## 0.3 (37) - 2026-06-28 (Background trip tracking + onboarding cleanup)
 
 - **Trips now keep tracking in the background.** Live trip state is saved to the database and driven by a registered background location task, so a trip no longer lives only in memory. This fixes three things at once:

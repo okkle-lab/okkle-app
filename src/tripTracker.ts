@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
-import { calcDeduction } from './db/tax';
+import { calcDeduction, fmtGbp } from './db/tax';
 import { kvGet, kvSet } from './db';
 import { setTripActive, suspendAutoTripUpdates, resumeAutoTripUpdates } from './autoTrip';
 
@@ -55,6 +55,7 @@ type ActiveTrip = {
   lastPos: StoredPos | null;
   lastSample: { lat: number; lng: number } | null;
   lastMoveAt: number;
+  lastNotifAt: number; // throttle live-miles notification refreshes
 };
 
 // --- persistence -----------------------------------------------------------
@@ -137,22 +138,35 @@ TaskManager.defineTask(TRIP_TRACK_TASK, async ({ data, error }: any) => {
   const t = readActive();
   if (!t || t.state !== 'running') return;
   const { moved } = ingest(t, locations);
+  maybeRefreshNotification(t); // keep the live-miles notification current
   writeActive(t);
   if (moved) armEndNudge(); // push the "finished?" nudge back on movement
 });
 
 // --- lock-screen notification + end nudge ----------------------------------
-function showTripNotification() {
+function postTripNotification(body: string) {
   Notifications.scheduleNotificationAsync({
     identifier: TRIP_NOTIF_ID,
     content: {
       title: 'Tracking your trip',
-      body: 'GPS is logging your miles. Tap to view.',
+      body,
       data: { type: 'tripActive' },
       sticky: true,
+      interruptionLevel: 'passive', // update quietly — no sound or screen wake
     },
     trigger: null,
   }).catch(() => {});
+}
+function showTripNotification() {
+  postTripNotification('GPS is logging your miles. Tap to view.');
+}
+// Refresh the live-miles notification at most once a minute, so the lock screen
+// shows the trip is still working without spamming alerts.
+function maybeRefreshNotification(t: ActiveTrip) {
+  const now = Date.now();
+  if (now - (t.lastNotifAt || 0) < 60_000) return;
+  t.lastNotifAt = now;
+  postTripNotification(`${t.miles.toFixed(1)} mi · ${fmtGbp(t.deduction)} so far · tap to view`);
 }
 function clearTripNotification() {
   Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
@@ -214,7 +228,7 @@ export async function trackerStart(vehicle: string): Promise<void> {
   const t: ActiveTrip = {
     state: 'running', vehicle, startedAt: Date.now(), pausedMs: 0, pausedAt: null,
     miles: 0, deduction: 0, speedMph: 0, points: [], lastPos: null, lastSample: null,
-    lastMoveAt: Date.now(),
+    lastMoveAt: Date.now(), lastNotifAt: Date.now(),
   };
   writeActive(t);
   setTripActive(true); // pause auto-trip suggestions while we track
