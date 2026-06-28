@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert, Image, Animated, ActivityIndicator,
-  Keyboard, KeyboardAvoidingView, Modal, Platform,
+  Keyboard, KeyboardAvoidingView, Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Directory, File, Paths } from 'expo-file-system';
@@ -156,6 +156,15 @@ export default function LogScreen() {
   const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
   const [period, setPeriod] = useState<'day' | 'week'>('day');
   const [saved, setSaved] = useState(false);
+  // Track the keyboard height so the Back/Continue footer can sit just above it.
+  // (KeyboardAvoidingView doesn't lift it reliably on this tab screen, leaving
+  // Continue stranded behind the number pad.)
+  const [kbHeight, setKbHeight] = useState(0);
+  React.useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', e => setKbHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [catCounts, setCatCounts] = useState(getCatCounts);
   const [descFocus, setDescFocus] = useState(false);
   const [numberInputFocused, setNumberInputFocused] = useState(false);
@@ -680,7 +689,7 @@ export default function LogScreen() {
     if (submitted) return null;
 
     return (
-      <View style={[s.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+      <View style={[s.footer, { paddingBottom: kbHeight > 0 ? kbHeight + spacing.sm : insets.bottom + spacing.md }]}>
         <NativeGreenButton
           label="Back"
           onPress={() => goToStep(stepIndex - 1)}
@@ -707,7 +716,9 @@ export default function LogScreen() {
       style={[
         s.page,
         {
-          opacity: stepAnim,
+          // Slide only — opacity is intentionally NOT bound to the animation. If the
+          // entrance tween is interrupted (keyboard/autofocus mid-transition), a
+          // value stuck at 0 would render the whole step invisible (white screen).
           transform: [{ translateX: stepAnim.interpolate({ inputRange: [0, 1], outputRange: [stepDirection.current * 28, 0] }) }],
         },
       ]}
@@ -720,7 +731,7 @@ export default function LogScreen() {
   );
 
   return (
-    <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={s.screen} behavior={undefined}>
       <View style={[s.header, { paddingTop: titleTop }]}>
         <View style={s.headerText}>
           <Text style={s.headerTitle}>{active.label}</Text>

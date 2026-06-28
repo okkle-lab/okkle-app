@@ -437,7 +437,7 @@ const s = StyleSheet.create({
   flashText: { color: colors.green, fontSize: 15, fontWeight: font.bold },
   mileTrack: { width: '100%', height: 8, borderRadius: radius.full, backgroundColor: 'rgba(255,255,255,0.14)', overflow: 'hidden' },
   mileFill: { height: '100%', borderRadius: radius.full },
-  liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginBottom: spacing.xl },
+  liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginTop: spacing.xl, marginBottom: spacing.xl },
   liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
   liveStatBorder: { borderLeftWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
   heroMap: { width: '100%', paddingHorizontal: spacing.sm, alignItems: 'stretch', gap: 10 },

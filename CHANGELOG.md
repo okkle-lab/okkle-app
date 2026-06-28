@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (40) - 2026-06-28 (Log flow fixes)
+
+- **Fixed the blank/white Log screen.** A step's content opacity was tied to its slide-in animation; if that animation was interrupted (by the keyboard appearing mid-transition) it could stick at 0 and render the whole step invisible until you left and came back. Content is now always visible.
+- **You can reach "Continue" with the keyboard up.** The Back/Continue footer now floats just above the keyboard, so it's no longer stranded behind the number pad.
+- **Trip live screen spacing.** Added breathing room between the "earned back" chip and the four stats.
+
 ## 0.3 (39) - 2026-06-28 (Diagnostics for the crash + calendar issue)
 
 - **The "Something went wrong" screen now shows the actual error** (message + stack) and saves it, so a crash on a real device can be screenshotted and fixed — release builds otherwise hide the cause.
