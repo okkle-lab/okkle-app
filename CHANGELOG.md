@@ -2,6 +2,15 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (37) - 2026-06-28 (Background trip tracking + onboarding cleanup)
+
+- **Trips now keep tracking in the background.** Live trip state is saved to the database and driven by a registered background location task, so a trip no longer lives only in memory. This fixes three things at once:
+  - **Locked-screen tracking.** The whole route is recorded while the phone is locked — not just the start and end with a straight line between.
+  - **You can leave the tracking screen.** The live screen no longer takes over the whole app — switch tabs (or tap the new minimise control) and the trip keeps recording; returning drops you back into it.
+  - **Trips survive the app closing.** Leave the app, get killed by iOS, or reopen later — an in-progress trip is restored and carries on instead of vanishing.
+- **Only one location stream at a time.** Starting a trip stands down the low-power auto-trip detector and brings it back when the trip ends, so they don't fight over GPS.
+- **Onboarding cleanup.** Removed the app icon and the PAYE/employment note from the welcome screen (the employed-vs-self-employed note now lives on the tax-band step), and the onboarding flow no longer scrolls.
+
 ## 0.3 (36) - 2026-06-28 (Log save polish & number-input hardening)
 
 - **Save confirmation auto-dismisses.** The "Saved to Records" card no longer has a floating "Done" button — it confirms the save, then clears itself and returns to a fresh Log form.

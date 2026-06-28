@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, TextInput, ScrollView, KeyboardAvoidingView,
+  View, Text, TextInput, KeyboardAvoidingView,
   Platform, Pressable, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -95,7 +95,7 @@ export default function Onboarding() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={[s.scrollContent, { paddingTop: insets.top + 16 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <View style={[s.page, { paddingTop: insets.top + 16 }]}>
         <View style={s.progress}>
           {STEPS.map((_, i) => (
             <View key={i} style={[s.dot, i <= step && s.dotActive, i === step && s.dotCurrent]} />
@@ -104,9 +104,6 @@ export default function Onboarding() {
 
         {step === 0 && (
           <View style={s.stepContent}>
-            <View style={s.welcomeIcon}>
-              <Feather name="navigation" size={30} color="#fff" />
-            </View>
             <Text style={s.logo}>Okkle</Text>
             <Text style={s.hero}>Drive smarter.{'\n'}Keep more of it.</Text>
             <Text style={s.sub}>
@@ -125,7 +122,6 @@ export default function Onboarding() {
                 </View>
               ))}
             </View>
-            <Text style={s.note}>For self-employed couriers. If you’re employed (taxed through PAYE on a payslip), your tax is handled differently and Okkle’s estimates won’t apply to you. Your data stays on your phone.</Text>
           </View>
         )}
 
@@ -233,7 +229,7 @@ export default function Onboarding() {
             </View>
 
             <Text style={s.note}>
-              We'll estimate your tax at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}). Okkle is a tracking tool, not tax advice — your accountant confirms the final figures.
+              We'll estimate your tax at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}). Okkle is a tracking tool, not tax advice — your accountant confirms the final figures. If you’re employed (taxed through PAYE on a payslip), your tax is handled differently and these estimates won’t apply.
             </Text>
           </View>
         )}
@@ -266,7 +262,7 @@ export default function Onboarding() {
             </View>
           </View>
         )}
-      </ScrollView>
+      </View>
 
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {step === STEPS.length - 1 ? (
@@ -292,13 +288,12 @@ export default function Onboarding() {
 }
 
 const s = StyleSheet.create({
-  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
+  page: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
   progress: { flexDirection: 'row', gap: 5, marginBottom: spacing.xxl },
   dot: { height: 5, flex: 1, borderRadius: radius.full, backgroundColor: colors.border },
   dotActive: { backgroundColor: colors.brandMid },
   dotCurrent: { backgroundColor: colors.brand },
   stepContent: { paddingBottom: spacing.lg },
-  welcomeIcon: { width: 62, height: 62, borderRadius: 20, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
   readyIcon: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
   welcomeList: { marginTop: spacing.xl, gap: spacing.lg },
   welcomeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

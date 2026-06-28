@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Alert, Pressable,
-  KeyboardAvoidingView, Platform, Dimensions, Modal,
+  KeyboardAvoidingView, Platform, Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
@@ -58,6 +58,15 @@ export default function TripScreen() {
   const [prevBestTrip, setPrevBestTrip] = useState(0);
   const milestoneRef = React.useRef(0);
   const { trip, points, start, pause, resume, end } = useTrip();
+
+  // Tracking now runs in the background and survives leaving this screen. If a
+  // trip is in progress when we land here (switched tabs and came back, reopened
+  // the app, or relaunched after a kill), drop straight back into the live view.
+  useEffect(() => {
+    if ((trip.state === 'running' || trip.state === 'paused') && phase === 'setup') {
+      setPhase('live');
+    }
+  }, [trip.state, phase]);
 
   // Gamified "earn it back" milestones — every £5 of mileage deduction earned
   // mid-trip fires a haptic + a brief celebration, so progress feels rewarding.
@@ -162,9 +171,8 @@ export default function TripScreen() {
     };
     const stripMetrics = (['miles', 'time', 'speed', 'today', 'map'] as LiveMetric[]).filter(m => m !== heroMetric);
     return (
-      <Modal visible animationType="fade" statusBarTranslucent presentationStyle="overFullScreen">
+      <View style={s.liveScreen}>
         <StatusBar style="light" />
-        <View style={s.liveScreen}>
           {/* Status pill (live/waiting/paused) + discard */}
           <View style={s.liveHeader}>
             <View style={s.statusPill}>
@@ -172,6 +180,9 @@ export default function TripScreen() {
               <Text style={s.statusPillText}>{statusText}{trip.vehicle ? ` · ${vehicleLabel(trip.vehicle)}` : ''}</Text>
             </View>
           </View>
+          <Pressable onPress={() => router.navigate('/(tabs)')} hitSlop={12} style={s.minimizeBtn}>
+            <Feather name="chevron-down" size={26} color="rgba(255,255,255,0.7)" />
+          </Pressable>
           <Pressable onPress={handleDiscard} hitSlop={12} style={s.discardX}>
             <Feather name="x" size={24} color="rgba(255,255,255,0.7)" />
           </Pressable>
@@ -227,7 +238,7 @@ export default function TripScreen() {
             ))}
           </View>
 
-          <View style={s.liveActions}>
+          <View style={[s.liveActions, { paddingBottom: insets.bottom + 96 }]}>
             <Pressable
               onPress={isPaused ? resume : pause}
               style={({ pressed }) => [s.pauseBtn, pressed && { opacity: 0.7 }]}
@@ -239,7 +250,6 @@ export default function TripScreen() {
             <SlideToConfirm label="Slide to end trip" onConfirm={handleEnd} color={colors.red} />
           </View>
         </View>
-      </Modal>
     );
   }
 
@@ -413,6 +423,7 @@ const s = StyleSheet.create({
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.10)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.full },
   statusPillText: { color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: font.medium },
   discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
+  minimizeBtn: { position: 'absolute', top: 64, left: spacing.xl, padding: 4 },
   liveDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.green },
   ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   // NOTE: no explicit lineHeight — it conflicts with adjustsFontSizeToFit on iOS
@@ -432,7 +443,7 @@ const s = StyleSheet.create({
   heroMap: { width: '100%', paddingHorizontal: spacing.sm, alignItems: 'stretch', gap: 10 },
   liveStatLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
   liveStatValue: { ...tabular, fontSize: 19, fontWeight: font.semibold, color: '#fff' },
-  liveActions: { paddingHorizontal: spacing.xl, paddingBottom: Platform.OS === 'ios' ? 132 : 44, gap: spacing.md },
+  liveActions: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.md },
   pauseBtn: {
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.3)', borderRadius: radius.full,
     paddingVertical: 18, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8,
