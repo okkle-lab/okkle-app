@@ -95,5 +95,5 @@ const s = StyleSheet.create({
   small: { ...type.heading, fontSize: 18, flex: 1, paddingRight: spacing.md },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   big: { ...type.screenTitle, paddingRight: HEADER_TITLE_SIDE_CLEARANCE },
-  sub: { ...type.body, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.lg },
+  sub: { ...type.body, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.lg, paddingRight: HEADER_TITLE_SIDE_CLEARANCE },
 });

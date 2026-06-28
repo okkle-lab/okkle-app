@@ -11,9 +11,9 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
-## 0.3 (30) - 2026-06-28 (Header subtitle spacing)
+## 0.3 (31) - 2026-06-28 (Header subtitle gutter)
 
-- **More space between the header subtitle and the settings gear.** On Insights and Records the subtitle's first line sat right under the gear; it now has comfortable clearance below it.
+- **Header subtitle no longer runs under the settings gear.** The subtitle now wraps before the gear's column (matching the title), so the title + subtitle form a clean left-aligned block with the gear in its own top-right gutter.
 
 ## 0.3 (29) - 2026-06-28 (Consistent header gear)
 
