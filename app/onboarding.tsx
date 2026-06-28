@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, TextInput, KeyboardAvoidingView,
+  View, Text, TextInput, ScrollView, KeyboardAvoidingView,
   Platform, Pressable, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
+import * as Calendar from 'expo-calendar';
+import * as Notifications from 'expo-notifications';
 import { colors, font, radius, spacing, type } from '../src/theme';
 import { VEHICLES, PLATFORMS, REGIONS, regionFromArea, regionRate, regionLabel } from '../src/db/tax';
 import { saveUser, getUser } from '../src/db';
@@ -35,6 +37,24 @@ export default function Onboarding() {
     const u = getUser();
     if (u) { syncReminders(u).catch(() => {}); }
   }
+
+  // Ask for the permissions Okkle relies on, once, when the user reaches the
+  // final step — so trip tracking, deadline reminders and calendar adds just
+  // work later instead of erroring the first time they're used.
+  const permsAsked = useRef(false);
+  useEffect(() => {
+    if (step !== STEPS.length - 1 || permsAsked.current) return;
+    permsAsked.current = true;
+    (async () => {
+      try { await Notifications.requestPermissionsAsync(); } catch { /* ignore */ }
+      try {
+        const fg = await Location.requestForegroundPermissionsAsync();
+        // "Always" so GPS keeps tracking while the phone is locked.
+        if (fg.status === 'granted') await Location.requestBackgroundPermissionsAsync();
+      } catch { /* ignore */ }
+      try { await Calendar.requestCalendarPermissionsAsync(); } catch { /* ignore */ }
+    })();
+  }, [step]);
 
   async function next() {
     if (step < STEPS.length - 1) { setStep(s => s + 1); return; }
@@ -75,7 +95,7 @@ export default function Onboarding() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[s.container, { paddingTop: insets.top + 16 }]}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={[s.scrollContent, { paddingTop: insets.top + 16 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={s.progress}>
           {STEPS.map((_, i) => (
             <View key={i} style={[s.dot, i <= step && s.dotActive, i === step && s.dotCurrent]} />
@@ -246,38 +266,38 @@ export default function Onboarding() {
             </View>
           </View>
         )}
+      </ScrollView>
 
-        <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          {step === STEPS.length - 1 ? (
-            <>
-              <PrimaryButton label="Start my first trip" onPress={finishToTrip} />
-              <Pressable onPress={next} style={{ marginTop: 14, alignItems: 'center' }}>
-                <Text style={s.backText}>Explore the app first</Text>
+      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        {step === STEPS.length - 1 ? (
+          <>
+            <PrimaryButton label="Start my first trip" onPress={finishToTrip} />
+            <Pressable onPress={next} style={{ marginTop: 14, alignItems: 'center' }}>
+              <Text style={s.backText}>Explore the app first</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <PrimaryButton label={step === 0 ? 'Get started' : 'Continue'} onPress={next} disabled={!canContinue} />
+            {step > 0 && (
+              <Pressable onPress={() => setStep(s => s - 1)} style={{ marginTop: 14, alignItems: 'center' }}>
+                <Text style={s.backText}>Back</Text>
               </Pressable>
-            </>
-          ) : (
-            <>
-              <PrimaryButton label={step === 0 ? 'Get started' : 'Continue'} onPress={next} disabled={!canContinue} />
-              {step > 0 && (
-                <Pressable onPress={() => setStep(s => s - 1)} style={{ marginTop: 14, alignItems: 'center' }}>
-                  <Text style={s.backText}>Back</Text>
-                </Pressable>
-              )}
-            </>
-          )}
-        </View>
+            )}
+          </>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: spacing.xl },
+  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
   progress: { flexDirection: 'row', gap: 5, marginBottom: spacing.xxl },
   dot: { height: 5, flex: 1, borderRadius: radius.full, backgroundColor: colors.border },
   dotActive: { backgroundColor: colors.brandMid },
   dotCurrent: { backgroundColor: colors.brand },
-  stepContent: { flex: 1, paddingBottom: spacing.xl },
+  stepContent: { paddingBottom: spacing.lg },
   welcomeIcon: { width: 62, height: 62, borderRadius: 20, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
   readyIcon: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
   welcomeList: { marginTop: spacing.xl, gap: spacing.lg },
@@ -310,6 +330,6 @@ const s = StyleSheet.create({
   streakNote: { flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.lg, marginTop: spacing.xl },
   streakNoteText: { ...type.caption, color: colors.amberDark, flex: 1, lineHeight: 19 },
 
-  footer: { marginTop: 'auto', paddingTop: spacing.xl },
+  footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
   backText: { ...type.label, color: colors.textSecondary },
 });

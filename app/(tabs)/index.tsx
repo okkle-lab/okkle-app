@@ -134,7 +134,6 @@ export default function HomeScreen() {
       right={
         <SettingsGlassButton onPress={() => router.push('/settings')} />
       }
-      scrollEnabled={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
       {/* HERO: tax saved — tap through to the full Tax breakdown */}

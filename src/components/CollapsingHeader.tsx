@@ -3,7 +3,7 @@ import { Animated, Platform, ScrollView, View, StyleSheet, useColorScheme, type 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { colors, spacing, type } from '../theme';
-import { HEADER_ACTION_SIZE, headerActionTop, headerTitleTop } from './headerLayout';
+import { HEADER_ACTION_SIZE, HEADER_TITLE_SIDE_CLEARANCE, headerActionTop, headerTitleTop, headerBarHeight } from './headerLayout';
 
 const THRESH = 96;        // px of scroll over which the large title hands off
 const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 132 : 40;
@@ -31,6 +31,7 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
   const fadeColor = isDark ? '#101816' : '#FFFFFF';
   const actionTop = headerActionTop(insets.top);
   const titleTop = headerTitleTop(insets.top);
+  const barHeight = headerBarHeight(insets.top);
 
   const barOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.12, THRESH * 0.95], outputRange: [0, 1], extrapolate: 'clamp' });
   const smallOpacity = scrollY.interpolate({ inputRange: [THRESH * 0.45, THRESH * 1.08], outputRange: [0, 1], extrapolate: 'clamp' });
@@ -63,8 +64,8 @@ export function CollapsingHeader({ title, subtitle, right, children, refreshCont
       </Animated.ScrollView>
 
       {/* Pinned bar — transparent until you scroll, then a compact top-to-clear fade. */}
-      <View style={[s.bar, { height: titleTop }]} pointerEvents="box-none">
-        <Animated.View pointerEvents="none" style={[s.fadeBg, { height: titleTop, opacity: barOpacity }]}>
+      <View style={[s.bar, { height: barHeight }]} pointerEvents="box-none">
+        <Animated.View pointerEvents="none" style={[s.fadeBg, { height: barHeight, opacity: barOpacity }]}>
           <Svg width="100%" height="100%" preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
             <Defs>
               <LinearGradient id="headerFade" x1="0" y1="0" x2="0" y2="1">
@@ -93,6 +94,6 @@ const s = StyleSheet.create({
   row: { position: 'absolute', left: spacing.xl, right: spacing.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   small: { ...type.heading, fontSize: 18, flex: 1, paddingRight: spacing.md },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  big: { ...type.screenTitle },
+  big: { ...type.screenTitle, paddingRight: HEADER_TITLE_SIDE_CLEARANCE },
   sub: { ...type.body, color: colors.textSecondary, marginTop: 6, marginBottom: spacing.lg },
 });
