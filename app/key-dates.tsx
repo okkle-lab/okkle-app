@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Linking } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, ModalHeader } from '../src/components';
@@ -47,10 +47,14 @@ export default function KeyDatesScreen() {
                 </View>
                 <Pressable
                   onPress={async () => {
-                    try {
-                      const ok = await addDeadlineToCalendar(`HMRC: ${d.title}`, next, d.note);
-                      Alert.alert(ok ? 'Added to your calendar' : 'Couldn’t add it', ok ? `${d.title} — ${next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.` : 'Please allow calendar access and try again.');
-                    } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
+                    const res = await addDeadlineToCalendar(`HMRC: ${d.title}`, next, d.note);
+                    if (res === 'added') {
+                      Alert.alert('Added to your calendar', `${d.title} — ${next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.`);
+                    } else if (res === 'denied') {
+                      Alert.alert('Allow calendar access', 'Okkle needs access to your calendar to add this deadline. You can turn it on in Settings.', [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
+                    } else {
+                      Alert.alert('Couldn’t add it', 'Something went wrong adding this to your calendar. Please try again.');
+                    }
                   }}
                   style={s.calBtn}
                   hitSlop={6}

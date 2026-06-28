@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Linking } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
@@ -82,19 +82,29 @@ export default function TaxDetail() {
   const pos = taxPosition(year.earnings, chosenDeduction + otherExpenses, region, otherIncome);
   const isCarVan = user?.vehicle === 'car' || user?.vehicle === 'van';
 
+  function showCalendarResult(res: 'added' | 'denied' | 'error', successMsg: string) {
+    if (res === 'added') {
+      Alert.alert('Added to your calendar', successMsg);
+    } else if (res === 'denied') {
+      Alert.alert(
+        'Allow calendar access',
+        'Okkle needs access to your calendar to add this deadline. You can turn it on in Settings.',
+        [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
+      );
+    } else {
+      Alert.alert('Couldn’t add it', 'Something went wrong adding this to your calendar. Please try again.');
+    }
+  }
+
   async function addMtdReminder(label: string, deadlineISO: string, deadlineLabel: string) {
     const when = new Date(`${deadlineISO}T09:00:00`);
-    try {
-      const ok = await addDeadlineToCalendar(`MTD: ${label} quarterly update`, when, 'Submit your Making Tax Digital quarterly update to HMRC.');
-      Alert.alert(ok ? 'Added to your calendar' : 'Couldn’t add it', ok ? `${label} update — due ${deadlineLabel}, with a reminder a week before.` : 'Please allow calendar access and try again.');
-    } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
+    const res = await addDeadlineToCalendar(`MTD: ${label} quarterly update`, when, 'Submit your Making Tax Digital quarterly update to HMRC.');
+    showCalendarResult(res, `${label} update — due ${deadlineLabel}, with a reminder a week before.`);
   }
 
   async function addHmrcReminder(title: string, when: Date, note: string) {
-    try {
-      const ok = await addDeadlineToCalendar(`HMRC: ${title}`, when, note);
-      Alert.alert(ok ? 'Added to your calendar' : 'Couldn’t add it', ok ? `${title} — ${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.` : 'Please allow calendar access and try again.');
-    } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
+    const res = await addDeadlineToCalendar(`HMRC: ${title}`, when, note);
+    showCalendarResult(res, `${title} — ${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.`);
   }
 
   return (
