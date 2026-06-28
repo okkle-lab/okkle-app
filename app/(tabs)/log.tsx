@@ -702,7 +702,6 @@ export default function LogScreen() {
     <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[s.header, { paddingTop: titleTop }]}>
         <View style={s.headerText}>
-          <Text style={s.headerEyebrow}>Log entry</Text>
           <Text style={s.headerTitle}>{active.label}</Text>
         </View>
         <SettingsGlassButton onPress={() => router.push('/settings')} style={[s.headerSettings, { top: actionTop }]} />
@@ -752,7 +751,7 @@ const s = StyleSheet.create({
   headerText: { paddingRight: HEADER_TITLE_SIDE_CLEARANCE },
   headerSettings: { position: 'absolute', right: spacing.xl },
   headerEyebrow: { ...type.caption, color: colors.textTertiary, fontWeight: font.medium, lineHeight: LOG_EYEBROW_LINE_HEIGHT },
-  headerTitle: { ...type.screenTitle, marginTop: 2 },
+  headerTitle: { ...type.screenTitle },
   progressTrack: { height: 4, marginHorizontal: spacing.xl, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.brand },
   stepContent: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xl + spacing.sm },
