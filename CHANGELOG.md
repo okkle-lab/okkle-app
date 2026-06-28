@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 0.3 (42) - 2026-06-28 (Calendar fix + live-map alignment)
+
+- **Fixed "Add to calendar".** The calendar permission was never actually being requested — `expo-calendar`'s default permission method is deprecated in this SDK and throws, so the prompt never showed and no Calendars toggle appeared in Settings. Switched to the supported legacy API; tapping Add now requests access properly. (Diagnosed via the new Diagnostics log.)
+- **Live trip screen — map alignment.** The route map was bleeding to the screen edges (out of line with the stats) and the "earned back" chip below it was getting clipped. The map now aligns with the rest of the content, it's slightly shorter, and nothing is cut off.
+
 ## 0.3 (41) - 2026-06-28 (In-app diagnostics)
 
 - **New Settings → Diagnostics screen.** When anything breaks, it captures what happened (crashes, calendar failures, and any fatal JS error) into an on-device log — with app version/build, OS, context and stack — and lets you send it all in one tap with **Share diagnostics**. No backend; nothing leaves the phone until you share it. This replaces having to reproduce a bug on cue and screenshot a fleeting alert.

@@ -191,7 +191,7 @@ export default function TripScreen() {
           <View style={s.ringWrap}>
             {heroMetric === 'map' ? (
               <View style={s.heroMap}>
-                <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.30)} />
+                <RouteMap route={points ?? []} height={Math.round(Dimensions.get('window').height * 0.26)} />
                 <Text style={s.bigMilesUnit}>your route so far</Text>
               </View>
             ) : (
@@ -425,7 +425,7 @@ const s = StyleSheet.create({
   discardX: { position: 'absolute', top: 66, right: spacing.xl, padding: 4 },
   minimizeBtn: { position: 'absolute', top: 64, left: spacing.xl, padding: 4 },
   liveDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.green },
-  ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   // NOTE: no explicit lineHeight — it conflicts with adjustsFontSizeToFit on iOS
   // and collapses the number to a tiny size. Let the font size drive the height.
   bigMiles: { ...tabular, alignSelf: 'stretch', textAlign: 'center', paddingHorizontal: spacing.lg, fontSize: 108, fontWeight: font.bold, color: '#fff', letterSpacing: -4 },
@@ -440,7 +440,7 @@ const s = StyleSheet.create({
   liveStats: { flexDirection: 'row', marginHorizontal: spacing.xl, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: radius.lg, marginTop: spacing.xl, marginBottom: spacing.xl },
   liveStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.lg, gap: 4 },
   liveStatBorder: { borderLeftWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-  heroMap: { width: '100%', paddingHorizontal: spacing.sm, alignItems: 'stretch', gap: 10 },
+  heroMap: { width: '100%', paddingHorizontal: spacing.xl, alignItems: 'stretch', gap: 10 },
   liveStatLabel: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
   liveStatValue: { ...tabular, fontSize: 19, fontWeight: font.semibold, color: '#fff' },
   liveActions: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.md },

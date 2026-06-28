@@ -1,4 +1,8 @@
-import * as Calendar from 'expo-calendar';
+// The default `expo-calendar` entry's permission methods are deprecated in this
+// SDK and *throw* ("Method requestCalendarPermissionsAsync ... is deprecated"),
+// so the permission was never actually requested — which is why no Calendars
+// toggle appeared in Settings. The legacy entry exposes the same API and works.
+import * as Calendar from 'expo-calendar/legacy';
 import { Platform } from 'react-native';
 import { kvSet } from './db';
 import { logEvent } from './diagnostics';
