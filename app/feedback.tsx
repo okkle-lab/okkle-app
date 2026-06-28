@@ -9,7 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Chip, PrimaryButton, Card, SectionHeader, ModalHeader } from '../src/components';
-import { sendFeedback } from '../src/feedback';
+import { FEEDBACK_EMAIL, sendFeedback } from '../src/feedback';
 
 const PROBLEM_CATEGORIES = [
   'App not working', 'GPS / trip tracking', 'Earnings or expenses',
@@ -44,14 +44,17 @@ export default function FeedbackScreen() {
       const result = await sendFeedback({ mode, category: category || undefined, description, contact: contact.trim() || undefined, screen, includeDiagnostics: includeDiag, screenshotUri: shot });
       setBusy(false);
       if (result === 'unavailable') {
-        Alert.alert('No mail set up', 'Add an email account to your phone, or email us directly at mototaxuk@gmail.com.');
+        Alert.alert('No mail set up', `Add an email account to your phone, or email us directly at ${FEEDBACK_EMAIL}.`);
+        return;
+      }
+      if (result === 'cancelled') {
         return;
       }
       router.back();
       setTimeout(() => Alert.alert('Thank you', 'Your message is on its way. We read every one.'), 250);
     } catch {
       setBusy(false);
-      Alert.alert('Couldn’t send', 'Please try again, or email mototaxuk@gmail.com directly.');
+      Alert.alert('Couldn’t send', `Please try again, or email ${FEEDBACK_EMAIL} directly.`);
     }
   }
 
