@@ -16,7 +16,6 @@ A React Native / Expo iPhone app for **self-employed** UK gig-economy delivery c
 - **Slide-to-end control** — PanResponder slide gesture (like Lime/Uber) prevents accidental trip endings with gloves on.
 - **"Waiting…" indicator** — when stationary (speed < 0.5 mph), the activity ring shows "Waiting…" in amber so you know tracking is active and filtering GPS drift — it's not frozen.
 - **Background GPS** — a registered background location task (`src/tripTracker.ts`) writes the live trip to the database, so tracking continues when the phone locks, when you leave the Trip screen, and even survives the app being killed mid-trip (it's restored on relaunch). `UIBackgroundModes: location` + "Always" permission (active in EAS dev build; Expo Go foreground only).
-- **Diagnostics** — Settings → Diagnostics captures crashes, caught failures and fatal JS errors (with version/build, OS, context and stack) into an on-device log (`src/diagnostics.ts`) that the user can share in one tap. No backend; never leaves the phone unless shared.
 - **Activity ring** — Apple-fitness-style daily goal ring showing miles driven today vs your target.
 - **Pause / resume** — pause mid-trip (e.g. waiting at a restaurant) without losing distance.
 - **Discard a trip** — × button on the live screen and a "Discard this trip" option on the summary screen, both with confirmation.

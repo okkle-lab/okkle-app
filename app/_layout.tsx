@@ -78,7 +78,6 @@ export default function RootLayout() {
         <Stack.Screen name="log-earnings" options={modalOptions} />
         <Stack.Screen name="settings-earnings-shortcut" options={modalOptions} />
         <Stack.Screen name="settings-auto-trip" options={modalOptions} />
-        <Stack.Screen name="settings-diagnostics" options={modalOptions} />
       </Stack>
       <DeadlineAlert />
       </AppErrorBoundary>

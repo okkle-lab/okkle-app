@@ -1,9 +1,8 @@
 import { kvGet, kvSet } from './db';
 
-// Lightweight on-device diagnostics so bugs are easy to capture and send.
-// Everything is logged to a capped, persisted list (kv) and viewable in
-// Settings → Diagnostics, where it can be shared in one tap. No backend, no
-// network — it never leaves the phone unless the user shares it.
+// Lightweight on-device diagnostics so bugs are easier to investigate.
+// Everything is logged to a capped, persisted list (kv) and can be included
+// in explicit user-initiated bug reports.
 
 export type DiagEntry = { t: string; ctx: string; detail: string };
 const KEY = 'diag_log';

@@ -2,6 +2,12 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0 (42) - 2026-06-28 (Launch release)
+
+- **Launch version.** App/package version bumped to 1.0 for release.
+- **Bug reports go to Okkle Lab.** In-app problem reports now compose to `admin@okklelab.com`, with the old support inbox removed from the fallback messages.
+- **Removed the standalone Diagnostics settings screen** from the launch UI while keeping lightweight internal error logging available for explicit bug reports and future automated diagnostics work.
+
 ## 0.3 (42) - 2026-06-28 (Calendar fix + live-map alignment)
 
 - **Fixed "Add to calendar".** The calendar permission was never actually being requested — `expo-calendar`'s default permission method is deprecated in this SDK and throws, so the prompt never showed and no Calendars toggle appeared in Settings. Switched to the supported legacy API; tapping Add now requests access properly. (Diagnosed via the new Diagnostics log.)
