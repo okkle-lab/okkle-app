@@ -1,12 +1,9 @@
-import React from 'react';
-import { Platform, View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Text, ScrollView, StyleSheet } from 'react-native';
 import Constants from 'expo-constants';
 import { colors, spacing, type } from '../src/theme';
 import { Card, ModalHeader } from '../src/components';
 
 export default function SettingsAbout() {
-  const router = useRouter();
   const version = Constants.expoConfig?.version ?? 'dev';
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>

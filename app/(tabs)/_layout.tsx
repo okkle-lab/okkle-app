@@ -26,11 +26,11 @@ const tabLabel = Platform.OS === 'ios'
   : colors.textSecondary;
 
 const tabs: TabItem[] = [
-  { name: 'index', label: 'Home', feather: 'home', sf: { default: 'house', selected: 'house.fill' } },
-  { name: 'log', label: 'Log', feather: 'edit-3', sf: { default: 'square.and.pencil', selected: 'square.and.pencil' } },
+  { name: 'index', label: 'Home', feather: 'user', sf: { default: 'person.crop.circle', selected: 'person.crop.circle.fill' } },
+  { name: 'insights', label: 'Insights', feather: 'zap', sf: { default: 'sparkles', selected: 'sparkles' } },
   { name: 'trip', label: 'Trip', feather: 'navigation', sf: { default: 'location.north', selected: 'location.north.fill' } },
-  { name: 'records', label: 'Records', feather: 'list', sf: { default: 'list.bullet.rectangle', selected: 'list.bullet.rectangle.fill' } },
-  { name: 'tax', label: 'Tax', feather: 'pie-chart', sf: { default: 'chart.pie', selected: 'chart.pie.fill' } },
+  { name: 'log', label: 'Log', feather: 'edit-3', sf: { default: 'square.and.pencil', selected: 'square.and.pencil' } },
+  { name: 'records', label: 'Records', feather: 'archive', sf: { default: 'archivebox', selected: 'archivebox.fill' } },
 ];
 
 export default function TabLayout() {

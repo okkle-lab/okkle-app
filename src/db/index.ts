@@ -248,6 +248,29 @@ export function getRecords(limit = 100): Record[] {
   return db.getAllSync<Record>('SELECT * FROM records ORDER BY created_at DESC LIMIT ?', limit);
 }
 
+// --- Exports: tax-year-scoped, cap-free getters --------------------------------
+// The headline/SA figures are scoped to one tax year, so the CSV/pack exports
+// MUST be too, or a returning user's export won't reconcile with their summary.
+// No LIMIT here: list screens cap rows for performance, but exports must be
+// complete. Records use the same overlap predicate as the aggregations so the
+// exact same set of entries is included.
+export function getTripsForTaxYear(start = taxYearStart(), end = taxYearEnd()): Trip[] {
+  return db.getAllSync<Trip>(
+    'SELECT * FROM trips WHERE date(started_at) BETWEEN ? AND ? ORDER BY started_at',
+    start, end,
+  );
+}
+
+export function getRecordsForTaxYear(start = taxYearStart(), end = taxYearEnd()): Record[] {
+  return db.getAllSync<Record>(
+    `SELECT * FROM records WHERE
+       (period_start IS NOT NULL AND date(period_start) <= ? AND date(period_end) >= ?)
+       OR (period_start IS NULL AND date(created_at) BETWEEN ? AND ?)
+     ORDER BY created_at`,
+    end, start, start, end,
+  );
+}
+
 // Marker the passive shift tracker writes into `notes` for a freshly auto-logged
 // shift the driver hasn't reviewed yet.
 export const SHIFT_DRAFT_NOTE = 'Auto-tracked shift — tap to confirm';
@@ -842,6 +865,7 @@ export type QuarterSummary = {
   start: string;
   end: string;
   deadline: string;
+  deadlineISO: string; // yyyy-mm-dd, for adding the MTD deadline to the calendar
   income: number;
   expenses: number;
   profit: number;
@@ -854,10 +878,10 @@ export function getQuarterlySummaries(): QuarterSummary[] {
   const start = taxYearStart();
   const baseYear = parseInt(start.slice(0, 4), 10);
   const quarters = [
-    { label: 'Q1', start: `${baseYear}-04-06`, end: `${baseYear}-07-05`, deadline: `7 Aug ${baseYear}` },
-    { label: 'Q2', start: `${baseYear}-07-06`, end: `${baseYear}-10-05`, deadline: `7 Nov ${baseYear}` },
-    { label: 'Q3', start: `${baseYear}-10-06`, end: `${baseYear + 1}-01-05`, deadline: `7 Feb ${baseYear + 1}` },
-    { label: 'Q4', start: `${baseYear + 1}-01-06`, end: `${baseYear + 1}-04-05`, deadline: `7 May ${baseYear + 1}` },
+    { label: 'Q1', start: `${baseYear}-04-06`, end: `${baseYear}-07-05`, deadline: `7 Aug ${baseYear}`, deadlineISO: `${baseYear}-08-07` },
+    { label: 'Q2', start: `${baseYear}-07-06`, end: `${baseYear}-10-05`, deadline: `7 Nov ${baseYear}`, deadlineISO: `${baseYear}-11-07` },
+    { label: 'Q3', start: `${baseYear}-10-06`, end: `${baseYear + 1}-01-05`, deadline: `7 Feb ${baseYear + 1}`, deadlineISO: `${baseYear + 1}-02-07` },
+    { label: 'Q4', start: `${baseYear + 1}-01-06`, end: `${baseYear + 1}-04-05`, deadline: `7 May ${baseYear + 1}`, deadlineISO: `${baseYear + 1}-05-07` },
   ];
   const today = new Date().toISOString().slice(0, 10);
 
@@ -878,7 +902,7 @@ export function getQuarterlySummaries(): QuarterSummary[] {
     const income = (tripInc?.inc ?? 0) + recIncome;
     const expenses = (tripInc?.ded ?? 0) + recMileDed + recExp;
     return {
-      label: q.label, start: q.start, end: q.end, deadline: q.deadline,
+      label: q.label, start: q.start, end: q.end, deadline: q.deadline, deadlineISO: q.deadlineISO,
       income, expenses, profit: income - expenses,
       isCurrent: today >= q.start && today <= q.end,
     };
@@ -1203,6 +1227,43 @@ export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
   return out;
 }
 
+// Grid-cell hotspots — rank the places you actually drive by clustering the GPS
+// breadcrumb into ~450m cells, weighted by apportioned earnings. Unlike the
+// per-trip `zone`, this works even when a whole shift is one long trip, because
+// it ranks the breadcrumb points themselves rather than one label per trip.
+export type HotspotCell = { key: string; lat: number; lng: number; visits: number; earnings: number };
+
+export function getHotspotCells(filter: TimeFilter = 'all', limit = 6): HotspotCell[] {
+  const est = estimatedTripEarnings();
+  const rows = db.getAllSync<{ id: number; route_json: string | null; started_at: string }>(
+    `SELECT id, route_json, started_at FROM trips WHERE route_json IS NOT NULL`);
+  const CELL = 0.004; // ~450m at UK latitudes
+  const agg = new Map<string, { latSum: number; lngSum: number; visits: number; earnings: number }>();
+  for (const r of rows) {
+    if (!hourInFilter(r.started_at, filter)) continue;
+    let pts: { lat: number; lng: number }[] = [];
+    try { pts = JSON.parse(r.route_json as string); } catch { continue; }
+    if (!Array.isArray(pts) || pts.length === 0) continue;
+    const e = est.get(r.id) ?? 0;
+    const w = e > 0 ? e / pts.length : 0;
+    for (const p of pts) {
+      if (typeof p?.lat !== 'number' || typeof p?.lng !== 'number') continue;
+      const clat = Math.round(p.lat / CELL) * CELL;
+      const clng = Math.round(p.lng / CELL) * CELL;
+      const key = `${clat.toFixed(3)},${clng.toFixed(3)}`;
+      const a = agg.get(key) ?? { latSum: 0, lngSum: 0, visits: 0, earnings: 0 };
+      a.latSum += p.lat; a.lngSum += p.lng; a.visits += 1; a.earnings += w;
+      agg.set(key, a);
+    }
+  }
+  const cells = Array.from(agg.entries()).map(([key, a]) => ({
+    key, lat: a.latSum / a.visits, lng: a.lngSum / a.visits, visits: a.visits, earnings: a.earnings,
+  }));
+  const anyEarnings = cells.some(c => c.earnings > 0);
+  cells.sort((a, b) => (anyEarnings ? b.earnings - a.earnings : b.visits - a.visits));
+  return cells.slice(0, limit);
+}
+
 // ---- XP / levels (local, no backend) ---------------------------------------
 // XP rewards engagement (activity), never income — keeps it fair and private.
 export type XpInfo = { xp: number; level: number; into: number; span: number; progress: number; medals: number };
@@ -1267,7 +1328,7 @@ export function getPersonalRecords(): PersonalRecord[] {
   }
 
   const allDays = Object.entries(days);
-  const best = <T>(fn: (d: Day) => number): { v: number; date: string } =>
+  const best = (fn: (d: Day) => number): { v: number; date: string } =>
     allDays.reduce((acc, [date, d]) => fn(d) > acc.v ? { v: fn(d), date } : acc, { v: 0, date: '' });
 
   const bestDay = best(d => d.earnings);
@@ -1436,11 +1497,11 @@ export function restoreData(p: BackupPayload) {
     for (const r of p.records) {
       db.runSync(
         `INSERT INTO records (record_type, platform, amount, miles, deduction, category,
-          period_start, period_end, receipt_uri, notes, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          period_start, period_end, receipt_uri, notes, vehicle, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         r.record_type, r.platform ?? null, r.amount ?? null, r.miles ?? null,
         r.deduction ?? null, r.category ?? null, r.period_start ?? null,
-        r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.created_at,
+        r.period_end ?? null, r.receipt_uri ?? null, r.notes ?? null, r.vehicle ?? null, r.created_at,
       );
     }
     for (const row of (p.kv ?? [])) {

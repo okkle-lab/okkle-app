@@ -1,232 +1,76 @@
 import { useState, useRef, useEffect } from 'react';
-import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
-import { mileageRate, calcDeduction } from '../db/tax';
-import { setTripActive } from '../autoTrip';
+import {
+  readLiveTrip, ensureUpdatesRunning, hasActiveTrip,
+  trackerStart, trackerPause, trackerResume, trackerEnd,
+  type LiveTrip, type TripState, type GeoPoint,
+} from '../tripTracker';
 
-const TRIP_NOTIF_ID = 'okkle-trip-active';
-const TRIP_END_NUDGE_ID = 'okkle-trip-end-nudge';
-const END_NUDGE_AFTER_S = 18 * 60; // ask "finished?" ~18 min after last movement
-
-// A lock-screen notification while a trip is tracking, so it's visible when the
-// phone is locked and one tap brings you back to the live screen.
-function showTripNotification() {
-  Notifications.scheduleNotificationAsync({
-    identifier: TRIP_NOTIF_ID,
-    content: {
-      title: 'Tracking your trip',
-      body: 'GPS is logging your miles. Tap to view.',
-      data: { type: 'tripActive' },
-      sticky: true,
-    },
-    trigger: null,
-  }).catch(() => {});
-}
-function clearTripNotification() {
-  Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
-  Notifications.cancelScheduledNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
-}
-
-// The other half of the two-way nudge: re-armed on every movement to fire
-// END_NUDGE_AFTER_S after the *last* movement, so it only goes off once you've
-// been parked a while. Tapping it opens the live screen to end & save the trip.
-// Fires via a scheduled trigger, so it works even if the app is suspended.
-function armTripEndNudge() {
-  Notifications.cancelScheduledNotificationAsync(TRIP_END_NUDGE_ID).catch(() => {});
-  Notifications.scheduleNotificationAsync({
-    identifier: TRIP_END_NUDGE_ID,
-    content: {
-      title: 'Finished this trip?',
-      body: 'You’ve been parked a while — tap to end and save your miles.',
-      data: { type: 'tripEnd' },
-    },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: END_NUDGE_AFTER_S },
-  }).catch(() => {});
-}
-function cancelTripEndNudge() {
-  Notifications.cancelScheduledNotificationAsync(TRIP_END_NUDGE_ID).catch(() => {});
-}
-
-export type TripState = 'idle' | 'running' | 'paused';
-
-export type GeoPoint = { lat: number; lng: number; t?: number };
-
-export type LiveTrip = {
-  state: TripState;
-  platform: string;
-  vehicle: string;
-  miles: number;
-  deduction: number;
-  elapsedSeconds: number;
-  speedMph: number;
-  startedAt: Date | null;
-  points?: GeoPoint[];
-};
+// Re-export types so existing consumers keep importing them from here.
+export type { LiveTrip, TripState, GeoPoint };
+// Re-export so the root layout's cold-launch cleanup keeps working unchanged.
+export { clearStaleTripState } from '../tripTracker';
 
 const INITIAL: LiveTrip = {
-  state: 'idle',
-  platform: '',
-  vehicle: 'car',
-  miles: 0,
-  deduction: 0,
-  elapsedSeconds: 0,
-  speedMph: 0,
-  startedAt: null,
+  state: 'idle', platform: '', vehicle: 'car', miles: 0, deduction: 0,
+  elapsedSeconds: 0, speedMph: 0, startedAt: null, points: [],
 };
 
+// Thin React layer over the persistent tracker. All trip state lives in storage
+// (so it survives navigation, backgrounding, lock and app kills); this hook just
+// mirrors it into render state once a second and exposes the controls.
 export function useTrip() {
   const [trip, setTrip] = useState<LiveTrip>(INITIAL);
-  const watchRef = useRef<Location.LocationSubscription | null>(null);
-  const lastPosRef = useRef<Location.LocationObject | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Downsampled GPS breadcrumb for the location heatmap (kept off render state).
-  const pointsRef = useRef<GeoPoint[]>([]);
-  const lastSampleRef = useRef<Location.LocationObject | null>(null);
 
-  function samplePoint(loc: Location.LocationObject) {
-    const prev = lastSampleRef.current;
-    // Keep a point roughly every 40m, capped so storage stays tiny.
-    if (prev) {
-      const m = haversineKm(prev.coords, loc.coords) * 1000;
-      if (m < 40) return;
-    }
-    if (pointsRef.current.length < 400) {
-      pointsRef.current.push({
-        lat: +loc.coords.latitude.toFixed(5),
-        lng: +loc.coords.longitude.toFixed(5),
-        t: loc.timestamp || Date.now(), // ms — lets Insights bucket by real hour
-      });
-      lastSampleRef.current = loc;
-    }
+  function sync() {
+    const live = readLiveTrip();
+    setTrip(live ?? INITIAL);
+  }
+  function startTimer() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(sync, 1000);
+  }
+  function stopTimer() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }
 
+  // On mount: if a trip is already in progress (returned to the screen, reopened
+  // the app, or relaunched after a kill), restore it and resume the live ticker.
+  // We deliberately do NOT stop tracking on unmount — leaving the screen keeps
+  // the trip running in the background.
   useEffect(() => {
-    return () => {
-      watchRef.current?.remove();
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    if (hasActiveTrip()) {
+      sync();
+      ensureUpdatesRunning().catch(() => {});
+      startTimer();
+    }
+    return () => stopTimer();
   }, []);
 
   async function start(vehicle: string) {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') throw new Error('Location permission denied');
-    // Ask for background permission so tracking continues when the phone is
-    // locked. Harmless in Expo Go (returns undetermined); real in a dev build.
-    try { await Location.requestBackgroundPermissionsAsync(); } catch { /* ignore */ }
-
-    const startedAt = new Date();
-    pointsRef.current = [];
-    lastSampleRef.current = null;
-    setTripActive(true); // pause auto-trip suggestions while we're tracking
-    showTripNotification();
-    armTripEndNudge();   // arm the "finished this trip?" half of the nudge
-    setTrip({ state: 'running', platform: '', vehicle, miles: 0, deduction: 0, elapsedSeconds: 0, speedMph: 0, startedAt });
-
-    timerRef.current = setInterval(() => {
-      setTrip(t => ({ ...t, elapsedSeconds: t.elapsedSeconds + 1 }));
-    }, 1000);
-
-    watchRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        distanceInterval: 20,
-        // Background continuation comes from UIBackgroundModes "location" +
-        // the "Always" permission (configured in app.json) — dev build only.
-      },
-      (loc) => {
-        const spd = loc.coords.speed; // m/s; -1 or null when unknown
-        const mph = spd != null && spd > 0 ? spd * 2.236936 : 0;
-        if (lastPosRef.current) {
-          const d = haversineKm(lastPosRef.current.coords, loc.coords);
-          const meters = d * 1000;
-          const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
-          if (!stationary) armTripEndNudge(); // moving → push the "finished?" nudge back
-          setTrip(t => {
-            const miles = stationary ? t.miles : t.miles + d * 0.621371;
-            return { ...t, miles, deduction: calcDeduction(miles, t.vehicle), speedMph: mph };
-          });
-        } else {
-          setTrip(t => ({ ...t, speedMph: mph }));
-        }
-        samplePoint(loc);
-        lastPosRef.current = loc;
-      },
-    );
+    await trackerStart(vehicle);
+    sync();
+    startTimer();
   }
-
-  function pause() {
-    watchRef.current?.remove();
-    watchRef.current = null;
-    if (timerRef.current) clearInterval(timerRef.current);
-    cancelTripEndNudge();
-    setTrip(t => ({ ...t, state: 'paused' }));
+  async function pause() {
+    await trackerPause();
+    sync();
   }
-
   async function resume() {
-    if (timerRef.current) clearInterval(timerRef.current);
-    armTripEndNudge();
-    timerRef.current = setInterval(() => {
-      setTrip(t => ({ ...t, elapsedSeconds: t.elapsedSeconds + 1 }));
-    }, 1000);
-
-    watchRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        distanceInterval: 20,
-        // Background continuation comes from UIBackgroundModes "location" +
-        // the "Always" permission (configured in app.json) — dev build only.
-      },
-      (loc) => {
-        const spd = loc.coords.speed; // m/s; -1 or null when unknown
-        const mph = spd != null && spd > 0 ? spd * 2.236936 : 0;
-        if (lastPosRef.current) {
-          const d = haversineKm(lastPosRef.current.coords, loc.coords);
-          const meters = d * 1000;
-          const stationary = (spd != null && spd >= 0 && spd < 0.5) || meters < 8;
-          if (!stationary) armTripEndNudge(); // moving → push the "finished?" nudge back
-          setTrip(t => {
-            const miles = stationary ? t.miles : t.miles + d * 0.621371;
-            return { ...t, miles, deduction: calcDeduction(miles, t.vehicle), speedMph: mph };
-          });
-        } else {
-          setTrip(t => ({ ...t, speedMph: mph }));
-        }
-        samplePoint(loc);
-        lastPosRef.current = loc;
-      },
-    );
-    setTrip(t => ({ ...t, state: 'running' }));
+    await trackerResume();
+    sync();
+    startTimer();
   }
-
   function end(): LiveTrip {
-    watchRef.current?.remove();
-    watchRef.current = null;
-    if (timerRef.current) clearInterval(timerRef.current);
-    lastPosRef.current = null;
-    setTripActive(false); // re-enable auto-trip suggestions
-    clearTripNotification();
-    cancelTripEndNudge();
-    const final = { ...trip, state: 'idle' as TripState, points: pointsRef.current.slice() };
+    stopTimer();
+    let final: LiveTrip = { ...trip, state: 'idle' };
+    // Snapshot before the async clear so the caller gets the final numbers.
+    const live = readLiveTrip();
+    if (live) final = { ...live, state: 'idle' };
+    trackerEnd().catch(() => {});
     setTrip(INITIAL);
     return final;
   }
 
-  // pointsRef is the live breadcrumb (kept off render state for perf). Expose it
-  // for the live map — the trip re-renders ~1/sec so it stays current enough.
-  return { trip, points: pointsRef.current, start, pause, resume, end };
+  return { trip, points: trip.points ?? [], start, pause, resume, end };
 }
-
-function haversineKm(
-  a: { latitude: number; longitude: number },
-  b: { latitude: number; longitude: number },
-): number {
-  const R = 6371;
-  const dLat = deg2rad(b.latitude - a.latitude);
-  const dLon = deg2rad(b.longitude - a.longitude);
-  const x =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(deg2rad(a.latitude)) * Math.cos(deg2rad(b.latitude)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
-
-function deg2rad(d: number) { return d * (Math.PI / 180); }

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Delivery Van Icon</title>
+  <desc>Standalone rounded delivery van SVG icon with a glass-style white fill.</desc>
+  <defs>
+    <linearGradient id="vanFill" x1="210" y1="180" x2="790" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.96"/>
+      <stop offset="0.55" stop-color="#F4FFFF" stop-opacity="0.82"/>
+      <stop offset="1" stop-color="#CFFFF7" stop-opacity="0.72"/>
+    </linearGradient>
+    <linearGradient id="vanStroke" x1="235" y1="200" x2="820" y2="820" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#BDF7EF" stop-opacity="0.85"/>
+    </linearGradient>
+    <filter id="softShadow" x="130" y="120" width="780" height="760" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#008F82" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <g filter="url(#softShadow)">
+    <path d="M215 338C215 288.294 255.294 248 305 248H595C623.217 248 649.796 261.251 666.8 283.761L789.8 446.583C802.84 463.842 810 484.874 810 506.505V650C810 699.706 769.706 740 720 740H305C255.294 740 215 699.706 215 650V338Z" fill="url(#vanFill)" stroke="url(#vanStroke)" stroke-width="24" stroke-linejoin="round"/>
+    <path d="M600 340H666C678.56 340 690.371 345.922 697.89 355.986L758.89 437.636C778.473 463.855 759.764 501 727.03 501H600C577.909 501 560 483.091 560 461V380C560 357.909 577.909 340 600 340Z" fill="#029D8D" fill-opacity="0.52" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="18" stroke-linejoin="round"/>
+    <circle cx="356" cy="740" r="91" fill="#EFFFFC" fill-opacity="0.78" stroke="#FFFFFF" stroke-width="18"/>
+    <circle cx="356" cy="740" r="43" fill="#FFFFFF" fill-opacity="0.92"/>
+    <circle cx="693" cy="740" r="91" fill="#EFFFFC" fill-opacity="0.36" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="18"/>
+    <circle cx="693" cy="740" r="43" fill="#FFFFFF" fill-opacity="0.5"/>
+  </g>
+</svg>

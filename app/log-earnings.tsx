@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, Chip, IconBadge, GradientCard, DatePickerField, KeyboardDoneAccessory, numberKeyboardDoneProps, NativeGreenButton } from '../src/components';
 import { PLATFORMS, fmtGbp } from '../src/db/tax';

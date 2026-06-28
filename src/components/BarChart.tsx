@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 import { colors, font, type } from '../theme';

@@ -1,14 +1,17 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Linking } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, radius, type, tabular } from '../src/theme';
-import { Card, SectionHeader, HeatMapView, IconBadge } from '../src/components';
-import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat } from '../src/db';
-import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../src/db/tax';
+import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
+import { Card, SectionHeader, HeatMapView, IconBadge, CollapsingHeader, SettingsGlassButton } from '../../src/components';
+import * as Location from 'expo-location';
+import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYearPnL, getPlatformStats, getHotspotCells, getUser, saveUser, kvGet, kvSet, TIME_FILTERS, type ZoneStat, type TimeBucket, type HeatPoint, type TimeFilter, type BestSpot, type YearPnL, type PlatformStat, type HotspotCell } from '../../src/db';
+import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
+import { enableAutoTrip, isAutoTripEnabled } from '../../src/autoTrip';
+import { syncReminders } from '../../src/notifications';
 
-type InsightTab = 'where' | 'when' | 'money';
-const TABS: { key: InsightTab; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
+type InsightsTab = 'where' | 'when' | 'money';
+const TABS: { key: InsightsTab; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
   { key: 'where', label: 'Where', icon: 'map-pin' },
   { key: 'when', label: 'When', icon: 'clock' },
   { key: 'money', label: 'Money', icon: 'trending-up' },
@@ -16,7 +19,7 @@ const TABS: { key: InsightTab; label: string; icon: React.ComponentProps<typeof 
 
 export default function InsightsScreen() {
   const router = useRouter();
-  const [tab, setTab] = React.useState<InsightTab>('where');
+  const [tab, setTab] = React.useState<InsightsTab>('where');
   const [filter, setFilter] = React.useState<TimeFilter>('all');
   const [zones, setZones] = React.useState<ZoneStat[]>([]);
   const [points, setPoints] = React.useState<HeatPoint[]>([]);
@@ -24,35 +27,106 @@ export default function InsightsScreen() {
   const [best, setBest] = React.useState<BestSpot | null>(null);
   const [pnl, setPnl] = React.useState<YearPnL | null>(null);
   const [platforms, setPlatforms] = React.useState<PlatformStat[]>([]);
+  const [hotspots, setHotspots] = React.useState<HotspotCell[]>([]);
+  const [cellNames, setCellNames] = React.useState<Record<string, string>>({});
+  // Optional automations the user can switch on right here. Hidden once enabled.
+  const [nudgesOn, setNudgesOn] = React.useState(isAutoTripEnabled());
+  const [remindersOn, setRemindersOn] = React.useState((getUser()?.reminder_enabled ?? 1) === 1);
+  const [setupBusy, setSetupBusy] = React.useState(false);
+  // Bumped each time the tab regains focus so the view scrolls back to the top.
+  const [scrollResetKey, setScrollResetKey] = React.useState(0);
 
   React.useEffect(() => {
     setZones(getZoneStats(filter));
     setPoints(getHeatPoints(filter));
+    setHotspots(getHotspotCells(filter));
   }, [filter]);
 
+  // Reverse-geocode each hotspot cell's centroid to a friendly name, cached in
+  // kv so it's a one-time lookup per area (no repeated geocoding).
   React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const names: Record<string, string> = {};
+      for (const c of hotspots) {
+        const cached = kvGet(`cellname_${c.key}`);
+        if (cached) { names[c.key] = cached; continue; }
+        try {
+          const places = await Location.reverseGeocodeAsync({ latitude: c.lat, longitude: c.lng });
+          const pl: any = places[0] ?? {};
+          const local = pl.subLocality || pl.district || pl.city || pl.name;
+          const outward = pl.postalCode ? String(pl.postalCode).split(' ')[0] : '';
+          const label = [local, outward].filter(Boolean).join(' · ') || 'Busy area';
+          kvSet(`cellname_${c.key}`, label);
+          names[c.key] = label;
+        } catch { names[c.key] = 'Busy area'; }
+      }
+      if (!cancelled) setCellNames(prev => ({ ...prev, ...names }));
+    })();
+    return () => { cancelled = true; };
+  }, [hotspots]);
+
+  useFocusEffect(React.useCallback(() => {
     setBuckets(getEarningsByTimeOfDay());
     setBest(getBestSpot());
     setPnl(getYearPnL());
     setPlatforms(getPlatformStats());
-  }, []);
+    setZones(getZoneStats(filter));
+    setPoints(getHeatPoints(filter));
+    setHotspots(getHotspotCells(filter));
+    setNudgesOn(isAutoTripEnabled());
+    setRemindersOn((getUser()?.reminder_enabled ?? 1) === 1);
+    setScrollResetKey(k => k + 1);
+  }, [filter]));
+
+  async function enableNudges() {
+    if (setupBusy) return;
+    setSetupBusy(true);
+    const res = await enableAutoTrip();
+    if (res.ok) {
+      setNudgesOn(true);
+    } else if (res.reason === 'background') {
+      Alert.alert(
+        'Allow “Always”',
+        'To nudge you while Okkle is closed, iOS needs location set to “Always”. Open Settings to change it.',
+        [{ text: 'Not now' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
+      );
+    } else if (res.reason === 'foreground') {
+      Alert.alert('Location needed', 'Allow location access to detect when you start driving.');
+    } else {
+      Alert.alert('Couldn’t enable', 'Something went wrong turning this on. Please try again.');
+    }
+    setSetupBusy(false);
+  }
+
+  async function enableReminders() {
+    if (setupBusy) return;
+    setSetupBusy(true);
+    try {
+      saveUser({ reminder_enabled: 1 });
+      const u = getUser();
+      if (u) await syncReminders(u);
+      setRemindersOn(true);
+    } catch {
+      Alert.alert('Couldn’t enable', 'Something went wrong turning this on. Please try again.');
+    }
+    setSetupBusy(false);
+  }
 
   const anyEarnings = zones.some(z => z.earnings > 0);
   const anyPerHour = zones.some(z => z.perHour > 0);
+  const anyHotspotEarnings = hotspots.some(c => c.earnings > 0);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
   const anyBucketEarnings = buckets.some(b => b.earnings > 0);
-  const hasData = zones.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.earnings > 0) || !!pnl?.hasData;
+  const hasData = zones.length > 0 || hotspots.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.earnings > 0) || !!pnl?.hasData;
 
   return (
-    <View style={s.screen}>
-      <ScrollView contentContainerStyle={s.content}>
-        <View style={s.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12}><Feather name="chevron-left" size={26} color={colors.textPrimary} /></Pressable>
-          <Text style={s.title}>Insights</Text>
-          <View style={{ width: 26 }} />
-        </View>
-        <Text style={s.sub}>Where and when your work pays off best.</Text>
-
+    <CollapsingHeader
+      title="Insights"
+      subtitle="Where, when and what pays — patterns from your work."
+      right={<SettingsGlassButton onPress={() => router.push('/settings')} />}
+      resetScrollKey={scrollResetKey}
+    >
         {/* Headline takeaway — always visible above the categories */}
         {best && (
           <View style={[s.tip, { marginBottom: spacing.lg }]}>
@@ -93,23 +167,24 @@ export default function InsightsScreen() {
                 ))}
               </ScrollView>
             )}
-            {zones.length > 0 && (
-              <Card style={{ padding: 0, overflow: 'hidden' }}>
-                {zones.slice(0, 6).map((z, i, arr) => (
-                  <View key={z.zone} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
-                    <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
-                      <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
+            {hotspots.length > 0 && (
+              <>
+                <Card style={{ padding: 0, overflow: 'hidden' }}>
+                  {hotspots.map((c, i, arr) => (
+                    <View key={c.key} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
+                      <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
+                        <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.zoneName}>{cellNames[c.key] ?? 'Finding area…'}</Text>
+                        <Text style={s.zoneSub}>{anyHotspotEarnings ? 'estimated earnings here' : 'where you drive most'}</Text>
+                      </View>
+                      <Text style={s.zoneVal}>{anyHotspotEarnings ? fmtGbp(c.earnings) : `#${i + 1}`}</Text>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.zoneName}>{z.zone}</Text>
-                      <Text style={s.zoneSub}>
-                        {z.trips} {z.trips === 1 ? 'trip' : 'trips'} · {fmtMiles(z.miles)}{z.earnings > 0 ? ` · ${fmtGbp(z.earnings)}` : ''}
-                      </Text>
-                    </View>
-                    <Text style={s.zoneVal}>{anyPerHour ? fmtPerHour(z.perHour) : anyEarnings ? fmtGbp(z.earnings) : fmtMiles(z.miles)}</Text>
-                  </View>
-                ))}
-              </Card>
+                  ))}
+                </Card>
+                <Text style={s.note}>Your busiest areas, clustered from your GPS trail — so it stays accurate even when you track a whole shift as one trip. The £ is only a rough guide: your logged pay is split across that period’s trips, since pay logged at the end of a day or week can’t be tied to an exact spot.</Text>
+              </>
             )}
             <View style={{ marginTop: spacing.lg }}>
               <SectionHeader icon="map" title="Hotspot map" />
@@ -124,7 +199,7 @@ export default function InsightsScreen() {
                   </View>
                   <Text style={s.legendText}>Busier</Text>
                 </View>
-                <Text style={s.note}>Where you drive, from your GPS trips. £ shading is estimated by spreading your logged pay across your trips. Built on-device — nothing leaves your phone.</Text>
+                <Text style={s.note}>Where you drive, from your GPS trips. The £ shading is only a rough guide — your logged pay is spread across that day or week’s trips, so it hints at where your money came from rather than measuring it spot by spot.</Text>
               </Card>
             </View>
           </>
@@ -192,15 +267,56 @@ export default function InsightsScreen() {
         )}
 
         {!hasData && (
-          <Card style={{ marginTop: spacing.xl, alignItems: 'center', paddingVertical: spacing.xxl }}>
-            <View style={{ marginBottom: 10 }}><IconBadge icon="map-pin" tone="mint" size={48} /></View>
-            <Text style={[type.bodyMedium, { textAlign: 'center' }]}>No data yet</Text>
-            <Text style={[type.caption, { textAlign: 'center', marginTop: 4, lineHeight: 19 }]}>
-              Track trips with GPS and log your pay — your hotspots, best hours and business stats will appear here.
+          <Card style={{ alignItems: 'center', paddingVertical: spacing.xxl, gap: 10 }}>
+            <IconBadge icon="bar-chart-2" tone="mint" size={48} />
+            <Text style={[type.bodyMedium, { textAlign: 'center' }]}>No insights yet</Text>
+            <Text style={[type.caption, { textAlign: 'center', lineHeight: 19 }]}>
+              Track a few trips with GPS and log your pay — your hotspots, best hours and best-paying apps will appear here.
             </Text>
           </Card>
         )}
-      </ScrollView>
+
+        {/* Optional automations — only shown while they're still off, gone once on. */}
+        {(!nudgesOn || !remindersOn) && (
+          <View style={{ marginTop: spacing.xl }}>
+            <SectionHeader icon="zap" title="Get more from Okkle" />
+            <Card style={{ gap: 0 }}>
+              {!nudgesOn && (
+                <SetupPrompt
+                  icon="navigation" tone="blue" title="Trip nudges"
+                  sub="Get a tap-to-track reminder when you start driving, so you never miss your miles."
+                  busy={setupBusy} onEnable={enableNudges}
+                />
+              )}
+              {!nudgesOn && !remindersOn && <View style={s.setupDivider} />}
+              {!remindersOn && (
+                <SetupPrompt
+                  icon="bell" tone="amber" title="Logging reminders"
+                  sub="A regular nudge to log your pay and miles, so your tax stays up to date."
+                  busy={setupBusy} onEnable={enableReminders}
+                />
+              )}
+            </Card>
+            <Text style={s.note}>Turn these on here, or fine-tune them anytime in Settings.</Text>
+          </View>
+        )}
+    </CollapsingHeader>
+  );
+}
+
+function SetupPrompt({ icon, tone, title, sub, busy, onEnable }: {
+  icon: React.ComponentProps<typeof Feather>['name']; tone: any; title: string; sub: string; busy: boolean; onEnable: () => void;
+}) {
+  return (
+    <View style={s.setupRow}>
+      <IconBadge icon={icon} tone={tone} size={38} />
+      <View style={{ flex: 1 }}>
+        <Text style={s.setupTitle}>{title}</Text>
+        <Text style={s.setupSub}>{sub}</Text>
+      </View>
+      <Pressable onPress={onEnable} disabled={busy} style={({ pressed }) => [s.enableBtn, (pressed || busy) && { opacity: 0.6 }]}>
+        <Text style={s.enableText}>Turn on</Text>
+      </Pressable>
     </View>
   );
 }
@@ -219,10 +335,23 @@ const s = StyleSheet.create({
   pnlRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
   pnlLabel: { fontSize: 15, color: colors.textSecondary, flex: 1, paddingRight: spacing.md },
   pnlValue: { ...tabular, fontSize: 15, fontWeight: font.medium, color: colors.textPrimary },
-  content: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  title: { ...type.screenTitle },
-  sub: { ...type.body, color: colors.textSecondary, marginBottom: spacing.lg },
+  smartCard: { marginBottom: spacing.lg, borderCurve: 'continuous' },
+  smartContent: { gap: spacing.md },
+  smartHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  smartKicker: { ...type.label, color: '#6D5DF6', fontWeight: font.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
+  smartTitle: { ...type.heading, fontSize: 20, lineHeight: 25 },
+  smartBody: { ...type.caption, color: colors.textSecondary, lineHeight: 19 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  toggleCopy: { flex: 1, minWidth: 0 },
+  toggleTitle: { ...type.bodyMedium, fontSize: 15 },
+  toggleSub: { ...type.caption, marginTop: 2, lineHeight: 18 },
+  noticeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.amberLight },
+  noticeText: { ...type.caption, color: colors.amberDark, lineHeight: 18, flex: 1 },
+  fieldGroup: { gap: spacing.sm },
+  fieldLabel: { ...type.label },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  divider: { height: 1, backgroundColor: colors.border },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
 
   tip: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.brandLight, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
   tipText: { ...type.body, fontSize: 15, color: colors.textPrimary, lineHeight: 21 },
@@ -261,4 +390,11 @@ const s = StyleSheet.create({
   heatTrack: { flex: 1, height: 14, backgroundColor: colors.bgSoft, borderRadius: radius.full, overflow: 'hidden' },
   heatFill: { height: '100%', backgroundColor: colors.brand, borderRadius: radius.full },
   heatVal: { ...type.caption, ...tabular, color: colors.textPrimary, width: 56, textAlign: 'right', fontWeight: font.medium },
+
+  setupRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: spacing.sm },
+  setupDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  setupTitle: { ...type.bodyMedium, fontSize: 15 },
+  setupSub: { ...type.caption, marginTop: 2, lineHeight: 18 },
+  enableBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: radius.full, backgroundColor: colors.brand },
+  enableText: { color: '#fff', fontSize: 13, fontWeight: font.bold },
 });

@@ -1,9 +1,13 @@
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { initDb } from '../src/db';
 import '../src/autoTrip'; // registers the background trip-detection task at load
+import { clearStaleTripState } from '../src/hooks/useTrip';
+import { installGlobalErrorLogging } from '../src/diagnostics';
+import { DeadlineAlert, AppErrorBoundary } from '../src/components';
 
 const glassSheetOptions = {
   presentation: 'transparentModal' as const,
@@ -28,7 +32,12 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   const router = useRouter();
+  useEffect(() => { installGlobalErrorLogging(); }, []);
   useEffect(() => { initDb(); }, []);
+  // Cold launch = no trip is actually running (live state is in-memory only), so
+  // clear any stale "tracking"/"finished this trip?" notifications and the
+  // trip_active flag left behind if the app was killed mid-trip.
+  useEffect(() => { clearStaleTripState(); }, []);
 
   // Tapping the "On the move — track this trip?" suggestion opens the Trip tab,
   // where the user confirms by hitting Start (we never auto-record).
@@ -45,7 +54,8 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <>
+    <SafeAreaProvider>
+      <AppErrorBoundary>
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="onboarding" />
@@ -58,8 +68,9 @@ export default function RootLayout() {
         <Stack.Screen name="settings-about" options={modalOptions} />
         <Stack.Screen name="edit" options={modalOptions} />
         <Stack.Screen name="compare" options={modalOptions} />
+        <Stack.Screen name="tax-detail" options={modalOptions} />
+        <Stack.Screen name="tax-setup" options={modalOptions} />
         <Stack.Screen name="medals" options={modalOptions} />
-        <Stack.Screen name="insights" options={modalOptions} />
         <Stack.Screen name="export" options={modalOptions} />
         <Stack.Screen name="feedback" options={modalOptions} />
         <Stack.Screen name="key-dates" options={modalOptions} />
@@ -68,6 +79,8 @@ export default function RootLayout() {
         <Stack.Screen name="settings-earnings-shortcut" options={modalOptions} />
         <Stack.Screen name="settings-auto-trip" options={modalOptions} />
       </Stack>
-    </>
+      <DeadlineAlert />
+      </AppErrorBoundary>
+    </SafeAreaProvider>
   );
 }

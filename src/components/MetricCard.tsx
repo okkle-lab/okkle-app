@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, radius, font, spacing, type, tabular } from '../theme';
+import { colors, radius, spacing, type, tabular } from '../theme';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 

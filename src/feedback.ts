@@ -3,8 +3,8 @@ import * as Device from 'expo-device';
 import * as MailComposer from 'expo-mail-composer';
 import { Platform, Linking } from 'react-native';
 
-// Where feedback goes. Change this to your support inbox before launch.
-export const FEEDBACK_EMAIL = 'mototaxuk@gmail.com';
+// Where feedback and bug reports are sent.
+export const FEEDBACK_EMAIL = 'admin@okklelab.com';
 
 // Minimal, non-sensitive diagnostics — explicitly NOT financial data, receipts,
 // location history or tax records.

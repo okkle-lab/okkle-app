@@ -52,8 +52,38 @@ TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
   }).catch(() => {});
 });
 
+// Low-power background updates that watch for the *start* of a drive.
+const AUTO_TRIP_OPTIONS: Location.LocationTaskOptions = {
+  accuracy: Location.Accuracy.Balanced,
+  activityType: Location.ActivityType.AutomotiveNavigation,
+  deferredUpdatesInterval: 60_000,
+  pausesUpdatesAutomatically: true,   // iOS pauses when stationary → saves battery
+  showsBackgroundLocationIndicator: false,
+  foregroundService: {
+    notificationTitle: 'Okkle',
+    notificationBody: 'Watching for the start of a trip',
+  },
+};
+
 export function isAutoTripEnabled(): boolean {
   return kvGet('auto_trip') === '1';
+}
+
+// While a real trip is being tracked we stop the low-power detection stream so
+// only one location task is active; we bring it back when the trip ends (iff the
+// user still has the feature on).
+export async function suspendAutoTripUpdates(): Promise<void> {
+  try {
+    const started = await Location.hasStartedLocationUpdatesAsync(AUTO_TRIP_TASK).catch(() => false);
+    if (started) await Location.stopLocationUpdatesAsync(AUTO_TRIP_TASK);
+  } catch { /* ignore */ }
+}
+export async function resumeAutoTripUpdates(): Promise<void> {
+  if (kvGet('auto_trip') !== '1') return;
+  try {
+    const started = await Location.hasStartedLocationUpdatesAsync(AUTO_TRIP_TASK).catch(() => false);
+    if (!started) await Location.startLocationUpdatesAsync(AUTO_TRIP_TASK, AUTO_TRIP_OPTIONS);
+  } catch { /* ignore */ }
 }
 
 // Request Always location + start low-power background updates.
@@ -69,17 +99,7 @@ export async function enableAutoTrip(): Promise<{ ok: boolean; reason?: 'foregro
 
     const already = await Location.hasStartedLocationUpdatesAsync(AUTO_TRIP_TASK).catch(() => false);
     if (!already) {
-      await Location.startLocationUpdatesAsync(AUTO_TRIP_TASK, {
-        accuracy: Location.Accuracy.Balanced,
-        activityType: Location.ActivityType.AutomotiveNavigation,
-        deferredUpdatesInterval: 60_000,
-        pausesUpdatesAutomatically: true,   // iOS pauses when stationary → saves battery
-        showsBackgroundLocationIndicator: false,
-        foregroundService: {
-          notificationTitle: 'Okkle',
-          notificationBody: 'Watching for the start of a trip',
-        },
-      });
+      await Location.startLocationUpdatesAsync(AUTO_TRIP_TASK, AUTO_TRIP_OPTIONS);
     }
     kvSet('auto_trip', '1');
     return { ok: true };

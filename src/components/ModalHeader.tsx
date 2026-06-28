@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors, font, spacing, type } from '../theme';
+import { colors, font, spacing } from '../theme';
 
 // One consistent header for every modal/settings layer: a left chevron back
 // button, a centred title in one shared font, and a matched spacer so the title

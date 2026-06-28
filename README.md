@@ -1,6 +1,6 @@
 # Okkle — UK Courier Tax Tracker (iOS)
 
-A React Native / Expo iPhone app for UK gig-economy delivery couriers (Uber Eats, Deliveroo, Just Eat, Stuart, Amazon Flex). Tracks mileage via GPS, estimates your HMRC Self Assessment bill in real time, and produces a one-tap Accountant Pack PDF — all on-device, zero server cost.
+A React Native / Expo iPhone app for **self-employed** UK gig-economy delivery couriers (Uber Eats, Deliveroo, Just Eat, Stuart, Amazon Flex) who file their own Self Assessment. Tracks mileage via GPS, estimates your HMRC Self Assessment bill in real time, and produces a one-tap Accountant Pack — shareable as a PDF or as a PDF + importable transactions CSV bundled in one ZIP — all on-device, zero server cost.
 
 **Stack:** React Native · Expo SDK 56 · expo-router · expo-sqlite · expo-location · expo-print · expo-sharing · expo-notifications · TypeScript
 
@@ -9,13 +9,13 @@ A React Native / Expo iPhone app for UK gig-economy delivery couriers (Uber Eats
 ## Features
 
 ### Trip tracking
-- **Passive whole-shift tracking** (`src/shift.ts`) — the recommended mode for couriers. Just drive: Okkle counts every business mile of the shift in the background (to the restaurant, to the customer, and the dead miles between offers), auto-starts on detected driving, auto-closes after ~12 min stationary, and logs a **draft** mileage record with a "tap to review" notification. Nothing is finalised without you confirming. Built battery-first — it reuses the low-power background location task (Balanced accuracy, automotive activity type, 60s deferred/batched updates, auto-pause when still), never a continuous high-accuracy fix. Toggle under Settings → Auto-detect trips.
+- **Trip nudges (two-way, optional)** — when enabled, Okkle nudges you to start tracking when it senses you've begun driving, and to end & save once you've been parked a while (~18 min). You confirm each nudge; nothing is recorded automatically, so personal drives are simply ignored. Toggle under Settings → Trip nudges. (An earlier fully-passive auto-shift mode was removed — it could pick up commutes/school runs.)
 - **Log weekly pay** — dedicated screen for logging weekly platform bank transfers (Uber Eats / Deliveroo / Just Eat all pay weekly, not per trip). Pre-fills the platform from your last selection.
 - **Today's summary bar** — shows today's trips / miles / saved / earned on the trip setup screen as soon as you've completed a trip. Day-level view without leaving the tab.
 - **One-tap GPS trips** — tap Start, ride, tap End. Distance accumulates via `watchPositionAsync` with a stationary jitter filter (ignores GPS drift when speed < 0.5 m/s or movement < 8 m).
 - **Slide-to-end control** — PanResponder slide gesture (like Lime/Uber) prevents accidental trip endings with gloves on.
 - **"Waiting…" indicator** — when stationary (speed < 0.5 mph), the activity ring shows "Waiting…" in amber so you know tracking is active and filtering GPS drift — it's not frozen.
-- **Background GPS** — `UIBackgroundModes: location` + "Always" permission keeps tracking when the phone locks (active in EAS dev build; Expo Go foreground only).
+- **Background GPS** — a registered background location task (`src/tripTracker.ts`) writes the live trip to the database, so tracking continues when the phone locks, when you leave the Trip screen, and even survives the app being killed mid-trip (it's restored on relaunch). `UIBackgroundModes: location` + "Always" permission (active in EAS dev build; Expo Go foreground only).
 - **Activity ring** — Apple-fitness-style daily goal ring showing miles driven today vs your target.
 - **Pause / resume** — pause mid-trip (e.g. waiting at a restaurant) without losing distance.
 - **Discard a trip** — × button on the live screen and a "Discard this trip" option on the summary screen, both with confirmation.
@@ -33,13 +33,11 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 - **Per-vehicle breakdown** — miles, trips and deduction per car / motorbike / bike / van.
 
 ### HMRC tax engine
-- **Simplified mileage rates** (HMRC approved):
-  - Car / Van: 45p/mi (first 10,000 mi), 25p/mi after
+- **Simplified mileage rates** (HMRC approved), versioned by tax year so back-dated entries use the rate that applied on their date:
+  - Car / Van: 55p/mi for the first 10,000 mi from 6 Apr 2026 (45p before), 25p/mi after
   - Motorbike: 24p/mi flat
-  - Bicycle: 20p/mi flat
-- **Actual costs comparison** — enter running costs, vehicle value and personal miles; Okkle works out which method saves more tax and shows the difference.
-- **HMRC method-lock warning** — once you claim actual costs on a vehicle you cannot switch back; the app surfaces this clearly.
-- **Capital allowances** (for actual costs): EV 100% FYA, low-emission car ≤50g 18% WDA, other car 6% WDA, van/motorbike 100% AIA.
+  - Bicycle / e-bike: 20p/mi shown as an **estimate only** — HMRC's simplified scheme doesn't cover cycles for the self-employed (20p is the employee rate), so it's flagged for accountant review across logging, edit and the Accountant Pack
+- **Simplified method only (current UI)** — Okkle calculates tax with HMRC's simplified flat rate, the best fit for most couriers. An actual-cost comparison engine (`compare.tsx`, `compareMethods`) exists in the codebase but its links are hidden while the app is simplified-only; vehicle running-cost expenses are flagged so they aren't double-claimed.
 - **Progressive income tax** with personal allowance (£12,570) and taper above £100k:
   - England / Wales / NI bands
   - Scottish bands (slightly higher higher rate)
@@ -64,6 +62,7 @@ Tap-to-select chips in the Log tab cover the most common allowable courier costs
 ### Insights — where & when you earn most
 - Trips capture an on-device GPS breadcrumb and a reverse-geocoded **area name**.
 - The Insights screen is **split into three tabs** — **Where** (ranked areas + on-device hotspot heatmap), **When** (best hours), **Money** (platform ranking + business P&L) — with the headline takeaway pinned above, so it's never one long scroll.
+- **Smart controls** for Trip nudges and Reminders live here, alongside the AI guidance they power.
 - **Time-of-day filter** (All / Morning / Lunch / Afternoon / Dinner / Late) — compare where you earn most at each part of the day.
 - **Best zone × best time tip** — your most lucrative combination, tied to your £/hour: "You earn most around Wimbledon on evenings — £14.20/h · £4.10/h above your average." Areas are ranked by £/hour.
 
@@ -118,7 +117,7 @@ All exports save with a consistent, readable name: `Okkle_<What>_TaxYear-2025-26
 
 ### Settings & onboarding
 - Value-first onboarding + a **first-run spotlight tour** (coachmarks) that highlights Start-a-trip, Level/XP, your streak and Insights. Onboarding: welcome → name → vehicle → platforms → tax region (GPS auto-detect) → a "what to do first" step (start a trip, log weekly pay, check Insights).
-- Edit everything in Settings: name, vehicle, platforms, tax region, income band, reminder preferences.
+- Edit profile/tax details in Settings; tune smart nudges and reminder preferences in Insights.
 - Delete all data option.
 
 ---

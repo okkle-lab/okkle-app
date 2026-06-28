@@ -1,10 +1,8 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Linking } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, ModalHeader } from '../src/components';
-import { addDeadlineToCalendar } from '../src/calendar';
+import { addDeadlineToCalendar, getLastCalendarError } from '../src/calendar';
 
 // month is 1-12. Real HMRC Self Assessment deadlines.
 const KEY_DEADLINES: { title: string; month: number; day: number; note: string }[] = [
@@ -27,7 +25,6 @@ function daysUntil(d: Date): number {
 }
 
 export default function KeyDatesScreen() {
-  const router = useRouter();
   return (
     <View style={s.screen}>
       <ScrollView contentContainerStyle={s.content}>
@@ -50,10 +47,14 @@ export default function KeyDatesScreen() {
                 </View>
                 <Pressable
                   onPress={async () => {
-                    try {
-                      const ok = await addDeadlineToCalendar(`HMRC: ${d.title}`, next, d.note);
-                      Alert.alert(ok ? 'Added to your calendar' : 'Couldn’t add it', ok ? `${d.title} — ${next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.` : 'Please allow calendar access and try again.');
-                    } catch { Alert.alert('Couldn’t add it', 'Please allow calendar access and try again.'); }
+                    const res = await addDeadlineToCalendar(`HMRC: ${d.title}`, next, d.note);
+                    if (res === 'added') {
+                      Alert.alert('Added to your calendar', `${d.title} — ${next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.`);
+                    } else if (res === 'denied') {
+                      Alert.alert('Allow calendar access', `Tap Open Settings, then turn on Calendars to add this deadline.\n\n[diag: ${getLastCalendarError()}]`, [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
+                    } else {
+                      Alert.alert('Couldn’t add it', `Tap Open Settings, then turn on Calendars and try again.\n\n[diag: ${getLastCalendarError()}]`, [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
+                    }
                   }}
                   style={s.calBtn}
                   hitSlop={6}

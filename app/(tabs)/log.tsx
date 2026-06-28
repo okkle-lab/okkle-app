@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet, Pressable, Alert, Image, Animated, ActivityIndicator,
-  KeyboardAvoidingView, Platform,
+  Keyboard, KeyboardAvoidingView, Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Chip, VehicleChip, DatePickerField, IconBadge, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, NativeGreenButton, GlassPanel } from '../../src/components';
+import { Chip, VehicleChip, DatePickerField, IconBadge, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll, NativeGreenButton, GlassPanel } from '../../src/components';
+import { HEADER_TITLE_SIDE_CLEARANCE, headerActionTop, headerTitleTop } from '../../src/components/headerLayout';
 import { calcDeduction, fmtGbp, VEHICLES } from '../../src/db/tax';
 import { saveRecord, getUser, kvGet, kvSet, getPlatforms, getVehicleKeys, getLearnedCategory, learnCategory, getRecords } from '../../src/db';
 import { recognizeText } from '../../modules/okkle-vision';
@@ -19,11 +20,11 @@ import { parseReceipt } from '../../src/receiptParse';
 // Copy a picked image into app storage so it survives even if the cache clears.
 async function persistImage(uri: string): Promise<string> {
   try {
-    const dir = (FileSystem as any).documentDirectory + 'receipts/';
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
-    const dest = `${dir}${Date.now()}.jpg`;
-    await FileSystem.copyAsync({ from: uri, to: dest });
-    return dest;
+    const dir = new Directory(Paths.document, 'receipts');
+    dir.create({ idempotent: true, intermediates: true });
+    const dest = new File(dir, `${Date.now()}.jpg`);
+    await new File(uri).copy(dest, { overwrite: true });
+    return dest.uri;
   } catch {
     return uri;
   }
@@ -33,14 +34,14 @@ async function persistImage(uri: string): Promise<string> {
 // for fast scanning). Default order roughly follows how often couriers claim
 // each one; this is then personalised by the user's own usage.
 type Cat = { name: string; icon: React.ComponentProps<typeof Feather>['name'] };
+// Default order is tuned for the simplified method: the costs you can claim ON
+// TOP of the flat-rate mileage come first (parking, tolls, phone, kit). The
+// vehicle running costs the flat rate already covers (fuel, charging, insurance,
+// servicing, tyres) come last — they're flagged for accountant review when
+// picked, so they shouldn't be the headline choices.
 const EXPENSE_CATEGORIES: Cat[] = [
-  { name: 'Fuel', icon: 'droplet' },
-  { name: 'Charging', icon: 'battery-charging' },
   { name: 'Parking', icon: 'map-pin' },
   { name: 'Phone / data', icon: 'smartphone' },
-  { name: 'Insurance', icon: 'shield' },
-  { name: 'Maintenance / repairs', icon: 'tool' },
-  { name: 'Tyres', icon: 'disc' },
   { name: 'Congestion charge', icon: 'alert-circle' },
   { name: 'ULEZ charge', icon: 'wind' },
   { name: 'Insulated bag', icon: 'shopping-bag' },
@@ -48,6 +49,12 @@ const EXPENSE_CATEGORIES: Cat[] = [
   { name: 'Helmet / safety', icon: 'shield' },
   { name: 'Phone mount', icon: 'crosshair' },
   { name: 'App subscription', icon: 'repeat' },
+  { name: 'Food & drink', icon: 'coffee' },
+  { name: 'Fuel', icon: 'droplet' },
+  { name: 'Charging', icon: 'battery-charging' },
+  { name: 'Insurance', icon: 'shield' },
+  { name: 'Maintenance / repairs', icon: 'tool' },
+  { name: 'Tyres', icon: 'disc' },
 ];
 const DEFAULT_TOP_EXPENSES = [
   'Fuel',
@@ -59,6 +66,28 @@ const DEFAULT_TOP_EXPENSES = [
 ];
 const PERSONALIZE_AFTER_DAYS = 30;
 const PERSONALIZE_AFTER_LOGS = 6;
+
+// Subsistence (food/drink) is only allowable for the self-employed in limited
+// cases — itinerant trades or journeys outside your normal area — and routine
+// meals aren't claimable. Log it, but flag it for the accountant to confirm.
+const SUBSISTENCE_REVIEW = new Set(['Food & drink']);
+
+// Costs the HMRC simplified flat-rate mileage already covers (fuel, electricity,
+// insurance, servicing, repairs, tyres, depreciation). Okkle only supports the
+// simplified method, so claiming these as separate expenses would double-claim —
+// we still let couriers log them, but flag them for their accountant to review.
+const MILEAGE_COVERED = new Set(['Fuel', 'Charging', 'Insurance', 'Maintenance / repairs', 'Tyres']);
+
+// Keep numeric inputs clean: digits and a single decimal point only. decimal-pad
+// covers normal typing, but this also guards pastes (and the simulator's hardware
+// keyboard) so the saved value is never NaN or malformed (e.g. "1.2.3").
+function sanitizeDecimal(s: string): string {
+  const cleaned = s.replace(/[^0-9.]/g, '');
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot === -1) return cleaned;
+  // Keep the first dot, strip any later ones.
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+}
 
 function getCatCounts(): Record<string, number> {
   try { return JSON.parse(kvGet('expense_cat_counts') || '{}'); } catch { return {}; }
@@ -74,6 +103,8 @@ const TABS: { key: Tab; label: string; icon: React.ComponentProps<typeof Feather
   { key: 'expense', label: 'Expense', icon: 'file-text', tone: 'red', title: 'Add an expense', sub: 'A cost you can claim against tax' },
   { key: 'mileage', label: 'Mileage', icon: 'map', tone: 'blue', title: 'Add mileage', sub: 'Miles you drove without GPS tracking' },
 ];
+const LOG_EYEBROW_LINE_HEIGHT = 16;
+const LOG_TITLE_OFFSET = LOG_EYEBROW_LINE_HEIGHT + 2;
 
 // Only ask the things that have a choice: mileage skips receipt+platform and only
 // asks the vehicle when there's more than one; earnings only asks the platform
@@ -87,9 +118,6 @@ function stepsFor(tab: Tab, multiVehicle: boolean, multiPlatform: boolean): LogS
   }
   return ['kind', 'receipt', 'primary', 'details', 'date', 'review'];
 }
-const SUCCESS_SHEET_EDGE_GAP = spacing.sm;
-const SUCCESS_SHEET_RADIUS = 40;
-
 export default function LogScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -118,6 +146,16 @@ export default function LogScreen() {
       const nextVehicles = VEHICLES.filter(v => vehicleKeys.includes(v.key));
       setMyVehicles(nextVehicles);
       setVehicle(current => vehicleKeys.includes(current) ? current : (vehicleKeys[0] ?? 'car'));
+
+      // On leaving the Log tab: if nothing was entered (or it's already saved),
+      // reset to a clean slate so returning starts fresh at step one. If there's
+      // unsaved input, the draft is left intact so the user doesn't lose work.
+      return () => {
+        if (!dirtyRef.current) {
+          resetWorkflow();
+          resetEntryFields();
+        }
+      };
     }, []),
   );
   const [amount, setAmount] = useState('');
@@ -128,13 +166,28 @@ export default function LogScreen() {
   const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
   const [period, setPeriod] = useState<'day' | 'week'>('day');
   const [saved, setSaved] = useState(false);
+  // Track the keyboard height so the Back/Continue footer can sit just above it.
+  // (KeyboardAvoidingView doesn't lift it reliably on this tab screen, leaving
+  // Continue stranded behind the number pad.)
+  const [kbHeight, setKbHeight] = useState(0);
+  React.useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', e => setKbHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [catCounts, setCatCounts] = useState(getCatCounts);
   const [descFocus, setDescFocus] = useState(false);
+  const [numberInputFocused, setNumberInputFocused] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  // "Dirty" = the user has actually entered something this session (not just
+  // opened the tab). Kept in a ref so the focus-effect cleanup reads the latest
+  // value when the tab loses focus.
+  const hasInput = !!miles || !!amount || !!description.trim() || !!receiptUri;
+  const dirtyRef = React.useRef(false);
+  dirtyRef.current = hasInput && !submitted;
   const stepAnim = React.useRef(new Animated.Value(1)).current;
   const stepDirection = React.useRef(1);
-  const successAnim = React.useRef(new Animated.Value(0)).current;
 
   // Predictive suggestions while typing a description: everything you've used
   // before (most-used first) plus the standard categories, matched by substring.
@@ -187,20 +240,28 @@ export default function LogScreen() {
   const active = TABS[tabIndex];
   const steps = stepsFor(tab, myVehicles.length > 1, platformList.length > 1);
   const currentStep = steps[stepIndex] ?? 'kind';
+  const allowStepScroll = currentStep === 'receipt' || currentStep === 'details' || currentStep === 'date' || currentStep === 'review';
+  const logNumberKeyboardDoneProps = {
+    ...numberKeyboardDoneProps,
+    onFocus: () => {
+      (numberKeyboardDoneProps.onFocus as (() => void) | undefined)?.();
+      setNumberInputFocused(true);
+    },
+    onBlur: () => {
+      (numberKeyboardDoneProps.onBlur as (() => void) | undefined)?.();
+      setNumberInputFocused(false);
+    },
+    onSubmitEditing: () => {
+      setNumberInputFocused(false);
+      (numberKeyboardDoneProps.onSubmitEditing as (() => void) | undefined)?.();
+      Keyboard.dismiss();
+    },
+  };
 
-  React.useEffect(() => {
-    if (!submitted) return;
-    successAnim.setValue(0);
-    Animated.spring(successAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 18,
-      bounciness: 5,
-    }).start();
-    // Briefly confirm "Saved to Records", then end — back to a fresh log screen.
-    const id = setTimeout(() => { resetEntryFields(); resetWorkflow(); }, 1300);
-    return () => clearTimeout(id);
-  }, [submitted, successAnim]);
+  function dismissNumberInput() {
+    setNumberInputFocused(false);
+    Keyboard.dismiss();
+  }
 
   async function pickReceipt(useCamera: boolean) {
     const perm = useCamera
@@ -259,14 +320,17 @@ export default function LogScreen() {
     const ps = period === 'week' ? wb.start.toISOString() : null;
     const pe = period === 'week' ? wb.end.toISOString() : null;
     if (tab === 'mileage') {
-      if (!miles) { Alert.alert('Enter miles'); return; }
-      saveRecord({ record_type: 'mileage', platform: null, vehicle, miles: parseFloat(miles), deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
+      const m = parseFloat(miles);
+      if (!(m > 0)) { Alert.alert('Enter miles'); return; }
+      saveRecord({ record_type: 'mileage', platform: null, vehicle, miles: m, deduction, amount: null, category: null, period_start: ps, period_end: pe, receipt_uri: null, notes: null }, createdAt);
     } else if (tab === 'income') {
-      if (!amount) { Alert.alert('Enter amount'); return; }
-      saveRecord({ record_type: 'income', platform, amount: parseFloat(amount), miles: null, deduction: null, category: null, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: null }, createdAt);
+      const a = parseFloat(amount);
+      if (!(a > 0)) { Alert.alert('Enter amount'); return; }
+      saveRecord({ record_type: 'income', platform, amount: a, miles: null, deduction: null, category: null, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: null }, createdAt);
     } else {
-      if (!amount || !description) { Alert.alert('Enter amount and description'); return; }
-      saveRecord({ record_type: 'expense', platform: null, amount: parseFloat(amount), miles: null, deduction: null, category: description, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: description }, createdAt);
+      const a = parseFloat(amount);
+      if (!(a > 0) || !description) { Alert.alert('Enter amount and description'); return; }
+      saveRecord({ record_type: 'expense', platform: null, amount: a, miles: null, deduction: null, category: description, period_start: ps, period_end: pe, receipt_uri: receiptUri, notes: description }, createdAt);
       bumpCat(description); setCatCounts(getCatCounts());
       // Learn: this merchant → this category, so the next receipt nails it.
       if (scannedMerchant) learnCategory(scannedMerchant, description);
@@ -276,11 +340,13 @@ export default function LogScreen() {
     setSubmitted(true);
   }
 
-  const canSave = tab === 'mileage' ? !!miles : tab === 'income' ? !!amount : (!!amount && !!description);
+  const canSave = tab === 'mileage' ? parseFloat(miles) > 0 : tab === 'income' ? parseFloat(amount) > 0 : (parseFloat(amount) > 0 && !!description);
 
   function goToStep(next: number) {
     const bounded = Math.max(0, Math.min(steps.length - 1, next));
     if (bounded === stepIndex) return;
+    setNumberInputFocused(false);
+    Keyboard.dismiss();
     stepDirection.current = bounded > stepIndex ? 1 : -1;
     stepAnim.setValue(0);
     setStepIndex(bounded);
@@ -290,7 +356,6 @@ export default function LogScreen() {
   function chooseKind(nextTab: Tab) {
     setTab(nextTab);
     Haptics.selectionAsync().catch(() => {});
-    if (currentStep === 'kind') goToStep(stepIndex + 1);
   }
 
   function resetWorkflow() {
@@ -306,16 +371,18 @@ export default function LogScreen() {
     resetWorkflow();
   }
 
-  function viewRecords() {
-    resetEntryFields();
-    resetWorkflow();
-    router.push('/records');
-  }
+  // The success card has no button now — it confirms the save, then auto-dismisses
+  // and returns to a clean Log form (the same reset the old "Done" button did).
+  React.useEffect(() => {
+    if (!submitted) return;
+    const t = setTimeout(() => addAnotherLog(), 1600);
+    return () => clearTimeout(t);
+  }, [submitted]);
 
   const canContinue =
     currentStep === 'kind' ? !!tab :
     currentStep === 'receipt' ? !scanning :
-    currentStep === 'primary' ? (tab === 'mileage' ? !!miles : !!amount) :
+    currentStep === 'primary' ? (tab === 'mileage' ? parseFloat(miles) > 0 : parseFloat(amount) > 0) :
     currentStep === 'details' ? (tab === 'expense' ? !!description.trim() : true) :
     currentStep === 'review' ? canSave :
     true;
@@ -329,15 +396,15 @@ export default function LogScreen() {
   const stepTitle =
     currentStep === 'kind' ? 'What are you logging?' :
     currentStep === 'receipt' ? 'Add a receipt' :
-    currentStep === 'primary' ? (tab === 'mileage' ? 'How many miles?' : tab === 'income' ? 'How much did you earn?' : 'How much was it?') :
+    currentStep === 'primary' ? (tab === 'mileage' ? 'How many business miles?' : tab === 'income' ? 'How much did you earn?' : 'How much was it?') :
     currentStep === 'details' ? (tab === 'expense' ? 'What was it for?' : tab === 'mileage' ? 'Which vehicle?' : 'Which platform?') :
     currentStep === 'date' ? 'When was it?' :
     'Review and save';
 
   const stepSub =
     currentStep === 'kind' ? 'Okkle will ask one thing at a time.' :
-    currentStep === 'receipt' ? (tab === 'expense' ? 'Choose a receipt photo. AI fills numbers and category, and keeps the image for accounting.' : 'Optional. Choose a receipt or screenshot and Okkle will fill what it can.') :
-    currentStep === 'primary' ? (tab === 'mileage' ? 'Use the manually driven miles for this log.' : 'You can edit anything Okkle read from the receipt.') :
+    currentStep === 'receipt' ? (tab === 'expense' ? 'Choose a receipt photo. Okkle reads the amount and category on your phone, and keeps the image for accounting.' : 'Optional. Choose a receipt or screenshot and Okkle will fill what it can.') :
+    currentStep === 'primary' ? (tab === 'mileage' ? 'Only the miles you drove while working — leave out personal trips.' : 'You can edit anything Okkle read from the receipt.') :
     currentStep === 'details' ? (tab === 'expense' ? 'Pick a category or type your own.' : tab === 'mileage' ? 'Which vehicle did you drive?' : 'Which app paid you?') :
     currentStep === 'date' ? 'Choose a day, or log the amount across a whole pay week.' :
     'Check the details before adding it to your records.';
@@ -365,9 +432,20 @@ export default function LogScreen() {
             <Text style={s.filledPillText}>Found {scannedMerchant}</Text>
           </View>
         ) : null}
-        <NativeGreenButton label="Choose from photos" onPress={() => pickReceipt(false)} height={62} />
+        <View style={s.receiptBetaNotice}>
+          <View style={s.receiptBetaHead}>
+            <View style={s.receiptBetaBadge}>
+              <Text style={s.receiptBetaBadgeText}>Beta</Text>
+            </View>
+            <Text style={s.receiptBetaTitle}>Receipt scan beta</Text>
+          </View>
+          <Text style={s.receiptBetaText}>
+            Photo upload and camera capture can prefill details, but please check the amount, date and category before saving.
+          </Text>
+        </View>
+        <NativeGreenButton label="Choose from photos (Beta)" onPress={() => pickReceipt(false)} height={62} />
         {tab === 'expense' ? (
-          <NativeGreenButton label="Take a photo" onPress={() => pickReceipt(true)} variant="neutral" height={62} />
+          <NativeGreenButton label="Take a photo (Beta)" onPress={() => pickReceipt(true)} variant="neutral" height={62} />
         ) : null}
       </View>
     );
@@ -396,9 +474,9 @@ export default function LogScreen() {
             placeholderTextColor={colors.textTertiary}
             keyboardType="decimal-pad"
             value={miles}
-            onChangeText={setMiles}
+            onChangeText={t => setMiles(sanitizeDecimal(t))}
             autoFocus
-            {...numberKeyboardDoneProps}
+            {...logNumberKeyboardDoneProps}
           />
           <Text style={s.amountHeroUnit}>mi</Text>
         </View>
@@ -417,9 +495,9 @@ export default function LogScreen() {
             placeholderTextColor={colors.textTertiary}
             keyboardType="decimal-pad"
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={t => setAmount(sanitizeDecimal(t))}
             autoFocus
-            {...numberKeyboardDoneProps}
+            {...logNumberKeyboardDoneProps}
           />
         </View>
         <Text style={s.amountHeroSub}>
@@ -457,6 +535,9 @@ export default function LogScreen() {
               onChangeText={setDescription}
               onFocus={() => setDescFocus(true)}
               onBlur={() => setDescFocus(false)}
+              autoCorrect={false}
+              autoCapitalize="words"
+              spellCheck={false}
             />
           </View>
           {descFocus && suggestions.length > 0 && (
@@ -472,9 +553,26 @@ export default function LogScreen() {
               })}
             </View>
           )}
-          <View style={s.notice}>
-            <Text style={s.noticeText}>Vehicle running costs are flagged for accountant review when you use simplified mileage.</Text>
-          </View>
+          {MILEAGE_COVERED.has(description.trim()) ? (
+            <View style={[s.notice, s.noticeWarn]}>
+              <Feather name="alert-triangle" size={15} color={colors.amber} />
+              <Text style={[s.noticeText, s.noticeWarnText]}>
+                {description.trim()} is already covered by HMRC simplified mileage. Okkle uses the simplified method, so this will be saved and flagged for your accountant to review rather than double-claimed.
+              </Text>
+            </View>
+          ) : SUBSISTENCE_REVIEW.has(description.trim()) ? (
+            <View style={[s.notice, s.noticeWarn]}>
+              <Feather name="alert-triangle" size={15} color={colors.amber} />
+              <Text style={[s.noticeText, s.noticeWarnText]}>
+                Food &amp; drink isn’t always claimable for the self-employed — routine meals don’t count, but reasonable costs on longer shifts away from your normal area sometimes do. Saved and flagged for your accountant to confirm.
+              </Text>
+            </View>
+          ) : (
+            <View style={s.notice}>
+              <Feather name="info" size={15} color={colors.textTertiary} />
+              <Text style={s.noticeText}>Okkle calculates tax with HMRC simplified mileage. Costs the flat rate already covers (fuel, insurance, repairs) are flagged for your accountant.</Text>
+            </View>
+          )}
         </View>
       );
     }
@@ -491,6 +589,14 @@ export default function LogScreen() {
               ))}
             </View>
           </View>
+          {vehicle === 'bike' && (
+            <View style={[s.notice, s.noticeWarn]}>
+              <Feather name="alert-triangle" size={15} color={colors.amber} />
+              <Text style={[s.noticeText, s.noticeWarnText]}>
+                HMRC’s simplified flat rate doesn’t officially cover bicycles or e-bikes for the self-employed. This 20p/mile figure is an estimate — flagged for your accountant to confirm your actual cycle costs.
+              </Text>
+            </View>
+          )}
         </View>
       );
     }
@@ -547,6 +653,14 @@ export default function LogScreen() {
             <Text style={s.reviewValue}>{value}</Text>
           </View>
         ))}
+        {tab === 'mileage' && vehicle === 'bike' && (
+          <View style={[s.notice, s.noticeWarn, { marginTop: spacing.md }]}>
+            <Feather name="alert-triangle" size={15} color={colors.amber} />
+            <Text style={[s.noticeText, s.noticeWarnText]}>
+              Needs review: there’s no HMRC simplified flat rate for bicycles or e-bikes for the self-employed. This 20p/mile figure is saved as an estimate and flagged for your accountant.
+            </Text>
+          </View>
+        )}
       </View>
     );
   }
@@ -578,96 +692,106 @@ export default function LogScreen() {
     return renderReviewStep();
   }
 
-  function renderSuccessSheet() {
+  function renderSuccessNotice() {
     if (!submitted) return null;
 
     return (
-      <View style={s.successOverlay}>
-        <View pointerEvents="none" style={s.successDim} />
-        <Animated.View
-          style={[
-            s.successSheetWrap,
-            {
-              transform: [{ translateY: successAnim.interpolate({ inputRange: [0, 1], outputRange: [260, 0] }) }],
-            },
-          ]}
-        >
+      <Modal visible transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={s.successNoticeBg}>
           <GlassPanel
             tone="green"
-            radius={SUCCESS_SHEET_RADIUS}
+            radius={32}
             isInteractive
-            style={s.successSheet}
-            clipStyle={s.successSheetClip}
-            contentStyle={[s.successSheetContent, { paddingBottom: insets.bottom + spacing.xl }]}
+            style={s.successNoticeCard}
+            clipStyle={s.successNoticeClip}
+            contentStyle={s.successNoticeContent}
           >
-            <View style={s.successContent}>
-              <View style={s.successBadge}>
-                <Feather name="check" size={42} color="#fff" />
-              </View>
-              <Text style={s.successSub}>Saved to Records.</Text>
+            <View style={s.successBadge}>
+              <Feather name="check" size={42} color="#fff" />
             </View>
+            <Text style={s.successKicker}>Saved to Records</Text>
+            <Text style={s.successSub}>Your log has been added.</Text>
           </GlassPanel>
-        </Animated.View>
+        </View>
+      </Modal>
+    );
+  }
+
+  function renderFooter() {
+    if (submitted) return null;
+
+    return (
+      <View style={[s.footer, { paddingBottom: kbHeight > 0 ? kbHeight + spacing.sm : insets.bottom + spacing.md }]}>
+        <NativeGreenButton
+          label="Back"
+          onPress={() => goToStep(stepIndex - 1)}
+          disabled={stepIndex === 0}
+          variant="neutral"
+          height={52}
+          style={s.backBtnWrap}
+          leftIcon={<Feather name="arrow-left" size={18} color={stepIndex === 0 ? colors.textTertiary : colors.textPrimary} />}
+        />
+        <NativeGreenButton
+          label={nextLabel}
+          onPress={() => currentStep === 'review' ? handleSave() : goToStep(stepIndex + 1)}
+          disabled={!canContinue}
+          style={s.nextBtnWrap}
+        />
       </View>
     );
   }
 
+  const titleTop = headerTitleTop(insets.top);
+  const actionTop = headerActionTop(insets.top);
+  const stepContent = (
+    <Animated.View
+      style={[
+        s.page,
+        {
+          // Slide only — opacity is intentionally NOT bound to the animation. If the
+          // entrance tween is interrupted (keyboard/autofocus mid-transition), a
+          // value stuck at 0 would render the whole step invisible (white screen).
+          transform: [{ translateX: stepAnim.interpolate({ inputRange: [0, 1], outputRange: [stepDirection.current * 28, 0] }) }],
+        },
+      ]}
+    >
+      <Text style={s.stepCount}>Step {stepIndex + 1} of {steps.length}</Text>
+      <Text style={s.questionTitle}>{stepTitle}</Text>
+      <Text style={s.questionSub}>{stepSub}</Text>
+      <View style={s.questionBody}>{renderStep()}</View>
+    </Animated.View>
+  );
+
   return (
-    <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.headerEyebrow}>Log entry</Text>
+    <KeyboardAvoidingView style={s.screen} behavior={undefined}>
+      <View style={[s.header, { paddingTop: titleTop }]}>
+        <View style={s.headerText}>
           <Text style={s.headerTitle}>{active.label}</Text>
         </View>
-        <SettingsGlassButton onPress={() => router.push('/settings')} />
+        <SettingsGlassButton onPress={() => router.push('/settings')} style={[s.headerSettings, { top: actionTop }]} />
       </View>
 
       <View style={s.progressTrack}>
         <View style={[s.progressFill, { width: `${((stepIndex + 1) / steps.length) * 100}%` }]} />
       </View>
 
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 132 }]}
-      >
-        <Animated.View
-          style={[
-            s.page,
-            {
-              opacity: stepAnim,
-              transform: [{ translateX: stepAnim.interpolate({ inputRange: [0, 1], outputRange: [stepDirection.current * 28, 0] }) }],
-            },
-          ]}
+      {allowStepScroll ? (
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="never"
+          contentContainerStyle={[s.stepContent, { paddingBottom: insets.bottom + 132 }]}
         >
-          <Text style={s.stepCount}>Step {stepIndex + 1} of {steps.length}</Text>
-          <Text style={s.questionTitle}>{stepTitle}</Text>
-          <Text style={s.questionSub}>{stepSub}</Text>
-          <View style={s.questionBody}>{renderStep()}</View>
-        </Animated.View>
-      </ScrollView>
-
-      {!submitted && currentStep !== 'kind' ? (
-        <View style={[s.footer, { paddingBottom: insets.bottom + spacing.md }]}>
-          <NativeGreenButton
-            label="Back"
-            onPress={() => goToStep(stepIndex - 1)}
-            disabled={stepIndex === 0}
-            variant="neutral"
-            height={52}
-            style={s.backBtnWrap}
-            leftIcon={<Feather name="arrow-left" size={18} color={stepIndex === 0 ? colors.textTertiary : colors.textPrimary} />}
-          />
-          <NativeGreenButton
-            label={nextLabel}
-            onPress={() => currentStep === 'review' ? handleSave() : goToStep(stepIndex + 1)}
-            disabled={!canContinue}
-            style={s.nextBtnWrap}
-          />
+          {stepContent}
+        </ScrollView>
+      ) : (
+        <View style={s.stepContent}>
+          {stepContent}
         </View>
-      ) : null}
-      {renderSuccessSheet()}
+      )}
+
+      {renderFooter()}
+      {renderSuccessNotice()}
       <KeyboardDoneAccessory />
     </KeyboardAvoidingView>
   );
@@ -675,41 +799,26 @@ export default function LogScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  successOverlay: {
-    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-    justifyContent: 'flex-end',
-  },
-  successDim: {
-    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-    backgroundColor: 'rgba(15, 28, 25, 0.34)',
-  },
-  successSheetWrap: { paddingHorizontal: SUCCESS_SHEET_EDGE_GAP, paddingBottom: SUCCESS_SHEET_EDGE_GAP, zIndex: 1 },
-  successSheet: { width: '100%', borderCurve: 'continuous' },
-  successSheetClip: { backgroundColor: 'transparent', borderCurve: 'continuous' },
-  successSheetContent: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.xl },
-  successContent: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingTop: spacing.md },
+  successNoticeBg: { flex: 1, backgroundColor: 'rgba(15,28,25,0.32)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  successNoticeCard: { width: '100%', maxWidth: 340, borderCurve: 'continuous' },
+  successNoticeClip: { backgroundColor: 'transparent', borderCurve: 'continuous' },
+  successNoticeContent: { padding: spacing.xl, alignItems: 'center', gap: spacing.md },
   successBadge: {
     width: 92, height: 92, borderRadius: radius.full,
     alignItems: 'center', justifyContent: 'center', backgroundColor: colors.green,
     boxShadow: '0 18px 34px rgba(47,163,107,0.28)',
   },
-  successSub: { ...type.heading, fontSize: 25, color: colors.textPrimary, textAlign: 'center', lineHeight: 31, maxWidth: 300 },
-  successActions: { gap: spacing.md },
-  successSecondary: {
-    height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
-    borderRadius: radius.full, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.bgCard,
-  },
-  successSecondaryText: { ...type.bodyMedium, color: colors.brandDeep },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingHorizontal: spacing.xl, paddingBottom: spacing.md, backgroundColor: colors.bg,
-  },
-  headerEyebrow: { ...type.caption, color: colors.textTertiary, fontWeight: font.medium },
-  headerTitle: { ...type.heading, fontSize: 24, marginTop: 2 },
+  successKicker: { ...type.label, color: colors.brandDeep, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: 12, marginTop: spacing.sm },
+  successSub: { ...type.screenTitle, fontSize: 24, color: colors.textPrimary, textAlign: 'center', lineHeight: 30, marginBottom: spacing.sm },
+  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, backgroundColor: colors.bg },
+  headerText: { paddingRight: HEADER_TITLE_SIDE_CLEARANCE },
+  headerSettings: { position: 'absolute', right: spacing.xl },
+  headerEyebrow: { ...type.caption, color: colors.textTertiary, fontWeight: font.medium, lineHeight: LOG_EYEBROW_LINE_HEIGHT },
+  headerTitle: { ...type.screenTitle },
   progressTrack: { height: 4, marginHorizontal: spacing.xl, borderRadius: radius.full, backgroundColor: colors.bgSoft, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.brand },
-  scrollContent: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl },
-  page: { minHeight: 500 },
+  stepContent: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xl + spacing.sm },
+  page: { flex: 1 },
   stepCount: { ...type.caption, color: colors.brandDeep, fontWeight: font.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
   questionTitle: { ...type.screenTitle, fontSize: 30, marginTop: spacing.sm },
   questionSub: { ...type.body, color: colors.textSecondary, lineHeight: 23, marginTop: spacing.sm },
@@ -768,6 +877,18 @@ const s = StyleSheet.create({
   amountHeroInput: { ...tabular, flex: 1, color: colors.textPrimary, fontSize: 42, fontWeight: font.bold, letterSpacing: -1, paddingVertical: 4 },
   amountHeroUnit: { color: colors.textPrimary, fontSize: 22, fontWeight: font.semibold, marginLeft: 6 },
   amountHeroSub: { color: colors.textSecondary, fontSize: 13, marginTop: 2, lineHeight: 18 },
+  amountDoneButton: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    boxShadow: '0 4px 12px rgba(27,38,33,0.08)',
+  },
+  amountDoneText: { color: colors.brandDeep, fontSize: 14, fontWeight: font.semibold },
 
   input: {
     borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
@@ -799,8 +920,10 @@ const s = StyleSheet.create({
   quickChipText: { fontSize: 12.5, fontWeight: font.semibold, color: colors.textSecondary },
   quickChipTextOn: { color: '#fff' },
 
-  notice: { backgroundColor: colors.amberLight, borderRadius: radius.md, padding: spacing.md },
-  noticeText: { fontSize: 13, color: colors.amberDark, lineHeight: 19 },
+  notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: colors.bgSoft, borderRadius: radius.md, padding: spacing.md },
+  noticeText: { flex: 1, fontSize: 13, color: colors.textSecondary, lineHeight: 19 },
+  noticeWarn: { backgroundColor: colors.amberLight },
+  noticeWarnText: { color: colors.amberDark },
   receiptButtons: { flexDirection: 'row', gap: spacing.sm },
   receiptBtn: {
     flex: 1, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md,
@@ -809,6 +932,12 @@ const s = StyleSheet.create({
   receiptBtnText: { ...type.bodyMedium, fontSize: 14 },
   receiptWrap: { position: 'relative' },
   receiptImg: { width: '100%', height: 180, borderRadius: radius.md, backgroundColor: colors.bgSoft },
+  receiptBetaNotice: { gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.brandMid, backgroundColor: colors.brandLight },
+  receiptBetaHead: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  receiptBetaBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.full, backgroundColor: colors.brandDeep },
+  receiptBetaBadgeText: { color: '#fff', fontSize: 11, fontWeight: font.bold, textTransform: 'uppercase' },
+  receiptBetaTitle: { ...type.bodyMedium, fontSize: 14 },
+  receiptBetaText: { ...type.caption, color: colors.textSecondary, lineHeight: 18 },
   scanBadge: { position: 'absolute', left: 8, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.full },
   scanText: { color: '#fff', fontSize: 13, fontWeight: font.medium },
   receiptRemove: {
