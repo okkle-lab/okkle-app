@@ -134,6 +134,7 @@ export default function HomeScreen() {
       right={
         <SettingsGlassButton onPress={() => router.push('/settings')} />
       }
+      scrollEnabled={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brand} />}
     >
       {/* HERO: tax saved — tap through to the full Tax breakdown */}
@@ -243,13 +244,6 @@ export default function HomeScreen() {
           <AnimatedDots scrollX={gameScrollX} count={2} pageWidth={win.width} />
         </View>
       )}
-
-      <View style={s.disclaimer}>
-        <Feather name="shield" size={14} color={colors.textTertiary} />
-        <Text style={s.disclaimerText}>
-          Estimates only — not tax advice. Share your export with an accountant.
-        </Text>
-      </View>
     </CollapsingHeader>
     </>
   );

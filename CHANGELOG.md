@@ -11,6 +11,10 @@ All notable changes to the Okkle app are recorded here. Most recent first.
 - **Log flow:** removed the redundant on-screen "Done" button (the keyboard's own Done remains); leaving a Log step with nothing entered resets it, while an in-progress entry is preserved as a draft.
 - **Fixed stale trip notifications.** If the app was killed mid-trip, the "Finished this trip?" nudge could fire with no trip running, and the "track this trip?" prompt could be silently suppressed forever. A cold-launch cleanup now clears the leftover tracking flag and notifications.
 
+## 0.3 (32) - 2026-06-28 (Home fits on one screen)
+
+- **Home is non-scrolling again and fits cleanly.** Removed the redundant "Estimates only — not tax advice" line from Home (the Tax section, exports and Accountant Pack already carry it), so the hero + weekly goals now fit on one screen with nothing clipped by the tab bar.
+
 ## 0.3 (31) - 2026-06-28 (Header subtitle gutter)
 
 - **Header subtitle no longer runs under the settings gear.** The subtitle now wraps before the gear's column (matching the title), so the title + subtitle form a clean left-aligned block with the gear in its own top-right gutter.
