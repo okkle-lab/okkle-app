@@ -45,6 +45,16 @@ function FlatGoalIcon({ icon, tone, isDark, size = 36 }: { icon: FeatherName; to
   );
 }
 
+// A short, time-aware greeting for the Home title. Kept compact (no "Good", first
+// name only) so it stays on one line — Home is non-scrolling, so a wrapping title
+// would eat the headroom.
+function homeGreeting(name?: string | null): string {
+  const h = new Date().getHours();
+  const part = h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening';
+  const first = (name ?? '').trim().split(' ')[0];
+  return first ? `${part}, ${first}` : part;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const win = Dimensions.get('window');
@@ -130,7 +140,7 @@ export default function HomeScreen() {
       </Pressable>
     </Modal>
     <CollapsingHeader
-      title={user?.name || 'Hi'}
+      title={homeGreeting(user?.name)}
       right={
         <SettingsGlassButton onPress={() => router.push('/settings')} />
       }
