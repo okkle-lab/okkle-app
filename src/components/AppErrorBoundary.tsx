@@ -10,9 +10,8 @@ import { logError } from '../diagnostics';
 // builds have no red error overlay, so without this a single JS error anywhere
 // in the app would just render white with no way to recover.
 //
-// It also captures the error message + stack on screen (and persists it), so a
-// crash on a real device can be screenshotted and diagnosed — release builds
-// otherwise hide the cause entirely.
+// In development it shows the raw stack on screen. Release builds keep that
+// detail out of the UI so internal build paths are never shown to users.
 type Props = { children: React.ReactNode };
 type State = { error: Error | null; info: string };
 
@@ -38,12 +37,13 @@ export class AppErrorBoundary extends React.Component<Props, State> {
 
   render() {
     if (!this.state.error) return this.props.children;
+    const showDebugDetails = __DEV__ && !!this.state.info;
     return (
       <View style={s.screen}>
         <View style={s.icon}><Feather name="alert-triangle" size={26} color={colors.amberDark} /></View>
         <Text style={s.title}>Something went wrong</Text>
         <Text style={s.body}>Okkle hit an unexpected error. Your data is safe on your phone — tap below to try again, or reopen the app.</Text>
-        {!!this.state.info && (
+        {showDebugDetails && (
           <ScrollView style={s.detailBox} contentContainerStyle={{ padding: spacing.md }}>
             <Text style={s.detailText} selectable>{this.state.info}</Text>
           </ScrollView>
