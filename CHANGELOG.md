@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0 (45) - 2026-06-29 (Expense default categories)
+
+- **Default expense quick-picks are now the on-top-of-mileage costs.** The 6 starting categories are Parking, Phone / data, Congestion charge, ULEZ charge, App subscription and Insulated bag — everyday costs you can claim **in addition** to HMRC simplified mileage. The mileage-covered costs (fuel, charging, insurance, servicing, tyres) are no longer defaults (claiming them on top would double-claim) but remain searchable and flagged.
+
 ## 1.0 (44) - 2026-06-29 (Logging defaults + live hotspot map)
 
 - **Smarter period defaults when logging.** Earnings now default to logging by **Week** (platforms pay weekly), while Expense and Mileage default to **Day**. Switching logging type resets to that type's default.

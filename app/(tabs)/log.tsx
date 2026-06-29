@@ -56,13 +56,18 @@ const EXPENSE_CATEGORIES: Cat[] = [
   { name: 'Maintenance / repairs', icon: 'tool' },
   { name: 'Tyres', icon: 'disc' },
 ];
+// Defaults are the costs a courier can claim ON TOP of the HMRC simplified
+// flat-rate mileage (which already covers fuel, charging, insurance, servicing
+// and tyres — claiming those again would double-claim). These are the common,
+// genuinely-allowable everyday ones; the mileage-covered costs are still
+// available via search and flagged for accountant review.
 const DEFAULT_TOP_EXPENSES = [
-  'Fuel',
   'Parking',
   'Phone / data',
-  'Charging',
-  'Insurance',
-  'Maintenance / repairs',
+  'Congestion charge',
+  'ULEZ charge',
+  'App subscription',
+  'Insulated bag',
 ];
 const PERSONALIZE_AFTER_DAYS = 30;
 const PERSONALIZE_AFTER_LOGS = 6;
