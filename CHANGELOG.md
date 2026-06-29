@@ -2,7 +2,7 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
-## 1.0 (42) - 2026-06-28 (Launch release)
+## 1.0 (43) - 2026-06-28 (Launch release)
 
 - **Launch version.** App/package version bumped to 1.0 for release.
 - **Bug reports go to Okkle Lab.** In-app problem reports now compose to `admin@okklelab.com`, with the old support inbox removed from the fallback messages.
