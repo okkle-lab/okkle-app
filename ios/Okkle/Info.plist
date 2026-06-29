@@ -88,7 +88,7 @@
 	<string>Okkle saves receipts to your photo library.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
-		<key>iCloud.uk.okkle.app</key>
+		<key>iCloud.okklelab.app</key>
 		<dict>
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>

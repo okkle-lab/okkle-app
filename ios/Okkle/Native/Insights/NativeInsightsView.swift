@@ -170,8 +170,9 @@ struct NativeHeatStatChip: View {
       Text(title)
         .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(OkkleColor.muted)
+        .lineLimit(1)
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
     .padding(12)
     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
   }
@@ -249,6 +250,7 @@ struct NativeHeatRouteMapRepresentable: UIViewRepresentable {
   func makeUIView(context: Context) -> MKMapView {
     let mapView = MKMapView()
     mapView.delegate = context.coordinator
+    mapView.isUserInteractionEnabled = false
     mapView.showsCompass = false
     mapView.showsScale = true
     mapView.isPitchEnabled = false

@@ -10,6 +10,12 @@ import Vision
 final class OkkleStore: ObservableObject {
   static let shared = OkkleStore()
 
+  private struct TaxYearMileageEntry {
+    var date: Date
+    var miles: Double
+    var vehicle: NativeVehicle
+  }
+
   @Published var settings = NativeSettings() { didSet { save() } }
   @Published var records: [NativeRecord] = [] { didSet { save() } }
   @Published var trips: [NativeTrip] = [] { didSet { save() } }
@@ -77,6 +83,19 @@ final class OkkleStore: ObservableObject {
     return try encoder.encode(backupPayload)
   }
 
+  @discardableResult
+  func restoreBackupData(_ data: Data) throws -> NativeBackupRestoreSummary {
+    let snapshot = try decodeBackupSnapshot(from: data)
+    isLoading = true
+    settings = snapshot.settings
+    records = snapshot.records
+    trips = snapshot.trips
+    _ = normalizeOnboardingState()
+    isLoading = false
+    save()
+    return NativeBackupRestoreSummary(records: records.count, trips: trips.count)
+  }
+
   func addRecord(_ record: NativeRecord) {
     records.insert(record, at: 0)
   }
@@ -140,11 +159,29 @@ final class OkkleStore: ObservableObject {
   }
 
   var yearMiles: Double {
-    yearTrips.reduce(0) { $0 + $1.miles } + yearRecords.reduce(0) { $0 + mileageForTaxYear($1) }
+    yearMileageEntries.reduce(0) { $0 + $1.miles }
   }
 
   var yearMileageDeduction: Double {
-    yearTrips.reduce(0) { $0 + deduction(for: $1) } + yearRecords.reduce(0) { $0 + deductionForTaxYear($1) }
+    var total = 0.0
+    var carAndVanMilesBefore = 0.0
+
+    for entry in yearMileageEntries {
+      switch entry.vehicle {
+      case .car, .van:
+        total += calcDeduction(
+          miles: entry.miles,
+          vehicle: entry.vehicle,
+          totalBefore: carAndVanMilesBefore,
+          date: entry.date
+        )
+        carAndVanMilesBefore += entry.miles
+      case .motorbike, .bike:
+        total += calcDeduction(miles: entry.miles, vehicle: entry.vehicle, date: entry.date)
+      }
+    }
+
+    return total
   }
 
   var yearIncome: Double {
@@ -175,6 +212,29 @@ final class OkkleStore: ObservableObject {
 
   func calcDeduction(miles: Double, vehicle: NativeVehicle, totalBefore: Double = 0, date: Date = Date()) -> Double {
     TaxCalculator.mileageDeduction(miles: miles, vehicle: vehicle, totalBefore: totalBefore, date: date)
+  }
+
+  private func decodeBackupSnapshot(from data: Data) throws -> NativeSnapshot {
+    let isoDecoder = JSONDecoder()
+    isoDecoder.dateDecodingStrategy = .iso8601
+    if let payload = try? isoDecoder.decode(NativeBackupPayload.self, from: data),
+       payload.app.caseInsensitiveCompare("okkle") == .orderedSame {
+      return payload.snapshot
+    }
+    if let snapshot = try? isoDecoder.decode(NativeSnapshot.self, from: data) {
+      return snapshot
+    }
+
+    let decoder = JSONDecoder()
+    if let payload = try? decoder.decode(NativeBackupPayload.self, from: data),
+       payload.app.caseInsensitiveCompare("okkle") == .orderedSame {
+      return payload.snapshot
+    }
+    if let snapshot = try? decoder.decode(NativeSnapshot.self, from: data) {
+      return snapshot
+    }
+
+    throw NativeBackupRestoreError.invalidBackup
   }
 
   private func merge(_ imported: NativeLegacyImportResult) {
@@ -260,22 +320,30 @@ final class OkkleStore: ObservableObject {
     return min(1, max(0, overlap.duration / interval.duration))
   }
 
-  private func mileageForTaxYear(_ record: NativeRecord) -> Double {
-    guard record.kind == .mileage else { return 0 }
-    return (record.miles ?? 0) * taxYearShare(for: record)
-  }
+  private var yearMileageEntries: [TaxYearMileageEntry] {
+    let tripEntries = yearTrips.compactMap { trip -> TaxYearMileageEntry? in
+      let miles = max(0, trip.miles)
+      guard miles > 0 else { return nil }
+      return TaxYearMileageEntry(date: trip.startedAt, miles: miles, vehicle: trip.vehicle)
+    }
 
-  private func deduction(for trip: NativeTrip) -> Double {
-    if trip.deduction > 0 || trip.miles <= 0 { return trip.deduction }
-    return calcDeduction(miles: trip.miles, vehicle: trip.vehicle, date: trip.startedAt)
-  }
+    let recordEntries = yearRecords.compactMap { record -> TaxYearMileageEntry? in
+      guard record.kind == .mileage else { return nil }
+      let miles = max(0, record.miles ?? 0) * taxYearShare(for: record)
+      guard miles > 0 else { return nil }
+      return TaxYearMileageEntry(
+        date: record.date,
+        miles: miles,
+        vehicle: record.vehicle ?? settings.defaultVehicle
+      )
+    }
 
-  private func deductionForTaxYear(_ record: NativeRecord) -> Double {
-    guard record.kind == .mileage else { return 0 }
-    let base = (record.deduction ?? 0) > 0
-      ? (record.deduction ?? 0)
-      : calcDeduction(miles: record.miles ?? 0, vehicle: record.vehicle ?? settings.defaultVehicle, date: record.date)
-    return base * taxYearShare(for: record)
+    return (tripEntries + recordEntries).sorted { lhs, rhs in
+      if lhs.date == rhs.date {
+        return lhs.vehicle.rawValue < rhs.vehicle.rawValue
+      }
+      return lhs.date < rhs.date
+    }
   }
 
   private func incomeForTaxYear(_ record: NativeRecord) -> Double {

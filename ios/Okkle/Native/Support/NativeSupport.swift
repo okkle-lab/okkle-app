@@ -36,22 +36,12 @@ let gbpFormatter: NumberFormatter = {
   return formatter
 }()
 
-let wholeGbpFormatter: NumberFormatter = {
-  let formatter = NumberFormatter()
-  formatter.numberStyle = .currency
-  formatter.currencyCode = "GBP"
-  formatter.maximumFractionDigits = 0
-  formatter.minimumFractionDigits = 0
-  return formatter
-}()
-
 func gbp(_ value: Double, whole: Bool = false) -> String {
-  let formatter = whole ? wholeGbpFormatter : gbpFormatter
-  return formatter.string(from: NSNumber(value: value)) ?? "GBP \(value)"
+  gbpFormatter.string(from: NSNumber(value: value)) ?? "GBP \(String(format: "%.2f", value))"
 }
 
 func headlineGbp(_ value: Double) -> String {
-  abs(value) < 100 ? gbp(value) : gbp(value, whole: true)
+  gbp(value)
 }
 
 func miles(_ value: Double) -> String {
@@ -93,5 +83,80 @@ struct NativeKeyboardDoneToolbar: ViewModifier {
 extension View {
   func nativeKeyboardDoneToolbar() -> some View {
     modifier(NativeKeyboardDoneToolbar())
+  }
+}
+
+struct NativeNumberDoneTextField: UIViewRepresentable {
+  @Binding var text: String
+  let placeholder: String
+  var keyboardType: UIKeyboardType = .decimalPad
+  var fontSize: CGFloat = 17
+  var fontWeight: UIFont.Weight = .regular
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(text: $text)
+  }
+
+  func makeUIView(context: Context) -> UITextField {
+    let textField = UITextField()
+    textField.keyboardType = keyboardType
+    textField.returnKeyType = .done
+    textField.borderStyle = .none
+    textField.backgroundColor = .clear
+    textField.textColor = .label
+    textField.tintColor = UIColor(OkkleColor.brand)
+    textField.adjustsFontForContentSizeCategory = true
+    textField.font = roundedFont(size: fontSize, weight: fontWeight)
+    textField.attributedPlaceholder = placeholderText
+    textField.addTarget(context.coordinator, action: #selector(Coordinator.textDidChange(_:)), for: .editingChanged)
+
+    let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 44))
+    toolbar.items = [
+      UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+      UIBarButtonItem(title: "Done", style: .done, target: context.coordinator, action: #selector(Coordinator.doneTapped))
+    ]
+    toolbar.sizeToFit()
+    textField.inputAccessoryView = toolbar
+    context.coordinator.textField = textField
+    return textField
+  }
+
+  func updateUIView(_ uiView: UITextField, context: Context) {
+    if uiView.text != text {
+      uiView.text = text
+    }
+    uiView.keyboardType = keyboardType
+    uiView.font = roundedFont(size: fontSize, weight: fontWeight)
+    uiView.attributedPlaceholder = placeholderText
+  }
+
+  private var placeholderText: NSAttributedString {
+    NSAttributedString(
+      string: placeholder,
+      attributes: [.foregroundColor: UIColor.secondaryLabel.withAlphaComponent(0.55)]
+    )
+  }
+
+  private func roundedFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
+    let base = UIFont.systemFont(ofSize: size, weight: weight)
+    guard let descriptor = base.fontDescriptor.withDesign(.rounded) else { return base }
+    return UIFont(descriptor: descriptor, size: size)
+  }
+
+  final class Coordinator: NSObject {
+    @Binding var text: String
+    weak var textField: UITextField?
+
+    init(text: Binding<String>) {
+      _text = text
+    }
+
+    @objc func textDidChange(_ sender: UITextField) {
+      text = sender.text ?? ""
+    }
+
+    @objc func doneTapped() {
+      textField?.resignFirstResponder()
+    }
   }
 }

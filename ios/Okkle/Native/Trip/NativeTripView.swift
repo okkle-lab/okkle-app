@@ -144,7 +144,7 @@ struct NativeTripView: View {
   private var trackingMapScreen: some View {
     GeometryReader { proxy in
       ZStack(alignment: .bottom) {
-        NativeRouteMapView(points: session.points)
+        NativeRouteMapView(points: session.points, showsEndMarker: completedTrip != nil)
           .ignoresSafeArea()
           .overlay(alignment: .top) {
             LinearGradient(
@@ -185,10 +185,6 @@ struct NativeTripView: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
     .background(.regularMaterial, in: Capsule())
-    .overlay {
-      Capsule()
-        .stroke(Color(uiColor: .separator).opacity(0.32), lineWidth: 1)
-    }
     .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
   }
 
@@ -250,10 +246,6 @@ struct NativeTripView: View {
         .blendMode(.overlay)
         .allowsHitTesting(false)
     }
-    .overlay {
-      trackingPanelShape
-        .stroke(Color(uiColor: .separator).opacity(0.35), lineWidth: 1)
-    }
     .shadow(color: .black.opacity(0.18), radius: 30, y: 14)
     .transition(.move(edge: .bottom).combined(with: .opacity))
   }
@@ -307,7 +299,7 @@ struct NativeTripView: View {
       VStack(alignment: .leading, spacing: 2) {
         Text("Deduction")
           .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
+          .foregroundStyle(OkkleColor.ink)
         Text("HMRC mileage relief")
           .font(.system(size: 12, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
@@ -322,10 +314,6 @@ struct NativeTripView: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 12)
     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .overlay {
-      RoundedRectangle(cornerRadius: 18, style: .continuous)
-        .stroke(Color(uiColor: .separator).opacity(0.25), lineWidth: 1)
-    }
   }
 
   private var trackingStatusTitle: String {

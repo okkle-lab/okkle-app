@@ -187,12 +187,14 @@ struct NativeMetricTile: View {
         .foregroundStyle(color)
       Text(value)
         .font(.system(size: 22, weight: .bold, design: .rounded))
+        .lineLimit(1)
         .minimumScaleFactor(0.7)
       Text(title)
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(OkkleColor.muted)
+        .lineLimit(1)
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
     .padding(16)
     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
   }

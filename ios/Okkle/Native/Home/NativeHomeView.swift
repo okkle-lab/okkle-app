@@ -38,6 +38,7 @@ struct NativeHomeView: View {
             .foregroundStyle(OkkleColor.muted)
           ProgressView(value: min(1, store.yearMiles / 10_000))
             .tint(OkkleColor.brand)
+          mileageBandScale
         }
       }
 
@@ -49,7 +50,12 @@ struct NativeHomeView: View {
       NativeSectionTitle(title: "Progress", symbol: "sparkles")
       NativeGlassCard {
         VStack(alignment: .leading, spacing: 16) {
-          progressRow("First 10k mileage band", value: min(1, store.yearMiles / 10_000), trailing: "\(Int(min(10_000, store.yearMiles)).formatted()) / 10,000 mi")
+          progressRow(
+            "First 10k mileage band",
+            value: min(1, store.yearMiles / 10_000),
+            trailing: "\(Int(min(10_000, store.yearMiles)).formatted()) / 10,000 mi",
+            showsMileageScale: true
+          )
           progressRow("Records logged", value: min(1, Double(store.records.count) / 24), trailing: "\(store.records.count) entries")
           progressRow("Trips tracked", value: min(1, Double(store.trips.count) / 20), trailing: "\(store.trips.count) trips")
           NativeMedalPreviewCard(achievements: NativeMedalEngine.achievements(store: store)) {
@@ -107,7 +113,7 @@ struct NativeHomeView: View {
   }
 
   @ViewBuilder
-  private func progressRow(_ title: String, value: Double, trailing: String) -> some View {
+  private func progressRow(_ title: String, value: Double, trailing: String, showsMileageScale: Bool = false) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Text(title)
@@ -119,7 +125,22 @@ struct NativeHomeView: View {
       }
       ProgressView(value: value)
         .tint(OkkleColor.brand)
+      if showsMileageScale {
+        mileageBandScale
+      }
     }
+  }
+
+  private var mileageBandScale: some View {
+    HStack {
+      Text("0 mi")
+      Spacer()
+      Text("5,000 mi")
+      Spacer()
+      Text("10,000 mi")
+    }
+    .font(.system(size: 11, weight: .bold))
+    .foregroundStyle(OkkleColor.muted)
   }
 
   private func taxYearLabel(for interval: DateInterval) -> String {

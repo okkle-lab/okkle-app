@@ -5,6 +5,7 @@ import PhotosUI
 import SQLite3
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 import Vision
 enum NativeOnboardingStep: Int, CaseIterable {
   case welcome
@@ -104,6 +105,8 @@ struct NativeOnboardingView: View {
   @State private var region: NativeRegion = .ruk
   @State private var incomeBracket: NativeIncomeBracket = .basic
   @State private var didSeed = false
+  @State private var showBackupImporter = false
+  @State private var restoreMessage: String?
   @FocusState private var nameFocused: Bool
   @FocusState private var customPlatformFocused: Bool
 
@@ -142,6 +145,21 @@ struct NativeOnboardingView: View {
       }
     }
     .onAppear(perform: seedFromStore)
+    .fileImporter(
+      isPresented: $showBackupImporter,
+      allowedContentTypes: [.json],
+      allowsMultipleSelection: false
+    ) { result in
+      restoreBackup(from: result)
+    }
+    .alert("Load backup", isPresented: Binding(
+      get: { restoreMessage != nil },
+      set: { if !$0 { restoreMessage = nil } }
+    )) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(restoreMessage ?? "")
+    }
     .onChange(of: step) { newStep in
       if newStep == .name {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -191,6 +209,32 @@ struct NativeOnboardingView: View {
             NativeOnboardingBullet(symbol: "medal.fill", title: "Build streaks and progress")
           }
         }
+
+        Button {
+          showBackupImporter = true
+        } label: {
+          HStack(spacing: 12) {
+            Image(systemName: "icloud.and.arrow.down")
+              .font(.system(size: 17, weight: .bold))
+              .frame(width: 38, height: 38)
+              .background(OkkleColor.mint, in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+              Text("Load iCloud backup")
+                .font(.system(size: 17, weight: .bold))
+              Text("Restore before creating a new profile")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(OkkleColor.muted)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+              .font(.system(size: 13, weight: .bold))
+              .foregroundStyle(OkkleColor.muted)
+          }
+          .foregroundStyle(OkkleColor.brandDark)
+          .padding(16)
+          .background(OkkleColor.fieldBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
       }
 
     case .name:
@@ -480,6 +524,26 @@ struct NativeOnboardingView: View {
       region: region,
       incomeBracket: incomeBracket
     )
+  }
+
+  private func restoreBackup(from result: Result<[URL], Error>) {
+    do {
+      guard let url = try result.get().first else { return }
+      let didAccess = url.startAccessingSecurityScopedResource()
+      defer {
+        if didAccess {
+          url.stopAccessingSecurityScopedResource()
+        }
+      }
+      let data = try Data(contentsOf: url)
+      let summary = try store.restoreBackupData(data)
+      selectedTab = .home
+      didSeed = false
+      seedFromStore()
+      restoreMessage = summary.message
+    } catch {
+      restoreMessage = "Could not load backup. \(error.localizedDescription)"
+    }
   }
 
   private func togglePlatform(_ platform: String) {

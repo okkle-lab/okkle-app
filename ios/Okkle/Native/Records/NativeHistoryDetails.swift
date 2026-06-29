@@ -317,12 +317,6 @@ struct NativeRecordEditSheet: View {
   @State private var merchant: String
   @State private var date: Date
   @State private var period: NativePayPeriod
-  @FocusState private var focusedField: Field?
-
-  private enum Field {
-    case amount
-    case miles
-  }
 
   init(record: NativeRecord, onSave: @escaping (NativeRecord) -> Void) {
     self.record = record
@@ -343,9 +337,8 @@ struct NativeRecordEditSheet: View {
         Section(record.kind.label) {
           switch record.kind {
           case .income:
-            TextField("Amount", text: $amountText)
-              .keyboardType(.decimalPad)
-              .focused($focusedField, equals: .amount)
+            NativeNumberDoneTextField(text: $amountText, placeholder: "Amount")
+              .frame(height: 34)
             NativeFreeTextDropdown(
               title: "Platform",
               placeholder: "Choose or type a delivery service",
@@ -353,9 +346,8 @@ struct NativeRecordEditSheet: View {
               text: $platform
             )
           case .expense:
-            TextField("Amount", text: $amountText)
-              .keyboardType(.decimalPad)
-              .focused($focusedField, equals: .amount)
+            NativeNumberDoneTextField(text: $amountText, placeholder: "Amount")
+              .frame(height: 34)
             NativeFreeTextDropdown(
               title: "Category",
               placeholder: "Choose or type a category",
@@ -369,9 +361,8 @@ struct NativeRecordEditSheet: View {
               text: $merchant
             )
           case .mileage:
-            TextField("Miles", text: $milesText)
-              .keyboardType(.decimalPad)
-              .focused($focusedField, equals: .miles)
+            NativeNumberDoneTextField(text: $milesText, placeholder: "Miles")
+              .frame(height: 34)
             Picker("Vehicle", selection: $vehicle) {
               ForEach(NativeVehicle.allCases) { item in
                 Label(item.label, systemImage: item.symbol).tag(item)
@@ -518,7 +509,6 @@ struct NativeTripEditSheet: View {
   @State private var milesText: String
   @State private var startedAt: Date
   @State private var endedAt: Date
-  @FocusState private var milesFocused: Bool
 
   init(trip: NativeTrip, onSave: @escaping (NativeTrip) -> Void) {
     self.trip = trip
@@ -539,9 +529,8 @@ struct NativeTripEditSheet: View {
             }
           }
 
-          TextField("Miles", text: $milesText)
-            .keyboardType(.decimalPad)
-            .focused($milesFocused)
+          NativeNumberDoneTextField(text: $milesText, placeholder: "Miles")
+            .frame(height: 34)
         }
 
         Section("Time") {
@@ -606,6 +595,7 @@ struct NativeTripEditSheet: View {
 
 struct NativeRouteMapView: UIViewRepresentable {
   let points: [RoutePoint]
+  var showsEndMarker = true
 
   func makeCoordinator() -> Coordinator {
     Coordinator()
@@ -614,6 +604,7 @@ struct NativeRouteMapView: UIViewRepresentable {
   func makeUIView(context: Context) -> MKMapView {
     let mapView = MKMapView()
     mapView.delegate = context.coordinator
+    mapView.isUserInteractionEnabled = false
     mapView.pointOfInterestFilter = .excludingAll
     mapView.showsCompass = false
     return mapView
@@ -641,7 +632,9 @@ struct NativeRouteMapView: UIViewRepresentable {
       let endAnnotation = MKPointAnnotation()
       endAnnotation.coordinate = last
       endAnnotation.title = "End"
-      mapView.addAnnotation(endAnnotation)
+      if showsEndMarker {
+        mapView.addAnnotation(endAnnotation)
+      }
 
       let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
       mapView.addOverlay(polyline)

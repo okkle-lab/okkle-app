@@ -330,7 +330,7 @@ enum NativeBackupResult {
 
 @MainActor
 func nativeCreateBackup(store: OkkleStore) -> NativeBackupResult {
-  if let container = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+  if let container = FileManager.default.url(forUbiquityContainerIdentifier: nativeICloudContainerIdentifier) {
     do {
       let folder = container
         .appendingPathComponent("Documents", isDirectory: true)
@@ -353,6 +353,8 @@ func nativeCreateBackup(store: OkkleStore) -> NativeBackupResult {
   }
   return .failed("iCloud Drive is not available on this device.")
 }
+
+let nativeICloudContainerIdentifier = "iCloud.okklelab.app"
 
 @MainActor
 func nativeCreateShareBackup(store: OkkleStore) -> NativeShareItem? {

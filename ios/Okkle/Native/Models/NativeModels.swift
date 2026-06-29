@@ -238,3 +238,23 @@ struct NativeBackupPayload: Codable {
   var exportedAt: Date
   var snapshot: NativeSnapshot
 }
+
+struct NativeBackupRestoreSummary {
+  var records: Int
+  var trips: Int
+
+  var message: String {
+    "Restored \(records) records and \(trips) trips from backup."
+  }
+}
+
+enum NativeBackupRestoreError: LocalizedError {
+  case invalidBackup
+
+  var errorDescription: String? {
+    switch self {
+    case .invalidBackup:
+      return "That file does not look like an Okkle backup."
+    }
+  }
+}

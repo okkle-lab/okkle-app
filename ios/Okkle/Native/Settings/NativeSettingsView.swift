@@ -5,6 +5,7 @@ import PhotosUI
 import SQLite3
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 import Vision
 struct NativeSettingsPlatformsSection: View {
   @EnvironmentObject private var store: OkkleStore
@@ -106,6 +107,7 @@ struct NativeSettingsView: View {
   @State private var backupBusy = false
   @State private var backupMessage: String?
   @State private var backupShareItem: NativeShareItem?
+  @State private var showBackupImporter = false
   @State private var showClearDataWarning = false
   @State private var showDataClearedConfirmation = false
 
@@ -177,6 +179,16 @@ struct NativeSettingsView: View {
             .font(.footnote)
             .foregroundStyle(.secondary)
 
+          Button {
+            showBackupImporter = true
+          } label: {
+            Label("Load backup", systemImage: "icloud.and.arrow.down")
+          }
+
+          Text("Restores an Okkle JSON backup from iCloud Drive or Files onto this device.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+
           Button(role: .destructive) {
             showClearDataWarning = true
           } label: {
@@ -198,6 +210,13 @@ struct NativeSettingsView: View {
       .navigationTitle("Settings")
       .sheet(item: $backupShareItem) { item in
         NativeShareSheet(items: [item.url])
+      }
+      .fileImporter(
+        isPresented: $showBackupImporter,
+        allowedContentTypes: [.json],
+        allowsMultipleSelection: false
+      ) { result in
+        restoreBackup(from: result)
       }
       .alert("Backup", isPresented: Binding(
         get: { backupMessage != nil },
@@ -232,6 +251,23 @@ struct NativeSettingsView: View {
     }
   }
 
+  private func restoreBackup(from result: Result<[URL], Error>) {
+    do {
+      guard let url = try result.get().first else { return }
+      let didAccess = url.startAccessingSecurityScopedResource()
+      defer {
+        if didAccess {
+          url.stopAccessingSecurityScopedResource()
+        }
+      }
+      let data = try Data(contentsOf: url)
+      let summary = try store.restoreBackupData(data)
+      backupMessage = summary.message
+    } catch {
+      backupMessage = "Could not load backup. \(error.localizedDescription)"
+    }
+  }
+
 }
 
 struct NativeAccountantDetailsSettingsView: View {
@@ -240,11 +276,11 @@ struct NativeAccountantDetailsSettingsView: View {
   var body: some View {
     Form {
       Section {
-        TextField("10-digit HMRC reference", text: Binding(
+        NativeNumberDoneTextField(text: Binding(
           get: { store.settings.accountantUTR },
           set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        ))
-        .keyboardType(.numberPad)
+        ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
+        .frame(height: 34)
 
         TextField("QQ 12 34 56 C", text: Binding(
           get: { store.settings.accountantNINumber },
