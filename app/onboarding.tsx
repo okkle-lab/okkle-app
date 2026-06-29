@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, TextInput, KeyboardAvoidingView,
+  View, Text, TextInput, ScrollView, KeyboardAvoidingView,
   Platform, Pressable, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -10,7 +10,7 @@ import * as Calendar from 'expo-calendar';
 import * as Notifications from 'expo-notifications';
 import { colors, font, radius, spacing, type } from '../src/theme';
 import { VEHICLES, PLATFORMS, REGIONS, regionFromArea, regionRate, regionLabel } from '../src/db/tax';
-import { saveUser, getUser } from '../src/db';
+import { saveUser, getUser, kvSet } from '../src/db';
 import { syncReminders } from '../src/notifications';
 import { Feather } from '@expo/vector-icons';
 import { PrimaryButton, Chip, VehicleChip } from '../src/components';
@@ -26,6 +26,10 @@ export default function Onboarding() {
   const [platforms, setPlatforms] = useState<string[]>(['Uber Eats']);
   const [region, setRegion] = useState('ruk');
   const [band, setBand] = useState<'basic' | 'higher'>('basic');
+  // PAYE day-job alongside courier work: capture the wage so the estimate stacks
+  // courier profit on top at the right marginal rate. No job = no other income.
+  const [hasPaye, setHasPaye] = useState(false);
+  const [payeWages, setPayeWages] = useState('');
   const [detecting, setDetecting] = useState(false);
 
   function persist() {
@@ -34,6 +38,9 @@ export default function Onboarding() {
       platforms: platforms.join(','), region,
       tax_rate: regionRate(region, band), onboarded: 1,
     });
+    // Wages from a PAYE job (0 if none) — the tax estimate stacks courier profit
+    // on top of this. Same kv key the Tax settings screen uses.
+    kvSet('other_income', hasPaye ? (parseFloat(payeWages) || 0) : 0);
     const u = getUser();
     if (u) { syncReminders(u).catch(() => {}); }
   }
@@ -95,7 +102,12 @@ export default function Onboarding() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[s.page, { paddingTop: insets.top + 16 }]}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[s.page, { paddingTop: insets.top + 16 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={s.progress}>
           {STEPS.map((_, i) => (
             <View key={i} style={[s.dot, i <= step && s.dotActive, i === step && s.dotCurrent]} />
@@ -228,8 +240,24 @@ export default function Onboarding() {
               <Chip label="Higher rate" selected={band === 'higher'} onPress={() => setBand('higher')} size="lg" style={{ marginBottom: spacing.sm }} />
             </View>
 
+            <Text style={[s.sub, { marginTop: spacing.lg, marginBottom: spacing.sm }]}>Do you also have a PAYE job?</Text>
+            <View style={s.chipGrid}>
+              <Chip label="No" selected={!hasPaye} onPress={() => setHasPaye(false)} size="lg" style={{ marginBottom: spacing.sm }} />
+              <Chip label="Yes" selected={hasPaye} onPress={() => setHasPaye(true)} size="lg" style={{ marginBottom: spacing.sm }} />
+            </View>
+            {hasPaye && (
+              <TextInput
+                style={s.input}
+                value={payeWages}
+                onChangeText={t => setPayeWages(t.replace(/[^0-9.]/g, ''))}
+                keyboardType="decimal-pad"
+                placeholder="Annual wages before tax (£)"
+                placeholderTextColor={colors.textTertiary}
+              />
+            )}
+
             <Text style={s.note}>
-              We'll estimate your tax at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}). Okkle is a tracking tool, not tax advice — your accountant confirms the final figures. If you’re employed (taxed through PAYE on a payslip), your tax is handled differently and these estimates won’t apply.
+              We'll estimate your tax at {(regionRate(region, band) * 100).toFixed(0)}% ({regionLabel(region)}). If you have a PAYE job, your courier profit is taxed on top of those wages. Okkle is a tracking tool, not tax advice.
             </Text>
           </View>
         )}
@@ -262,7 +290,7 @@ export default function Onboarding() {
             </View>
           </View>
         )}
-      </View>
+      </ScrollView>
 
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {step === STEPS.length - 1 ? (
@@ -288,7 +316,7 @@ export default function Onboarding() {
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
+  page: { flexGrow: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
   progress: { flexDirection: 'row', gap: 5, marginBottom: spacing.xxl },
   dot: { height: 5, flex: 1, borderRadius: radius.full, backgroundColor: colors.border },
   dotActive: { backgroundColor: colors.brandMid },

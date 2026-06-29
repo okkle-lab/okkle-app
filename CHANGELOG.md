@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0 (46) - 2026-06-29 (PAYE job in onboarding)
+
+- **"Do you also have a PAYE job?" in onboarding.** Added to the existing tax step (no extra step). Tap Yes and a wages field appears — your courier profit is then taxed on top of those wages at the right marginal rate, and payments on account account for tax already collected via PAYE. It's the same value as Tax Settings → Other income, so it stays in sync. The onboarding tax step now scrolls only if it doesn't fit, so nothing clips on smaller phones.
+
 ## 1.0 (45) - 2026-06-29 (Expense default categories)
 
 - **Default expense quick-picks are now the on-top-of-mileage costs.** The 6 starting categories are Parking, Phone / data, Congestion charge, ULEZ charge, App subscription and Insulated bag — everyday costs you can claim **in addition** to HMRC simplified mileage. The mileage-covered costs (fuel, charging, insurance, servicing, tyres) are no longer defaults (claiming them on top would double-claim) but remain searchable and flagged.
