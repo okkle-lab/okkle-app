@@ -120,7 +120,8 @@ export async function buildAccountantPackHtml(): Promise<string> {
   });
   const usingActual = kvGetNum('running_costs') > 0 && method.recommended === 'actual';
   const chosenDeduction = usingActual ? method.actual : method.simplified;
-  const pos = taxPosition(year.earnings, chosenDeduction + otherExpenses, user?.region ?? 'ruk', kvGetNum('other_income'));
+  const otherIncome = kvGetNum('other_income');
+  const pos = taxPosition(year.earnings, chosenDeduction + otherExpenses, user?.region ?? 'ruk', otherIncome);
 
   const trips = getTripsForTaxYear();
   const records = getRecordsForTaxYear();
@@ -297,6 +298,7 @@ export async function buildAccountantPackHtml(): Promise<string> {
   <div class="kv"><span>Class 4 NIC</span><b>${fmtGbp(pos.class4)}</b></div>
   <div class="kv"><span>Estimated total due</span><b class="total">${fmtGbp(pos.totalDue)}</b></div>
   ${pos.paymentOnAccount > 0 ? `<div class="kv"><span>Payment on account (×2)</span><b>${fmtGbp(pos.paymentOnAccount)} each</b></div>` : ''}
+  ${otherIncome > 0 ? `<p class="sub">Estimate assumes ${fmtGbp(otherIncome)} of other income (e.g. PAYE employment), taxed first — the self-employment profit above is taxed on top at the marginal rate, and payments on account reflect tax already collected at source. That employment income is reported separately on the SA employment pages and is <b>not</b> included in the turnover/profit figures above.</p>` : ''}
 
   <h2>Income by platform</h2>
   <table>

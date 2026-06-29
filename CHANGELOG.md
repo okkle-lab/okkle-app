@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0 (47) - 2026-06-29 (Disclose PAYE income in the tax estimate)
+
+- **The tax estimate now explains the PAYE assumption.** When you've added other (PAYE) income, the Estimated bill and the Accountant Pack note that your courier profit is taxed on top of it at the marginal rate, and that the employment income is taxed separately (and isn't part of the self-employment turnover/profit figures). Makes the Income Tax figure reconcile for your accountant. The transactions CSV is unchanged — PAYE income isn't a courier transaction, so it stays out of the import.
+
 ## 1.0 (46) - 2026-06-29 (PAYE job in onboarding)
 
 - **"Do you also have a PAYE job?" in onboarding.** Added to the existing tax step (no extra step). Tap Yes and a wages field appears — your courier profit is then taxed on top of those wages at the right marginal rate, and payments on account account for tax already collected via PAYE. It's the same value as Tax Settings → Other income, so it stays in sync. The onboarding tax step now scrolls only if it doesn't fit, so nothing clips on smaller phones.
