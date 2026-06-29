@@ -1,153 +1,255 @@
-import React from 'react';
-import { View, Text } from 'react-native';
-import Svg, { Line, Rect } from 'react-native-svg';
+import { useEffect, useMemo, useRef } from 'react';
+import { Platform, StyleSheet, View, Text } from 'react-native';
+import MapView, { Circle as MapCircle, Polyline as MapPolyline, type LatLng } from 'react-native-maps';
+import Svg, { Circle, Defs, LinearGradient, Polyline, Rect, Stop } from 'react-native-svg';
 import { colors, radius, type } from '../theme';
 import type { HeatPoint } from '../db';
 
-// Heatmap of where you ride. This is intentionally rendered with app-owned SVG
-// instead of react-native-maps Heatmap: the native AIRMapHeatmap view is not
-// registered in every iOS map-provider build and can crash Insights at render.
+// Real map + app-owned density overlays. We avoid react-native-maps Heatmap
+// because some iOS map-provider builds do not register AIRMapHeatmap.
 
-const COLS = 24;
-const MIN_ROWS = 8;
-const MAX_ROWS = 28;
-const VIEW_W = 100;
-
-type HeatCell = {
-  key: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  fill: string;
-  opacity: number;
-};
+type Bounds = { minLat: number; maxLat: number; minLng: number; maxLng: number };
+type Hotspot = { key: string; latitude: number; longitude: number; t: number; radius: number; color: string };
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-function heatColor(t: number): { fill: string; opacity: number } {
-  const fill =
-    t < 0.2 ? '#9BE3D2' :
-    t < 0.4 ? '#5FD0BB' :
-    t < 0.6 ? '#E7C66B' :
-    t < 0.8 ? '#E0961F' : '#E2604A';
-  return { fill, opacity: 0.35 + t * 0.6 };
+function colorFor(t: number): string {
+  if (t > 0.78) return '#E2604A';
+  if (t > 0.58) return '#E0961F';
+  if (t > 0.36) return '#E7C66B';
+  if (t > 0.18) return '#5FD0BB';
+  return '#9BE3D2';
 }
 
-function buildCells(points: HeatPoint[]): { height: number; cells: HeatCell[] } {
+function hexToRgba(hex: string, alpha: number): string {
+  const value = hex.replace('#', '');
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function boundsFor(points: HeatPoint[]): Bounds {
   let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
   for (const p of points) {
     minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat);
     minLng = Math.min(minLng, p.lng); maxLng = Math.max(maxLng, p.lng);
   }
+  return { minLat, maxLat, minLng, maxLng };
+}
 
-  // Pad the bbox a touch so points are not flush to the edge.
-  const padLat = (maxLat - minLat) * 0.08 || 0.002;
-  const padLng = (maxLng - minLng) * 0.08 || 0.002;
-  minLat -= padLat; maxLat += padLat; minLng -= padLng; maxLng += padLng;
+function regionFor(bounds: Bounds) {
+  return {
+    latitude: (bounds.minLat + bounds.maxLat) / 2,
+    longitude: (bounds.minLng + bounds.maxLng) / 2,
+    latitudeDelta: Math.max((bounds.maxLat - bounds.minLat) * 1.55, 0.012),
+    longitudeDelta: Math.max((bounds.maxLng - bounds.minLng) * 1.55, 0.012),
+  };
+}
 
-  // Correct longitude for latitude so the generated grid roughly preserves the
-  // travelled area's shape before it is stretched into the fixed card.
-  const cosLat = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
-  const spanLat = maxLat - minLat;
-  const spanLng = (maxLng - minLng) * cosLat;
-  const rows = clamp(Math.round(COLS * (spanLat / (spanLng || 1))), MIN_ROWS, MAX_ROWS);
-  const grid = Array.from({ length: rows }, () => new Array(COLS).fill(0));
+function routeCoordinates(points: HeatPoint[]): LatLng[] {
+  const step = Math.max(1, Math.ceil(points.length / 360));
+  return points
+    .filter((_, i) => i % step === 0)
+    .map(p => ({ latitude: p.lat, longitude: p.lng }));
+}
 
-  const xOf = (lng: number) => ((lng - minLng) / (maxLng - minLng)) * (COLS - 1);
-  const yOf = (lat: number) => ((maxLat - lat) / (maxLat - minLat)) * (rows - 1);
+function hotspotRadius(bounds: Bounds): number {
+  const latMeters = Math.max(400, (bounds.maxLat - bounds.minLat) * 111_000);
+  const lngMeters = Math.max(400, (bounds.maxLng - bounds.minLng) * 72_000);
+  return clamp(Math.min(latMeters, lngMeters) / 7, 120, 760);
+}
+
+function hotspotsFor(points: HeatPoint[], bounds: Bounds): Hotspot[] {
+  const spanLat = Math.max(bounds.maxLat - bounds.minLat, 0.002);
+  const spanLng = Math.max(bounds.maxLng - bounds.minLng, 0.002);
+  const cellLat = Math.max(0.0018, spanLat / 9);
+  const cellLng = Math.max(0.0018, spanLng / 9);
+  const cells = new Map<string, { lat: number; lng: number; weight: number; count: number }>();
 
   for (const p of points) {
-    const cx = xOf(p.lng);
-    const cy = yOf(p.lat);
+    const row = Math.floor((p.lat - bounds.minLat) / cellLat);
+    const col = Math.floor((p.lng - bounds.minLng) / cellLng);
+    const key = `${row}-${col}`;
     const weight = Math.max(0.1, p.w);
-
-    // Spread each point into neighbouring cells so the result reads as a heatmap
-    // rather than a sparse GPS dot matrix.
-    for (let r = Math.max(0, Math.floor(cy) - 2); r <= Math.min(rows - 1, Math.floor(cy) + 2); r++) {
-      for (let c = Math.max(0, Math.floor(cx) - 2); c <= Math.min(COLS - 1, Math.floor(cx) + 2); c++) {
-        const dx = cx - c;
-        const dy = cy - r;
-        const influence = Math.exp(-(dx * dx + dy * dy) / 2.2);
-        grid[r][c] += weight * influence;
-      }
-    }
+    const cell = cells.get(key) ?? { lat: 0, lng: 0, weight: 0, count: 0 };
+    cell.lat += p.lat * weight;
+    cell.lng += p.lng * weight;
+    cell.weight += weight;
+    cell.count += 1;
+    cells.set(key, cell);
   }
 
-  let max = 0;
-  for (const row of grid) for (const v of row) max = Math.max(max, v);
-  if (max <= 0) return { height: (rows / COLS) * VIEW_W, cells: [] };
+  let maxWeight = 0;
+  for (const cell of cells.values()) maxWeight = Math.max(maxWeight, cell.weight);
+  const baseRadius = hotspotRadius(bounds);
 
-  const height = (rows / COLS) * VIEW_W;
-  const cellW = VIEW_W / COLS;
-  const cellH = height / rows;
-  const cells: HeatCell[] = [];
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const v = grid[r][c];
-      if (v <= 0.02) continue;
-      const t = Math.min(1, v / max);
-      const { fill, opacity } = heatColor(t);
-      cells.push({
-        key: `${r}-${c}`,
-        x: c * cellW,
-        y: r * cellH,
-        width: cellW + 0.35,
-        height: cellH + 0.35,
-        fill,
-        opacity,
-      });
-    }
-  }
-
-  return { height, cells };
+  return Array.from(cells.entries())
+    .map(([key, cell]) => {
+      const t = maxWeight > 0 ? cell.weight / maxWeight : 0;
+      return {
+        key,
+        latitude: cell.lat / cell.weight,
+        longitude: cell.lng / cell.weight,
+        t,
+        radius: baseRadius * (0.72 + Math.sqrt(t) * 0.85),
+        color: colorFor(t),
+      };
+    })
+    .filter(h => h.t > 0.08)
+    .sort((a, b) => b.t - a.t)
+    .slice(0, 18);
 }
 
 export function HeatMapView({ points, height = 220 }: { points: HeatPoint[]; height?: number }) {
-  const distinct = new Set(points.map(p => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`)).size;
-  if (points.length === 0 || distinct < 2) {
+  const valid = points.filter(p => typeof p?.lat === 'number' && typeof p?.lng === 'number');
+  const distinct = new Set(valid.map(p => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`)).size;
+  if (valid.length === 0 || distinct < 2) {
     return (
-      <View style={{ height, borderRadius: radius.lg, backgroundColor: colors.bgSoft, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <Text style={{ fontSize: 30, marginBottom: 8 }}>🗺️</Text>
-        <Text style={[type.caption, { textAlign: 'center', lineHeight: 19 }]}>
-          Track a few trips with GPS this week and your hotspots will appear here.
-        </Text>
+      <View style={[styles.empty, { height }]}>
+        <Text style={styles.emptyIcon}>🗺️</Text>
+        <Text style={styles.emptyText}>Track a few trips with GPS this week and your hotspots will appear here.</Text>
       </View>
     );
   }
 
-  const model = buildCells(points);
+  if (Platform.OS === 'ios') {
+    return <AppleHeatMap points={valid} height={height} />;
+  }
+
+  return <SvgHeatMap points={valid} height={height} />;
+}
+
+function AppleHeatMap({ points, height }: { points: HeatPoint[]; height: number }) {
+  const mapRef = useRef<MapView | null>(null);
+  const bounds = useMemo(() => boundsFor(points), [points]);
+  const region = useMemo(() => regionFor(bounds), [bounds]);
+  const route = useMemo(() => routeCoordinates(points), [points]);
+  const hotspots = useMemo(() => hotspotsFor(points, bounds), [points, bounds]);
+
+  useEffect(() => {
+    if (route.length < 2) return;
+    const id = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(route, {
+        edgePadding: { top: 34, right: 34, bottom: 34, left: 34 },
+        animated: false,
+      });
+    }, 80);
+    return () => clearTimeout(id);
+  }, [route]);
 
   return (
-    <View style={{ borderRadius: radius.lg, overflow: 'hidden', backgroundColor: '#F3F6F4', height }}>
-      <Svg width="100%" height="100%" viewBox={`0 0 ${VIEW_W} ${model.height}`} preserveAspectRatio="none">
-        <Rect x={0} y={0} width={VIEW_W} height={model.height} fill="#F3F6F4" />
-        <Rect x={6} y={model.height * 0.08} width={22} height={model.height * 0.22} rx={2} fill="#E7F0EA" />
-        <Rect x={70} y={model.height * 0.6} width={20} height={model.height * 0.2} rx={2} fill="#E7F0EA" />
-        {Array.from({ length: 5 }).map((_, i) => {
-          const y = ((i + 1) / 6) * model.height;
-          return <Line key={`h-${i}`} x1={0} y1={y} x2={VIEW_W} y2={y + (i % 2 ? 1.8 : -1.4)} stroke="#DDE7E0" strokeWidth={0.9} opacity={0.85} />;
-        })}
-        {Array.from({ length: 6 }).map((_, i) => {
-          const x = ((i + 1) / 7) * VIEW_W;
-          return <Line key={`v-${i}`} x1={x} y1={0} x2={x + (i % 2 ? 1.3 : -1.1)} y2={model.height} stroke="#E2EAE4" strokeWidth={0.8} opacity={0.8} />;
-        })}
-        {model.cells.map(cell => (
-          <Rect
-            key={cell.key}
-            x={cell.x}
-            y={cell.y}
-            width={cell.width}
-            height={cell.height}
-            rx={cell.width * 0.36}
-            fill={cell.fill}
-            opacity={cell.opacity}
+    <View style={[styles.mapShell, { height }]}>
+      <MapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        initialRegion={region}
+        mapType="mutedStandard"
+        rotateEnabled={false}
+        pitchEnabled={false}
+        scrollEnabled={false}
+        zoomEnabled={false}
+        showsCompass={false}
+        showsScale={false}
+        showsTraffic={false}
+        showsUserLocation={false}
+      >
+        {route.length >= 2 ? (
+          <MapPolyline
+            coordinates={route}
+            strokeColor="rgba(14,142,120,0.38)"
+            strokeWidth={5}
+            lineCap="round"
+            lineJoin="round"
+            zIndex={1}
           />
+        ) : null}
+        {hotspots.map(h => (
+          <MapCircle
+            key={`${h.key}-outer`}
+            center={{ latitude: h.latitude, longitude: h.longitude }}
+            radius={h.radius * 1.65}
+            fillColor={hexToRgba(h.color, 0.13)}
+            strokeColor={hexToRgba(h.color, 0)}
+            zIndex={2}
+          />
+        ))}
+        {hotspots.map(h => (
+          <MapCircle
+            key={`${h.key}-middle`}
+            center={{ latitude: h.latitude, longitude: h.longitude }}
+            radius={h.radius}
+            fillColor={hexToRgba(h.color, 0.24 + h.t * 0.12)}
+            strokeColor={hexToRgba(h.color, 0.1)}
+            strokeWidth={1}
+            zIndex={3}
+          />
+        ))}
+        {hotspots.slice(0, 8).map(h => (
+          <MapCircle
+            key={`${h.key}-core`}
+            center={{ latitude: h.latitude, longitude: h.longitude }}
+            radius={h.radius * 0.34}
+            fillColor={hexToRgba(h.color, 0.52)}
+            strokeColor={hexToRgba('#FFFFFF', 0.55)}
+            strokeWidth={1}
+            zIndex={4}
+          />
+        ))}
+      </MapView>
+    </View>
+  );
+}
+
+function SvgHeatMap({ points, height }: { points: HeatPoint[]; height: number }) {
+  const bounds = boundsFor(points);
+  const coords = routeCoordinates(points);
+  const x = (lng: number) => 7 + ((lng - bounds.minLng) / (bounds.maxLng - bounds.minLng)) * 86;
+  const y = (lat: number) => 7 + ((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat)) * 48;
+  const trail = coords.map(p => `${x(p.longitude).toFixed(1)},${y(p.latitude).toFixed(1)}`).join(' ');
+  const hotspots = hotspotsFor(points, bounds).slice(0, 12);
+
+  return (
+    <View style={[styles.mapShell, { height }]}>
+      <Svg width="100%" height="100%" viewBox="0 0 100 62" preserveAspectRatio="xMidYMid slice">
+        <Defs>
+          <LinearGradient id="fallbackMapBg" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#F9FBFA" />
+            <Stop offset="1" stopColor="#E7F0EA" />
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width={100} height={62} fill="url(#fallbackMapBg)" />
+        <Polyline points={trail} fill="none" stroke="#0E8E78" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" opacity={0.42} />
+        {hotspots.map(h => (
+          <Circle key={h.key} cx={x(h.longitude)} cy={y(h.latitude)} r={3 + h.t * 7} fill={h.color} opacity={0.24 + h.t * 0.28} />
         ))}
       </Svg>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  mapShell: {
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    backgroundColor: '#EEF3F1',
+  },
+  empty: {
+    borderRadius: radius.lg,
+    backgroundColor: colors.bgSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  emptyIcon: {
+    fontSize: 30,
+    marginBottom: 8,
+  },
+  emptyText: {
+    ...type.caption,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+});

@@ -2,12 +2,16 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0.1 (44) - 2026-06-28 (Hotspot map polish)
+
+- **Hotspot map now looks like a map.** Insights uses real Apple Maps with app-owned route and density-circle overlays, avoiding the crashing native `AIRMapHeatmap` component without falling back to a blocky grid.
+
 ## 1.0 (43) - 2026-06-28 (Launch release)
 
 - **Launch version.** App/package version bumped to 1.0 for release.
 - **Bug reports go to Okkle Lab.** In-app problem reports now compose to `admin@okklelab.com`, with the old support inbox removed from the fallback messages.
 - **Removed the standalone Diagnostics settings screen** from the launch UI while keeping lightweight internal error logging available for explicit bug reports and future automated diagnostics work.
-- **Fixed Insights crash on open.** The hotspot map no longer renders the native `AIRMapHeatmap` view, which is unavailable in some iOS map-provider builds; it now uses an app-owned SVG density map.
+- **Fixed Insights crash on open.** The hotspot map no longer renders the native `AIRMapHeatmap` view, which is unavailable in some iOS map-provider builds.
 - **Release crash screens no longer show raw stack traces.** Debug details still appear in development builds, but production users only see the friendly recovery message.
 - **Polished launch diagnostics.** Calendar errors no longer show raw `[diag: ...]` snippets to users, and the development-client npm script was renamed so Expo Doctor passes cleanly.
 
