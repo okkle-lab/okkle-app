@@ -49,11 +49,14 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "metro": "expo start --dev-client --localhost",
+    "metro:local": "expo start --dev-client --localhost",
     "xcode": "node scripts/open-xcode.cjs",
     "xcode:prepare": "node scripts/open-xcode.cjs --no-metro --no-open",
     "web": "expo start --web",
     "postinstall": "node scripts/patch-ios-build-tools.cjs"
+  },
+  "engines": {
+    "node": "^22.13.0 || ^24.3.0 || >=25.0.0"
   },
   "private": true
 }

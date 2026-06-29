@@ -243,7 +243,7 @@ async function waitForMetro(timeoutMs) {
 }
 
 function startMetroInTerminal() {
-  const command = `cd ${shellQuote(projectRoot)} && npm run metro`;
+  const command = `cd ${shellQuote(projectRoot)} && npm run metro:local`;
   const script = [
     'tell application "Terminal"',
     'activate',
