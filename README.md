@@ -220,14 +220,14 @@ This command:
 In Xcode, select the **Okkle** scheme, choose an iPhone simulator, and press **Run**. Keep the Metro Terminal window open while testing. If the app shows "No script URL provided", Metro is not running; start it with:
 
 ```bash
-npm run metro
+npm run dev-client
 ```
 
 Useful commands:
 
 ```bash
 npm run xcode:prepare   # regenerate ios/ and validate the workspace without opening Xcode
-npm run metro           # start the Metro packager for the Xcode build
+npm run dev-client      # start the Metro packager for the Xcode build
 npm run ios             # build and launch from the terminal instead of Xcode
 ```
 
