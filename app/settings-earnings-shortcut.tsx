@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Linking, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, IconBadge, GradientCard } from '../src/components';
 

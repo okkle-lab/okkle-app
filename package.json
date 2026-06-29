@@ -1,6 +1,6 @@
 {
   "name": "okkle",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -42,7 +42,10 @@
     "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
+    "@types/node": "^22.20.0",
     "@types/react": "~19.2.14",
+    "expo-doctor": "^1.19.10",
+    "tsx": "^4.22.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -53,10 +56,18 @@
     "xcode": "node scripts/open-xcode.cjs",
     "xcode:prepare": "node scripts/open-xcode.cjs --no-metro --no-open",
     "web": "expo start --web",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "doctor": "expo-doctor",
+    "audit:prod": "npm audit --omit=dev",
+    "check": "npm run typecheck && npm test && npm run doctor",
     "postinstall": "node scripts/patch-ios-build-tools.cjs"
   },
   "engines": {
     "node": "^22.13.0 || ^24.3.0 || >=25.0.0"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "uuid": "11.1.1"
+  }
 }

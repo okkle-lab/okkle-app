@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Modal, Dimensions, Animated, useColorScheme } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type } from '../../src/theme';
 import { Card, SectionHeader, CountUp, Medal, IconBadge, GradientCard, CollapsingHeader, AnimatedDots, CoachMarks, SettingsGlassButton, GlassPanel, type CoachStep } from '../../src/components';
 import {

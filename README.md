@@ -179,7 +179,7 @@ src/
 
 ## Versioning
 
-Okkle is still in beta, so release versions use `0.x.y` semver. Every PR should bump the app version before review in all three version files:
+Okkle uses release versions in `app.json`, `package.json`, and `package-lock.json`. Every PR should bump the app version before review in all three version files:
 
 - `app.json` (`expo.version` — the app version shown by native builds)
 - `package.json`
@@ -262,8 +262,9 @@ npx expo start --dev-client
 
 Open the installed **Okkle** app (not Expo Go) and scan.
 
-EAS project ID: `8d4fc276-a589-4340-bcde-0263c4a1b51d`  
-Bundle identifier: `uk.okkle.app`
+EAS project ID: `b6fffded-a938-4183-9753-f5bccf749033`  
+iOS bundle identifier: `okklelab.app`  
+Android package: `uk.okkle.app`
 
 ---
 
@@ -283,3 +284,5 @@ Bundle identifier: `uk.okkle.app`
 ## Legal note
 
 Okkle is a mileage and record-keeping tool, not tax advice. All estimates are based on published HMRC rates. Your accountant confirms final figures. Records should be kept for 5+ years as HMRC may request them.
+
+Privacy details for App Store review and support are in `PRIVACY.md`.

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Medal, Card, SectionHeader, IconBadge, GlassPanel } from '../src/components';
 import { getAchievements, getStreak, getPersonalRecords, type Achievement } from '../src/db';

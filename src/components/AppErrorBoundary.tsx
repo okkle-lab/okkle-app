@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type } from '../theme';
 import { kvSet } from '../db';
 import { logError } from '../diagnostics';
+import { sanitizeDiagnosticsText } from '../diagnosticsPrivacy';
 
 // Catches any render/runtime error in the tree below it and shows a friendly
 // fallback instead of a blank white screen. Release (App Store / TestFlight)
@@ -24,16 +25,16 @@ export class AppErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    const detail = [
+    const detail = sanitizeDiagnosticsText([
       String(error?.message ?? error),
       (error?.stack ?? '').split('\n').slice(0, 6).join('\n'),
       (errorInfo?.componentStack ?? '').split('\n').slice(0, 8).join('\n'),
-    ].filter(Boolean).join('\n');
+    ].filter(Boolean).join('\n'));
     this.setState({ info: detail });
     // Persist so it can be retrieved later for bug reports even after "Try again".
     try { kvSet('last_crash', `${new Date().toISOString()}\n${detail}`); } catch { /* ignore */ }
     logError('render-crash', error);
-    console.error('Okkle crashed:', error);
+    console.error('Okkle crashed:', detail);
   }
 
   render() {

@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Chip, VehicleChip, DatePickerField, IconBadge, SettingsGlassButton, KeyboardDoneAccessory, numberKeyboardDoneProps, ChipScroll, NativeGreenButton, GlassPanel } from '../../src/components';

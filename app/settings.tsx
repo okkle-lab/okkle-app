@@ -3,7 +3,7 @@ import { Platform, View, Text, StyleSheet, Pressable, useColorScheme } from 'rea
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, spacing, radius, type } from '../src/theme';
 import { IconBadge } from '../src/components';
 

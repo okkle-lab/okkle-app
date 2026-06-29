@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import Svg, { Defs, RadialGradient, LinearGradient, Stop, Circle, Polygon, Ellipse, G, Path } from 'react-native-svg';
 import type { AchievementTier } from '../db';
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, IconBadge, ModalHeader, SectionHeader } from '../src/components';

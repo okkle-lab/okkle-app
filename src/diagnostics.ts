@@ -1,4 +1,5 @@
 import { kvGet, kvSet } from './db';
+import { sanitizeDiagnosticsText } from './diagnosticsPrivacy';
 
 // Lightweight on-device diagnostics so bugs are easier to investigate.
 // Everything is logged to a capped, persisted list (kv) and can be included
@@ -16,7 +17,11 @@ export function clearDiagLog() { try { kvSet(KEY, '[]'); } catch { /* ignore */ 
 export function logEvent(ctx: string, detail: string) {
   try {
     const log = getDiagLog();
-    log.unshift({ t: new Date().toISOString(), ctx, detail: String(detail).slice(0, 1500) });
+    log.unshift({
+      t: new Date().toISOString(),
+      ctx: sanitizeDiagnosticsText(ctx).slice(0, 120),
+      detail: sanitizeDiagnosticsText(detail).slice(0, 1500),
+    });
     kvSet(KEY, JSON.stringify(log.slice(0, MAX)));
   } catch { /* never let logging throw */ }
 }

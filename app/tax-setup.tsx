@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, Pressable } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { useRouter } from 'expo-router';
 import { colors, spacing, radius, type, font } from '../src/theme';
 import { Card, Chip, PrimaryButton, ModalHeader } from '../src/components';

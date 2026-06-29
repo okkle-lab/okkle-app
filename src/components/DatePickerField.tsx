@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform, StyleSheet, Modal } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type } from '../theme';
 
 // Pick a date for an entry (defaults to today; can't be in the future).

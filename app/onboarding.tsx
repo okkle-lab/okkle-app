@@ -12,7 +12,7 @@ import { colors, font, radius, spacing, type } from '../src/theme';
 import { VEHICLES, PLATFORMS, REGIONS, regionFromArea, regionRate, regionLabel } from '../src/db/tax';
 import { saveUser, getUser, kvSet } from '../src/db';
 import { syncReminders } from '../src/notifications';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { PrimaryButton, Chip, VehicleChip } from '../src/components';
 
 const STEPS = ['Welcome', 'Name', 'Vehicle', 'Platforms', 'Region', 'Ready'];

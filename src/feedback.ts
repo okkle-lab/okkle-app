@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as MailComposer from 'expo-mail-composer';
 import { Platform, Linking } from 'react-native';
+import { sanitizeDiagnosticsText } from './diagnosticsPrivacy';
 
 // Where feedback and bug reports are sent.
 export const FEEDBACK_EMAIL = 'admin@okklelab.com';
@@ -42,7 +43,7 @@ export async function sendFeedback(input: FeedbackInput): Promise<'sent' | 'canc
     input.contact ? `Reply to: ${input.contact}` : '',
     input.includeDiagnostics ? `\n${collectDiagnostics(input.screen)}` : '',
   ].filter(Boolean);
-  const body = bodyParts.join('\n');
+  const body = sanitizeDiagnosticsText(bodyParts.join('\n'));
 
   if (await MailComposer.isAvailableAsync()) {
     const res = await MailComposer.composeAsync({

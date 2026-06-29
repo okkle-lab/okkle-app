@@ -5,7 +5,7 @@ import { colors, spacing, type } from '../src/theme';
 import { Card, SectionHeader, IconBadge, ModalHeader } from '../src/components';
 import { resetAllData } from '../src/db';
 import { backupNow, restoreFromFile } from '../src/backup';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 
 export default function SettingsData() {
   const router = useRouter();

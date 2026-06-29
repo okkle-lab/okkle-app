@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, spacing, radius, type } from '../theme';
 import { IconBadge } from './IconBadge';
 import { ModalHeader } from './ModalHeader';

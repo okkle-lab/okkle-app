@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, RefreshControl, Pressable, Alert } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type, tabular } from '../../src/theme';
 import { Card, CollapsingHeader, IconBadge, KeyboardDoneAccessory, SettingsGlassButton } from '../../src/components';
 import { getTrips, getRecords } from '../../src/db';

@@ -9,12 +9,9 @@ import { logEvent } from './diagnostics';
 
 export type CalendarResult = 'added' | 'denied' | 'error';
 
-// Diagnostic: the reason the last calendar attempt failed, surfaced in the
-// "couldn't add it" alert and persisted, so a real-device failure can be seen.
-let lastReason = '';
-export function getLastCalendarError(): string { return lastReason; }
+// Persist failures for explicit user-initiated bug reports without surfacing raw
+// diagnostic strings in normal calendar alerts.
 function note(reason: string) {
-  lastReason = reason;
   try { kvSet('last_calendar_error', `${new Date().toISOString()} ${reason}`); } catch { /* ignore */ }
   if (reason !== 'added ok') logEvent('calendar', reason);
 }

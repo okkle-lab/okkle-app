@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true
+  },
+  "include": ["tests/**/*.ts", "src/db/tax.ts", "src/db/taxcalc.ts", "src/diagnosticsPrivacy.ts"]
+}

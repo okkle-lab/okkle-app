@@ -1,8 +1,8 @@
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Linking } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, ModalHeader } from '../src/components';
-import { addDeadlineToCalendar, getLastCalendarError } from '../src/calendar';
+import { addDeadlineToCalendar } from '../src/calendar';
 
 // month is 1-12. Real HMRC Self Assessment deadlines.
 const KEY_DEADLINES: { title: string; month: number; day: number; note: string }[] = [
@@ -51,9 +51,9 @@ export default function KeyDatesScreen() {
                     if (res === 'added') {
                       Alert.alert('Added to your calendar', `${d.title} — ${next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, with a reminder a week before.`);
                     } else if (res === 'denied') {
-                      Alert.alert('Allow calendar access', `Tap Open Settings, then turn on Calendars to add this deadline.\n\n[diag: ${getLastCalendarError()}]`, [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
+                      Alert.alert('Allow calendar access', 'Tap Open Settings, then turn on Calendars to add this deadline.', [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
                     } else {
-                      Alert.alert('Couldn’t add it', `Tap Open Settings, then turn on Calendars and try again.\n\n[diag: ${getLastCalendarError()}]`, [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
+                      Alert.alert('Couldn’t add it', 'Check calendar access in Settings, then try again. If it keeps happening, send a problem report from Settings.', [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }]);
                     }
                   }}
                   style={s.calBtn}

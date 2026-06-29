@@ -2,7 +2,7 @@ import React from 'react';
 import { Animated, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type } from '../theme';
 import { kvGet, kvSet } from '../db';
 import { upcomingDeadline } from '../taxDeadlines';

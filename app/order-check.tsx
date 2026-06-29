@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, IconBadge, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { getYearPnL, kvGetNum, kvSet } from '../src/db';

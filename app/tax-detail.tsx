@@ -1,10 +1,10 @@
 import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Linking } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, SectionHeader, ModalHeader } from '../src/components';
-import { addDeadlineToCalendar, getLastCalendarError } from '../src/calendar';
+import { addDeadlineToCalendar } from '../src/calendar';
 import {
   getTaxYearSummary, getTaxYearMiles, getTaxYearExpenses,
   getUser, getQuarterlySummaries, kvGet, kvGetNum, type QuarterSummary,
@@ -88,13 +88,13 @@ export default function TaxDetail() {
     } else if (res === 'denied') {
       Alert.alert(
         'Allow calendar access',
-        `Tap Open Settings, then turn on Calendars to add this deadline.\n\n[diag: ${getLastCalendarError()}]`,
+        'Tap Open Settings, then turn on Calendars to add this deadline.',
         [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
       );
     } else {
       Alert.alert(
         'Couldn’t add it',
-        `Tap Open Settings, then turn on Calendars and try again.\n\n[diag: ${getLastCalendarError()}]`,
+        'Check calendar access in Settings, then try again. If it keeps happening, send a problem report from Settings.',
         [{ text: 'Not now', style: 'cancel' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
       );
     }

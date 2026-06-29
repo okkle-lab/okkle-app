@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, PrimaryButton, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { Chip } from '../src/components';

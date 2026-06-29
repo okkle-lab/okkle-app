@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import MapView, { Marker, Polyline as MapPolyline, type LatLng } from 'react-native-maps';
 import Svg, { Defs, LinearGradient, Stop, Polyline as SvgPolyline, Circle, Rect } from 'react-native-svg';
 import { colors, radius, type } from '../theme';

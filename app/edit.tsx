@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Chip, SectionHeader, PrimaryButton, VehicleChip, DatePickerField, RouteMap, KeyboardDoneAccessory, numberKeyboardDoneProps } from '../src/components';
 import { VEHICLES, calcDeduction, fmtGbp, fmtMiles } from '../src/db/tax';

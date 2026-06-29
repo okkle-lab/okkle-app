@@ -8,34 +8,22 @@ Read this before cutting a dev build, EAS build, or TestFlight submit.
   the public Expo Go on older phones. It uses a classic JS tab bar and pruned
   plugins. **Do not merge it into master** (different SDK) and don't release from it.
 
-## 🚑 If the iOS build FAILS on a native module (fast fallback)
-Both modules below are **optional at runtime** — the app runs fine without them
-(you just lose auto-trip detection / receipt OCR). So if the native build errors
-in `modules/okkle-vision` or `modules/okkle-motion`, the quickest way to still get
-a testable build is to **temporarily remove the offending module folder** and
-rebuild:
-```
-rm -rf modules/okkle-vision    # (or modules/okkle-motion)
-```
-Everything else (live trip, slider, platforms, receipt-first UI, lock-screen
-notification, tour) still works. Re-add it once the Swift/scaffold is sorted.
+## Native module validation
+Two local Swift modules are included in production builds. They are wired
+optionally (`requireOptionalNativeModule`) so the JS app can degrade gracefully at
+runtime, but a malformed module or podspec can still fail a native build.
 
-## ⚠️ Needs validation on the first dev/EAS build
-Two local Swift modules have **not been compiled yet**. Both are wired optionally
-(`requireOptionalNativeModule`) so they can't break the JS app at runtime — but a
-malformed module/podspec **can fail a native build**. Validate both on the first
-`npx expo prebuild` / EAS build:
+Validation status on `master`:
+- `npx expo prebuild --platform ios --no-install` succeeded on 2026-06-29.
+- `pod install` autolinked both `OkkleVision` and `OkkleMotion` on 2026-06-29.
+- Xcode Debug and Release iOS Simulator builds succeeded on 2026-06-29.
+
 - **`modules/okkle-vision`** — Apple Vision on-device receipt OCR
   (`VNRecognizeTextRequest`). Used by the Log expense flow to pre-fill the amount
   from a receipt photo (`src/receiptParse.ts` parses the text). No extra permission.
 - **`modules/okkle-motion`** — `CMMotionActivityManager` for accurate
-  driving/cycling detection. On the first build:
-  1. Confirm it autolinks and compiles.
-  2. If autolinking is fussy, regenerate the scaffold with
-     `npx create-expo-module@latest --local okkle-motion` and port the Swift in
-     `ios/OkkleMotionModule.swift` across.
-  3. It adds a **Motion & Fitness** permission (`NSMotionUsageDescription`, already
-     in `app.json`).
+  driving/cycling detection. It adds a **Motion & Fitness** permission
+  (`NSMotionUsageDescription`, already in `app.json`).
 
 ## Features that require a dev build / TestFlight (do NOT work in Expo Go)
 - **Auto-detect trips** (Feature 1): background location + Core Motion + "Always"
@@ -47,14 +35,24 @@ malformed module/podspec **can fail a native build**. Validate both on the first
 
 ## Pending content (intentional placeholders)
 - **`app/settings-earnings-shortcut.tsx` → `SHORTCUT_ICLOUD_URL`** is empty, so the
-  earnings shortcut shows a **"coming soon"** state. Paste the iCloud share link of
-  the Okkle "Log earnings" shortcut (built per `docs/ios-shortcut-earnings.md`) to
-  switch it to a live one-tap download. No other code change needed.
+  earnings shortcut route is not linked from Settings in this release. Paste the
+  iCloud share link of the Okkle "Log earnings" shortcut (built per
+  `docs/ios-shortcut-earnings.md`) before exposing that route in-app.
 
 ## EAS / TestFlight
-- Project: `uk.okkle.app`, EAS project owned by **henryhikaru93** (`b6fffded-…`).
+- EAS project: `b6fffded-a938-4183-9753-f5bccf749033`, owned by
+  **henryhikaru93**.
+- iOS bundle identifier: `okklelab.app`; Android package: `uk.okkle.app`.
   Building/submitting requires membership of that Expo account **and** the Apple
   Developer account ($99/yr) for the app.
+- Before cutting a release, run:
+  ```
+  npm run check
+  npm run audit:prod
+  ```
+  `audit:prod` should be clean. A targeted `uuid@11.1.1` override is kept in
+  `package.json` for Expo's `xcode` tooling path; remove it only after upstream
+  Expo dependencies no longer need it.
 - Commands (from `master`):
   ```
   eas build  --platform ios --profile production
