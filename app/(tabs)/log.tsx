@@ -164,7 +164,11 @@ export default function LogScreen() {
   const [scanning, setScanning] = useState(false);
   const [scannedMerchant, setScannedMerchant] = useState<string | null>(null);
   const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
-  const [period, setPeriod] = useState<'day' | 'week'>('day');
+  // Earnings is usually logged a week at a time (platforms pay weekly), while a
+  // single expense or mileage entry is a day. Default to that per kind, and reset
+  // to it whenever the user switches logging type.
+  const [period, setPeriod] = useState<'day' | 'week'>(tab === 'income' ? 'week' : 'day');
+  React.useEffect(() => { setPeriod(tab === 'income' ? 'week' : 'day'); }, [tab]);
   const [saved, setSaved] = useState(false);
   // Track the keyboard height so the Back/Continue footer can sit just above it.
   // (KeyboardAvoidingView doesn't lift it reliably on this tab screen, leaving

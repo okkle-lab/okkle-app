@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View, Text } from 'react-native';
+import * as Location from 'expo-location';
 import MapView, { Circle, type LatLng } from 'react-native-maps';
 import Svg, { Rect } from 'react-native-svg';
 import { colors, radius, type } from '../theme';
@@ -30,6 +31,15 @@ function heatColor(t: number): { fill: string; opacity: number } {
 
 export function HeatMapView({ points, height = 220 }: { points: HeatPoint[]; height?: number }) {
   const distinct = new Set(points.map(p => `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`)).size;
+
+  // On iOS, always show the real street map — centred on the user when there's no
+  // data yet, so they can watch hotspots build up as they drive.
+  if (Platform.OS === 'ios') {
+    return <AppleHeatMap points={points} height={height} />;
+  }
+
+  // Non-iOS (Android / Expo Go): no native map, so fall back to the SVG grid once
+  // there's enough data, or a prompt before that.
   if (points.length === 0 || distinct < 2) {
     return (
       <View style={{ height, borderRadius: radius.lg, backgroundColor: colors.bgSoft, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -39,11 +49,6 @@ export function HeatMapView({ points, height = 220 }: { points: HeatPoint[]; hei
         </Text>
       </View>
     );
-  }
-
-  // Real Apple Maps street map with a native heatmap overlay (dev build / device).
-  if (Platform.OS === 'ios') {
-    return <AppleHeatMap points={points} height={height} />;
   }
 
   let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
@@ -98,14 +103,25 @@ export function HeatMapView({ points, height = 220 }: { points: HeatPoint[]; hei
   );
 }
 
-// Apple Maps street map + native weighted heatmap overlay.
+// Roughly centre of the UK — only used for the first frame before we know where
+// the user is (then we recentre on them).
+const UK_FALLBACK = { latitude: 51.5072, longitude: -0.1276, latitudeDelta: 0.08, longitudeDelta: 0.08 };
+
+// Apple Maps street map with translucent weighted circle overlays (react-native-
+// maps' native Heatmap is Google-only). With no trips yet it centres on the user
+// so the map shows where they are and fills in as they drive.
 function AppleHeatMap({ points, height }: { points: HeatPoint[]; height: number }) {
   const mapRef = useRef<MapView | null>(null);
+  const hasPoints = points.length > 0;
+  const [userRegion, setUserRegion] = useState<typeof UK_FALLBACK | null>(null);
+
   const weighted = useMemo(
     () => points.map(p => ({ latitude: p.lat, longitude: p.lng, weight: Math.max(0.1, p.w) })),
     [points],
   );
-  const region = useMemo(() => {
+
+  const pointsRegion = useMemo(() => {
+    if (!hasPoints) return null;
     let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
     for (const p of points) {
       minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat);
@@ -117,34 +133,49 @@ function AppleHeatMap({ points, height }: { points: HeatPoint[]; height: number 
       latitudeDelta: Math.max((maxLat - minLat) * 1.5, 0.01),
       longitudeDelta: Math.max((maxLng - minLng) * 1.5, 0.01),
     };
-  }, [points]);
+  }, [points, hasPoints]);
 
-  // Translucent overlapping circles approximate a heatmap on Apple Maps (which
-  // doesn't support the native Heatmap). Capped for performance; radius scales
-  // with how zoomed-out the area is.
+  const region = pointsRegion ?? userRegion ?? UK_FALLBACK;
+  const baseDelta = pointsRegion?.latitudeDelta ?? 0.02;
+
+  // Translucent overlapping circles approximate a heatmap. Capped for performance;
+  // radius scales with how zoomed-out the area is.
   const circles = useMemo(() => {
     const capped = weighted.length > 180
       ? weighted.filter((_, i) => i % Math.ceil(weighted.length / 180) === 0)
       : weighted;
     const max = capped.reduce((m, p) => Math.max(m, p.weight), 0) || 1;
-    const radiusM = Math.max(60, region.latitudeDelta * 111000 * 0.035);
+    const radiusM = Math.max(60, baseDelta * 111000 * 0.035);
     return capped.map((p) => {
       const t = Math.min(1, p.weight / max);
       const { fill, opacity } = heatColor(t);
       return { lat: p.latitude, lng: p.longitude, radiusM, color: hexToRgba(fill, Math.min(0.55, opacity * 0.6)) };
     });
-  }, [weighted, region.latitudeDelta]);
+  }, [weighted, baseDelta]);
 
   useEffect(() => {
-    const coords: LatLng[] = points.map(p => ({ latitude: p.lat, longitude: p.lng }));
-    if (coords.length < 2) return;
-    const id = setTimeout(() => {
-      mapRef.current?.fitToCoordinates(coords, {
-        edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
-        animated: false,
-      });
-    }, 80);
-    return () => clearTimeout(id);
+    // With a route to show, frame the trips.
+    if (points.length >= 2) {
+      const coords: LatLng[] = points.map(p => ({ latitude: p.lat, longitude: p.lng }));
+      const id = setTimeout(() => {
+        mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 40, right: 40, bottom: 40, left: 40 }, animated: false });
+      }, 80);
+      return () => clearTimeout(id);
+    }
+    // Otherwise centre on the user (uses existing trip-tracking permission; no prompt).
+    let cancelled = false;
+    (async () => {
+      try {
+        const perm = await Location.getForegroundPermissionsAsync();
+        if (perm.status !== 'granted') return;
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (cancelled) return;
+        const r = { latitude: loc.coords.latitude, longitude: loc.coords.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+        setUserRegion(r);
+        mapRef.current?.animateToRegion(r, 400);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
   }, [points]);
 
   return (
@@ -153,6 +184,7 @@ function AppleHeatMap({ points, height }: { points: HeatPoint[]; height: number 
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
+        showsUserLocation
         mapType="standard"
         rotateEnabled={false}
         pitchEnabled={false}

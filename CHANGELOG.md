@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0 (44) - 2026-06-29 (Logging defaults + live hotspot map)
+
+- **Smarter period defaults when logging.** Earnings now default to logging by **Week** (platforms pay weekly), while Expense and Mileage default to **Day**. Switching logging type resets to that type's default.
+- **Hotspot map shows from day one.** Instead of an empty placeholder before you've driven, the Insights → Where map now centres on **where you are now** and your hotspots build up on it as you drive. (Apple Maps, with your live location.)
+
 ## 1.0 (43) - 2026-06-29 (Fix the Insights crash)
 
 - **Fixed the crash when opening Insights.** The "where you ride" heatmap used react-native-maps' native `Heatmap`, which only works with Google Maps — on iOS's Apple Maps it doesn't exist, so the whole screen crashed (`View config not found for component AIRMapHeatmap`). This was the crash that could bounce you back to onboarding. The heatmap now uses translucent map circles, which Apple Maps supports — same "where you earn most" picture, no crash.

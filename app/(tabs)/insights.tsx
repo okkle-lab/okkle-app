@@ -143,8 +143,9 @@ export default function InsightsScreen() {
           </View>
         )}
 
-        {/* Category switcher — one focused view at a time, not one long scroll */}
-        {hasData && (
+        {/* Category switcher — one focused view at a time, not one long scroll.
+            Always shown so the live hotspot map is reachable before any trips. */}
+        {(
           <View style={s.tabs}>
             {TABS.map(t => (
               <Pressable key={t.key} onPress={() => setTab(t.key)} style={[s.tabItem, tab === t.key && s.tabItemOn]}>
@@ -155,8 +156,8 @@ export default function InsightsScreen() {
           </View>
         )}
 
-        {/* WHERE — hotspots + ranked areas */}
-        {hasData && tab === 'where' && (
+        {/* WHERE — live hotspot map (always), plus ranked areas once there's data */}
+        {tab === 'where' && (
           <>
             {buckets.some(b => b.trips > 0) && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterScroll} contentContainerStyle={{ gap: 8, paddingRight: spacing.xl }}>
@@ -189,6 +190,9 @@ export default function InsightsScreen() {
             <View style={{ marginTop: spacing.lg }}>
               <SectionHeader icon="map" title="Hotspot map" />
               <Card style={{ padding: spacing.sm }}>
+                {hotspots.length === 0 && (
+                  <Text style={[s.note, { marginTop: 0, marginBottom: spacing.sm }]}>Here’s where you are now — start a trip and your hotspots build on the map as you drive.</Text>
+                )}
                 <HeatMapView points={points} height={210} />
                 <View style={s.legend}>
                   <Text style={s.legendText}>Quieter</Text>
@@ -266,7 +270,7 @@ export default function InsightsScreen() {
           </>
         )}
 
-        {!hasData && (
+        {!hasData && tab !== 'where' && (
           <Card style={{ alignItems: 'center', paddingVertical: spacing.xxl, gap: 10 }}>
             <IconBadge icon="bar-chart-2" tone="mint" size={48} />
             <Text style={[type.bodyMedium, { textAlign: 'center' }]}>No insights yet</Text>
