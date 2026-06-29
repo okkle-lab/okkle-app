@@ -6,83 +6,39 @@ import SQLite3
 import SwiftUI
 import UIKit
 import Vision
+
 struct NativeHomeView: View {
   @EnvironmentObject private var store: OkkleStore
-  @State private var showMedals = false
+  @Binding var selectedTab: NativeTab
+  @State private var showLeague = false
+  @State private var showSettings = false
   @State private var medalAlert: NativeMedalAchievement?
   @State private var seenMedalKeys = Set<String>()
 
+  // MARK: Body
+
   var body: some View {
-    NativeScreen(
-      title: homeGreetingTitle,
-      collapsedTitle: store.settings.name.isEmpty ? nil : "Home",
-      subtitle: "Your tax saved this year and progress."
-    ) {
-      NativeGlassCard(cornerRadius: 32) {
-        VStack(alignment: .leading, spacing: 16) {
-          HStack {
-            Label("Tax saved this year", systemImage: "chart.line.uptrend.xyaxis")
-              .font(.system(size: 15, weight: .bold))
-              .foregroundStyle(OkkleColor.brandDark)
-            Spacer()
-            Text(taxYearLabel(for: store.taxYear))
-              .font(.caption.weight(.semibold))
-              .foregroundStyle(OkkleColor.muted)
-          }
-          Text(headlineGbp(store.taxSaved))
-            .font(.system(size: 58, weight: .heavy, design: .rounded))
-            .foregroundStyle(OkkleColor.ink)
-            .minimumScaleFactor(0.55)
-          Text("From \(miles(store.yearMiles)) and \(gbp(store.yearMileageDeduction, whole: true)) of mileage deductions.")
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
-          ProgressView(value: min(1, store.yearMiles / 10_000))
-            .tint(OkkleColor.brand)
-          mileageBandScale
-        }
-      }
+    ZStack {
+      NativeBackground()
 
-      HStack(spacing: 12) {
-        NativeMetricTile(title: "Mileage", value: miles(store.yearMiles), symbol: "road.lanes")
-        NativeMetricTile(title: "Earnings", value: gbp(store.yearIncome, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
-      }
+      VStack(spacing: 14) {
+        header
+        heroCard
+        statTiles
+        NativeLeagueCard(
+          snapshot: NativeSeasonEngine.snapshot(store: store),
+          medals: NativeMedalEngine.achievements(store: store)
+        ) { showLeague = true }
 
-      NativeSectionTitle(title: "Progress", symbol: "sparkles")
-      NativeGlassCard {
-        VStack(alignment: .leading, spacing: 16) {
-          progressRow(
-            "First 10k mileage band",
-            value: min(1, store.yearMiles / 10_000),
-            trailing: "\(Int(min(10_000, store.yearMiles)).formatted()) / 10,000 mi",
-            showsMileageScale: true
-          )
-          progressRow("Records logged", value: min(1, Double(store.records.count) / 24), trailing: "\(store.records.count) entries")
-          progressRow("Trips tracked", value: min(1, Double(store.trips.count) / 20), trailing: "\(store.trips.count) trips")
-          NativeMedalPreviewCard(achievements: NativeMedalEngine.achievements(store: store)) {
-            showMedals = true
-          }
+        if !store.history.isEmpty {
+          recentCard
         }
-      }
 
-      NativeSectionTitle(title: "Recent activity", symbol: "clock")
-      if store.history.isEmpty {
-        NativeEmptyState(symbol: "tray", title: "No records yet", message: "Track a trip or log earnings and expenses to see your history here.")
-      } else {
-        NativeGlassCard {
-          VStack(spacing: 0) {
-            ForEach(store.history.prefix(4)) { item in
-              NativeHistoryRow(item: item)
-              if item.id != store.history.prefix(4).last?.id {
-                Divider().padding(.leading, 52)
-              }
-            }
-          }
-        }
+        Spacer(minLength: 0)
       }
-    }
-    .sheet(isPresented: $showMedals) {
-      NativeMedalsView()
-        .environmentObject(store)
+      .padding(.horizontal, 20)
+      .padding(.top, 6)
+      .padding(.bottom, 10)
     }
     .overlay {
       if let medalAlert {
@@ -97,50 +53,167 @@ struct NativeHomeView: View {
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
       }
     }
-    .onAppear {
-      prepareMedalAlerts()
+    .sheet(isPresented: $showSettings) { NativeSettingsView() }
+    .sheet(isPresented: $showLeague) {
+      NativeLeagueView().environmentObject(store)
     }
-    .onChange(of: store.records) { _ in
-      showNewMedalIfNeeded()
-    }
-    .onChange(of: store.trips) { _ in
-      showNewMedalIfNeeded()
+    .onAppear { prepareMedalAlerts() }
+    .onChange(of: store.records) { _ in showNewMedalIfNeeded() }
+    .onChange(of: store.trips) { _ in showNewMedalIfNeeded() }
+  }
+
+  // MARK: Header
+
+  private var header: some View {
+    HStack(alignment: .center, spacing: 8) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(homeGreetingTitle)
+          .font(.system(size: 28, weight: .heavy, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.7)
+        Text(Date().formatted(.dateTime.weekday(.wide).day().month(.wide)))
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      Spacer()
+      if loggingStreak > 0 {
+        Button { showLeague = true } label: { streakPill }
+          .buttonStyle(.plain)
+      }
+      Button { showSettings = true } label: {
+        Image(systemName: "gearshape.fill")
+          .font(.system(size: 17, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .frame(width: 44, height: 44)
+          .background(.thinMaterial, in: Circle())
+      }
+      .accessibilityLabel("Settings")
     }
   }
+
+  private var streakPill: some View {
+    HStack(spacing: 5) {
+      Image(systemName: "flame.fill")
+        .font(.system(size: 13, weight: .bold))
+      Text("\(loggingStreak)")
+        .font(.system(size: 16, weight: .heavy, design: .rounded))
+      Text("day\(loggingStreak == 1 ? "" : "s")")
+        .font(.system(size: 12, weight: .bold))
+        .opacity(0.8)
+    }
+    .foregroundStyle(OkkleColor.amber)
+    .padding(.horizontal, 12)
+    .frame(height: 44)
+    .background(OkkleColor.amber.opacity(0.14), in: Capsule())
+  }
+
+  // MARK: Hero
+
+  private var heroCard: some View {
+    Button { selectedTab = .insights } label: {
+      NativeBannerCard(kicker: "TAX SAVED THIS YEAR", trailing: taxYearLabel(for: store.taxYear), cornerRadius: 26) {
+        VStack(alignment: .leading, spacing: 12) {
+          Text(headlineGbp(store.taxSaved))
+            .font(.system(size: 56, weight: .heavy, design: .rounded))
+            .foregroundStyle(OkkleColor.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+          VStack(alignment: .leading, spacing: 7) {
+            ProgressView(value: min(1, store.yearMiles / 10_000))
+              .tint(OkkleColor.brand)
+            HStack {
+              Text("\(miles(store.yearMiles)) logged")
+              Spacer()
+              Text(bandCaption)
+            }
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+          }
+        }
+      }
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var bandCaption: String {
+    let remaining = max(0, 10_000 - store.yearMiles)
+    return remaining > 0 ? "\(miles(remaining)) to 25p rate" : "Into 25p band"
+  }
+
+  // MARK: Stat tiles
+
+  private var statTiles: some View {
+    HStack(spacing: 12) {
+      Button { selectedTab = .insights } label: {
+        NativeMetricTile(title: "Mileage", value: miles(store.yearMiles), symbol: "road.lanes")
+      }
+      .buttonStyle(.plain)
+      Button { selectedTab = .insights } label: {
+        NativeMetricTile(title: "Set aside for tax", value: gbp(store.taxPosition.totalDue, whole: true), symbol: "shield.lefthalf.filled", color: OkkleColor.amber)
+      }
+      .buttonStyle(.plain)
+    }
+  }
+
+  // MARK: Recent
+
+  private var recentCard: some View {
+    let items = Array(store.history.prefix(3))
+    return VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Text("RECENT ACTIVITY")
+          .font(.system(size: 12, weight: .heavy))
+          .tracking(0.6)
+          .foregroundStyle(OkkleColor.muted)
+        Spacer()
+        Button { selectedTab = .records } label: {
+          Image(systemName: "chevron.right")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+        .buttonStyle(.plain)
+      }
+      VStack(spacing: 0) {
+        ForEach(items) { item in
+          Button { selectedTab = .records } label: {
+            NativeHistoryRow(item: item).padding(.vertical, 4)
+          }
+          .buttonStyle(.plain)
+          if item.id != items.last?.id {
+            Divider().padding(.leading, 52)
+          }
+        }
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .okkleCard()
+  }
+
+  // MARK: Derived values
 
   private var homeGreetingTitle: String {
     store.settings.name.isEmpty ? "Home" : "Hi, \(store.settings.name)"
   }
 
-  @ViewBuilder
-  private func progressRow(_ title: String, value: Double, trailing: String, showsMileageScale: Bool = false) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Text(title)
-          .font(.system(size: 15, weight: .semibold))
-        Spacer()
-        Text(trailing)
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
-      }
-      ProgressView(value: value)
-        .tint(OkkleColor.brand)
-      if showsMileageScale {
-        mileageBandScale
-      }
+  /// Consecutive days (ending today or yesterday) with at least one logged record.
+  private var loggingStreak: Int {
+    let cal = Calendar.current
+    let days = Set(store.records.map { cal.startOfDay(for: $0.date) })
+    guard !days.isEmpty else { return 0 }
+    var day = cal.startOfDay(for: Date())
+    if !days.contains(day) {
+      guard let yesterday = cal.date(byAdding: .day, value: -1, to: day), days.contains(yesterday) else { return 0 }
+      day = yesterday
     }
-  }
-
-  private var mileageBandScale: some View {
-    HStack {
-      Text("0 mi")
-      Spacer()
-      Text("5,000 mi")
-      Spacer()
-      Text("10,000 mi")
+    var streak = 0
+    while days.contains(day) {
+      streak += 1
+      guard let prev = cal.date(byAdding: .day, value: -1, to: day) else { break }
+      day = prev
     }
-    .font(.system(size: 11, weight: .bold))
-    .foregroundStyle(OkkleColor.muted)
+    return streak
   }
 
   private func taxYearLabel(for interval: DateInterval) -> String {
@@ -148,6 +221,8 @@ struct NativeHomeView: View {
     let end = Calendar.current.component(.year, from: interval.end)
     return "\(start)/\(String(end).suffix(2))"
   }
+
+  // MARK: Medal alerts
 
   private func prepareMedalAlerts() {
     let unlockedKeys = Set(NativeMedalEngine.achievements(store: store).filter(\.unlocked).map(\.key))

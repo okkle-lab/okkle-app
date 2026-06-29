@@ -182,6 +182,19 @@ enum NativeMedalEngine {
       ]
     )
 
+    medals += tiered(
+      prefix: "journey",
+      category: "Journeys",
+      symbol: "signpost.right.fill",
+      value: stats.miles,
+      unit: "miles — iconic UK routes",
+      specs: [
+        (54, "London → Brighton"), (120, "London → Bristol"), (200, "London → Manchester"),
+        (330, "London → Edinburgh"), (560, "Cardiff → Inverness"), (874, "Land's End → John o' Groats"),
+        (1_407, "Coast to coast, twice"),
+      ]
+    )
+
     medals.append(flag(
       key: "night_owl",
       label: "Night owl",
@@ -445,7 +458,6 @@ struct NativeMedalPreviewCard: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Divider()
       HStack(alignment: .center) {
         VStack(alignment: .leading, spacing: 3) {
           Text("Medals")
@@ -486,6 +498,7 @@ struct NativeMedalPreviewCard: View {
         }
       }
     }
+    .padding(16)
   }
 }
 
@@ -947,5 +960,1503 @@ private struct NativeMedalBurstShape: Shape {
     }
     path.closeSubpath()
     return path
+  }
+}
+
+// MARK: - Leagues (local, season = tax year)
+
+/// The English football pyramid, used as a local progression ladder.
+/// No backend: a driver climbs divisions by earning XP through the season.
+enum NativeDivision: Int, CaseIterable, Comparable {
+  case nationalLeague
+  case leagueTwo
+  case leagueOne
+  case championship
+  case premierLeague
+
+  static func < (lhs: NativeDivision, rhs: NativeDivision) -> Bool { lhs.rawValue < rhs.rawValue }
+
+  /// Real tax £ banked this tax year required to sit in this division.
+  /// The pyramid position is literally how much real money you've saved.
+  var minBanked: Int {
+    switch self {
+    case .nationalLeague: return 0
+    case .leagueTwo: return 300
+    case .leagueOne: return 750
+    case .championship: return 1_500
+    case .premierLeague: return 3_000
+    }
+  }
+
+  var name: String {
+    switch self {
+    case .nationalLeague: return "National League"
+    case .leagueTwo: return "League Two"
+    case .leagueOne: return "League One"
+    case .championship: return "Championship"
+    case .premierLeague: return "Premier League"
+    }
+  }
+
+  var shortName: String {
+    switch self {
+    case .nationalLeague: return "Nat. League"
+    case .leagueTwo: return "League Two"
+    case .leagueOne: return "League One"
+    case .championship: return "Champ."
+    case .premierLeague: return "Premier"
+    }
+  }
+
+  /// Colours drawn from the real English pyramid's brands: National League red,
+  /// EFL amber/green/blue up the tiers, and the iconic Premier League purple.
+  var gradientTop: Color {
+    switch self {
+    case .nationalLeague: return Color(red: 0.89, green: 0.27, blue: 0.25) // National League red
+    case .leagueTwo:      return Color(red: 0.95, green: 0.66, blue: 0.23) // EFL amber
+    case .leagueOne:      return Color(red: 0.18, green: 0.70, blue: 0.46) // green
+    case .championship:   return Color(red: 0.18, green: 0.49, blue: 0.89) // Sky Bet blue
+    case .premierLeague:  return Color(red: 0.62, green: 0.13, blue: 0.71) // PL magenta
+    }
+  }
+
+  var gradientBottom: Color {
+    switch self {
+    case .nationalLeague: return Color(red: 0.69, green: 0.11, blue: 0.16)
+    case .leagueTwo:      return Color(red: 0.78, green: 0.47, blue: 0.05)
+    case .leagueOne:      return Color(red: 0.05, green: 0.48, blue: 0.31)
+    case .championship:   return Color(red: 0.07, green: 0.31, blue: 0.65)
+    case .premierLeague:  return Color(red: 0.24, green: 0.04, blue: 0.36) // deep PL purple
+    }
+  }
+
+  /// Solid accent (the deeper stop) for borders, fills and text.
+  var accent: Color { gradientBottom }
+
+  /// Apple-style two-stop gradient in the league's colours.
+  var gradient: LinearGradient {
+    LinearGradient(colors: [gradientTop, gradientBottom], startPoint: .topLeading, endPoint: .bottomTrailing)
+  }
+
+  /// SF Symbol that tells the climb: pitch → rosette → shield → trophy → crown.
+  var glyph: String {
+    switch self {
+    case .nationalLeague: return "soccerball"
+    case .leagueTwo: return "rosette"
+    case .leagueOne: return "shield.fill"
+    case .championship: return "trophy.fill"
+    case .premierLeague: return "crown.fill"
+    }
+  }
+}
+
+struct NativeLeagueStatus {
+  let banked: Int          // real £ tax saved this tax year
+  let division: NativeDivision
+  let next: NativeDivision?
+  let progressToNext: Double
+  let bankedToNext: Int    // real £ still to bank to climb
+}
+
+@MainActor
+enum NativeLeagueEngine {
+  /// Your standing in the pyramid is real money: the tax £ you've banked this
+  /// tax year. Every logged mile that lifts your deduction lifts your league.
+  static func banked(store: OkkleStore) -> Int {
+    Int(store.taxSaved.rounded())
+  }
+
+  static func status(store: OkkleStore) -> NativeLeagueStatus {
+    let points = banked(store: store)
+    let division = NativeDivision.allCases.last(where: { points >= $0.minBanked }) ?? .nationalLeague
+    let next = NativeDivision(rawValue: division.rawValue + 1)
+    if let next {
+      let span = max(1, next.minBanked - division.minBanked)
+      let into = points - division.minBanked
+      return NativeLeagueStatus(
+        banked: points,
+        division: division,
+        next: next,
+        progressToNext: min(1, Double(into) / Double(span)),
+        bankedToNext: max(0, next.minBanked - points)
+      )
+    }
+    return NativeLeagueStatus(banked: points, division: division, next: nil, progressToNext: 1, bankedToNext: 0)
+  }
+
+  /// Medals belonging to a division: within each category, easy→hard medals are
+  /// spread across the five divisions, so climbing unlocks tougher challenges.
+  static func medals(in division: NativeDivision, store: OkkleStore) -> [NativeMedalAchievement] {
+    let byCategory = Dictionary(grouping: NativeMedalEngine.achievements(store: store), by: \.category)
+    var result: [NativeMedalAchievement] = []
+    for (_, items) in byCategory {
+      let n = max(1, items.count)
+      for (index, medal) in items.enumerated() where min(4, index * 5 / n) == division.rawValue {
+        result.append(medal)
+      }
+    }
+    return result.sorted { ($0.category, $0.target ?? 0) < ($1.category, $1.target ?? 0) }
+  }
+}
+
+/// iOS Settings-style icon tile: a flat tinted rounded square with a clean white SF Symbol.
+struct NativeDivisionCrest: View {
+  let division: NativeDivision
+  var size: CGFloat = 48
+
+  var body: some View {
+    RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+      .fill(division.gradient)
+      .frame(width: size, height: size)
+      .overlay(
+        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+          .strokeBorder(.white.opacity(0.25), lineWidth: 0.5)
+      )
+      .overlay(
+        Image(systemName: division.glyph)
+          .font(.system(size: size * 0.5, weight: .semibold))
+          .foregroundStyle(.white)
+      )
+      .shadow(color: division.accent.opacity(0.35), radius: size * 0.12, y: size * 0.06)
+  }
+}
+
+/// Form pips — last results as win/draw/loss dots.
+struct NativeFormGuide: View {
+  let form: [Int]
+  var size: CGFloat = 7
+
+  var body: some View {
+    HStack(spacing: 3) {
+      ForEach(Array(form.enumerated()), id: \.offset) { _, result in
+        Circle()
+          .fill(color(result))
+          .frame(width: size, height: size)
+      }
+    }
+  }
+
+  private func color(_ result: Int) -> Color {
+    switch result {
+    case 3: return OkkleColor.brand
+    case 1: return OkkleColor.amber
+    default: return OkkleColor.red
+    }
+  }
+}
+
+/// Compact Home card: current division, league position, and recent form.
+struct NativeLeagueCard: View {
+  let snapshot: NativeSeasonSnapshot
+  var medals: [NativeMedalAchievement] = []
+  let onOpen: () -> Void
+
+  private var earnedMedals: Int { medals.filter(\.unlocked).count }
+  private var nextMedal: NativeMedalAchievement? {
+    medals.filter { !$0.unlocked }.max { $0.progress < $1.progress }
+  }
+
+  var body: some View {
+    Button(action: onOpen) {
+      VStack(spacing: 0) {
+        HStack(spacing: 14) {
+          NativeDivisionCrest(division: snapshot.division, size: 48)
+          VStack(alignment: .leading, spacing: 6) {
+            HStack {
+              Text(snapshot.division.name)
+                .font(.system(size: 15, weight: .heavy))
+                .foregroundStyle(OkkleColor.ink)
+                .lineLimit(1)
+              Spacer()
+              if snapshot.matchweek > 0 {
+                Text("\(ordinal(snapshot.yourPosition)) of \(snapshot.rows.count)")
+                  .font(.system(size: 13, weight: .bold))
+                  .foregroundStyle(zoneColor)
+              } else {
+                Text("New season")
+                  .font(.system(size: 13, weight: .bold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+            }
+            if snapshot.matchweek == 0 {
+              Text("£\(Int(snapshot.winBar.rounded())) of tax saved this week wins it")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(OkkleColor.muted)
+            } else {
+              HStack(spacing: 8) {
+                NativeFormGuide(form: snapshot.yourRow.form)
+                Text("£\(Int(snapshot.bankedThisSeason.rounded())) banked · MW \(snapshot.matchweek)/\(snapshot.totalWeeks)")
+                  .font(.system(size: 12, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+            }
+          }
+          Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+
+        if !medals.isEmpty {
+          Divider().padding(.vertical, 13)
+          HStack(spacing: 10) {
+            Image(systemName: "rosette")
+              .font(.system(size: 15, weight: .bold))
+              .foregroundStyle(snapshot.division.accent)
+            Text("\(earnedMedals) of \(medals.count) medals")
+              .font(.system(size: 13, weight: .bold))
+              .foregroundStyle(OkkleColor.ink)
+            Spacer()
+            if let nextMedal {
+              Text("Next: \(nextMedal.label)")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(OkkleColor.muted)
+                .lineLimit(1)
+            }
+          }
+        }
+      }
+      .padding(16)
+      .frame(maxWidth: .infinity)
+      .okkleCard()
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var zoneColor: Color {
+    if snapshot.yourPosition <= 2 { return OkkleColor.brand }
+    if snapshot.yourPosition >= snapshot.rows.count - 1 { return OkkleColor.red }
+    return OkkleColor.muted
+  }
+}
+
+func ordinal(_ n: Int) -> String {
+  let suffix: String
+  switch (n % 100, n % 10) {
+  case (11, _), (12, _), (13, _): suffix = "th"
+  case (_, 1): suffix = "st"
+  case (_, 2): suffix = "nd"
+  case (_, 3): suffix = "rd"
+  default: suffix = "th"
+  }
+  return "\(n)\(suffix)"
+}
+
+/// This week's fixture — you vs a past-self, scored live in real tax saved,
+/// with the gaffer's team-talk underneath. The heartbeat of the league.
+struct NativeMatchdayCard: View {
+  let fixture: NativeFixture
+  let division: NativeDivision
+  var club: NativeClubIdentity? = nil
+
+  var body: some View {
+    VStack(spacing: 0) {
+      if fixture.stakes != .none {
+        banner
+      }
+      VStack(spacing: 14) {
+        HStack {
+          Text("\(division.name) · matchweek \(fixture.matchweek) of \(fixture.totalWeeks)")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+          Spacer()
+          Text(stateLabel)
+            .font(.system(size: 12, weight: .heavy))
+            .foregroundStyle(fixture.state == .live ? OkkleColor.red : OkkleColor.muted)
+        }
+        HStack(alignment: .top, spacing: 8) {
+          team(name: club?.name ?? "You", symbol: club?.emblem ?? "figure.walk", banked: fixture.yourBanked, accent: club?.color ?? OkkleColor.brand, filled: true)
+          VStack(spacing: 3) {
+            Text("\(fixture.yourGoals)–\(fixture.oppGoals)")
+              .font(.system(size: 30, weight: .heavy, design: .rounded))
+              .foregroundStyle(OkkleColor.ink)
+            Text(scoreCaption)
+              .font(.system(size: 11, weight: .bold))
+              .foregroundStyle(captionColor)
+          }
+          .frame(minWidth: 70)
+          team(name: fixture.opponent, symbol: fixture.opponentSymbol, banked: fixture.oppBanked, accent: division.accent, filled: false)
+        }
+        gaffer
+      }
+      .padding(16)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .okkleCard()
+  }
+
+  private var banner: some View {
+    let danger = fixture.stakes == .survival
+    let symbol: String
+    let text: String
+    switch fixture.stakes {
+    case .title:    symbol = "trophy.fill";              text = "Title decider — win to be champions"
+    case .playoff:  symbol = "arrow.up.circle.fill";     text = "Play-off final — win to go up"
+    case .survival: symbol = "exclamationmark.triangle.fill"; text = "Final week — avoid defeat to stay up"
+    case .none:     symbol = "";                          text = ""
+    }
+    let tint = danger ? OkkleColor.red : OkkleColor.brandDark
+    let fill = danger ? OkkleColor.red : OkkleColor.brand
+    return HStack(spacing: 8) {
+      Image(systemName: symbol)
+        .font(.system(size: 14, weight: .bold))
+      Text(text)
+        .font(.system(size: 13, weight: .heavy))
+      Spacer()
+    }
+    .foregroundStyle(tint)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 9)
+    .frame(maxWidth: .infinity)
+    .background(fill.opacity(0.13))
+  }
+
+  private func team(name: String, symbol: String, banked: Double, accent: Color, filled: Bool) -> some View {
+    VStack(spacing: 7) {
+      RoundedRectangle(cornerRadius: 13, style: .continuous)
+        .fill(accent.opacity(filled ? 0.16 : 0.10))
+        .frame(width: 46, height: 46)
+        .overlay(
+          Image(systemName: symbol)
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(accent)
+        )
+      Text(name)
+        .font(.system(size: 13, weight: .bold))
+        .foregroundStyle(OkkleColor.ink)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+      Text("£\(Int(banked.rounded())) saved")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+    }
+    .frame(maxWidth: .infinity)
+  }
+
+  private var gaffer: some View {
+    HStack(alignment: .top, spacing: 8) {
+      Image(systemName: "person.fill")
+        .font(.system(size: 12, weight: .bold))
+        .foregroundStyle(division.accent)
+        .padding(.top, 1)
+      (Text("The gaffer: ").font(.system(size: 13, weight: .heavy)).foregroundColor(OkkleColor.ink)
+        + Text(NativeGaffer.teamTalk(for: fixture)).font(.system(size: 13, weight: .medium)).foregroundColor(OkkleColor.muted))
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+  }
+
+  private var stateLabel: String {
+    switch fixture.state {
+    case .kickoff: return "KICK-OFF"
+    case .live: return "● LIVE"
+    case .fullTime: return "FULL TIME"
+    }
+  }
+
+  private var scoreCaption: String {
+    switch fixture.state {
+    case .kickoff: return "kick-off"
+    case .live: return fixture.youAreWinning ? "you lead" : (fixture.isLevel ? "level" : "behind")
+    case .fullTime: return fixture.youAreWinning ? "won" : (fixture.isLevel ? "drew" : "lost")
+    }
+  }
+
+  private var captionColor: Color {
+    if fixture.state == .kickoff { return OkkleColor.muted }
+    if fixture.youAreWinning { return OkkleColor.brand }
+    if fixture.isLevel { return OkkleColor.amber }
+    return OkkleColor.red
+  }
+}
+
+/// The trophy cabinet — every division won, kept forever.
+struct NativeHonoursCard: View {
+  let honours: [NativeHonour]
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(spacing: 8) {
+        Image(systemName: "trophy.fill")
+          .font(.system(size: 15, weight: .bold))
+          .foregroundStyle(OkkleColor.amber)
+        Text("Honours")
+          .font(.system(size: 17, weight: .heavy))
+          .foregroundStyle(OkkleColor.ink)
+        Spacer()
+        if !honours.isEmpty {
+          Text("\(honours.count)")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+      }
+
+      if honours.isEmpty {
+        Text("No silverware yet — win your division to fill the cabinet.")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+      } else {
+        VStack(spacing: 0) {
+          ForEach(honours) { honour in
+            HStack(spacing: 13) {
+              RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(honour.division.accent)
+                .frame(width: 38, height: 38)
+                .overlay(
+                  Image(systemName: honour.kind == .champions ? "trophy.fill" : "rosette")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                )
+              VStack(alignment: .leading, spacing: 2) {
+                Text(honour.title)
+                  .font(.system(size: 15, weight: .bold))
+                  .foregroundStyle(OkkleColor.ink)
+                Text(honour.subtitle)
+                  .font(.system(size: 12, weight: .medium))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+              Spacer()
+              Image(systemName: "medal.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(OkkleColor.amber)
+            }
+            .padding(.vertical, 10)
+            if honour.id != honours.last?.id {
+              Divider().padding(.leading, 51)
+            }
+          }
+        }
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .okkleCard()
+  }
+}
+
+/// Make the club yours — name, colour and crest. Investment breeds attachment.
+struct NativeClubEditorView: View {
+  @EnvironmentObject private var store: OkkleStore
+  @Environment(\.dismiss) private var dismiss
+  @State private var name: String = ""
+  @State private var colorIndex: Int = 0
+  @State private var emblem: String = "shield.fill"
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(spacing: 24) {
+          RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(NativeClubIdentity.palette[colorIndex])
+            .frame(width: 96, height: 96)
+            .overlay(
+              Image(systemName: emblem)
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(.white)
+            )
+            .padding(.top, 8)
+          Text(name.isEmpty ? "Your club" : name)
+            .font(.system(size: 20, weight: .heavy, design: .rounded))
+            .foregroundStyle(OkkleColor.ink)
+
+          VStack(alignment: .leading, spacing: 8) {
+            Text("CLUB NAME")
+              .font(.system(size: 12, weight: .heavy))
+              .foregroundStyle(OkkleColor.muted)
+            TextField("Your club", text: $name)
+              .font(.system(size: 17, weight: .semibold))
+              .padding(14)
+              .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+          }
+
+          VStack(alignment: .leading, spacing: 10) {
+            Text("COLOUR")
+              .font(.system(size: 12, weight: .heavy))
+              .foregroundStyle(OkkleColor.muted)
+            HStack(spacing: 12) {
+              ForEach(Array(NativeClubIdentity.palette.enumerated()), id: \.offset) { index, color in
+                Button { colorIndex = index } label: {
+                  Circle()
+                    .fill(color)
+                    .frame(width: 40, height: 40)
+                    .overlay(
+                      Circle().stroke(OkkleColor.ink, lineWidth: colorIndex == index ? 3 : 0)
+                    )
+                }
+                .buttonStyle(.plain)
+              }
+            }
+          }
+
+          VStack(alignment: .leading, spacing: 10) {
+            Text("CREST")
+              .font(.system(size: 12, weight: .heavy))
+              .foregroundStyle(OkkleColor.muted)
+            HStack(spacing: 12) {
+              ForEach(NativeClubIdentity.emblems, id: \.self) { symbol in
+                Button { emblem = symbol } label: {
+                  Image(systemName: symbol)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(emblem == symbol ? .white : OkkleColor.muted)
+                    .frame(width: 44, height: 44)
+                    .background(emblem == symbol ? NativeClubIdentity.palette[colorIndex] : OkkleColor.muted.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+              }
+            }
+          }
+        }
+        .padding(20)
+      }
+      .background { NativeBackground() }
+      .navigationTitle("Your club")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .navigationBarLeading) {
+          Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button("Save") {
+            let trimmed = name.trimmingCharacters(in: .whitespaces)
+            NativeSeasonEngine.saveClubIdentity(NativeClubIdentity(name: trimmed.isEmpty ? "Your club" : trimmed, colorIndex: colorIndex, emblem: emblem))
+            dismiss()
+          }
+          .font(.system(size: 16, weight: .bold))
+        }
+      }
+      .onAppear {
+        let club = NativeSeasonEngine.clubIdentity(store: store)
+        name = club.name
+        colorIndex = max(0, min(club.colorIndex, NativeClubIdentity.palette.count - 1))
+        emblem = club.emblem
+      }
+    }
+  }
+}
+
+/// The league's atmosphere — a deep, floodlit-stadium gradient in the division's
+/// colours, so bright cards glow against it (Champions-League night mood).
+struct NativeLeagueBackground: View {
+  let division: NativeDivision
+
+  var body: some View {
+    ZStack {
+      Color.black
+      LinearGradient(
+        colors: [
+          division.gradientTop.opacity(0.55),
+          division.gradientBottom.opacity(0.9),
+          Color.black
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+      )
+      RadialGradient(
+        colors: [division.gradientTop.opacity(0.65), .clear],
+        center: .init(x: 0.5, y: 0.0),
+        startRadius: 0,
+        endRadius: 460
+      )
+      .blendMode(.screen)
+    }
+    .ignoresSafeArea()
+  }
+}
+
+/// League screen: a live season table (you vs your past selves, with
+/// promotion/relegation zones) and a Medals tab that drills into medals.
+struct NativeLeagueView: View {
+  @EnvironmentObject private var store: OkkleStore
+  @Environment(\.dismiss) private var dismiss
+  private enum Segment: Hashable { case table, medals }
+  @State private var segment: Segment = .table
+  @State private var ceremony: NativeDivision?
+  @State private var editingClub = false
+
+  var body: some View {
+    let snapshot = NativeSeasonEngine.snapshot(store: store)
+    NavigationStack {
+      VStack(spacing: 16) {
+        Picker("", selection: $segment) {
+          Text("Table").tag(Segment.table)
+          Text("Medals").tag(Segment.medals)
+        }
+        .pickerStyle(.segmented)
+
+        ScrollView {
+          if segment == .table {
+            tableTab(snapshot)
+          } else {
+            medalsTab(current: snapshot.division)
+          }
+        }
+        .scrollIndicators(.hidden)
+      }
+      .padding(20)
+      .background { NativeLeagueBackground(division: snapshot.division) }
+      .navigationTitle("League")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbarBackground(.hidden, for: .navigationBar)
+      .toolbarColorScheme(.dark, for: .navigationBar)
+      .toolbar {
+        ToolbarItem(placement: .navigationBarLeading) {
+          Button { editingClub = true } label: {
+            Label("Club", systemImage: "shield.lefthalf.filled")
+              .labelStyle(.titleAndIcon)
+              .font(.system(size: 15, weight: .semibold))
+              .foregroundStyle(.white)
+          }
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button("Done") { dismiss() }
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(.white)
+        }
+      }
+    }
+    .sheet(isPresented: $editingClub) {
+      NativeClubEditorView().environmentObject(store)
+    }
+    .overlay {
+      if let ceremony {
+        NativePromotionOverlay(division: ceremony) {
+          withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { self.ceremony = nil }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+      }
+    }
+    .onAppear {
+      guard let promoted = snapshot.ceremonyTo else { return }
+      NativeSeasonEngine.clearCeremony(store: store)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) { ceremony = promoted }
+      }
+    }
+  }
+
+  // MARK: Table tab
+
+  private func tableTab(_ snapshot: NativeSeasonSnapshot) -> some View {
+    VStack(spacing: 16) {
+      NativeMatchdayCard(
+        fixture: NativeSeasonEngine.fixture(store: store),
+        division: snapshot.division,
+        club: NativeSeasonEngine.clubIdentity(store: store)
+      )
+      seasonHeader(snapshot)
+      standingsTable(snapshot)
+      zonesLegend(snapshot.division)
+      NativeHonoursCard(honours: NativeSeasonEngine.honours())
+    }
+  }
+
+  private func seasonHeader(_ s: NativeSeasonSnapshot) -> some View {
+    VStack(spacing: 12) {
+      NativeDivisionCrest(division: s.division, size: 60)
+      Text(s.division.name)
+        .font(.system(size: 22, weight: .bold, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+      Text("£\(Int(s.bankedThisSeason.rounded())) banked · Matchweek \(min(s.matchweek + 1, s.totalWeeks)) of \(s.totalWeeks)")
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+      Text("Out-earn your past selves to go up. £\(Int(s.winBar.rounded()))/week saved is a win.")
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(OkkleColor.muted)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 24)
+      if !s.yourRow.form.isEmpty {
+        HStack(spacing: 8) {
+          Text("Your form")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+          NativeFormGuide(form: s.yourRow.form, size: 9)
+        }
+      }
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 20)
+    .okkleCard(cornerRadius: 22)
+  }
+
+  private func standingsTable(_ s: NativeSeasonSnapshot) -> some View {
+    VStack(spacing: 0) {
+      HStack(spacing: 8) {
+        Image(systemName: s.division.glyph)
+          .font(.system(size: 13, weight: .bold))
+        Text(s.division.name)
+          .font(.system(size: 13, weight: .heavy))
+        Spacer()
+        Text("TABLE")
+          .font(.system(size: 11, weight: .heavy))
+          .tracking(1)
+          .foregroundStyle(.white.opacity(0.85))
+      }
+      .foregroundStyle(.white)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 11)
+      .background(s.division.gradient)
+
+      HStack(spacing: 10) {
+        Text("#").frame(width: 22, alignment: .leading)
+        Text("Club")
+        Spacer()
+        Text("Pts").frame(width: 34, alignment: .trailing)
+      }
+      .font(.system(size: 11, weight: .heavy))
+      .tracking(0.5)
+      .foregroundStyle(OkkleColor.muted)
+      .padding(.horizontal, 14)
+      .padding(.top, 12)
+      .padding(.bottom, 8)
+      Divider()
+      ForEach(Array(s.rows.enumerated()), id: \.element.id) { index, row in
+        standingRow(row: row, index: index, total: s.rows.count, division: s.division)
+        if index != s.rows.count - 1 {
+          Divider().padding(.leading, 40)
+        }
+      }
+    }
+    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .okkleCard()
+  }
+
+  private func standingRow(row: NativeClubRow, index: Int, total: Int, division: NativeDivision) -> some View {
+    let pos = index + 1
+    let canPromote = division != .premierLeague
+    let canRelegate = division != .nationalLeague
+    let zone: Color
+    if pos == 1 && canPromote { zone = OkkleColor.brand }              // champions
+    else if (pos == 2 || pos == 3) && canPromote { zone = OkkleColor.amber } // play-offs
+    else if pos >= total && canRelegate { zone = OkkleColor.red }      // relegation
+    else { zone = .clear }
+    return HStack(spacing: 10) {
+      RoundedRectangle(cornerRadius: 1.5)
+        .fill(zone)
+        .frame(width: 3, height: 18)
+      Text("\(pos)")
+        .font(.system(size: 14, weight: row.isYou ? .heavy : .semibold, design: .rounded))
+        .foregroundStyle(row.isYou ? OkkleColor.ink : OkkleColor.muted)
+        .frame(width: 18, alignment: .leading)
+      Text(row.name)
+        .font(.system(size: 15, weight: row.isYou ? .heavy : .medium))
+        .foregroundStyle(OkkleColor.ink)
+        .lineLimit(1)
+      Spacer()
+      NativeFormGuide(form: row.form)
+      Text("\(row.points)")
+        .font(.system(size: 15, weight: .bold, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+        .frame(width: 30, alignment: .trailing)
+    }
+    .padding(.horizontal, 13)
+    .padding(.vertical, 11)
+    .background(
+      row.isYou
+        ? AnyShapeStyle(division.gradient.opacity(0.12))
+        : AnyShapeStyle(Color.clear)
+    )
+  }
+
+  @ViewBuilder
+  private func zonesLegend(_ division: NativeDivision) -> some View {
+    HStack(spacing: 16) {
+      if division != .premierLeague {
+        Label("1st up", systemImage: "trophy.fill")
+          .foregroundStyle(OkkleColor.brand)
+        Label("2nd–3rd play-offs", systemImage: "arrow.up.circle.fill")
+          .foregroundStyle(OkkleColor.amber)
+      }
+      if division != .nationalLeague {
+        Label("Bottom down", systemImage: "arrow.down.circle.fill")
+          .foregroundStyle(OkkleColor.red)
+      }
+    }
+    .font(.system(size: 12, weight: .semibold))
+    .frame(maxWidth: .infinity)
+  }
+
+  // MARK: Medals tab — your whole collection, organised by the division that unlocks it.
+
+  private func medalsTab(current: NativeDivision) -> some View {
+    let all = NativeMedalEngine.achievements(store: store)
+    let earned = all.filter(\.unlocked).count
+    return VStack(spacing: 16) {
+      NativeMedalSummaryCard(earned: earned, total: all.count, completion: all.isEmpty ? 0 : Double(earned) / Double(all.count))
+      Text("Climb the table to unlock tougher medals — each division holds its own set.")
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(.white.opacity(0.75))
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 12)
+      ladder(current: current)
+    }
+  }
+
+  private func ladder(current: NativeDivision) -> some View {
+    let rows = NativeDivision.allCases.reversed()
+    return VStack(spacing: 0) {
+      ForEach(Array(rows), id: \.self) { division in
+        NavigationLink {
+          NativeDivisionMedalsView(division: division).environmentObject(store)
+        } label: {
+          row(division, current: current)
+        }
+        .buttonStyle(.plain)
+        if division != .nationalLeague {
+          Divider().padding(.leading, 64)
+        }
+      }
+    }
+    .okkleCard()
+  }
+
+  private func row(_ division: NativeDivision, current: NativeDivision) -> some View {
+    HStack(spacing: 14) {
+      NativeDivisionCrest(division: division, size: 36)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(division.name)
+          .font(.system(size: 16, weight: .semibold))
+          .foregroundStyle(OkkleColor.ink)
+        Text(division.minBanked == 0 ? "Starting tier" : "£\(division.minBanked.formatted())+ tax banked")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      Spacer()
+      accessory(for: division, current: current)
+      Image(systemName: "chevron.right")
+        .font(.system(size: 12, weight: .bold))
+        .foregroundStyle(OkkleColor.muted.opacity(0.5))
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 13)
+    .background(division == current ? division.accent.opacity(0.07) : .clear)
+  }
+
+  @ViewBuilder
+  private func accessory(for division: NativeDivision, current: NativeDivision) -> some View {
+    if division == current {
+      Text("YOU")
+        .font(.system(size: 11, weight: .heavy))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(division.accent, in: Capsule())
+    } else if division < current {
+      Image(systemName: "checkmark.circle.fill")
+        .font(.system(size: 19, weight: .semibold))
+        .foregroundStyle(OkkleColor.brand)
+    } else {
+      Image(systemName: "lock.fill")
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted.opacity(0.55))
+    }
+  }
+
+}
+
+/// A tasteful promotion moment — crest, headline, and a single call to action.
+struct NativePromotionOverlay: View {
+  let division: NativeDivision
+  let onDismiss: () -> Void
+
+  var body: some View {
+    ZStack {
+      Color.black.opacity(0.4).ignoresSafeArea().onTapGesture(perform: onDismiss)
+      VStack(spacing: 18) {
+        NativeDivisionCrest(division: division, size: 92)
+        VStack(spacing: 6) {
+          Text("PROMOTED")
+            .font(.system(size: 13, weight: .heavy))
+            .tracking(2)
+            .foregroundStyle(division.accent)
+          Text("Welcome to the\n\(division.name)")
+            .multilineTextAlignment(.center)
+            .font(.system(size: 23, weight: .heavy, design: .rounded))
+            .foregroundStyle(OkkleColor.ink)
+          Text("You finished in the promotion places. New season, new challenge.")
+            .multilineTextAlignment(.center)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .padding(.horizontal, 4)
+        }
+        Button(action: onDismiss) {
+          Text("Let's go")
+            .font(.system(size: 16, weight: .heavy))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(division.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(28)
+      .frame(maxWidth: 320)
+      .background(OkkleColor.card, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+      .padding(32)
+    }
+  }
+}
+
+/// The medals that live inside one division — drilled into from the league table,
+/// in the same clean Settings-style language (no separate medal room).
+struct NativeDivisionMedalsView: View {
+  let division: NativeDivision
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    let items = NativeLeagueEngine.medals(in: division, store: store)
+    let earned = items.filter(\.unlocked).count
+    ScrollView {
+      VStack(spacing: 16) {
+        VStack(spacing: 10) {
+          NativeDivisionCrest(division: division, size: 56)
+          Text(division.name)
+            .font(.system(size: 20, weight: .bold, design: .rounded))
+            .foregroundStyle(OkkleColor.ink)
+          Text("\(earned) of \(items.count) medals earned")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+        .padding(.horizontal, 16)
+        .okkleCard(cornerRadius: 22)
+
+        VStack(spacing: 0) {
+          ForEach(items) { medal in
+            medalRow(medal)
+            if medal.id != items.last?.id {
+              Divider().padding(.leading, 62)
+            }
+          }
+        }
+        .okkleCard()
+      }
+      .padding(20)
+    }
+    .background { NativeBackground() }
+    .navigationTitle(division.shortName)
+    .navigationBarTitleDisplayMode(.inline)
+  }
+
+  private func medalRow(_ medal: NativeMedalAchievement) -> some View {
+    HStack(spacing: 14) {
+      RoundedRectangle(cornerRadius: 9, style: .continuous)
+        .fill(medal.unlocked ? division.accent : OkkleColor.muted.opacity(0.22))
+        .frame(width: 34, height: 34)
+        .overlay(
+          Image(systemName: medal.symbol)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(medal.unlocked ? .white : OkkleColor.muted)
+        )
+      VStack(alignment: .leading, spacing: 2) {
+        Text(medal.label)
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(medal.unlocked ? OkkleColor.ink : OkkleColor.muted)
+        Text(medal.desc)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .lineLimit(1)
+      }
+      Spacer()
+      if medal.unlocked {
+        Image(systemName: "checkmark.circle.fill")
+          .font(.system(size: 18, weight: .semibold))
+          .foregroundStyle(OkkleColor.brand)
+      } else {
+        Text("\(Int((medal.progress * 100).rounded()))%")
+          .font(.system(size: 12, weight: .bold))
+          .foregroundStyle(OkkleColor.muted)
+      }
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 12)
+  }
+}
+
+// MARK: - Solo season (fictional-club table, weekly form, promotion/relegation)
+
+/// Persisted league standing. A "season" is a fixed 4-week block; at its end the
+/// driver is promoted (top 2) or relegated (bottom 2) of an 8-club table.
+struct NativeLeagueState: Codable {
+  var divisionRaw: Int
+  var seasonStart: Date
+  var ceremonyToRaw: Int?
+}
+
+/// A piece of silverware for the trophy cabinet — a division won, kept forever.
+struct NativeHonour: Codable, Identifiable {
+  enum Kind: String, Codable { case champions, playoff }
+  let seasonIndex: Int
+  let divisionRaw: Int
+  let kind: Kind
+  let date: Date
+
+  var id: String { "\(seasonIndex)-\(divisionRaw)-\(kind.rawValue)" }
+  var division: NativeDivision { NativeDivision(rawValue: divisionRaw) ?? .nationalLeague }
+  var title: String {
+    kind == .champions ? "\(division.name) champions" : "Promoted from \(division.name)"
+  }
+  var subtitle: String {
+    kind == .champions ? "Won the division outright" : "Won the play-off final"
+  }
+}
+
+/// The driver's club — name, colour and crest emblem, all theirs to shape.
+struct NativeClubIdentity: Codable {
+  var name: String
+  var colorIndex: Int
+  var emblem: String
+
+  static let palette: [Color] = [
+    Color(red: 0.12, green: 0.55, blue: 0.95),  // blue
+    Color(red: 0.85, green: 0.23, blue: 0.24),  // red
+    Color(red: 0.12, green: 0.66, blue: 0.42),  // green
+    Color(red: 0.55, green: 0.27, blue: 0.68),  // purple
+    Color(red: 0.95, green: 0.55, blue: 0.10),  // orange
+    Color(red: 0.10, green: 0.20, blue: 0.45),  // navy
+  ]
+  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill"]
+
+  var color: Color { NativeClubIdentity.palette[max(0, min(colorIndex, NativeClubIdentity.palette.count - 1))] }
+}
+
+/// One row of the division table — the driver plus the fictional rival clubs.
+struct NativeClubRow: Identifiable {
+  let id: Int
+  let name: String
+  let isYou: Bool
+  let played: Int
+  let points: Int
+  let form: [Int] // 3 = win, 1 = draw, 0 = loss
+}
+
+struct NativeSeasonSnapshot {
+  let division: NativeDivision
+  let matchweek: Int
+  let totalWeeks: Int
+  let rows: [NativeClubRow]
+  let yourRow: NativeClubRow
+  let yourPosition: Int
+  let ceremonyTo: NativeDivision?
+  let bankedThisSeason: Double   // real tax £ you've banked this season
+  let winBar: Double             // real £/week needed for a "win" this division
+}
+
+/// This week's match — you versus one past-self ghost, scored in real tax saved.
+struct NativeFixture {
+  enum State { case kickoff, live, fullTime }
+  /// What the final week is worth, based on where you sit in the table.
+  enum Stakes { case none, title, playoff, survival }
+  let opponent: String
+  let opponentSymbol: String
+  let yourBanked: Double
+  let oppBanked: Double
+  let yourGoals: Int
+  let oppGoals: Int
+  let matchweek: Int
+  let totalWeeks: Int
+  let isFinalDay: Bool
+  let state: State
+  let stakes: Stakes
+
+  var youAreWinning: Bool { yourGoals > oppGoals }
+  var isLevel: Bool { yourGoals == oppGoals }
+  var lead: Double { yourBanked - oppBanked }
+}
+
+/// The gaffer — a plain-spoken British manager who narrates the week. The solo
+/// stand-in for a crowd: motivation comes from his team-talk, not other users.
+enum NativeGaffer {
+  static func teamTalk(for f: NativeFixture) -> String {
+    let opp = f.opponent
+    let toWin = max(0, Int((f.oppBanked - f.yourBanked).rounded())) + 1
+
+    switch f.stakes {
+    case .title:
+      switch f.state {
+      case .kickoff: return "Title decider, this. Beat \(opp) and the trophy's ours. Let's not leave it to chance."
+      case .live:
+        if f.youAreWinning { return "We're champions if this holds — £\(Int(f.lead.rounded())) clear of \(opp). See it home." }
+        if f.isLevel { return "Level with \(opp) and the title on the line. One more shift wins it." }
+        return "We've slipped behind \(opp) with the trophy at stake. £\(toWin) saved snatches it back — go."
+      case .fullTime:
+        return f.youAreWinning ? "Champions! Saw off \(opp) when it mattered most. Up we go." : "So close. \(opp) pipped us — we'll settle for the play-offs."
+      }
+    case .playoff:
+      switch f.state {
+      case .kickoff: return "Play-off final. Win this one match against \(opp) and we're promoted. Everything on it."
+      case .live:
+        if f.youAreWinning { return "We're going up — £\(Int(f.lead.rounded())) ahead of \(opp) in the final. Hold your nerve." }
+        if f.isLevel { return "Dead level in the play-off final. Next shift could be the one that sends us up." }
+        return "Behind in the play-off final. £\(toWin) of tax saved beats \(opp) and books promotion — dig in."
+      case .fullTime:
+        return f.youAreWinning ? "We've done it! Beat \(opp) in the final — promotion through the play-offs!" : "Heartbreak. \(opp) won the final. We dust ourselves down and go again."
+      }
+    case .survival:
+      switch f.state {
+      case .kickoff: return "Must not lose this. Avoid defeat to \(opp) and we stay up. Roll your sleeves up."
+      case .live:
+        if f.youAreWinning { return "This keeps us up — £\(Int(f.lead.rounded())) clear of \(opp). Don't switch off." }
+        if f.isLevel { return "A draw with \(opp) keeps us safe. Hold it together." }
+        return "We're going down as it stands. £\(toWin) saved beats \(opp) and saves our season — fight."
+      case .fullTime:
+        return f.youAreWinning || f.isLevel ? "Survived! Held off \(opp) when it counted. We live to fight another season." : "Relegated. \(opp) sent us down. We bounce straight back."
+      }
+    case .none:
+      switch f.state {
+      case .kickoff:
+        return "\(opp) up next. £\(Int(f.oppBanked.rounded())) of tax saved beats them — log your shifts and it's ours."
+      case .live:
+        if f.youAreWinning { return "Tidy. £\(Int(f.lead.rounded())) clear of \(opp). Keep logging and the points are ours." }
+        if f.isLevel { return "Neck and neck with \(opp). One more decent shift nicks it." }
+        return "We're chasing \(opp) — £\(toWin) of tax saved this week flips the result."
+      case .fullTime:
+        if f.youAreWinning { return "Three points. Saw off \(opp) — that's how we climb." }
+        if f.isLevel { return "A point apiece with \(opp). Take it and kick on." }
+        return "\(opp) had our number this week. Reset, go harder."
+      }
+    }
+  }
+}
+
+@MainActor
+enum NativeSeasonEngine {
+  static let weeksPerSeason = 4
+  static let weekSeconds: TimeInterval = 7 * 24 * 3600
+  private static let storageKey = "uk.okkle.native.league.season.v1"
+  private static let honoursKey = "uk.okkle.native.league.honours.v1"
+  private static let clubKey = "uk.okkle.native.league.club.v1"
+  private static let epoch = Date(timeIntervalSince1970: 1_735_689_600) // 2025-01-01
+
+  /// Your rivals are your own past selves — no fictional clubs, every result real.
+  /// Each ghost replays real weekly banked £ drawn from your own history.
+  enum Ghost: Int, CaseIterable {
+    case lastSeason   // you, one 4-week block ago
+    case bestEver     // your best weeks ever, replayed
+    case average      // your all-time average week, held steady
+
+    var clubName: String {
+      switch self {
+      case .lastSeason: return "Last Season You"
+      case .bestEver:   return "Your Best XI"
+      case .average:    return "The Form Book"
+      }
+    }
+
+    var symbol: String {
+      switch self {
+      case .lastSeason: return "clock.arrow.circlepath"
+      case .bestEver:   return "star.fill"
+      case .average:    return "chart.bar.fill"
+      }
+    }
+  }
+
+  // MARK: Public
+
+  static func snapshot(store: OkkleStore) -> NativeSeasonSnapshot {
+    var state = loadState(store: store)
+    advance(&state, store: store)
+    save(state)
+    let division = NativeDivision(rawValue: state.divisionRaw) ?? .nationalLeague
+    let rows = standings(seasonStart: state.seasonStart, divisionRaw: state.divisionRaw, store: store)
+    let completed = completedWeeks(since: state.seasonStart)
+    let yourRow = rows.first { $0.isYou } ?? NativeClubRow(id: 0, name: "You", isYou: true, played: 0, points: 0, form: [])
+    let position = (rows.firstIndex { $0.isYou } ?? 0) + 1
+    var banked = 0.0
+    for week in 0..<completed {
+      let start = state.seasonStart.addingTimeInterval(Double(week) * weekSeconds)
+      banked += weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store)
+    }
+    return NativeSeasonSnapshot(
+      division: division,
+      matchweek: completed,
+      totalWeeks: weeksPerSeason,
+      rows: rows,
+      yourRow: yourRow,
+      yourPosition: position,
+      ceremonyTo: state.ceremonyToRaw.flatMap { NativeDivision(rawValue: $0) },
+      bankedThisSeason: banked,
+      winBar: winBar(division, store: store)
+    )
+  }
+
+  static func clearCeremony(store: OkkleStore) {
+    var state = loadState(store: store)
+    state.ceremonyToRaw = nil
+    save(state)
+  }
+
+  /// This week's fixture: you vs one rotating past-self, live in real tax saved.
+  static func fixture(store: OkkleStore) -> NativeFixture {
+    var state = loadState(store: store)
+    advance(&state, store: store)
+    save(state)
+    let division = NativeDivision(rawValue: state.divisionRaw) ?? .nationalLeague
+    let completed = completedWeeks(since: state.seasonStart)
+    let total = weeksPerSeason
+    let weekIndex = min(completed, total - 1)
+    let weekStart = state.seasonStart.addingTimeInterval(Double(weekIndex) * weekSeconds)
+    let weekEnd = weekStart.addingTimeInterval(weekSeconds)
+    let weekFinished = completed > weekIndex
+    let yourBanked = weeklyBanked(start: weekStart, end: weekFinished ? weekEnd : min(Date(), weekEnd), store: store)
+
+    let ghost = Ghost.allCases[weekIndex % Ghost.allCases.count]
+    let oppBanked = ghostWeekBanked(ghost: ghost, weekIndex: weekIndex, seasonStart: state.seasonStart, store: store)
+
+    let goalUnit = max(1, winBar(division, store: store) / 3)
+    let yourGoals = min(6, Int((yourBanked / goalUnit).rounded(.down)))
+    let oppGoals = min(6, Int((oppBanked / goalUnit).rounded(.down)))
+
+    let fxState: NativeFixture.State = weekFinished ? .fullTime : (yourBanked <= 0 ? .kickoff : .live)
+    let isFinal = weekIndex == total - 1
+
+    var stakes: NativeFixture.Stakes = .none
+    if isFinal {
+      let rows = standings(seasonStart: state.seasonStart, divisionRaw: state.divisionRaw, store: store)
+      let position = (rows.firstIndex { $0.isYou } ?? 0) + 1
+      let canPromote = division != .premierLeague
+      if position == 1, canPromote {
+        stakes = .title
+      } else if (position == 2 || position == 3), canPromote {
+        stakes = .playoff
+      } else if position >= rows.count, division != .nationalLeague {
+        stakes = .survival
+      }
+    }
+
+    return NativeFixture(
+      opponent: ghost.clubName,
+      opponentSymbol: ghost.symbol,
+      yourBanked: yourBanked,
+      oppBanked: oppBanked,
+      yourGoals: yourGoals,
+      oppGoals: oppGoals,
+      matchweek: weekIndex + 1,
+      totalWeeks: total,
+      isFinalDay: isFinal,
+      state: fxState,
+      stakes: stakes
+    )
+  }
+
+  private static func ghostWeekBanked(ghost: Ghost, weekIndex: Int, seasonStart: Date, store: OkkleStore) -> Double {
+    switch ghost {
+    case .lastSeason:
+      let start = seasonStart.addingTimeInterval(Double(weekIndex) * weekSeconds - weekSeconds * Double(weeksPerSeason))
+      return weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store)
+    case .bestEver:
+      let best = Array(allWeeklyBanked(store: store).sorted(by: >).prefix(weeksPerSeason))
+      return weekIndex < best.count ? best[weekIndex] : 0
+    case .average:
+      return weeklyBenchmark(store: store)
+    }
+  }
+
+  // MARK: Standings
+
+  static func standings(seasonStart: Date, divisionRaw: Int, store: OkkleStore) -> [NativeClubRow] {
+    let division = NativeDivision(rawValue: divisionRaw) ?? .nationalLeague
+    let completed = completedWeeks(since: seasonStart)
+    let bar = winBar(division, store: store)
+
+    // You — this season's real weekly banked £.
+    var yourForm: [Int] = []
+    var yourPoints = 0
+    for week in 0..<completed {
+      let start = seasonStart.addingTimeInterval(Double(week) * weekSeconds)
+      let result = result(forBanked: weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store), bar: bar)
+      yourPoints += result
+      yourForm.append(result)
+    }
+    let yourName = clubIdentity(store: store).name
+    var rows = [NativeClubRow(id: 0, name: yourName, isYou: true, played: completed, points: yourPoints, form: Array(yourForm.suffix(5)))]
+
+    // Your past selves — real history replayed, no fictional clubs.
+    let bestWeeks = topWeeklyBanked(count: weeksPerSeason, store: store)
+    let benchmark = weeklyBenchmark(store: store)
+    for ghost in Ghost.allCases {
+      var points = 0
+      var form: [Int] = []
+      for week in 0..<completed {
+        let banked: Double
+        switch ghost {
+        case .lastSeason:
+          let start = seasonStart.addingTimeInterval(Double(week) * weekSeconds - weekSeconds * Double(weeksPerSeason))
+          banked = weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store)
+        case .bestEver:
+          banked = week < bestWeeks.count ? bestWeeks[week] : 0
+        case .average:
+          banked = benchmark
+        }
+        let r = result(forBanked: banked, bar: bar)
+        points += r
+        form.append(r)
+      }
+      rows.append(NativeClubRow(id: ghost.rawValue + 1, name: ghost.clubName, isYou: false, played: completed, points: points, form: Array(form.suffix(5))))
+    }
+
+    // Ties break in your favour, then by name — deterministic, no RNG.
+    return rows.sorted {
+      ($0.points, $0.isYou ? 1 : 0, $1.name) > ($1.points, $1.isYou ? 1 : 0, $0.name)
+    }
+  }
+
+  // MARK: Mechanics — all in real banked £
+
+  /// A "win" each week means out-earning your own pace. The bar is your personal
+  /// benchmark, lifted ~15% per division so climbing the pyramid stays a stretch.
+  static func winBar(_ division: NativeDivision, store: OkkleStore) -> Double {
+    weeklyBenchmark(store: store) * (1.0 + Double(division.rawValue) * 0.15)
+  }
+
+  private static func result(forBanked banked: Double, bar: Double) -> Int {
+    banked >= bar ? 3 : (banked >= bar * 0.5 ? 1 : 0)
+  }
+
+  /// Real tax £ banked in a week = that week's mileage deduction × your marginal rate.
+  static func weeklyBanked(start: Date, end: Date, store: OkkleStore) -> Double {
+    let range = start..<end
+    let rate = store.settings.incomeBracket.marginalRate(region: store.settings.region)
+    var deduction = 0.0
+    for record in store.records where range.contains(record.date) {
+      deduction += store.calcDeduction(miles: record.miles ?? 0, vehicle: record.vehicle ?? store.settings.defaultVehicle, date: record.date)
+    }
+    for trip in store.trips where range.contains(trip.startedAt) {
+      deduction += store.calcDeduction(miles: trip.miles, vehicle: trip.vehicle, date: trip.startedAt)
+    }
+    return deduction * rate
+  }
+
+  /// Your typical week: all-time average banked £, with a gentle floor so brand-new
+  /// drivers can still post a win in their first weeks.
+  static func weeklyBenchmark(store: OkkleStore) -> Double {
+    let buckets = allWeeklyBanked(store: store).filter { $0 > 0 }
+    guard !buckets.isEmpty else { return 12 } // ~£12 floor before any history
+    let avg = buckets.reduce(0, +) / Double(buckets.count)
+    return max(8, avg)
+  }
+
+  private static func topWeeklyBanked(count: Int, store: OkkleStore) -> [Double] {
+    Array(allWeeklyBanked(store: store).sorted(by: >).prefix(count))
+  }
+
+  /// Banked £ bucketed into aligned weeks across the driver's whole history.
+  private static func allWeeklyBanked(store: OkkleStore) -> [Double] {
+    let dates = store.records.map(\.date) + store.trips.map(\.startedAt)
+    guard let earliest = dates.min() else { return [] }
+    let firstWeek = floor(earliest.timeIntervalSince1970 / weekSeconds)
+    let lastWeek = floor(Date().timeIntervalSince1970 / weekSeconds)
+    guard lastWeek >= firstWeek else { return [] }
+    var buckets: [Double] = []
+    var w = firstWeek
+    while w <= lastWeek {
+      let start = Date(timeIntervalSince1970: w * weekSeconds)
+      buckets.append(weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store))
+      w += 1
+    }
+    return buckets
+  }
+
+  // MARK: Season advance + persistence
+
+  private static func advance(_ state: inout NativeLeagueState, store: OkkleStore) {
+    let seasonLength = weekSeconds * Double(weeksPerSeason)
+    var guardrail = 0
+    while Date().timeIntervalSince(state.seasonStart) >= seasonLength, guardrail < 240 {
+      let rows = standings(seasonStart: state.seasonStart, divisionRaw: state.divisionRaw, store: store)
+      let yourRow = rows.first { $0.isYou }
+      let position = (rows.firstIndex { $0.isYou } ?? 0) + 1
+      let wonFinal = (yourRow?.form.last ?? 0) == 3
+      let canPromote = state.divisionRaw < NativeDivision.premierLeague.rawValue
+      let fromDivision = state.divisionRaw
+      let season = seasonIndex(state.seasonStart)
+
+      if position == 1, canPromote {
+        // Champions — automatic promotion.
+        state.divisionRaw += 1
+        state.ceremonyToRaw = state.divisionRaw
+        recordHonour(NativeHonour(seasonIndex: season, divisionRaw: fromDivision, kind: .champions, date: state.seasonStart.addingTimeInterval(seasonLength)))
+      } else if (position == 2 || position == 3), canPromote, wonFinal {
+        // Play-off final won — promoted the hard way.
+        state.divisionRaw += 1
+        state.ceremonyToRaw = state.divisionRaw
+        recordHonour(NativeHonour(seasonIndex: season, divisionRaw: fromDivision, kind: .playoff, date: state.seasonStart.addingTimeInterval(seasonLength)))
+      } else if position >= rows.count, state.divisionRaw > 0 {
+        // Bottom of the table — relegated.
+        state.divisionRaw -= 1
+      }
+      state.seasonStart = state.seasonStart.addingTimeInterval(seasonLength)
+      guardrail += 1
+    }
+  }
+
+  private static func seasonIndex(_ seasonStart: Date) -> Int {
+    Int(floor(seasonStart.timeIntervalSince(epoch) / (weekSeconds * Double(weeksPerSeason))))
+  }
+
+  private static func loadState(store: OkkleStore) -> NativeLeagueState {
+    if let data = UserDefaults.standard.data(forKey: storageKey),
+       let state = try? JSONDecoder().decode(NativeLeagueState.self, from: data) {
+      return state
+    }
+    let division = NativeLeagueEngine.status(store: store).division
+    let state = NativeLeagueState(divisionRaw: division.rawValue, seasonStart: alignedSeasonStart(for: Date()), ceremonyToRaw: nil)
+    save(state)
+    return state
+  }
+
+  private static func save(_ state: NativeLeagueState) {
+    if let data = try? JSONEncoder().encode(state) {
+      UserDefaults.standard.set(data, forKey: storageKey)
+    }
+  }
+
+  // MARK: Honours (the trophy cabinet)
+
+  static func honours() -> [NativeHonour] {
+    guard let data = UserDefaults.standard.data(forKey: honoursKey),
+          let list = try? JSONDecoder().decode([NativeHonour].self, from: data) else { return [] }
+    return list.sorted { $0.date > $1.date }
+  }
+
+  private static func recordHonour(_ honour: NativeHonour) {
+    var list = honours()
+    guard !list.contains(where: { $0.id == honour.id }) else { return }
+    list.append(honour)
+    if let data = try? JSONEncoder().encode(list) {
+      UserDefaults.standard.set(data, forKey: honoursKey)
+    }
+  }
+
+  // MARK: Club identity
+
+  static func clubIdentity(store: OkkleStore) -> NativeClubIdentity {
+    if let data = UserDefaults.standard.data(forKey: clubKey),
+       let club = try? JSONDecoder().decode(NativeClubIdentity.self, from: data) {
+      return club
+    }
+    let base = store.settings.name.isEmpty ? "Your club" : "\(store.settings.name) FC"
+    return NativeClubIdentity(name: base, colorIndex: 0, emblem: "shield.fill")
+  }
+
+  static func saveClubIdentity(_ club: NativeClubIdentity) {
+    if let data = try? JSONEncoder().encode(club) {
+      UserDefaults.standard.set(data, forKey: clubKey)
+    }
+  }
+
+  // MARK: Helpers
+
+  private static func completedWeeks(since seasonStart: Date) -> Int {
+    max(0, min(weeksPerSeason, Int(floor(Date().timeIntervalSince(seasonStart) / weekSeconds))))
+  }
+
+  private static func alignedSeasonStart(for date: Date) -> Date {
+    let blockLength = weekSeconds * Double(weeksPerSeason)
+    let blocks = floor(date.timeIntervalSince(epoch) / blockLength)
+    return epoch.addingTimeInterval(blocks * blockLength)
   }
 }

@@ -39,18 +39,18 @@ struct OkkleNativeRootView: View {
 
   private var appTabs: some View {
     TabView(selection: $selectedTab) {
-      NativeHomeView()
+      NativeHomeView(selectedTab: $selectedTab)
         .tabItem { Label("Home", systemImage: "person.crop.circle") }
         .tag(NativeTab.home)
-      NativeLogView(selectedTab: $selectedTab)
-        .tabItem { Label("Log", systemImage: "square.and.pencil") }
-        .tag(NativeTab.log)
-      NativeTripView()
-        .tabItem { Label("Trip", systemImage: "location.north") }
-        .tag(NativeTab.trip)
       NativeInsightsView()
         .tabItem { Label("Insights", systemImage: "sparkles") }
         .tag(NativeTab.insights)
+      NativeTripView()
+        .tabItem { Label("Trip", systemImage: "location.north") }
+        .tag(NativeTab.trip)
+      NativeLogView(selectedTab: $selectedTab)
+        .tabItem { Label("Log", systemImage: "square.and.pencil") }
+        .tag(NativeTab.log)
       NativeRecordsView()
         .tabItem { Label("Records", systemImage: "archivebox") }
         .tag(NativeTab.records)

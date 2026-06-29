@@ -128,12 +128,65 @@ private struct NativeScreenScrollOffsetKey: PreferenceKey {
 
 struct NativeBackground: View {
   var body: some View {
-    LinearGradient(
-      colors: [Color(uiColor: .systemBackground), Color(uiColor: .secondarySystemBackground)],
-      startPoint: .top,
-      endPoint: .bottom
-    )
-    .ignoresSafeArea()
+    OkkleColor.surface
+      .ignoresSafeArea()
+  }
+}
+
+extension View {
+  /// White panel that floats on the white background via a clear halo (3D depth).
+  func okkleCard(cornerRadius: CGFloat = 20) -> some View {
+    self
+      .background(OkkleColor.card, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+      .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+      .shadow(color: .black.opacity(0.10), radius: 16, y: 8)
+  }
+}
+
+/// Apple News-style card: a white body lifted by a clear halo, topped by a
+/// dark-green kicker band that fades into brand. Reusable across screens.
+struct NativeBannerCard<Content: View>: View {
+  let kicker: String
+  var trailing: String? = nil
+  var cornerRadius: CGFloat = 26
+  var content: Content
+
+  init(kicker: String, trailing: String? = nil, cornerRadius: CGFloat = 26, @ViewBuilder content: () -> Content) {
+    self.kicker = kicker
+    self.trailing = trailing
+    self.cornerRadius = cornerRadius
+    self.content = content()
+  }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack {
+        Text(kicker)
+          .font(.system(size: 13, weight: .heavy))
+          .tracking(0.6)
+          .foregroundStyle(.white)
+        Spacer()
+        if let trailing {
+          Text(trailing)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(.white.opacity(0.85))
+        }
+      }
+      .padding(.horizontal, 18)
+      .padding(.vertical, 11)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        LinearGradient(colors: [OkkleColor.bannerDark, OkkleColor.brand], startPoint: .leading, endPoint: .trailing)
+      )
+
+      content
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OkkleColor.card)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+    .shadow(color: .black.opacity(0.12), radius: 20, y: 10)
   }
 }
 
@@ -196,7 +249,7 @@ struct NativeMetricTile: View {
     }
     .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
     .padding(16)
-    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .okkleCard()
   }
 }
 

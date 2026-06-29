@@ -25,6 +25,21 @@ enum OkkleColor {
   static let red = Color(red: 0.82, green: 0.20, blue: 0.18)
   static let blue = Color(red: 0.18, green: 0.39, blue: 0.86)
   static let fieldBackground = Color(uiColor: .secondarySystemBackground).opacity(0.82)
+
+  // App background — clean white in light mode (no tint); panels float on top via their halos.
+  static let surface = Color(UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.063, green: 0.094, blue: 0.086, alpha: 1)
+      : UIColor.white
+  })
+  // Solid card surface — sits a touch off the white background so its halo reads as depth.
+  static let card = Color(UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor(red: 0.118, green: 0.157, blue: 0.149, alpha: 1)
+      : UIColor.white
+  })
+  // Deep forest green for the Apple News-style kicker band (fades into brand).
+  static let bannerDark = Color(red: 0.043, green: 0.227, blue: 0.157)
 }
 
 let gbpFormatter: NumberFormatter = {
