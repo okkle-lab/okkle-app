@@ -56,13 +56,18 @@ const EXPENSE_CATEGORIES: Cat[] = [
   { name: 'Maintenance / repairs', icon: 'tool' },
   { name: 'Tyres', icon: 'disc' },
 ];
+// Defaults are the costs a courier can claim ON TOP of the HMRC simplified
+// flat-rate mileage (which already covers fuel, charging, insurance, servicing
+// and tyres — claiming those again would double-claim). These are the common,
+// genuinely-allowable everyday ones; the mileage-covered costs are still
+// available via search and flagged for accountant review.
 const DEFAULT_TOP_EXPENSES = [
-  'Fuel',
   'Parking',
   'Phone / data',
-  'Charging',
-  'Insurance',
-  'Maintenance / repairs',
+  'Congestion charge',
+  'ULEZ charge',
+  'App subscription',
+  'Insulated bag',
 ];
 const PERSONALIZE_AFTER_DAYS = 30;
 const PERSONALIZE_AFTER_LOGS = 6;
@@ -164,7 +169,11 @@ export default function LogScreen() {
   const [scanning, setScanning] = useState(false);
   const [scannedMerchant, setScannedMerchant] = useState<string | null>(null);
   const [date, setDate] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; });
-  const [period, setPeriod] = useState<'day' | 'week'>('day');
+  // Earnings is usually logged a week at a time (platforms pay weekly), while a
+  // single expense or mileage entry is a day. Default to that per kind, and reset
+  // to it whenever the user switches logging type.
+  const [period, setPeriod] = useState<'day' | 'week'>(tab === 'income' ? 'week' : 'day');
+  React.useEffect(() => { setPeriod(tab === 'income' ? 'week' : 'day'); }, [tab]);
   const [saved, setSaved] = useState(false);
   // Track the keyboard height so the Back/Continue footer can sit just above it.
   // (KeyboardAvoidingView doesn't lift it reliably on this tab screen, leaving

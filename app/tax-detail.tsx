@@ -131,6 +131,9 @@ export default function TaxDetail() {
               <Row label="Total estimated due" value={fmtGbp(pos.totalDue)} bold accent />
               <Row label="Effective rate" value={fmtPct(pos.effectiveRate)} last />
             </Card>
+            {otherIncome > 0 && (
+              <Text style={s.note}>Includes {fmtGbp(otherIncome)} of other income (e.g. a PAYE job): your courier profit is taxed on top of it at the marginal rate. That employment income is taxed separately through your payslip.</Text>
+            )}
             <Text style={s.note}>{class2Note(pos.profit)}</Text>
             {pos.paymentOnAccount > 0 && (
               <View style={s.poaBox}>

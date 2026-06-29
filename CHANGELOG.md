@@ -2,6 +2,27 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0 (47) - 2026-06-29 (Disclose PAYE income in the tax estimate)
+
+- **The tax estimate now explains the PAYE assumption.** When you've added other (PAYE) income, the Estimated bill and the Accountant Pack note that your courier profit is taxed on top of it at the marginal rate, and that the employment income is taxed separately (and isn't part of the self-employment turnover/profit figures). Makes the Income Tax figure reconcile for your accountant. The transactions CSV is unchanged — PAYE income isn't a courier transaction, so it stays out of the import.
+
+## 1.0 (46) - 2026-06-29 (PAYE job in onboarding)
+
+- **"Do you also have a PAYE job?" in onboarding.** Added to the existing tax step (no extra step). Tap Yes and a wages field appears — your courier profit is then taxed on top of those wages at the right marginal rate, and payments on account account for tax already collected via PAYE. It's the same value as Tax Settings → Other income, so it stays in sync. The onboarding tax step now scrolls only if it doesn't fit, so nothing clips on smaller phones.
+
+## 1.0 (45) - 2026-06-29 (Expense default categories)
+
+- **Default expense quick-picks are now the on-top-of-mileage costs.** The 6 starting categories are Parking, Phone / data, Congestion charge, ULEZ charge, App subscription and Insulated bag — everyday costs you can claim **in addition** to HMRC simplified mileage. The mileage-covered costs (fuel, charging, insurance, servicing, tyres) are no longer defaults (claiming them on top would double-claim) but remain searchable and flagged.
+
+## 1.0 (44) - 2026-06-29 (Logging defaults + live hotspot map)
+
+- **Smarter period defaults when logging.** Earnings now default to logging by **Week** (platforms pay weekly), while Expense and Mileage default to **Day**. Switching logging type resets to that type's default.
+- **Hotspot map shows from day one.** Instead of an empty placeholder before you've driven, the Insights → Where map now centres on **where you are now** and your hotspots build up on it as you drive. (Apple Maps, with your live location.)
+
+## 1.0 (43) - 2026-06-29 (Fix the Insights crash)
+
+- **Fixed the crash when opening Insights.** The "where you ride" heatmap used react-native-maps' native `Heatmap`, which only works with Google Maps — on iOS's Apple Maps it doesn't exist, so the whole screen crashed (`View config not found for component AIRMapHeatmap`). This was the crash that could bounce you back to onboarding. The heatmap now uses translucent map circles, which Apple Maps supports — same "where you earn most" picture, no crash.
+
 ## 1.0 (42) - 2026-06-28 (Launch release)
 
 - **Launch version.** App/package version bumped to 1.0 for release.
