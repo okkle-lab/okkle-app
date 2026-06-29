@@ -1,22 +1,24 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View, Text } from 'react-native';
-import MapView, { Heatmap, type LatLng } from 'react-native-maps';
+import MapView, { Circle, type LatLng } from 'react-native-maps';
 import Svg, { Rect } from 'react-native-svg';
 import { colors, radius, type } from '../theme';
 import type { HeatPoint } from '../db';
 
 // Heatmap of where you ride. On iOS it renders on a real Apple Maps street map
-// (react-native-maps, already used by the live trip RouteMap). Elsewhere / in
-// Expo Go it falls back to a self-contained SVG density grid so it always shows
-// something. Both are built on-device from your GPS trips.
-
-const HEAT_GRADIENT = {
-  colors: ['#9BE3D2', '#5FD0BB', '#E7C66B', '#E0961F', '#E2604A'],
-  startPoints: [0.1, 0.3, 0.5, 0.7, 1.0],
-  colorMapSize: 256,
-};
+// (react-native-maps, already used by the live trip RouteMap) using translucent
+// circle overlays — react-native-maps' native <Heatmap> only works with Google
+// Maps (AIRMapHeatmap), so on Apple Maps it crashes with "View config not found".
+// Elsewhere / in Expo Go it falls back to a self-contained SVG density grid so it
+// always shows something. Both are built on-device from your GPS trips.
 
 const COLS = 22;
+
+function hexToRgba(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
 function heatColor(t: number): { fill: string; opacity: number } {
   const fill =
     t < 0.2 ? '#9BE3D2' :
@@ -117,6 +119,22 @@ function AppleHeatMap({ points, height }: { points: HeatPoint[]; height: number 
     };
   }, [points]);
 
+  // Translucent overlapping circles approximate a heatmap on Apple Maps (which
+  // doesn't support the native Heatmap). Capped for performance; radius scales
+  // with how zoomed-out the area is.
+  const circles = useMemo(() => {
+    const capped = weighted.length > 180
+      ? weighted.filter((_, i) => i % Math.ceil(weighted.length / 180) === 0)
+      : weighted;
+    const max = capped.reduce((m, p) => Math.max(m, p.weight), 0) || 1;
+    const radiusM = Math.max(60, region.latitudeDelta * 111000 * 0.035);
+    return capped.map((p) => {
+      const t = Math.min(1, p.weight / max);
+      const { fill, opacity } = heatColor(t);
+      return { lat: p.latitude, lng: p.longitude, radiusM, color: hexToRgba(fill, Math.min(0.55, opacity * 0.6)) };
+    });
+  }, [weighted, region.latitudeDelta]);
+
   useEffect(() => {
     const coords: LatLng[] = points.map(p => ({ latitude: p.lat, longitude: p.lng }));
     if (coords.length < 2) return;
@@ -142,9 +160,16 @@ function AppleHeatMap({ points, height }: { points: HeatPoint[]; height: number 
         showsScale={false}
         showsTraffic={false}
       >
-        {weighted.length > 0 ? (
-          <Heatmap points={weighted} radius={42} opacity={0.7} gradient={HEAT_GRADIENT} />
-        ) : null}
+        {circles.map((c, i) => (
+          <Circle
+            key={i}
+            center={{ latitude: c.lat, longitude: c.lng }}
+            radius={c.radiusM}
+            fillColor={c.color}
+            strokeColor="rgba(0,0,0,0)"
+            strokeWidth={0}
+          />
+        ))}
       </MapView>
     </View>
   );

@@ -2,6 +2,10 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 1.0 (43) - 2026-06-29 (Fix the Insights crash)
+
+- **Fixed the crash when opening Insights.** The "where you ride" heatmap used react-native-maps' native `Heatmap`, which only works with Google Maps — on iOS's Apple Maps it doesn't exist, so the whole screen crashed (`View config not found for component AIRMapHeatmap`). This was the crash that could bounce you back to onboarding. The heatmap now uses translucent map circles, which Apple Maps supports — same "where you earn most" picture, no crash.
+
 ## 1.0 (42) - 2026-06-28 (Launch release)
 
 - **Launch version.** App/package version bumped to 1.0 for release.
