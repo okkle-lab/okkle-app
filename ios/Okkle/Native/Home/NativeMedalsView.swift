@@ -2117,21 +2117,22 @@ struct NativeLeagueView: View {
     let snapshot = NativeSeasonEngine.snapshot(store: store)
     NavigationStack {
       VStack(spacing: 16) {
-        Picker("", selection: $segment) {
+        Picker("", selection: $segment.animation(.easeInOut(duration: 0.2))) {
           Text("Table").tag(Segment.table)
           Text("Medals").tag(Segment.medals)
         }
         .pickerStyle(.segmented)
         .colorScheme(.dark)
+        .padding(.horizontal, 20)
 
-        if segment == .table {
-          tableTab(snapshot)
-        } else {
-          medalsTab(current: snapshot.division)
+        // Swipe left/right to move between Table and Medals.
+        TabView(selection: $segment) {
+          leaguePage { tableTab(snapshot) }.tag(Segment.table)
+          leaguePage { medalsTab(current: snapshot.division) }.tag(Segment.medals)
         }
-        Spacer(minLength: 0)
+        .tabViewStyle(.page(indexDisplayMode: .never))
       }
-      .padding(20)
+      .padding(.top, 20)
       .background { NativeLeagueBackground(division: snapshot.division) }
       .navigationTitle("League")
       .navigationBarTitleDisplayMode(.inline)
@@ -2174,6 +2175,17 @@ struct NativeLeagueView: View {
   }
 
   // MARK: Table tab
+
+  /// One swipe page — content pinned to the top, padded so card glows aren't
+  /// clipped by the paging view's edges.
+  private func leaguePage<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+    VStack(spacing: 16) {
+      content()
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 20)
+    .padding(.top, 6)
+  }
 
   private func tableTab(_ snapshot: NativeSeasonSnapshot) -> some View {
     VStack(spacing: 16) {

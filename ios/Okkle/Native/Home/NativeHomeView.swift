@@ -129,7 +129,7 @@ struct NativeHomeView: View {
         setAsidePage.tag(1)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
-      .frame(height: 218)
+      .frame(height: 226)
 
       HStack(spacing: 7) {
         ForEach(0..<2, id: \.self) { index in
@@ -211,10 +211,9 @@ struct NativeHomeView: View {
         .background(OkkleColor.card)
     }
     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-    .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-    .shadow(color: .black.opacity(0.12), radius: 18, y: 9)
-    .padding(.horizontal, 6)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .shadow(color: .black.opacity(0.10), radius: 10, y: 5)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
     .contentShape(Rectangle())
     .onTapGesture { selectedTab = .insights }
   }
