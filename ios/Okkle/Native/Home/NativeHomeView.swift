@@ -28,6 +28,10 @@ struct NativeHomeView: View {
         VStack(alignment: .leading, spacing: 10) {
           sectionHeader("THIS TAX YEAR")
           taxCard
+            .padding(.horizontal, -20)   // break out of the body inset so the
+                                         // paging card can align at 20pt like
+                                         // the league/recent cards, with room
+                                         // for its shadow inside the page
         }
         VStack(alignment: .leading, spacing: 12) {
           sectionHeader("YOUR CLUB")
@@ -212,7 +216,7 @@ struct NativeHomeView: View {
     }
     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
     .shadow(color: .black.opacity(0.10), radius: 10, y: 5)
-    .padding(.horizontal, 12)
+    .padding(.horizontal, 20)
     .padding(.vertical, 8)
     .contentShape(Rectangle())
     .onTapGesture {
