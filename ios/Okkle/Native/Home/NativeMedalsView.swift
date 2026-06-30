@@ -1299,19 +1299,29 @@ struct NativeMatchdayCard: View {
 
   var body: some View {
     VStack(spacing: 0) {
+      HStack(spacing: 8) {
+        Text("\(division.name.uppercased()) · MATCHWEEK \(fixture.matchweek) OF \(fixture.totalWeeks)")
+          .font(.system(size: 12, weight: .heavy))
+          .tracking(0.4)
+          .foregroundStyle(.white)
+          .lineLimit(1)
+          .minimumScaleFactor(0.8)
+        Spacer()
+        if fixture.state == .live {
+          Circle().fill(.white).frame(width: 6, height: 6)
+        }
+        Text(stateLabel)
+          .font(.system(size: 11, weight: .heavy))
+          .foregroundStyle(.white.opacity(0.9))
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 12)
+      .background(division.gradient)
+
       if fixture.stakes != .none {
         banner
       }
       VStack(spacing: 14) {
-        HStack {
-          Text("\(division.name) · matchweek \(fixture.matchweek) of \(fixture.totalWeeks)")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-          Spacer()
-          Text(stateLabel)
-            .font(.system(size: 12, weight: .heavy))
-            .foregroundStyle(fixture.state == .live ? OkkleColor.red : OkkleColor.muted)
-        }
         HStack(alignment: .top, spacing: 8) {
           youTeam
           VStack(spacing: 3) {
@@ -1488,7 +1498,7 @@ struct NativeMatchdayCard: View {
   private var stateLabel: String {
     switch fixture.state {
     case .kickoff: return "KICK-OFF"
-    case .live: return "● LIVE"
+    case .live: return "LIVE"
     case .fullTime: return "FULL TIME"
     }
   }
@@ -1513,23 +1523,40 @@ struct NativeMatchdayCard: View {
 struct NativeHonoursCard: View {
   let honours: [NativeHonour]
 
+  private var goldBand: LinearGradient {
+    LinearGradient(colors: [Color(red: 0.72, green: 0.50, blue: 0.10), Color(red: 0.93, green: 0.74, blue: 0.22)], startPoint: .leading, endPoint: .trailing)
+  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(spacing: 0) {
       HStack(spacing: 8) {
         Image(systemName: "trophy.fill")
-          .font(.system(size: 15, weight: .bold))
-          .foregroundStyle(OkkleColor.amber)
-        Text("Honours")
-          .font(.system(size: 17, weight: .heavy))
-          .foregroundStyle(OkkleColor.ink)
+          .font(.system(size: 14, weight: .bold))
+        Text("HONOURS")
+          .font(.system(size: 13, weight: .heavy))
+          .tracking(0.6)
         Spacer()
         if !honours.isEmpty {
           Text("\(honours.count)")
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(OkkleColor.muted)
+            .font(.system(size: 13, weight: .heavy))
         }
       }
+      .foregroundStyle(.white)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 12)
+      .background(goldBand)
 
+      content
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .okkleCard()
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    VStack(alignment: .leading, spacing: 14) {
       if honours.isEmpty {
         Text("No silverware yet — win your division to fill the cabinet.")
           .font(.system(size: 13, weight: .medium))
@@ -1567,9 +1594,6 @@ struct NativeHonoursCard: View {
         }
       }
     }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .okkleCard()
   }
 }
 
@@ -2068,12 +2092,12 @@ struct NativeLeagueView: View {
 
   private func tableTab(_ snapshot: NativeSeasonSnapshot) -> some View {
     VStack(spacing: 16) {
-      leagueTableCard(snapshot)
       NativeMatchdayCard(
         fixture: NativeSeasonEngine.fixture(store: store),
         division: snapshot.division,
         club: NativeSeasonEngine.clubIdentity(store: store)
       )
+      leagueTableCard(snapshot)
     }
   }
 
@@ -2208,6 +2232,22 @@ struct NativeLeagueView: View {
   private func ladder(current: NativeDivision) -> some View {
     let rows = NativeDivision.allCases.reversed()
     return VStack(spacing: 0) {
+      HStack(spacing: 8) {
+        Image(systemName: "trophy.fill")
+          .font(.system(size: 13, weight: .bold))
+        Text("THE PYRAMID")
+          .font(.system(size: 13, weight: .heavy))
+          .tracking(0.6)
+        Spacer()
+        Text(current.name.uppercased())
+          .font(.system(size: 11, weight: .heavy))
+          .foregroundStyle(.white.opacity(0.85))
+      }
+      .foregroundStyle(.white)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 12)
+      .background(current.gradient)
+
       ForEach(Array(rows), id: \.self) { division in
         NavigationLink {
           NativeDivisionMedalsView(division: division).environmentObject(store)
@@ -2220,6 +2260,7 @@ struct NativeLeagueView: View {
         }
       }
     }
+    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     .okkleCard()
   }
 
