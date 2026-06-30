@@ -1549,6 +1549,69 @@ struct NativeMatchdayCard: View {
   }
 }
 
+/// A classic two-handled cup silhouette — the shared shape of UK football
+/// trophies (the FA Cup, the league trophy, the European cup all share it).
+struct NativeCupShape: Shape {
+  func path(in r: CGRect) -> Path {
+    let w = r.width, h = r.height
+    func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: r.minX + w * x, y: r.minY + h * y) }
+    var path = Path()
+    path.move(to: p(0.22, 0.06))
+    path.addLine(to: p(0.78, 0.06))                                   // rim
+    path.addQuadCurve(to: p(0.58, 0.52), control: p(0.75, 0.42))      // right bowl
+    path.addLine(to: p(0.56, 0.64))
+    path.addLine(to: p(0.62, 0.70))                                   // stem → base
+    path.addLine(to: p(0.76, 0.92))                                   // base right
+    path.addLine(to: p(0.24, 0.92))                                   // base bottom
+    path.addLine(to: p(0.38, 0.70))                                   // base left
+    path.addLine(to: p(0.44, 0.64))
+    path.addLine(to: p(0.42, 0.52))                                   // stem left
+    path.addQuadCurve(to: p(0.22, 0.06), control: p(0.25, 0.42))      // left bowl
+    path.closeSubpath()
+    return path
+  }
+}
+
+/// The two open handles of the cup.
+struct NativeCupHandles: Shape {
+  func path(in r: CGRect) -> Path {
+    let w = r.width, h = r.height
+    func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: r.minX + w * x, y: r.minY + h * y) }
+    var path = Path()
+    path.move(to: p(0.24, 0.10))
+    path.addQuadCurve(to: p(0.26, 0.38), control: p(0.02, 0.22))      // left handle
+    path.move(to: p(0.76, 0.10))
+    path.addQuadCurve(to: p(0.74, 0.38), control: p(0.98, 0.22))      // right handle
+    return path
+  }
+}
+
+/// A trophy — gold when earned, ghosted steel when still to be won.
+struct NativeTrophyView: View {
+  var earned: Bool
+  var size: CGFloat = 52
+
+  private var fill: LinearGradient {
+    earned
+      ? LinearGradient(colors: [Color(red: 1.0, green: 0.88, blue: 0.42), Color(red: 0.80, green: 0.58, blue: 0.12)], startPoint: .top, endPoint: .bottom)
+      : LinearGradient(colors: [Color(red: 0.80, green: 0.81, blue: 0.84), Color(red: 0.50, green: 0.51, blue: 0.55)], startPoint: .top, endPoint: .bottom)
+  }
+  private var handle: Color { earned ? Color(red: 0.93, green: 0.76, blue: 0.22) : Color(red: 0.62, green: 0.63, blue: 0.66) }
+
+  var body: some View {
+    ZStack {
+      NativeCupHandles()
+        .stroke(handle, style: StrokeStyle(lineWidth: size * 0.06, lineCap: .round))
+      NativeCupShape().fill(fill)
+      NativeCupShape()
+        .fill(LinearGradient(colors: [.white.opacity(0.45), .clear], startPoint: .topLeading, endPoint: .center))
+        .blendMode(.plusLighter)
+    }
+    .frame(width: size, height: size)
+    .opacity(earned ? 1 : 0.6)
+  }
+}
+
 /// The trophy cabinet — every division won, kept forever. Styled in deep
 /// Champions-League blue: the whole card is the prestige colour.
 struct NativeHonoursCard: View {
@@ -1587,45 +1650,32 @@ struct NativeHonoursCard: View {
     .shadow(color: NativeHonoursCard.glow.opacity(0.45), radius: 16, y: 8)
   }
 
+  // The cups you can win — one per promotable division.
+  private static let winnable: [NativeDivision] = [.nationalLeague, .leagueTwo, .leagueOne, .championship]
+
   @ViewBuilder
   private var content: some View {
     VStack(alignment: .leading, spacing: 14) {
-      if honours.isEmpty {
-        Text("No silverware yet — win your division to fill the cabinet.")
-          .font(.system(size: 13, weight: .medium))
-          .foregroundStyle(.white.opacity(0.7))
-      } else {
-        VStack(spacing: 0) {
-          ForEach(honours) { honour in
-            HStack(spacing: 13) {
-              RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(honour.division.accent)
-                .frame(width: 38, height: 38)
-                .overlay(
-                  Image(systemName: honour.kind == .champions ? "trophy.fill" : "rosette")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                )
-              VStack(alignment: .leading, spacing: 2) {
-                Text(honour.title)
-                  .font(.system(size: 15, weight: .bold))
-                  .foregroundStyle(.white)
-                Text(honour.subtitle)
-                  .font(.system(size: 12, weight: .medium))
-                  .foregroundStyle(.white.opacity(0.7))
-              }
-              Spacer()
-              Image(systemName: "medal.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(red: 0.95, green: 0.78, blue: 0.25))
-            }
-            .padding(.vertical, 10)
-            if honour.id != honours.last?.id {
-              Divider().overlay(Color.white.opacity(0.12)).padding(.leading, 51)
-            }
+      HStack(alignment: .top, spacing: 6) {
+        ForEach(NativeHonoursCard.winnable, id: \.self) { division in
+          let won = honours.contains { $0.divisionRaw == division.rawValue }
+          VStack(spacing: 8) {
+            NativeTrophyView(earned: won, size: 52)
+            Text(division.shortName)
+              .font(.system(size: 11, weight: .heavy))
+              .foregroundStyle(.white.opacity(won ? 0.95 : 0.5))
+              .lineLimit(1)
+              .minimumScaleFactor(0.65)
           }
+          .frame(maxWidth: .infinity)
         }
       }
+      Text(honours.isEmpty
+           ? "Win your division to lift its cup and fill the cabinet."
+           : "\(honours.count) trophy\(honours.count == 1 ? "" : "s") in the cabinet — win more to complete the set.")
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(.white.opacity(0.7))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 }
@@ -2250,11 +2300,6 @@ struct NativeLeagueView: View {
     return VStack(spacing: 16) {
       NativeMedalSummaryCard(earned: earned, total: all.count, completion: all.isEmpty ? 0 : Double(earned) / Double(all.count), coins: NativeWallet.balance(store: store))
       NativeHonoursCard(honours: NativeSeasonEngine.honours())
-      Text("Climb the table to unlock tougher medals — each division holds its own set.")
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(.white.opacity(0.75))
-        .multilineTextAlignment(.center)
-        .padding(.horizontal, 12)
       ladder(current: current)
     }
   }
