@@ -1148,6 +1148,7 @@ struct NativeFormGuide: View {
 /// Compact Home card: current division, league position, and recent form.
 struct NativeLeagueCard: View {
   let snapshot: NativeSeasonSnapshot
+  var fixture: NativeFixture? = nil
   var medals: [NativeMedalAchievement] = []
   let onOpen: () -> Void
 
@@ -1196,6 +1197,26 @@ struct NativeLeagueCard: View {
               .foregroundStyle(OkkleColor.muted)
           }
 
+          if let fixture, fixture.matchweek > 0 {
+            Divider().padding(.vertical, 13)
+            HStack(spacing: 10) {
+              Image(systemName: fixture.state == .fullTime ? "checkered.flag" : "dot.radiowaves.left.and.right")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(fixture.state == .live ? OkkleColor.red : snapshot.division.accent)
+              Text("vs \(fixture.opponent)")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(OkkleColor.muted)
+                .lineLimit(1)
+              Spacer()
+              Text("\(fixture.yourGoals)–\(fixture.oppGoals)")
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .foregroundStyle(OkkleColor.ink)
+              Text(fixtureState(fixture))
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(fixtureColor(fixture))
+            }
+          }
+
           if !medals.isEmpty {
             Divider().padding(.vertical, 13)
             HStack(spacing: 10) {
@@ -1218,6 +1239,21 @@ struct NativeLeagueCard: View {
       }
     }
     .buttonStyle(.plain)
+  }
+
+  private func fixtureState(_ f: NativeFixture) -> String {
+    switch f.state {
+    case .kickoff: return "KICK-OFF"
+    case .live: return f.youAreWinning ? "AHEAD" : (f.isLevel ? "LEVEL" : "BEHIND")
+    case .fullTime: return f.youAreWinning ? "WON" : (f.isLevel ? "DREW" : "LOST")
+    }
+  }
+
+  private func fixtureColor(_ f: NativeFixture) -> Color {
+    if f.state == .kickoff { return OkkleColor.muted }
+    if f.youAreWinning { return OkkleColor.brand }
+    if f.isLevel { return OkkleColor.amber }
+    return OkkleColor.red
   }
 }
 
@@ -1573,6 +1609,7 @@ struct NativeClubEditorView: View {
               .foregroundStyle(OkkleColor.muted)
           }
           .padding(.horizontal, 20)
+          .padding(.top, 10)
           .padding(.bottom, 20)
         }
         .scrollIndicators(.hidden)
@@ -2401,9 +2438,19 @@ enum NativeKit: Int, CaseIterable {
 enum NativeCrestShape: Int, CaseIterable {
   case rounded, circle, shield, hexagon, diamond, oval, octagon, pennant, spade, tudor, banner, pentagon, heater
 
-  /// The shapes offered in the editor (pennant retired — kept in the enum so
-  /// saved badges keep their raw values, but no longer selectable).
-  static let pickable: [NativeCrestShape] = allCases.filter { $0 != .pennant }
+  /// The shapes offered in the editor (pennant + oval retired — kept in the enum
+  /// so saved badges keep their raw values, but no longer selectable; oval read
+  /// as a duplicate roundel).
+  static let pickable: [NativeCrestShape] = allCases.filter { $0 != .pennant && $0 != .oval }
+
+  /// Coins to unlock — simple shapes are free/cheap, proper football crests cost more.
+  var coins: Int {
+    switch self {
+    case .rounded, .circle: return 0
+    case .diamond, .hexagon, .octagon, .pentagon, .oval: return 150
+    case .shield, .spade, .tudor, .banner, .heater, .pennant: return 450
+    }
+  }
 
   var name: String {
     switch self {
@@ -2611,15 +2658,18 @@ struct NativeTitleStars: View {
 
 /// A metallic edge around the badge — prestige trim.
 enum NativeTrim: Int, CaseIterable {
-  case none, white, gold, silver, bronze
+  case none, white, black, gold, silver, bronze, graphite, roseGold
 
   var name: String {
     switch self {
     case .none: return "None"
     case .white: return "White"
+    case .black: return "Black"
     case .gold: return "Gold"
     case .silver: return "Silver"
     case .bronze: return "Bronze"
+    case .graphite: return "Graphite"
+    case .roseGold: return "Rose"
     }
   }
 
@@ -2627,9 +2677,12 @@ enum NativeTrim: Int, CaseIterable {
     switch self {
     case .none: return .white.opacity(0.30)
     case .white: return .white
+    case .black: return Color(red: 0.12, green: 0.12, blue: 0.14)
     case .gold: return Color(red: 0.95, green: 0.78, blue: 0.25)
     case .silver: return Color(red: 0.80, green: 0.82, blue: 0.86)
     case .bronze: return Color(red: 0.80, green: 0.52, blue: 0.27)
+    case .graphite: return Color(red: 0.36, green: 0.38, blue: 0.42)
+    case .roseGold: return Color(red: 0.90, green: 0.62, blue: 0.58)
     }
   }
 
@@ -2664,7 +2717,7 @@ struct NativeClubIdentity: Codable {
 
   static let freeColours = 3
   static let freeCrests = 3
-  static let freeKits = 2
+  static let freeKits = 1
   static let freeShapes = 2
   static let freeTrims = 2
   static let colourCost = 300
@@ -2793,7 +2846,10 @@ enum NativeWallet {
     if id.hasPrefix("colour-") { return NativeClubIdentity.colourCost }
     if id.hasPrefix("crest-") { return NativeClubIdentity.crestCost }
     if id.hasPrefix("kit-") { return NativeClubIdentity.kitCost }
-    if id.hasPrefix("shape-") { return NativeClubIdentity.shapeCost }
+    if id.hasPrefix("shape-") {
+      let raw = Int(id.dropFirst("shape-".count)) ?? 0
+      return NativeCrestShape(rawValue: raw)?.coins ?? NativeClubIdentity.shapeCost
+    }
     if id.hasPrefix("trim-") { return NativeClubIdentity.trimCost }
     return 0
   }
