@@ -2367,7 +2367,7 @@ enum NativeKit: Int, CaseIterable {
 
 /// The outline of the badge — a real football-crest silhouette, not just a square.
 enum NativeCrestShape: Int, CaseIterable {
-  case rounded, circle, shield, hexagon, diamond
+  case rounded, circle, shield, hexagon, diamond, oval, octagon, pennant, spade, tudor
 
   var name: String {
     switch self {
@@ -2376,6 +2376,11 @@ enum NativeCrestShape: Int, CaseIterable {
     case .shield: return "Shield"
     case .hexagon: return "Hex"
     case .diamond: return "Diamond"
+    case .oval: return "Oval"
+    case .octagon: return "Octagon"
+    case .pennant: return "Pennant"
+    case .spade: return "Spade"
+    case .tudor: return "Tudor"
     }
   }
 
@@ -2386,6 +2391,11 @@ enum NativeCrestShape: Int, CaseIterable {
     case .shield: return AnyShape(NativeShieldShape())
     case .hexagon: return AnyShape(NativeHexagonShape())
     case .diamond: return AnyShape(NativeDiamondShape())
+    case .oval: return AnyShape(Ellipse())
+    case .octagon: return AnyShape(NativeOctagonShape())
+    case .pennant: return AnyShape(NativePennantShape())
+    case .spade: return AnyShape(NativeSpadeShape())
+    case .tudor: return AnyShape(NativeTudorShape())
     }
   }
 }
@@ -2428,6 +2438,65 @@ struct NativeDiamondShape: Shape {
     p.addLine(to: CGPoint(x: r.maxX, y: r.midY))
     p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
     p.addLine(to: CGPoint(x: r.minX, y: r.midY))
+    p.closeSubpath()
+    return p
+  }
+}
+
+struct NativeOctagonShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let cx = r.midX, cy = r.midY, rad = min(r.width, r.height) / 2
+    for i in 0..<8 {
+      let a = (Double(i) * 45.0 - 22.5) * .pi / 180.0
+      let pt = CGPoint(x: cx + rad * cos(a), y: cy + rad * sin(a))
+      if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+    }
+    p.closeSubpath()
+    return p
+  }
+}
+
+/// A bunting pennant — flat top, straight sides into a point.
+struct NativePennantShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    p.move(to: CGPoint(x: r.minX, y: r.minY + r.height * 0.04))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + r.height * 0.04))
+    p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
+    p.closeSubpath()
+    return p
+  }
+}
+
+/// A heraldic spade — a peaked top centre curving down to a point.
+struct NativeSpadeShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let w = r.width, h = r.height
+    p.move(to: CGPoint(x: r.midX, y: r.minY))
+    p.addLine(to: CGPoint(x: r.minX + w * 0.92, y: r.minY + h * 0.28))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + h * 0.5))
+    p.addQuadCurve(to: CGPoint(x: r.midX, y: r.maxY), control: CGPoint(x: r.maxX, y: r.minY + h * 0.84))
+    p.addQuadCurve(to: CGPoint(x: r.minX, y: r.minY + h * 0.5), control: CGPoint(x: r.minX, y: r.minY + h * 0.84))
+    p.addLine(to: CGPoint(x: r.minX + w * 0.08, y: r.minY + h * 0.28))
+    p.closeSubpath()
+    return p
+  }
+}
+
+/// A Tudor shield — rounded top corners curving down to a point.
+struct NativeTudorShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let w = r.width, h = r.height
+    p.move(to: CGPoint(x: r.minX, y: r.minY + h * 0.16))
+    p.addQuadCurve(to: CGPoint(x: r.minX + w * 0.16, y: r.minY), control: CGPoint(x: r.minX, y: r.minY))
+    p.addLine(to: CGPoint(x: r.maxX - w * 0.16, y: r.minY))
+    p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY + h * 0.16), control: CGPoint(x: r.maxX, y: r.minY))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + h * 0.55))
+    p.addQuadCurve(to: CGPoint(x: r.midX, y: r.maxY), control: CGPoint(x: r.maxX, y: r.minY + h * 0.86))
+    p.addQuadCurve(to: CGPoint(x: r.minX, y: r.minY + h * 0.55), control: CGPoint(x: r.minX, y: r.minY + h * 0.86))
     p.closeSubpath()
     return p
   }
