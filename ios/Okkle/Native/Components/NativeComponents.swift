@@ -30,8 +30,6 @@ struct NativeScreen<Content: View>: View {
   let style: NativeScreenStyle
   let content: Content
   @State private var showSettings = false
-  @State private var showCollapsedTitle = false
-  @State private var scrollTopY: CGFloat?
 
   init(title: String, collapsedTitle: String? = nil, subtitle: String? = nil, style: NativeScreenStyle = .standard, @ViewBuilder content: () -> Content) {
     self.title = title
@@ -45,84 +43,46 @@ struct NativeScreen<Content: View>: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          if collapsedTitle != nil {
-            Color.clear
-              .frame(height: 1)
-              .background {
-                GeometryReader { proxy in
-                  Color.clear.preference(
-                    key: NativeScreenScrollOffsetKey.self,
-                    value: proxy.frame(in: .global).minY
-                  )
-                }
+          // Same top header as Home: title top-left, settings gear inline.
+          VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 8) {
+              Text(title)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(style.titleColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+              Spacer(minLength: 8)
+              Button { showSettings = true } label: {
+                Image(systemName: "gearshape.fill")
+                  .font(.system(size: 17, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+                  .frame(width: 44, height: 44)
+                  .background(.thinMaterial, in: Circle())
               }
-          }
-
-          if collapsedTitle != nil {
-            Text(title)
-              .font(.system(size: 42, weight: .heavy, design: .rounded))
-              .foregroundStyle(style.titleColor)
-              .fixedSize(horizontal: false, vertical: true)
-              .padding(.top, 4)
-          }
-
-          if let subtitle {
-            Text(subtitle)
-              .font(.system(size: 17, weight: .medium))
-              .foregroundStyle(style.subtitleColor)
-              .padding(.top, collapsedTitle == nil ? 2 : -10)
+              .accessibilityLabel("Settings")
+            }
+            if let subtitle {
+              Text(subtitle)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(style.subtitleColor)
+                .fixedSize(horizontal: false, vertical: true)
+            }
           }
 
           content
         }
         .padding(.horizontal, 20)
+        .padding(.top, 6)
         .padding(.bottom, 120)
       }
       .scrollIndicators(.hidden)
       .scrollDismissesKeyboard(.interactively)
       .background { NativeBackground() }
-      .navigationTitle(navigationBarTitle)
-      .navigationBarTitleDisplayMode(collapsedTitle == nil ? .large : .inline)
-      .toolbar {
-        ToolbarItem(placement: .navigationBarTrailing) {
-          Button { showSettings = true } label: {
-            Image(systemName: "gearshape")
-              .font(.system(size: 17, weight: .semibold))
-          }
-          .accessibilityLabel("Settings")
-        }
-      }
+      .navigationBarHidden(true)
       .sheet(isPresented: $showSettings) {
         NativeSettingsView()
       }
-      .onPreferenceChange(NativeScreenScrollOffsetKey.self) { offset in
-        guard collapsedTitle != nil else { return }
-        if scrollTopY == nil {
-          scrollTopY = offset
-        }
-        let scrollDistance = (scrollTopY ?? offset) - offset
-        let shouldShow = scrollDistance > 28
-        guard shouldShow != showCollapsedTitle else { return }
-        withAnimation(.easeInOut(duration: 0.16)) {
-          showCollapsedTitle = shouldShow
-        }
-      }
     }
-  }
-
-  private var navigationBarTitle: String {
-    if let collapsedTitle {
-      return showCollapsedTitle ? collapsedTitle : ""
-    }
-    return title
-  }
-}
-
-private struct NativeScreenScrollOffsetKey: PreferenceKey {
-  static var defaultValue: CGFloat = 0
-
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-    value = nextValue()
   }
 }
 

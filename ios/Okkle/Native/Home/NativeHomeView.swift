@@ -74,10 +74,10 @@ struct NativeHomeView: View {
     HStack(alignment: .center, spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(homeGreetingTitle)
-          .font(.system(size: 42, weight: .heavy, design: .rounded))
+          .font(.system(size: 34, weight: .bold))
           .foregroundStyle(OkkleColor.ink)
           .lineLimit(1)
-          .minimumScaleFactor(0.6)
+          .minimumScaleFactor(0.7)
         Text(Date().formatted(.dateTime.weekday(.wide).day().month(.wide)))
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
