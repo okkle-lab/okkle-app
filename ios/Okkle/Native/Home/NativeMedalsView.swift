@@ -1406,7 +1406,8 @@ struct NativeMatchdayCard: View {
           color: club?.color ?? OkkleColor.brand,
           secondary: club?.secondaryColor,
           crestShape: club?.crestShape ?? .rounded,
-          trim: club?.trim ?? .none,
+          trimColor: club?.trimColor ?? .white.opacity(0.30),
+          trimWidth: club?.trimWidthRatio ?? 0.02,
           size: 46,
           emblem: club?.emblem ?? "figure.walk"
         )
@@ -1642,7 +1643,8 @@ struct NativeClubEditorView: View {
                       color: NativeClubIdentity.palette[colorIndex],
                       secondary: secondaryColor,
                       crestShape: NativeCrestShape(rawValue: shapeIndex) ?? .rounded,
-                      trim: NativeTrim(rawValue: trimIndex) ?? .none,
+                      trimColor: NativeClubIdentity.trimColours[min(trimIndex, NativeClubIdentity.trimColours.count - 1)],
+                      trimWidth: trimIndex == 0 ? 0.02 : 0.06,
                       size: 92, emblem: emblem)
       }
       TextField("Your club", text: $name)
@@ -1786,24 +1788,26 @@ struct NativeClubEditorView: View {
 
   private var trimGrid: some View {
     LazyVGrid(columns: columns, spacing: 14) {
-      ForEach(NativeTrim.allCases, id: \.rawValue) { trim in
-        let free = trim.rawValue < NativeClubIdentity.freeTrims
-        let id = NativeClubIdentity.trimId(trim.rawValue)
+      ForEach(Array(NativeClubIdentity.trimColours.enumerated()), id: \.offset) { index, ring in
+        let free = index < NativeClubIdentity.freeTrims
+        let id = NativeClubIdentity.trimId(index)
         let owned = NativeWallet.isUnlocked(id, free: free)
-        Button { select(trim: trim, id: id, owned: owned) } label: {
-          VStack(spacing: 6) {
+        let selected = trimIndex == index
+        Button { select(trimIndex: index, id: id, owned: owned) } label: {
+          ZStack {
             Circle()
               .fill(NativeClubIdentity.palette[colorIndex])
-              .frame(width: 48, height: 48)
-              .overlay(Circle().strokeBorder(trim.color, lineWidth: trim == .none ? 1.5 : 4))
-              .overlay(Circle().inset(by: 6).strokeBorder(OkkleColor.ink, lineWidth: trimIndex == trim.rawValue ? 2.5 : 0))
-              .overlay(lockBadge(owned))
-              .opacity(owned ? 1 : 0.5)
-            Text(trim.name)
-              .font(.system(size: 11, weight: .semibold))
-              .foregroundStyle(OkkleColor.muted)
-              .lineLimit(1).minimumScaleFactor(0.8)
+              .overlay(Circle().strokeBorder(ring, lineWidth: index == 0 ? 1.5 : 4.5))
+            if index == 0 {
+              Image(systemName: "slash.circle")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+            }
           }
+          .frame(width: 46, height: 46)
+          .overlay(Circle().inset(by: 6).strokeBorder(OkkleColor.ink, lineWidth: selected ? 2.5 : 0))
+          .overlay(lockBadge(owned))
+          .opacity(owned ? 1 : 0.5)
           .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
@@ -1901,7 +1905,7 @@ struct NativeClubEditorView: View {
   private func select(emblem symbol: String, id: String, owned: Bool) { emblem = symbol }
   private func select(kit: NativeKit, id: String, owned: Bool) { kitIndex = kit.rawValue }
   private func select(shape: NativeCrestShape, id: String, owned: Bool) { shapeIndex = shape.rawValue }
-  private func select(trim: NativeTrim, id: String, owned: Bool) { trimIndex = trim.rawValue }
+  private func select(trimIndex index: Int, id: String, owned: Bool) { trimIndex = index }
 }
 
 extension View {
@@ -2420,7 +2424,7 @@ struct NativeHonour: Codable, Identifiable {
 /// The driver's club — name, colour and crest emblem, all theirs to shape.
 /// Kit patterns painted over the club colour — solid through to a diagonal sash.
 enum NativeKit: Int, CaseIterable {
-  case solid, gradient, stripes, hoops, sash, halves
+  case solid, gradient, stripes, hoops, sash, halves, quarters, chevron, pinstripe, checks
 
   var name: String {
     switch self {
@@ -2430,26 +2434,30 @@ enum NativeKit: Int, CaseIterable {
     case .hoops: return "Hoops"
     case .sash: return "Sash"
     case .halves: return "Halves"
+    case .quarters: return "Quarters"
+    case .chevron: return "Chevron"
+    case .pinstripe: return "Pinstripe"
+    case .checks: return "Checks"
     }
   }
 }
 
 /// The outline of the badge — a real football-crest silhouette, not just a square.
 enum NativeCrestShape: Int, CaseIterable {
-  case rounded, circle, shield, hexagon, diamond, oval, octagon, pennant, spade, tudor, banner, pentagon, heater
+  case rounded, circle, shield, hexagon, diamond, oval, octagon, pennant, spade, tudor, banner, pentagon, heater, square, star
 
-  /// The shapes offered in the editor (pennant + oval retired — kept in the enum
-  /// so saved badges keep their raw values, but no longer selectable; oval read
-  /// as a duplicate roundel).
-  static let pickable: [NativeCrestShape] = allCases.filter { $0 != .pennant && $0 != .oval }
+  /// Display + difficulty order: easiest (free) at the top, hardest at the
+  /// bottom. Pennant + oval retired (kept in the enum so saved badges keep
+  /// their raw values). Cost climbs with position in this list.
+  static let pickable: [NativeCrestShape] = [
+    .rounded, .circle, .square, .hexagon, .diamond, .heater, .pentagon, .octagon, .spade, .tudor, .shield, .star, .banner
+  ]
+  private static let tiers = [0, 0, 120, 160, 200, 250, 300, 350, 400, 450, 550, 650, 800]
 
-  /// Coins to unlock — simple shapes are free/cheap, proper football crests cost more.
+  /// Coins to unlock — derived from position, so it rises down the list.
   var coins: Int {
-    switch self {
-    case .rounded, .circle: return 0
-    case .diamond, .hexagon, .octagon, .pentagon, .oval: return 150
-    case .shield, .spade, .tudor, .banner, .heater, .pennant: return 450
-    }
+    guard let i = NativeCrestShape.pickable.firstIndex(of: self) else { return 800 }
+    return i < NativeCrestShape.tiers.count ? NativeCrestShape.tiers[i] : 800
   }
 
   var name: String {
@@ -2467,6 +2475,8 @@ enum NativeCrestShape: Int, CaseIterable {
     case .banner: return "Banner"
     case .pentagon: return "Pentagon"
     case .heater: return "Heater"
+    case .square: return "Square"
+    case .star: return "Star"
     }
   }
 
@@ -2485,6 +2495,8 @@ enum NativeCrestShape: Int, CaseIterable {
     case .banner: return AnyShape(NativeBannerShieldShape())
     case .pentagon: return AnyShape(NativePentagonShape())
     case .heater: return AnyShape(NativeHeaterShape())
+    case .square: return AnyShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    case .star: return AnyShape(NativeStarShape())
     }
   }
 }
@@ -2639,6 +2651,24 @@ struct NativeHeaterShape: Shape {
   }
 }
 
+/// A five-point star.
+struct NativeStarShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let cx = r.midX, cy = r.midY
+    let outer = min(r.width, r.height) / 2
+    let inner = outer * 0.42
+    for i in 0..<10 {
+      let rad = i.isMultiple(of: 2) ? outer : inner
+      let a = (Double(i) * 36.0 - 90.0) * .pi / 180.0
+      let pt = CGPoint(x: cx + rad * cos(a), y: cy + rad * sin(a))
+      if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+    }
+    p.closeSubpath()
+    return p
+  }
+}
+
 /// Gold stars above a crest — one per division title won, like a real badge.
 struct NativeTitleStars: View {
   let count: Int
@@ -2654,39 +2684,6 @@ struct NativeTitleStars: View {
       }
     }
   }
-}
-
-/// A metallic edge around the badge — prestige trim.
-enum NativeTrim: Int, CaseIterable {
-  case none, white, black, gold, silver, bronze, graphite, roseGold
-
-  var name: String {
-    switch self {
-    case .none: return "None"
-    case .white: return "White"
-    case .black: return "Black"
-    case .gold: return "Gold"
-    case .silver: return "Silver"
-    case .bronze: return "Bronze"
-    case .graphite: return "Graphite"
-    case .roseGold: return "Rose"
-    }
-  }
-
-  var color: Color {
-    switch self {
-    case .none: return .white.opacity(0.30)
-    case .white: return .white
-    case .black: return Color(red: 0.12, green: 0.12, blue: 0.14)
-    case .gold: return Color(red: 0.95, green: 0.78, blue: 0.25)
-    case .silver: return Color(red: 0.80, green: 0.82, blue: 0.86)
-    case .bronze: return Color(red: 0.80, green: 0.52, blue: 0.27)
-    case .graphite: return Color(red: 0.36, green: 0.38, blue: 0.42)
-    case .roseGold: return Color(red: 0.90, green: 0.62, blue: 0.58)
-    }
-  }
-
-  var widthRatio: CGFloat { self == .none ? 0.02 : 0.06 }
 }
 
 struct NativeClubIdentity: Codable {
@@ -2715,9 +2712,22 @@ struct NativeClubIdentity: Codable {
   ]
   static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill", "star.fill", "pawprint.fill", "anchor", "seal.fill", "hexagon.fill", "diamond.fill", "bird.fill", "tortoise.fill", "ant.fill", "fish.fill", "leaf.fill", "drop.fill", "cat.fill", "hammer.fill", "soccerball", "sailboat.fill", "building.columns.fill", "globe.europe.africa.fill", "dog.fill", "lizard.fill", "ladybug.fill", "car.fill", "bus.fill", "bicycle", "fuelpump.fill", "steeringwheel", "airplane", "gearshape.fill"]
 
+  /// Badge edge colours: a "none" + metallics, then the full colour palette in
+  /// the same order as the Colour section.
+  static let trimColours: [Color] = [
+    .white.opacity(0.30),                       // 0 None (subtle)
+    .white,                                      // 1 White
+    Color(red: 0.12, green: 0.12, blue: 0.14),   // 2 Black
+    Color(red: 0.95, green: 0.78, blue: 0.25),   // 3 Gold
+    Color(red: 0.80, green: 0.82, blue: 0.86),   // 4 Silver
+    Color(red: 0.80, green: 0.52, blue: 0.27),   // 5 Bronze
+    Color(red: 0.36, green: 0.38, blue: 0.42),   // 6 Graphite
+    Color(red: 0.90, green: 0.62, blue: 0.58),   // 7 Rose
+  ] + palette
+
   static let freeColours = 3
   static let freeCrests = 3
-  static let freeKits = 1
+  static let freeKits = 2
   static let freeShapes = 2
   static let freeTrims = 2
   static let colourCost = 300
@@ -2740,7 +2750,11 @@ struct NativeClubIdentity: Codable {
   var secondaryColor: Color? { secondaryIndex.map { NativeClubIdentity.paletteColor($0) } }
   var kit: NativeKit { NativeKit(rawValue: kitIndex ?? 0) ?? .solid }
   var crestShape: NativeCrestShape { NativeCrestShape(rawValue: shapeIndex ?? 0) ?? .rounded }
-  var trim: NativeTrim { NativeTrim(rawValue: trimIndex ?? 0) ?? .none }
+  var trimColor: Color {
+    let i = trimIndex ?? 0
+    return NativeClubIdentity.trimColours[max(0, min(i, NativeClubIdentity.trimColours.count - 1))]
+  }
+  var trimWidthRatio: CGFloat { (trimIndex ?? 0) == 0 ? 0.02 : 0.06 }
 }
 
 /// A rounded tile painted in the club colour with its kit pattern and (optional)
@@ -2750,7 +2764,8 @@ struct NativeKitTile: View {
   let color: Color
   var secondary: Color? = nil
   var crestShape: NativeCrestShape = .rounded
-  var trim: NativeTrim = .none
+  var trimColor: Color = .white.opacity(0.30)
+  var trimWidth: CGFloat = 0.02
   var size: CGFloat = 44
   var emblem: String? = nil
 
@@ -2774,7 +2789,7 @@ struct NativeKitTile: View {
         }
       )
       .clipShape(shape)
-      .overlay(shape.stroke(trim.color, lineWidth: max(1, size * trim.widthRatio)))
+      .overlay(shape.stroke(trimColor, lineWidth: max(1, size * trimWidth)))
   }
 
   @ViewBuilder private var pattern: some View {
@@ -2810,6 +2825,41 @@ struct NativeKitTile: View {
       HStack(spacing: 0) {
         Rectangle().fill(Color.clear)
         Rectangle().fill(darkAccent)
+      }
+    case .quarters:
+      VStack(spacing: 0) {
+        HStack(spacing: 0) { Rectangle().fill(Color.clear); Rectangle().fill(darkAccent) }
+        HStack(spacing: 0) { Rectangle().fill(darkAccent); Rectangle().fill(Color.clear) }
+      }
+    case .chevron:
+      GeometryReader { geo in
+        Path { p in
+          let w = geo.size.width, h = geo.size.height
+          p.move(to: CGPoint(x: 0, y: h * 0.45))
+          p.addLine(to: CGPoint(x: w / 2, y: h * 0.8))
+          p.addLine(to: CGPoint(x: w, y: h * 0.45))
+          p.addLine(to: CGPoint(x: w, y: h * 0.7))
+          p.addLine(to: CGPoint(x: w / 2, y: h * 1.05))
+          p.addLine(to: CGPoint(x: 0, y: h * 0.7))
+          p.closeSubpath()
+        }
+        .fill(secondary ?? .white.opacity(0.28))
+      }
+    case .pinstripe:
+      HStack(spacing: 0) {
+        ForEach(0..<12, id: \.self) { i in
+          Rectangle().fill(i % 2 == 0 ? Color.clear : darkAccent.opacity(0.7))
+        }
+      }
+    case .checks:
+      VStack(spacing: 0) {
+        ForEach(0..<5, id: \.self) { row in
+          HStack(spacing: 0) {
+            ForEach(0..<5, id: \.self) { col in
+              Rectangle().fill((row + col) % 2 == 0 ? Color.clear : darkAccent.opacity(0.85))
+            }
+          }
+        }
       }
     }
   }
