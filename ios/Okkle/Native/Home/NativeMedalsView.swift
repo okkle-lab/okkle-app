@@ -1264,7 +1264,7 @@ struct NativeMatchdayCard: View {
             .foregroundStyle(fixture.state == .live ? OkkleColor.red : OkkleColor.muted)
         }
         HStack(alignment: .top, spacing: 8) {
-          team(name: club?.name ?? "You", symbol: club?.emblem ?? "figure.walk", banked: fixture.yourBanked, accent: club?.color ?? OkkleColor.brand, filled: true)
+          youTeam
           VStack(spacing: 3) {
             Text("\(fixture.yourGoals)–\(fixture.oppGoals)")
               .font(.system(size: 30, weight: .heavy, design: .rounded))
@@ -1368,6 +1368,26 @@ struct NativeMatchdayCard: View {
     .padding(.vertical, 9)
     .frame(maxWidth: .infinity)
     .background(fill.opacity(0.13))
+  }
+
+  private var youTeam: some View {
+    VStack(spacing: 7) {
+      NativeKitTile(
+        kit: club?.kit ?? .solid,
+        color: club?.color ?? OkkleColor.brand,
+        size: 46, cornerRadius: 13,
+        emblem: club?.emblem ?? "figure.walk"
+      )
+      Text(club?.name ?? "You")
+        .font(.system(size: 13, weight: .bold))
+        .foregroundStyle(OkkleColor.ink)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+      Text("£\(Int(fixture.yourBanked.rounded())) saved")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+    }
+    .frame(maxWidth: .infinity)
   }
 
   private func team(name: String, symbol: String, banked: Double, accent: Color, filled: Bool) -> some View {
@@ -1503,32 +1523,28 @@ struct NativeClubEditorView: View {
   @State private var name: String = ""
   @State private var colorIndex: Int = 0
   @State private var emblem: String = "shield.fill"
+  @State private var kitIndex: Int = 0
   @State private var balance: Int = 0
   @State private var purchaseError = false
 
   var body: some View {
     NavigationStack {
       ScrollView {
-        VStack(spacing: 24) {
-          RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(NativeClubIdentity.palette[colorIndex])
-            .frame(width: 96, height: 96)
-            .overlay(
-              Image(systemName: emblem)
-                .font(.system(size: 44, weight: .semibold))
-                .foregroundStyle(.white)
-            )
-            .padding(.top, 8)
-          Text(name.isEmpty ? "Your club" : name)
-            .font(.system(size: 20, weight: .heavy, design: .rounded))
-            .foregroundStyle(OkkleColor.ink)
-
-          coinsPill
+        VStack(alignment: .leading, spacing: 22) {
+          VStack(spacing: 14) {
+            NativeKitTile(kit: NativeKit(rawValue: kitIndex) ?? .solid,
+                          color: NativeClubIdentity.palette[colorIndex],
+                          size: 96, cornerRadius: 24, emblem: emblem)
+              .padding(.top, 8)
+            Text(name.isEmpty ? "Your club" : name)
+              .font(.system(size: 20, weight: .heavy, design: .rounded))
+              .foregroundStyle(OkkleColor.ink)
+            coinsPill
+          }
+          .frame(maxWidth: .infinity)
 
           VStack(alignment: .leading, spacing: 8) {
-            Text("CLUB NAME")
-              .font(.system(size: 12, weight: .heavy))
-              .foregroundStyle(OkkleColor.muted)
+            sectionLabel("CLUB NAME")
             TextField("Your club", text: $name)
               .font(.system(size: 17, weight: .semibold))
               .padding(14)
@@ -1536,47 +1552,78 @@ struct NativeClubEditorView: View {
           }
 
           VStack(alignment: .leading, spacing: 10) {
-            Text("COLOUR")
-              .font(.system(size: 12, weight: .heavy))
-              .foregroundStyle(OkkleColor.muted)
-            HStack(spacing: 12) {
-              ForEach(Array(NativeClubIdentity.palette.enumerated()), id: \.offset) { index, color in
-                let free = index < NativeClubIdentity.freeColours
-                let id = NativeClubIdentity.colourId(index)
-                let owned = NativeWallet.isUnlocked(id, free: free)
-                Button { select(colourIndex: index, id: id, owned: owned) } label: {
-                  Circle()
-                    .fill(color)
-                    .frame(width: 40, height: 40)
-                    .overlay(Circle().stroke(OkkleColor.ink, lineWidth: colorIndex == index ? 3 : 0))
-                    .overlay(lockBadge(owned: owned))
-                    .opacity(owned ? 1 : 0.55)
+            sectionLabel("COLOUR")
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 14) {
+                ForEach(Array(NativeClubIdentity.palette.enumerated()), id: \.offset) { index, color in
+                  let free = index < NativeClubIdentity.freeColours
+                  let id = NativeClubIdentity.colourId(index)
+                  let owned = NativeWallet.isUnlocked(id, free: free)
+                  Button { select(colourIndex: index, id: id, owned: owned) } label: {
+                    Circle()
+                      .fill(color)
+                      .frame(width: 42, height: 42)
+                      .overlay(Circle().stroke(OkkleColor.ink, lineWidth: colorIndex == index ? 3 : 0))
+                      .overlay(lockBadge(owned: owned, cost: NativeClubIdentity.colourCost))
+                      .opacity(owned ? 1 : 0.5)
+                  }
+                  .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
               }
+              .padding(.horizontal, 4).padding(.vertical, 6)
             }
           }
 
           VStack(alignment: .leading, spacing: 10) {
-            Text("CREST")
-              .font(.system(size: 12, weight: .heavy))
-              .foregroundStyle(OkkleColor.muted)
-            HStack(spacing: 12) {
-              ForEach(Array(NativeClubIdentity.emblems.enumerated()), id: \.offset) { index, symbol in
-                let free = index < NativeClubIdentity.freeCrests
-                let id = NativeClubIdentity.crestId(symbol)
-                let owned = NativeWallet.isUnlocked(id, free: free)
-                Button { select(emblem: symbol, id: id, owned: owned) } label: {
-                  Image(systemName: symbol)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(emblem == symbol ? .white : OkkleColor.muted)
-                    .frame(width: 44, height: 44)
-                    .background(emblem == symbol ? NativeClubIdentity.palette[colorIndex] : OkkleColor.muted.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(lockBadge(owned: owned))
-                    .opacity(owned ? 1 : 0.55)
+            sectionLabel("CREST")
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 14) {
+                ForEach(Array(NativeClubIdentity.emblems.enumerated()), id: \.offset) { index, symbol in
+                  let free = index < NativeClubIdentity.freeCrests
+                  let id = NativeClubIdentity.crestId(symbol)
+                  let owned = NativeWallet.isUnlocked(id, free: free)
+                  Button { select(emblem: symbol, id: id, owned: owned) } label: {
+                    Image(systemName: symbol)
+                      .font(.system(size: 20, weight: .semibold))
+                      .foregroundStyle(emblem == symbol ? .white : OkkleColor.muted)
+                      .frame(width: 46, height: 46)
+                      .background(emblem == symbol ? NativeClubIdentity.palette[colorIndex] : OkkleColor.muted.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                      .overlay(lockBadge(owned: owned, cost: NativeClubIdentity.crestCost))
+                      .opacity(owned ? 1 : 0.5)
+                  }
+                  .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
               }
+              .padding(.horizontal, 4).padding(.vertical, 6)
+            }
+          }
+
+          VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("KIT")
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 14) {
+                ForEach(NativeKit.allCases, id: \.rawValue) { kit in
+                  let free = kit.rawValue < NativeClubIdentity.freeKits
+                  let id = NativeClubIdentity.kitId(kit.rawValue)
+                  let owned = NativeWallet.isUnlocked(id, free: free)
+                  Button { select(kit: kit, id: id, owned: owned) } label: {
+                    VStack(spacing: 5) {
+                      NativeKitTile(kit: kit, color: NativeClubIdentity.palette[colorIndex], size: 46, cornerRadius: 12)
+                        .overlay(
+                          RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(OkkleColor.ink, lineWidth: kitIndex == kit.rawValue ? 3 : 0)
+                        )
+                        .overlay(lockBadge(owned: owned, cost: NativeClubIdentity.kitCost))
+                        .opacity(owned ? 1 : 0.5)
+                      Text(kit.name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(kitIndex == kit.rawValue ? OkkleColor.ink : OkkleColor.muted)
+                    }
+                  }
+                  .buttonStyle(.plain)
+                }
+              }
+              .padding(.horizontal, 4).padding(.vertical, 6)
             }
             Text("Locked items cost Coins — earn them from medals, wins and promotions.")
               .font(.system(size: 12, weight: .medium))
@@ -1595,7 +1642,7 @@ struct NativeClubEditorView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
           Button("Save") {
             let trimmed = name.trimmingCharacters(in: .whitespaces)
-            NativeSeasonEngine.saveClubIdentity(NativeClubIdentity(name: trimmed.isEmpty ? "Your club" : trimmed, colorIndex: colorIndex, emblem: emblem))
+            NativeSeasonEngine.saveClubIdentity(NativeClubIdentity(name: trimmed.isEmpty ? "Your club" : trimmed, colorIndex: colorIndex, emblem: emblem, kitIndex: kitIndex))
             dismiss()
           }
           .font(.system(size: 16, weight: .bold))
@@ -1611,9 +1658,16 @@ struct NativeClubEditorView: View {
         name = club.name
         colorIndex = max(0, min(club.colorIndex, NativeClubIdentity.palette.count - 1))
         emblem = club.emblem
+        kitIndex = club.kitIndex ?? 0
         balance = NativeWallet.balance(store: store)
       }
     }
+  }
+
+  private func sectionLabel(_ text: String) -> some View {
+    Text(text)
+      .font(.system(size: 12, weight: .heavy))
+      .foregroundStyle(OkkleColor.muted)
   }
 
   private var coinsPill: some View {
@@ -1631,14 +1685,14 @@ struct NativeClubEditorView: View {
   }
 
   @ViewBuilder
-  private func lockBadge(owned: Bool) -> some View {
+  private func lockBadge(owned: Bool, cost: Int) -> some View {
     if !owned {
       Image(systemName: "lock.fill")
-        .font(.system(size: 11, weight: .heavy))
+        .font(.system(size: 10, weight: .heavy))
         .foregroundStyle(.white)
         .padding(4)
-        .background(Circle().fill(OkkleColor.ink.opacity(0.55)))
-        .offset(x: 14, y: 14)
+        .background(Circle().fill(OkkleColor.ink.opacity(0.6)))
+        .offset(x: 15, y: 15)
     }
   }
 
@@ -1654,6 +1708,14 @@ struct NativeClubEditorView: View {
     if owned { emblem = symbol; return }
     if NativeWallet.purchase(id, store: store) {
       emblem = symbol
+      balance = NativeWallet.balance(store: store)
+    } else { purchaseError = true }
+  }
+
+  private func select(kit: NativeKit, id: String, owned: Bool) {
+    if owned { kitIndex = kit.rawValue; return }
+    if NativeWallet.purchase(id, store: store) {
+      kitIndex = kit.rawValue
       balance = NativeWallet.balance(store: store)
     } else { purchaseError = true }
   }
@@ -2173,12 +2235,29 @@ struct NativeHonour: Codable, Identifiable {
 }
 
 /// The driver's club — name, colour and crest emblem, all theirs to shape.
+/// Kit patterns painted over the club colour — solid through to a diagonal sash.
+enum NativeKit: Int, CaseIterable {
+  case solid, gradient, stripes, hoops, sash, halves
+
+  var name: String {
+    switch self {
+    case .solid: return "Solid"
+    case .gradient: return "Fade"
+    case .stripes: return "Stripes"
+    case .hoops: return "Hoops"
+    case .sash: return "Sash"
+    case .halves: return "Halves"
+    }
+  }
+}
+
 struct NativeClubIdentity: Codable {
   var name: String
   var colorIndex: Int
   var emblem: String
+  var kitIndex: Int? = nil
 
-  // First `freeColours` / `freeCrests` are free; the rest are bought with Coins.
+  // First `free*` of each are free; the rest are bought with Coins.
   static let palette: [Color] = [
     Color(red: 0.12, green: 0.55, blue: 0.95),  // blue (free)
     Color(red: 0.85, green: 0.23, blue: 0.24),  // red (free)
@@ -2189,18 +2268,89 @@ struct NativeClubIdentity: Codable {
     Color(red: 0.85, green: 0.65, blue: 0.13),  // gold
     Color(red: 0.83, green: 0.24, blue: 0.55),  // pink
     Color(red: 0.10, green: 0.62, blue: 0.62),  // teal
+    Color(red: 0.40, green: 0.42, blue: 0.46),  // slate
+    Color(red: 0.55, green: 0.75, blue: 0.20),  // lime
+    Color(red: 0.90, green: 0.36, blue: 0.30),  // coral
   ]
-  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill", "star.fill", "pawprint.fill", "anchor"]
+  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill", "star.fill", "pawprint.fill", "anchor", "seal.fill", "hexagon.fill", "diamond.fill"]
 
   static let freeColours = 3
   static let freeCrests = 3
+  static let freeKits = 2
   static let colourCost = 300
   static let crestCost = 250
+  static let kitCost = 200
 
   static func colourId(_ index: Int) -> String { "colour-\(index)" }
   static func crestId(_ symbol: String) -> String { "crest-\(symbol)" }
+  static func kitId(_ index: Int) -> String { "kit-\(index)" }
 
   var color: Color { NativeClubIdentity.palette[max(0, min(colorIndex, NativeClubIdentity.palette.count - 1))] }
+  var kit: NativeKit { NativeKit(rawValue: kitIndex ?? 0) ?? .solid }
+}
+
+/// A rounded tile painted in the club colour with its kit pattern and (optional)
+/// crest — reused in the editor, the matchday card and the table.
+struct NativeKitTile: View {
+  let kit: NativeKit
+  let color: Color
+  var size: CGFloat = 44
+  var cornerRadius: CGFloat = 12
+  var emblem: String? = nil
+
+  var body: some View {
+    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+      .fill(color)
+      .frame(width: size, height: size)
+      .overlay(pattern)
+      .overlay(
+        Group {
+          if let emblem {
+            Image(systemName: emblem)
+              .font(.system(size: size * 0.46, weight: .semibold))
+              .foregroundStyle(.white)
+          }
+        }
+      )
+      .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+  }
+
+  @ViewBuilder private var pattern: some View {
+    switch kit {
+    case .solid:
+      Color.clear
+    case .gradient:
+      LinearGradient(colors: [.white.opacity(0.22), .black.opacity(0.20)], startPoint: .top, endPoint: .bottom)
+    case .stripes:
+      HStack(spacing: 0) {
+        ForEach(0..<6, id: \.self) { i in
+          Rectangle().fill(i % 2 == 0 ? Color.clear : Color.black.opacity(0.18))
+        }
+      }
+    case .hoops:
+      VStack(spacing: 0) {
+        ForEach(0..<6, id: \.self) { i in
+          Rectangle().fill(i % 2 == 0 ? Color.clear : Color.white.opacity(0.22))
+        }
+      }
+    case .sash:
+      GeometryReader { geo in
+        Path { p in
+          p.move(to: CGPoint(x: 0, y: geo.size.height))
+          p.addLine(to: CGPoint(x: geo.size.width * 0.34, y: geo.size.height))
+          p.addLine(to: CGPoint(x: geo.size.width, y: 0))
+          p.addLine(to: CGPoint(x: geo.size.width * 0.66, y: 0))
+          p.closeSubpath()
+        }
+        .fill(.white.opacity(0.30))
+      }
+    case .halves:
+      HStack(spacing: 0) {
+        Rectangle().fill(Color.clear)
+        Rectangle().fill(Color.black.opacity(0.20))
+      }
+    }
+  }
 }
 
 /// The Coins wallet — earned from medals, wins and promotions, spent only on
@@ -2233,6 +2383,7 @@ enum NativeWallet {
   static func cost(for id: String) -> Int {
     if id.hasPrefix("colour-") { return NativeClubIdentity.colourCost }
     if id.hasPrefix("crest-") { return NativeClubIdentity.crestCost }
+    if id.hasPrefix("kit-") { return NativeClubIdentity.kitCost }
     return 0
   }
 
