@@ -137,4 +137,5 @@ enum NativeTripWidgetStore {
 
 extension Notification.Name {
   static let nativeTripWidgetActionReceived = Notification.Name("nativeTripWidgetActionReceived")
+  static let nativeShowTaxRecords = Notification.Name("nativeShowTaxRecords")
 }

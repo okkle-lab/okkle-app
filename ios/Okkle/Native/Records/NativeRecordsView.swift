@@ -104,6 +104,9 @@ struct NativeRecordsView: View {
         recordPendingEdit = nil
       }
     }
+    .onReceive(NotificationCenter.default.publisher(for: .nativeShowTaxRecords)) { _ in
+      mode = .tax
+    }
   }
 
   private var filteredHistory: [NativeHistoryItem] {

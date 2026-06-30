@@ -215,7 +215,10 @@ struct NativeHomeView: View {
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
     .contentShape(Rectangle())
-    .onTapGesture { selectedTab = .insights }
+    .onTapGesture {
+      NotificationCenter.default.post(name: .nativeShowTaxRecords, object: nil)
+      selectedTab = .records
+    }
   }
 
   private func progressBar(value: Double, color: Color) -> some View {
