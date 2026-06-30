@@ -315,7 +315,8 @@ struct NativeTripView: View {
     .font(.system(size: 16, weight: .bold))
   }
 
-  // Swipe between the live deduction and this week's league goal.
+  // Swipe between the live deduction and this week's league goal — each its own
+  // clean panel, kept to the deduction row's height.
   private var trackingInfoCarousel: some View {
     let fixture = NativeSeasonEngine.fixture(store: store)
     let division = NativeSeasonEngine.snapshot(store: store).division
@@ -325,7 +326,7 @@ struct NativeTripView: View {
         trackingLeagueRow(fixture: fixture, division: division).tag(1)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
-      .frame(height: 78)
+      .frame(height: 60)
       HStack(spacing: 6) {
         ForEach(0..<2, id: \.self) { index in
           Capsule()
@@ -337,21 +338,29 @@ struct NativeTripView: View {
     }
   }
 
+  private func carouselCard<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+    content()
+      .padding(.horizontal, 14)
+      .padding(.vertical, 12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(trackingCardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+  }
+
   // This week's league goal vs your past self, in the division's colours.
   private func trackingLeagueRow(fixture: NativeFixture, division: NativeDivision) -> some View {
     let target = max(1, Int(fixture.weeklyTarget.rounded()))
     let saved = Int(fixture.yourBanked.rounded())
     let toWin = max(0, Int((fixture.weeklyTarget - fixture.yourBanked).rounded(.up)))
     let won = fixture.pointsThisWeek == 3
-    return VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 10) {
+    return carouselCard {
+      HStack(spacing: 12) {
         Image(systemName: won ? "checkmark.seal.fill" : "bolt.fill")
           .font(.system(size: 17, weight: .bold))
           .foregroundStyle(won ? OkkleColor.brand : division.accent)
           .frame(width: 36, height: 36)
           .background(division.accent.opacity(0.16), in: Circle())
         VStack(alignment: .leading, spacing: 2) {
-          Text(won ? "Week won — keep banking" : "£\(toWin) more to win this week")
+          Text(won ? "Week won — keep banking" : "£\(toWin) more to win")
             .font(.system(size: 13, weight: .heavy))
             .foregroundStyle(trackingPrimaryText)
             .lineLimit(1)
@@ -360,54 +369,49 @@ struct NativeTripView: View {
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(trackingSecondaryText)
         }
-        Spacer(minLength: 8)
+        Spacer(minLength: 12)
         Text("£\(saved) / £\(target)")
-          .font(.system(size: 15, weight: .bold, design: .rounded))
+          .font(.system(size: 20, weight: .bold, design: .rounded))
           .foregroundStyle(trackingPrimaryText)
       }
-      GeometryReader { geo in
-        ZStack(alignment: .leading) {
-          Capsule().fill(trackingSecondaryText.opacity(0.18))
-          Capsule()
-            .fill(division.gradient)
-            .frame(width: max(6, geo.size.width * fixture.progressToTarget))
-        }
-      }
-      .frame(height: 6)
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 12)
-    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .background(trackingInsetTint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .overlay(alignment: .bottomLeading) {
+      GeometryReader { geo in
+        Capsule()
+          .fill(division.gradient)
+          .frame(width: max(6, geo.size.width * fixture.progressToTarget), height: 3)
+      }
+      .frame(height: 3)
+      .padding(.horizontal, 14)
+      .padding(.bottom, 5)
+    }
   }
 
   private var trackingDeductionRow: some View {
-    HStack(spacing: 12) {
-      Image(systemName: "sterlingsign.arrow.circlepath")
-        .font(.system(size: 17, weight: .bold))
-        .foregroundStyle(.green)
-        .frame(width: 36, height: 36)
-        .background(.green.opacity(0.14), in: Circle())
+    carouselCard {
+      HStack(spacing: 12) {
+        Image(systemName: "sterlingsign.arrow.circlepath")
+          .font(.system(size: 17, weight: .bold))
+          .foregroundStyle(.green)
+          .frame(width: 36, height: 36)
+          .background(.green.opacity(0.14), in: Circle())
 
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Deduction")
-          .font(.system(size: 13, weight: .semibold))
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Deduction")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(trackingPrimaryText)
+          Text("HMRC mileage relief")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(trackingSecondaryText)
+        }
+
+        Spacer(minLength: 12)
+
+        Text(gbp(store.calcDeduction(miles: session.miles, vehicle: session.vehicle), whole: true))
+          .font(.system(size: 20, weight: .bold, design: .rounded))
           .foregroundStyle(trackingPrimaryText)
-        Text("HMRC mileage relief")
-          .font(.system(size: 12, weight: .semibold))
-          .foregroundStyle(trackingSecondaryText)
       }
-
-      Spacer(minLength: 12)
-
-      Text(gbp(store.calcDeduction(miles: session.miles, vehicle: session.vehicle), whole: true))
-        .font(.system(size: 20, weight: .bold, design: .rounded))
-        .foregroundStyle(trackingPrimaryText)
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 12)
-    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .background(trackingInsetTint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
   }
 
   private var trackingStatusTitle: String {
@@ -458,6 +462,12 @@ struct NativeTripView: View {
 
   private var trackingInsetTint: Color {
     colorScheme == .dark ? Color.black.opacity(0.18) : Color.white.opacity(0.08)
+  }
+
+  /// A clean solid card fill for the carousel panels — no material-on-material,
+  /// so there's no muddy halo over the glass tracking panel.
+  private var trackingCardFill: Color {
+    colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.78)
   }
 
   private var trackingPanelSheen: LinearGradient {
