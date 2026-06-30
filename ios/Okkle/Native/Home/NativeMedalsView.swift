@@ -1276,12 +1276,72 @@ struct NativeMatchdayCard: View {
           .frame(minWidth: 70)
           team(name: fixture.opponent, symbol: fixture.opponentSymbol, banked: fixture.oppBanked, accent: division.accent, filled: false)
         }
+        pointsProgress
         gaffer
       }
       .padding(16)
     }
-    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    .okkleCard()
+    .themedLeagueCard(division)
+  }
+
+  private var pointsProgress: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Text("THIS WEEK'S POINTS")
+          .font(.system(size: 11, weight: .heavy))
+          .tracking(0.6)
+          .foregroundStyle(OkkleColor.muted)
+        Spacer()
+        Text("+\(fixture.pointsThisWeek) pt\(fixture.pointsThisWeek == 1 ? "" : "s")")
+          .font(.system(size: 12, weight: .heavy))
+          .foregroundStyle(pointsColor)
+      }
+      GeometryReader { geo in
+        let w = geo.size.width
+        ZStack(alignment: .leading) {
+          Capsule().fill(OkkleColor.muted.opacity(0.16))
+          Capsule()
+            .fill(division.gradient)
+            .frame(width: max(6, w * fixture.progressToTarget))
+          // Draw line at the halfway (1-point) mark.
+          Rectangle()
+            .fill(OkkleColor.ink.opacity(0.35))
+            .frame(width: 1.5, height: 14)
+            .offset(x: w * 0.5)
+        }
+      }
+      .frame(height: 12)
+      Text(progressCaption)
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+    }
+    .padding(12)
+    .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+  }
+
+  private var pointsColor: Color {
+    switch fixture.pointsThisWeek {
+    case 3: return OkkleColor.brand
+    case 1: return OkkleColor.amber
+    default: return OkkleColor.muted
+    }
+  }
+
+  private var progressCaption: String {
+    let toWin = max(0, Int((fixture.weeklyTarget - fixture.yourBanked).rounded(.up)))
+    let toDraw = max(0, Int((fixture.drawTarget - fixture.yourBanked).rounded(.up)))
+    if fixture.state == .fullTime {
+      switch fixture.pointsThisWeek {
+      case 3: return "Hit your £\(Int(fixture.weeklyTarget.rounded())) target — 3 points banked."
+      case 1: return "Reached the halfway mark — 1 point earned."
+      default: return "Missed the target this week — no points."
+      }
+    }
+    switch fixture.pointsThisWeek {
+    case 3: return "Target smashed — the 3 points are yours. Keep banking."
+    case 1: return "In the draw zone (1 pt). £\(toWin) more saved this week wins it (3 pts)."
+    default: return "£\(toDraw) more saved earns a draw (1 pt), £\(toWin) the win (3 pts)."
+    }
   }
 
   private var banner: some View {
@@ -1443,6 +1503,8 @@ struct NativeClubEditorView: View {
   @State private var name: String = ""
   @State private var colorIndex: Int = 0
   @State private var emblem: String = "shield.fill"
+  @State private var balance: Int = 0
+  @State private var purchaseError = false
 
   var body: some View {
     NavigationStack {
@@ -1461,6 +1523,8 @@ struct NativeClubEditorView: View {
             .font(.system(size: 20, weight: .heavy, design: .rounded))
             .foregroundStyle(OkkleColor.ink)
 
+          coinsPill
+
           VStack(alignment: .leading, spacing: 8) {
             Text("CLUB NAME")
               .font(.system(size: 12, weight: .heavy))
@@ -1477,13 +1541,16 @@ struct NativeClubEditorView: View {
               .foregroundStyle(OkkleColor.muted)
             HStack(spacing: 12) {
               ForEach(Array(NativeClubIdentity.palette.enumerated()), id: \.offset) { index, color in
-                Button { colorIndex = index } label: {
+                let free = index < NativeClubIdentity.freeColours
+                let id = NativeClubIdentity.colourId(index)
+                let owned = NativeWallet.isUnlocked(id, free: free)
+                Button { select(colourIndex: index, id: id, owned: owned) } label: {
                   Circle()
                     .fill(color)
                     .frame(width: 40, height: 40)
-                    .overlay(
-                      Circle().stroke(OkkleColor.ink, lineWidth: colorIndex == index ? 3 : 0)
-                    )
+                    .overlay(Circle().stroke(OkkleColor.ink, lineWidth: colorIndex == index ? 3 : 0))
+                    .overlay(lockBadge(owned: owned))
+                    .opacity(owned ? 1 : 0.55)
                 }
                 .buttonStyle(.plain)
               }
@@ -1495,17 +1562,25 @@ struct NativeClubEditorView: View {
               .font(.system(size: 12, weight: .heavy))
               .foregroundStyle(OkkleColor.muted)
             HStack(spacing: 12) {
-              ForEach(NativeClubIdentity.emblems, id: \.self) { symbol in
-                Button { emblem = symbol } label: {
+              ForEach(Array(NativeClubIdentity.emblems.enumerated()), id: \.offset) { index, symbol in
+                let free = index < NativeClubIdentity.freeCrests
+                let id = NativeClubIdentity.crestId(symbol)
+                let owned = NativeWallet.isUnlocked(id, free: free)
+                Button { select(emblem: symbol, id: id, owned: owned) } label: {
                   Image(systemName: symbol)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(emblem == symbol ? .white : OkkleColor.muted)
                     .frame(width: 44, height: 44)
                     .background(emblem == symbol ? NativeClubIdentity.palette[colorIndex] : OkkleColor.muted.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(lockBadge(owned: owned))
+                    .opacity(owned ? 1 : 0.55)
                 }
                 .buttonStyle(.plain)
               }
             }
+            Text("Locked items cost Coins — earn them from medals, wins and promotions.")
+              .font(.system(size: 12, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
           }
         }
         .padding(20)
@@ -1526,13 +1601,83 @@ struct NativeClubEditorView: View {
           .font(.system(size: 16, weight: .bold))
         }
       }
+      .alert("Not enough Coins", isPresented: $purchaseError) {
+        Button("OK", role: .cancel) {}
+      } message: {
+        Text("Earn more Coins by unlocking medals and winning matchweeks, then come back to claim it.")
+      }
       .onAppear {
         let club = NativeSeasonEngine.clubIdentity(store: store)
         name = club.name
         colorIndex = max(0, min(club.colorIndex, NativeClubIdentity.palette.count - 1))
         emblem = club.emblem
+        balance = NativeWallet.balance(store: store)
       }
     }
+  }
+
+  private var coinsPill: some View {
+    HStack(spacing: 7) {
+      Image(systemName: "bitcoinsign.circle.fill")
+        .font(.system(size: 16, weight: .bold))
+        .foregroundStyle(OkkleColor.amber)
+      Text("\(balance) Coins")
+        .font(.system(size: 15, weight: .heavy, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+    }
+    .padding(.horizontal, 14)
+    .frame(height: 40)
+    .background(OkkleColor.amber.opacity(0.14), in: Capsule())
+  }
+
+  @ViewBuilder
+  private func lockBadge(owned: Bool) -> some View {
+    if !owned {
+      Image(systemName: "lock.fill")
+        .font(.system(size: 11, weight: .heavy))
+        .foregroundStyle(.white)
+        .padding(4)
+        .background(Circle().fill(OkkleColor.ink.opacity(0.55)))
+        .offset(x: 14, y: 14)
+    }
+  }
+
+  private func select(colourIndex index: Int, id: String, owned: Bool) {
+    if owned { colorIndex = index; return }
+    if NativeWallet.purchase(id, store: store) {
+      colorIndex = index
+      balance = NativeWallet.balance(store: store)
+    } else { purchaseError = true }
+  }
+
+  private func select(emblem symbol: String, id: String, owned: Bool) {
+    if owned { emblem = symbol; return }
+    if NativeWallet.purchase(id, store: store) {
+      emblem = symbol
+      balance = NativeWallet.balance(store: store)
+    } else { purchaseError = true }
+  }
+}
+
+extension View {
+  /// A card washed in the division's colour — tinted surface, coloured hairline
+  /// border and a coloured glow, so it reads as part of the league's theme.
+  func themedLeagueCard(_ division: NativeDivision, cornerRadius: CGFloat = 20) -> some View {
+    self
+      .background(
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          .fill(OkkleColor.card)
+          .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+              .fill(division.gradientTop.opacity(0.09))
+          )
+      )
+      .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          .strokeBorder(division.accent.opacity(0.28), lineWidth: 1)
+      )
+      .shadow(color: division.accent.opacity(0.28), radius: 16, y: 8)
   }
 }
 
@@ -1677,7 +1822,7 @@ struct NativeLeagueView: View {
     }
     .frame(maxWidth: .infinity)
     .padding(.vertical, 20)
-    .okkleCard(cornerRadius: 22)
+    .themedLeagueCard(s.division, cornerRadius: 22)
   }
 
   private func standingsTable(_ s: NativeSeasonSnapshot) -> some View {
@@ -1718,8 +1863,7 @@ struct NativeLeagueView: View {
         }
       }
     }
-    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    .okkleCard()
+    .themedLeagueCard(s.division)
   }
 
   private func standingRow(row: NativeClubRow, index: Int, total: Int, division: NativeDivision) -> some View {
@@ -1784,6 +1928,7 @@ struct NativeLeagueView: View {
     let earned = all.filter(\.unlocked).count
     return VStack(spacing: 16) {
       NativeMedalSummaryCard(earned: earned, total: all.count, completion: all.isEmpty ? 0 : Double(earned) / Double(all.count))
+      coinsBanner
       Text("Climb the table to unlock tougher medals — each division holds its own set.")
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(.white.opacity(0.75))
@@ -1791,6 +1936,28 @@ struct NativeLeagueView: View {
         .padding(.horizontal, 12)
       ladder(current: current)
     }
+  }
+
+  private var coinsBanner: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "bitcoinsign.circle.fill")
+        .font(.system(size: 18, weight: .bold))
+        .foregroundStyle(OkkleColor.amber)
+      VStack(alignment: .leading, spacing: 1) {
+        Text("\(NativeWallet.balance(store: store)) Coins to spend")
+          .font(.system(size: 14, weight: .heavy))
+          .foregroundStyle(OkkleColor.ink)
+        Text("Earned from medals, wins & promotions · spend on your club")
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .lineLimit(1)
+          .minimumScaleFactor(0.85)
+      }
+      Spacer()
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity)
+    .okkleCard()
   }
 
   private func ladder(current: NativeDivision) -> some View {
@@ -1921,7 +2088,7 @@ struct NativeDivisionMedalsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 22)
         .padding(.horizontal, 16)
-        .okkleCard(cornerRadius: 22)
+        .themedLeagueCard(division, cornerRadius: 22)
 
         VStack(spacing: 0) {
           ForEach(items) { medal in
@@ -1931,19 +2098,21 @@ struct NativeDivisionMedalsView: View {
             }
           }
         }
-        .okkleCard()
+        .themedLeagueCard(division)
       }
       .padding(20)
     }
-    .background { NativeBackground() }
+    .background { NativeLeagueBackground(division: division) }
     .navigationTitle(division.shortName)
     .navigationBarTitleDisplayMode(.inline)
+    .toolbarBackground(.hidden, for: .navigationBar)
+    .toolbarColorScheme(.dark, for: .navigationBar)
   }
 
   private func medalRow(_ medal: NativeMedalAchievement) -> some View {
     HStack(spacing: 14) {
       RoundedRectangle(cornerRadius: 9, style: .continuous)
-        .fill(medal.unlocked ? division.accent : OkkleColor.muted.opacity(0.22))
+        .fill(medal.unlocked ? AnyShapeStyle(division.gradient) : AnyShapeStyle(OkkleColor.muted.opacity(0.22)))
         .frame(width: 34, height: 34)
         .overlay(
           Image(systemName: medal.symbol)
@@ -2009,17 +2178,77 @@ struct NativeClubIdentity: Codable {
   var colorIndex: Int
   var emblem: String
 
+  // First `freeColours` / `freeCrests` are free; the rest are bought with Coins.
   static let palette: [Color] = [
-    Color(red: 0.12, green: 0.55, blue: 0.95),  // blue
-    Color(red: 0.85, green: 0.23, blue: 0.24),  // red
-    Color(red: 0.12, green: 0.66, blue: 0.42),  // green
+    Color(red: 0.12, green: 0.55, blue: 0.95),  // blue (free)
+    Color(red: 0.85, green: 0.23, blue: 0.24),  // red (free)
+    Color(red: 0.12, green: 0.66, blue: 0.42),  // green (free)
     Color(red: 0.55, green: 0.27, blue: 0.68),  // purple
     Color(red: 0.95, green: 0.55, blue: 0.10),  // orange
     Color(red: 0.10, green: 0.20, blue: 0.45),  // navy
+    Color(red: 0.85, green: 0.65, blue: 0.13),  // gold
+    Color(red: 0.83, green: 0.24, blue: 0.55),  // pink
+    Color(red: 0.10, green: 0.62, blue: 0.62),  // teal
   ]
-  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill"]
+  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill", "star.fill", "pawprint.fill", "anchor"]
+
+  static let freeColours = 3
+  static let freeCrests = 3
+  static let colourCost = 300
+  static let crestCost = 250
+
+  static func colourId(_ index: Int) -> String { "colour-\(index)" }
+  static func crestId(_ symbol: String) -> String { "crest-\(symbol)" }
 
   var color: Color { NativeClubIdentity.palette[max(0, min(colorIndex, NativeClubIdentity.palette.count - 1))] }
+}
+
+/// The Coins wallet — earned from medals, wins and promotions, spent only on
+/// club customisation. Cosmetic by design: Coins never help you win a match.
+@MainActor
+enum NativeWallet {
+  private static let unlockedKey = "uk.okkle.native.wallet.unlocked.v1"
+
+  /// Deterministic: total Coins earned to date from real achievements.
+  static func earned(store: OkkleStore) -> Int {
+    var total = 0
+    for medal in NativeMedalEngine.achievements(store: store) where medal.unlocked {
+      switch medal.tier {
+      case .bronze:  total += 10
+      case .silver:  total += 25
+      case .gold:    total += 50
+      case .special: total += 40
+      }
+    }
+    for honour in NativeSeasonEngine.honours() {
+      total += honour.kind == .champions ? 200 : 150
+    }
+    return total
+  }
+
+  static func unlocked() -> Set<String> {
+    Set(UserDefaults.standard.array(forKey: unlockedKey) as? [String] ?? [])
+  }
+
+  static func cost(for id: String) -> Int {
+    if id.hasPrefix("colour-") { return NativeClubIdentity.colourCost }
+    if id.hasPrefix("crest-") { return NativeClubIdentity.crestCost }
+    return 0
+  }
+
+  static func spent() -> Int { unlocked().reduce(0) { $0 + cost(for: $1) } }
+  static func balance(store: OkkleStore) -> Int { max(0, earned(store: store) - spent()) }
+
+  static func isUnlocked(_ id: String, free: Bool) -> Bool { free || unlocked().contains(id) }
+
+  /// Buy an item if it isn't owned and the balance covers it. Returns success.
+  static func purchase(_ id: String, store: OkkleStore) -> Bool {
+    var set = unlocked()
+    guard !set.contains(id), balance(store: store) >= cost(for: id) else { return false }
+    set.insert(id)
+    UserDefaults.standard.set(Array(set), forKey: unlockedKey)
+    return true
+  }
 }
 
 /// One row of the division table — the driver plus the fictional rival clubs.
@@ -2060,6 +2289,12 @@ struct NativeFixture {
   let isFinalDay: Bool
   let state: State
   let stakes: Stakes
+  let weeklyTarget: Double   // £ tax saved this week that earns the win (3 pts)
+
+  /// How you earn league points each week, from real tax saved vs your target.
+  var pointsThisWeek: Int { yourBanked >= weeklyTarget ? 3 : (yourBanked >= weeklyTarget * 0.5 ? 1 : 0) }
+  var drawTarget: Double { weeklyTarget * 0.5 }
+  var progressToTarget: Double { weeklyTarget <= 0 ? 0 : min(1, yourBanked / weeklyTarget) }
 
   var youAreWinning: Bool { yourGoals > oppGoals }
   var isLevel: Bool { yourGoals == oppGoals }
@@ -2238,7 +2473,8 @@ enum NativeSeasonEngine {
       totalWeeks: total,
       isFinalDay: isFinal,
       state: fxState,
-      stakes: stakes
+      stakes: stakes,
+      weeklyTarget: winBar(division, store: store)
     )
   }
 
@@ -2306,10 +2542,12 @@ enum NativeSeasonEngine {
 
   // MARK: Mechanics — all in real banked £
 
-  /// A "win" each week means out-earning your own pace. The bar is your personal
-  /// benchmark, lifted ~15% per division so climbing the pyramid stays a stretch.
+  /// A "win" each week means out-earning your own pace. The bar compounds ~25%
+  /// per division, so each tier up is markedly harder to win and to hold:
+  /// National 1.0× → League Two 1.25× → League One 1.56× → Championship 1.95×
+  /// → Premier League 2.44× your personal weekly benchmark.
   static func winBar(_ division: NativeDivision, store: OkkleStore) -> Double {
-    weeklyBenchmark(store: store) * (1.0 + Double(division.rawValue) * 0.15)
+    weeklyBenchmark(store: store) * pow(1.25, Double(division.rawValue))
   }
 
   private static func result(forBanked banked: Double, bar: Double) -> Int {
