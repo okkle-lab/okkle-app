@@ -1826,7 +1826,7 @@ struct NativeClubEditorView: View {
               .fill(NativeClubIdentity.palette[colorIndex])
               .frame(width: 48, height: 48)
               .overlay(shape.anyShape().stroke(OkkleColor.ink, lineWidth: shapeIndex == shape.rawValue ? 3 : 0))
-              .overlay(lockBadge(owned))
+              .overlay(lockBadge(owned, cost: shape.coins))
               .opacity(owned ? 1 : 0.5)
             Text(shape.name)
               .font(.system(size: 11, weight: .semibold))
@@ -1869,7 +1869,7 @@ struct NativeClubEditorView: View {
               .fill(color)
               .frame(width: 46, height: 46)
               .overlay(Circle().strokeBorder(OkkleColor.ink, lineWidth: selected ? 3 : 0))
-              .overlay(lockBadge(owned))
+              .overlay(lockBadge(owned, cost: NativeClubIdentity.colourCost))
               .opacity(owned ? 1 : 0.5)
               .frame(maxWidth: .infinity)
           }
@@ -1889,7 +1889,7 @@ struct NativeClubEditorView: View {
           VStack(spacing: 6) {
             NativeKitTile(kit: kit, color: NativeClubIdentity.palette[colorIndex], secondary: secondaryColor, size: 48)
               .overlay(RoundedRectangle(cornerRadius: 48 * 0.26, style: .continuous).strokeBorder(OkkleColor.ink, lineWidth: kitIndex == kit.rawValue ? 3 : 0))
-              .overlay(lockBadge(owned))
+              .overlay(lockBadge(owned, cost: NativeClubIdentity.kitCost))
               .opacity(owned ? 1 : 0.5)
             Text(kit.name)
               .font(.system(size: 11, weight: .semibold))
@@ -1915,7 +1915,7 @@ struct NativeClubEditorView: View {
             .foregroundStyle(emblem == symbol ? .white : OkkleColor.muted)
             .frame(width: 48, height: 48)
             .background(emblem == symbol ? NativeClubIdentity.palette[colorIndex] : OkkleColor.muted.opacity(0.1), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay(lockBadge(owned))
+            .overlay(lockBadge(owned, cost: NativeClubIdentity.crestCost))
             .opacity(owned ? 1 : 0.5)
             .frame(maxWidth: .infinity)
         }
@@ -1944,7 +1944,7 @@ struct NativeClubEditorView: View {
           }
           .frame(width: 46, height: 46)
           .overlay(Circle().inset(by: 6).strokeBorder(OkkleColor.ink, lineWidth: selected ? 2.5 : 0))
-          .overlay(lockBadge(owned))
+          .overlay(lockBadge(owned, cost: NativeClubIdentity.trimCost))
           .opacity(owned ? 1 : 0.5)
           .frame(maxWidth: .infinity)
         }
@@ -1970,14 +1970,17 @@ struct NativeClubEditorView: View {
   }
 
   @ViewBuilder
-  private func lockBadge(_ owned: Bool) -> some View {
+  private func lockBadge(_ owned: Bool, cost: Int = 0) -> some View {
     if !owned {
-      Image(systemName: "lock.fill")
-        .font(.system(size: 10, weight: .heavy))
-        .foregroundStyle(.white)
-        .padding(4)
-        .background(Circle().fill(OkkleColor.ink.opacity(0.6)))
-        .offset(x: 17, y: 17)
+      HStack(spacing: 2) {
+        Image(systemName: "bitcoinsign.circle.fill").font(.system(size: 9, weight: .bold))
+        Text("\(cost)").font(.system(size: 10, weight: .heavy, design: .rounded))
+      }
+      .foregroundStyle(.white)
+      .padding(.horizontal, 5)
+      .padding(.vertical, 2)
+      .background(Capsule().fill(OkkleColor.amber))
+      .offset(y: 16)
     }
   }
 
@@ -2212,18 +2215,18 @@ struct NativeLeagueView: View {
               .foregroundStyle(.white)
           }
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
-          HStack(spacing: 14) {
-            Button { showingRules = true } label: {
-              Image(systemName: "questionmark.circle")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
-            }
-            .accessibilityLabel("How the league works")
-            Button("Done") { dismiss() }
-              .font(.system(size: 16, weight: .bold))
+        ToolbarItem(placement: .navigationBarLeading) {
+          Button { showingRules = true } label: {
+            Image(systemName: "questionmark.circle")
+              .font(.system(size: 17, weight: .semibold))
               .foregroundStyle(.white)
           }
+          .accessibilityLabel("How the league works")
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button("Done") { dismiss() }
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(.white)
         }
       }
     }
@@ -2242,6 +2245,12 @@ struct NativeLeagueView: View {
       }
     }
     .onAppear {
+      // First visit: open the rules so a new driver understands the league.
+      let seenKey = "uk.okkle.native.league.rulesSeen.v1"
+      if snapshot.ceremonyTo == nil, !UserDefaults.standard.bool(forKey: seenKey) {
+        UserDefaults.standard.set(true, forKey: seenKey)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { showingRules = true }
+      }
       guard let promoted = snapshot.ceremonyTo else { return }
       NativeSeasonEngine.clearCeremony(store: store)
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
