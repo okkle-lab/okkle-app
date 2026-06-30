@@ -215,11 +215,12 @@ struct NativeHomeView: View {
         .background(OkkleColor.card)
     }
     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-    .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-    .shadow(color: .black.opacity(0.12), radius: 20, y: 10)
+    // Single soft shadow that fits within the page padding — a bigger/clipped
+    // shadow in the paging view is what caused the uneven "shades".
+    .shadow(color: .black.opacity(0.10), radius: 10, y: 5)
     .padding(.horizontal, 20)
     .padding(.top, 4)
-    .padding(.bottom, 14)
+    .padding(.bottom, 12)
     .contentShape(Rectangle())
     .onTapGesture {
       NotificationCenter.default.post(name: .nativeShowTaxRecords, object: nil)
