@@ -1290,6 +1290,51 @@ func ordinal(_ n: Int) -> String {
   return "\(n)\(suffix)"
 }
 
+/// One consistent league card: a coloured banner header (icon · TITLE · trailing)
+/// over a clean body, with an accent border and glow. Used everywhere so every
+/// card shares the same shape, band height and styling.
+struct NativeLeagueSection<Content: View>: View {
+  let title: String
+  var icon: String? = nil
+  var trailing: String? = nil
+  let band: LinearGradient
+  var accent: Color = OkkleColor.muted
+  @ViewBuilder var content: () -> Content
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(spacing: 8) {
+        if let icon {
+          Image(systemName: icon).font(.system(size: 13, weight: .bold))
+        }
+        Text(title)
+          .font(.system(size: 13, weight: .heavy))
+          .tracking(0.5)
+          .lineLimit(1)
+          .minimumScaleFactor(0.75)
+        Spacer(minLength: 8)
+        if let trailing {
+          Text(trailing)
+            .font(.system(size: 12, weight: .heavy))
+            .foregroundStyle(.white.opacity(0.9))
+        }
+      }
+      .foregroundStyle(.white)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(band)
+
+      content()
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .background(OkkleColor.card)
+    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(accent.opacity(0.25), lineWidth: 1))
+    .shadow(color: accent.opacity(0.28), radius: 16, y: 8)
+  }
+}
+
 /// This week's fixture — you vs a past-self, scored live in real tax saved,
 /// with the gaffer's team-talk underneath. The heartbeat of the league.
 struct NativeMatchdayCard: View {
@@ -1298,30 +1343,16 @@ struct NativeMatchdayCard: View {
   var club: NativeClubIdentity? = nil
 
   var body: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 8) {
-        Text("\(division.name.uppercased()) · MATCHWEEK \(fixture.matchweek) OF \(fixture.totalWeeks)")
-          .font(.system(size: 12, weight: .heavy))
-          .tracking(0.4)
-          .foregroundStyle(.white)
-          .lineLimit(1)
-          .minimumScaleFactor(0.8)
-        Spacer()
-        if fixture.state == .live {
-          Circle().fill(.white).frame(width: 6, height: 6)
-        }
-        Text(stateLabel)
-          .font(.system(size: 11, weight: .heavy))
-          .foregroundStyle(.white.opacity(0.9))
-      }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 12)
-      .background(division.gradient)
-
-      if fixture.stakes != .none {
-        banner
-      }
+    NativeLeagueSection(
+      title: "\(division.name.uppercased()) · MATCHWEEK \(fixture.matchweek) OF \(fixture.totalWeeks)",
+      trailing: stateLabel,
+      band: division.gradient,
+      accent: division.accent
+    ) {
       VStack(spacing: 14) {
+        if fixture.stakes != .none {
+          banner
+        }
         HStack(alignment: .top, spacing: 8) {
           youTeam
           VStack(spacing: 3) {
@@ -1340,7 +1371,6 @@ struct NativeMatchdayCard: View {
       }
       .padding(16)
     }
-    .themedLeagueCard(division)
   }
 
   private var pointsProgress: some View {
@@ -1426,7 +1456,7 @@ struct NativeMatchdayCard: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 9)
     .frame(maxWidth: .infinity)
-    .background(fill.opacity(0.13))
+    .background(fill.opacity(0.13), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 
   private var youTeam: some View {
@@ -1498,7 +1528,7 @@ struct NativeMatchdayCard: View {
   private var stateLabel: String {
     switch fixture.state {
     case .kickoff: return "KICK-OFF"
-    case .live: return "LIVE"
+    case .live: return "● LIVE"
     case .fullTime: return "FULL TIME"
     }
   }
@@ -1519,39 +1549,42 @@ struct NativeMatchdayCard: View {
   }
 }
 
-/// The trophy cabinet — every division won, kept forever.
+/// The trophy cabinet — every division won, kept forever. Styled in deep
+/// Champions-League blue: the whole card is the prestige colour.
 struct NativeHonoursCard: View {
   let honours: [NativeHonour]
 
-  private var goldBand: LinearGradient {
-    LinearGradient(colors: [Color(red: 0.72, green: 0.50, blue: 0.10), Color(red: 0.93, green: 0.74, blue: 0.22)], startPoint: .leading, endPoint: .trailing)
-  }
+  private static let band = LinearGradient(
+    colors: [Color(red: 0.06, green: 0.10, blue: 0.40), Color(red: 0.20, green: 0.30, blue: 0.72)],
+    startPoint: .leading, endPoint: .trailing)
+  private static let body = LinearGradient(
+    colors: [Color(red: 0.10, green: 0.16, blue: 0.52), Color(red: 0.05, green: 0.08, blue: 0.32)],
+    startPoint: .top, endPoint: .bottom)
+  private static let glow = Color(red: 0.20, green: 0.30, blue: 0.72)
 
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 8) {
-        Image(systemName: "trophy.fill")
-          .font(.system(size: 14, weight: .bold))
-        Text("HONOURS")
-          .font(.system(size: 13, weight: .heavy))
-          .tracking(0.6)
+        Image(systemName: "trophy.fill").font(.system(size: 13, weight: .bold))
+        Text("HONOURS").font(.system(size: 13, weight: .heavy)).tracking(0.5)
         Spacer()
         if !honours.isEmpty {
-          Text("\(honours.count)")
-            .font(.system(size: 13, weight: .heavy))
+          Text("\(honours.count)").font(.system(size: 12, weight: .heavy)).foregroundStyle(.white.opacity(0.9))
         }
       }
       .foregroundStyle(.white)
       .padding(.horizontal, 16)
       .padding(.vertical, 12)
-      .background(goldBand)
+      .background(NativeHonoursCard.band)
 
       content
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(NativeHonoursCard.body)
     }
     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    .okkleCard()
+    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1))
+    .shadow(color: NativeHonoursCard.glow.opacity(0.45), radius: 16, y: 8)
   }
 
   @ViewBuilder
@@ -1560,7 +1593,7 @@ struct NativeHonoursCard: View {
       if honours.isEmpty {
         Text("No silverware yet — win your division to fill the cabinet.")
           .font(.system(size: 13, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
+          .foregroundStyle(.white.opacity(0.7))
       } else {
         VStack(spacing: 0) {
           ForEach(honours) { honour in
@@ -1576,19 +1609,19 @@ struct NativeHonoursCard: View {
               VStack(alignment: .leading, spacing: 2) {
                 Text(honour.title)
                   .font(.system(size: 15, weight: .bold))
-                  .foregroundStyle(OkkleColor.ink)
+                  .foregroundStyle(.white)
                 Text(honour.subtitle)
                   .font(.system(size: 12, weight: .medium))
-                  .foregroundStyle(OkkleColor.muted)
+                  .foregroundStyle(.white.opacity(0.7))
               }
               Spacer()
               Image(systemName: "medal.fill")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(OkkleColor.amber)
+                .foregroundStyle(Color(red: 0.95, green: 0.78, blue: 0.25))
             }
             .padding(.vertical, 10)
             if honour.id != honours.last?.id {
-              Divider().padding(.leading, 51)
+              Divider().overlay(Color.white.opacity(0.12)).padding(.leading, 51)
             }
           }
         }
@@ -2103,57 +2136,55 @@ struct NativeLeagueView: View {
 
   /// The division identity and the standings, combined into one card.
   private func leagueTableCard(_ s: NativeSeasonSnapshot) -> some View {
-    VStack(spacing: 0) {
-      // Header band — crest, division name and position.
-      HStack(spacing: 12) {
-        NativeDivisionCrest(division: s.division, size: 42)
-        VStack(alignment: .leading, spacing: 2) {
-          Text(s.division.name)
-            .font(.system(size: 18, weight: .heavy, design: .rounded))
-            .foregroundStyle(.white)
-          Text("£\(Int(s.bankedThisSeason.rounded())) banked · MW \(min(s.matchweek + 1, s.totalWeeks)) of \(s.totalWeeks)")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.85))
+    NativeLeagueSection(
+      title: s.division.name.uppercased(),
+      trailing: "TABLE",
+      band: s.division.gradient,
+      accent: s.division.accent
+    ) {
+      VStack(spacing: 0) {
+        HStack(spacing: 12) {
+          NativeDivisionCrest(division: s.division, size: 36)
+          VStack(alignment: .leading, spacing: 2) {
+            Text("£\(Int(s.bankedThisSeason.rounded())) banked · MW \(min(s.matchweek + 1, s.totalWeeks)) of \(s.totalWeeks)")
+              .font(.system(size: 13, weight: .heavy))
+              .foregroundStyle(OkkleColor.ink)
+            Text("£\(Int(s.winBar.rounded()))/week saved is a win")
+              .font(.system(size: 12, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
+          }
+          Spacer()
+          if !s.yourRow.form.isEmpty { NativeFormGuide(form: s.yourRow.form, size: 8) }
         }
-        Spacer()
-        if !s.yourRow.form.isEmpty { NativeFormGuide(form: s.yourRow.form, size: 8) }
-      }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 14)
-      .background(s.division.gradient)
-
-      Text("Out-earn your past selves to go up. £\(Int(s.winBar.rounded()))/week saved is a win.")
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(OkkleColor.muted)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-
-      Divider()
-      HStack(spacing: 10) {
-        Text("#").frame(width: 22, alignment: .leading)
-        Text("Club")
-        Spacer()
-        Text("Pts").frame(width: 34, alignment: .trailing)
-      }
-      .font(.system(size: 11, weight: .heavy))
-      .tracking(0.5)
-      .foregroundStyle(OkkleColor.muted)
-      .padding(.horizontal, 14)
-      .padding(.top, 12)
-      .padding(.bottom, 8)
-      Divider()
-      ForEach(Array(s.rows.enumerated()), id: \.element.id) { index, row in
-        standingRow(row: row, index: index, total: s.rows.count, division: s.division)
-        if index != s.rows.count - 1 {
-          Divider().padding(.leading, 40)
-        }
-      }
-      zonesLegend(s.division)
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+
+        Divider()
+        HStack(spacing: 10) {
+          Text("#").frame(width: 22, alignment: .leading)
+          Text("Club")
+          Spacer()
+          Text("Pts").frame(width: 34, alignment: .trailing)
+        }
+        .font(.system(size: 11, weight: .heavy))
+        .tracking(0.5)
+        .foregroundStyle(OkkleColor.muted)
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        Divider()
+        ForEach(Array(s.rows.enumerated()), id: \.element.id) { index, row in
+          standingRow(row: row, index: index, total: s.rows.count, division: s.division)
+          if index != s.rows.count - 1 {
+            Divider().padding(.leading, 40)
+          }
+        }
+        zonesLegend(s.division)
+          .padding(.horizontal, 14)
+          .padding(.vertical, 12)
+      }
     }
-    .themedLeagueCard(s.division, cornerRadius: 22)
   }
 
   private func standingRow(row: NativeClubRow, index: Int, total: Int, division: NativeDivision) -> some View {
@@ -2231,37 +2262,27 @@ struct NativeLeagueView: View {
 
   private func ladder(current: NativeDivision) -> some View {
     let rows = NativeDivision.allCases.reversed()
-    return VStack(spacing: 0) {
-      HStack(spacing: 8) {
-        Image(systemName: "trophy.fill")
-          .font(.system(size: 13, weight: .bold))
-        Text("THE PYRAMID")
-          .font(.system(size: 13, weight: .heavy))
-          .tracking(0.6)
-        Spacer()
-        Text(current.name.uppercased())
-          .font(.system(size: 11, weight: .heavy))
-          .foregroundStyle(.white.opacity(0.85))
-      }
-      .foregroundStyle(.white)
-      .padding(.horizontal, 16)
-      .padding(.vertical, 12)
-      .background(current.gradient)
-
-      ForEach(Array(rows), id: \.self) { division in
-        NavigationLink {
-          NativeDivisionMedalsView(division: division).environmentObject(store)
-        } label: {
-          row(division, current: current)
-        }
-        .buttonStyle(.plain)
-        if division != .nationalLeague {
-          Divider().padding(.leading, 64)
+    return NativeLeagueSection(
+      title: "THE PYRAMID",
+      icon: "trophy.fill",
+      trailing: current.name.uppercased(),
+      band: current.gradient,
+      accent: current.accent
+    ) {
+      VStack(spacing: 0) {
+        ForEach(Array(rows), id: \.self) { division in
+          NavigationLink {
+            NativeDivisionMedalsView(division: division).environmentObject(store)
+          } label: {
+            row(division, current: current)
+          }
+          .buttonStyle(.plain)
+          if division != .nationalLeague {
+            Divider().padding(.leading, 64)
+          }
         }
       }
     }
-    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    .okkleCard()
   }
 
   private func row(_ division: NativeDivision, current: NativeDivision) -> some View {
