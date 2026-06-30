@@ -1639,7 +1639,7 @@ struct NativeClubEditorView: View {
 
   private var shapeGrid: some View {
     LazyVGrid(columns: columns, spacing: 14) {
-      ForEach(NativeCrestShape.allCases, id: \.rawValue) { shape in
+      ForEach(NativeCrestShape.pickable, id: \.rawValue) { shape in
         let free = shape.rawValue < NativeClubIdentity.freeShapes
         let id = NativeClubIdentity.shapeId(shape.rawValue)
         let owned = NativeWallet.isUnlocked(id, free: free)
@@ -2384,7 +2384,11 @@ enum NativeKit: Int, CaseIterable {
 
 /// The outline of the badge — a real football-crest silhouette, not just a square.
 enum NativeCrestShape: Int, CaseIterable {
-  case rounded, circle, shield, hexagon, diamond, oval, octagon, pennant, spade, tudor
+  case rounded, circle, shield, hexagon, diamond, oval, octagon, pennant, spade, tudor, banner, pentagon, heater
+
+  /// The shapes offered in the editor (pennant retired — kept in the enum so
+  /// saved badges keep their raw values, but no longer selectable).
+  static let pickable: [NativeCrestShape] = allCases.filter { $0 != .pennant }
 
   var name: String {
     switch self {
@@ -2398,6 +2402,9 @@ enum NativeCrestShape: Int, CaseIterable {
     case .pennant: return "Pennant"
     case .spade: return "Spade"
     case .tudor: return "Tudor"
+    case .banner: return "Banner"
+    case .pentagon: return "Pentagon"
+    case .heater: return "Heater"
     }
   }
 
@@ -2413,6 +2420,9 @@ enum NativeCrestShape: Int, CaseIterable {
     case .pennant: return AnyShape(NativePennantShape())
     case .spade: return AnyShape(NativeSpadeShape())
     case .tudor: return AnyShape(NativeTudorShape())
+    case .banner: return AnyShape(NativeBannerShieldShape())
+    case .pentagon: return AnyShape(NativePentagonShape())
+    case .heater: return AnyShape(NativeHeaterShape())
     }
   }
 }
@@ -2514,6 +2524,54 @@ struct NativeTudorShape: Shape {
     p.addLine(to: CGPoint(x: r.maxX, y: r.minY + h * 0.55))
     p.addQuadCurve(to: CGPoint(x: r.midX, y: r.maxY), control: CGPoint(x: r.maxX, y: r.minY + h * 0.86))
     p.addQuadCurve(to: CGPoint(x: r.minX, y: r.minY + h * 0.55), control: CGPoint(x: r.minX, y: r.minY + h * 0.86))
+    p.closeSubpath()
+    return p
+  }
+}
+
+/// A banner-top shield — a flat scroll ledge across the top, shield below.
+struct NativeBannerShieldShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let w = r.width, h = r.height
+    p.move(to: CGPoint(x: r.minX, y: r.minY))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + h * 0.20))
+    p.addLine(to: CGPoint(x: r.maxX - w * 0.07, y: r.minY + h * 0.20))
+    p.addLine(to: CGPoint(x: r.maxX - w * 0.07, y: r.minY + h * 0.56))
+    p.addQuadCurve(to: CGPoint(x: r.midX, y: r.maxY), control: CGPoint(x: r.maxX - w * 0.07, y: r.minY + h * 0.86))
+    p.addQuadCurve(to: CGPoint(x: r.minX + w * 0.07, y: r.minY + h * 0.56), control: CGPoint(x: r.minX + w * 0.07, y: r.minY + h * 0.86))
+    p.addLine(to: CGPoint(x: r.minX + w * 0.07, y: r.minY + h * 0.20))
+    p.addLine(to: CGPoint(x: r.minX, y: r.minY + h * 0.20))
+    p.closeSubpath()
+    return p
+  }
+}
+
+/// A point-up pentagon.
+struct NativePentagonShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let cx = r.midX, cy = r.midY, rad = min(r.width, r.height) / 2
+    for i in 0..<5 {
+      let a = (Double(i) * 72.0 - 90.0) * .pi / 180.0
+      let pt = CGPoint(x: cx + rad * cos(a), y: cy + rad * sin(a))
+      if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+    }
+    p.closeSubpath()
+    return p
+  }
+}
+
+/// A heater shield — flat top, straight sides angling to a point.
+struct NativeHeaterShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    p.move(to: CGPoint(x: r.minX, y: r.minY + r.height * 0.03))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + r.height * 0.03))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + r.height * 0.45))
+    p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
+    p.addLine(to: CGPoint(x: r.minX, y: r.minY + r.height * 0.45))
     p.closeSubpath()
     return p
   }
