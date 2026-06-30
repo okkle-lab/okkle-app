@@ -1227,20 +1227,21 @@ struct NativeLeagueCard: View {
           if let fixture, fixture.matchweek > 0 {
             Divider().padding(.vertical, 13)
             HStack(spacing: 10) {
-              Image(systemName: fixture.state == .fullTime ? "checkered.flag" : "dot.radiowaves.left.and.right")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(fixture.state == .live ? OkkleColor.red : snapshot.division.accent)
-              Text("vs \(fixture.opponent)")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(OkkleColor.muted)
-                .lineLimit(1)
-              Spacer()
-              Text("\(fixture.yourGoals)–\(fixture.oppGoals)")
-                .font(.system(size: 16, weight: .heavy, design: .rounded))
-                .foregroundStyle(OkkleColor.ink)
-              Text(fixtureState(fixture))
-                .font(.system(size: 11, weight: .heavy))
-                .foregroundStyle(fixtureColor(fixture))
+              Image(systemName: fixture.pointsThisWeek == 3 ? "checkmark.seal.fill" : "bolt.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(fixture.pointsThisWeek == 3 ? OkkleColor.brand : snapshot.division.accent)
+              VStack(alignment: .leading, spacing: 2) {
+                Text(actionHeadline(fixture))
+                  .font(.system(size: 13, weight: .heavy))
+                  .foregroundStyle(fixture.pointsThisWeek == 3 ? OkkleColor.brand : OkkleColor.ink)
+                  .lineLimit(1)
+                  .minimumScaleFactor(0.8)
+                Text("vs \(fixture.opponent) · \(fixture.yourGoals)–\(fixture.oppGoals)")
+                  .font(.system(size: 11, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+                  .lineLimit(1)
+              }
+              Spacer(minLength: 6)
             }
           }
 
@@ -1268,19 +1269,16 @@ struct NativeLeagueCard: View {
     .buttonStyle(.plain)
   }
 
-  private func fixtureState(_ f: NativeFixture) -> String {
+  /// What to actually do this week, in real money — the driving goal.
+  private func actionHeadline(_ f: NativeFixture) -> String {
+    let toWin = max(1, Int((f.weeklyTarget - f.yourBanked).rounded(.up)))
     switch f.state {
-    case .kickoff: return "KICK-OFF"
-    case .live: return f.youAreWinning ? "AHEAD" : (f.isLevel ? "LEVEL" : "BEHIND")
-    case .fullTime: return f.youAreWinning ? "WON" : (f.isLevel ? "DREW" : "LOST")
+    case .fullTime:
+      return f.pointsThisWeek == 3 ? "Week won — points banked" : "Next week: save £\(Int(f.weeklyTarget.rounded())) to win"
+    default:
+      if f.pointsThisWeek == 3 { return "Week won — keep banking" }
+      return "Save £\(toWin) more this week to win"
     }
-  }
-
-  private func fixtureColor(_ f: NativeFixture) -> Color {
-    if f.state == .kickoff { return OkkleColor.muted }
-    if f.youAreWinning { return OkkleColor.brand }
-    if f.isLevel { return OkkleColor.amber }
-    return OkkleColor.red
   }
 }
 
@@ -3172,17 +3170,17 @@ enum NativeSeasonEngine {
     save(state)
     let division = NativeDivision(rawValue: state.divisionRaw) ?? .nationalLeague
     let rows = standings(seasonStart: state.seasonStart, divisionRaw: state.divisionRaw, store: store)
-    let completed = completedWeeks(since: state.seasonStart)
+    let played = activeOffsets(seasonStart: state.seasonStart, store: store).count
     let yourRow = rows.first { $0.isYou } ?? NativeClubRow(id: 0, name: "You", isYou: true, played: 0, points: 0, form: [])
     let position = (rows.firstIndex { $0.isYou } ?? 0) + 1
     var banked = 0.0
-    for week in 0..<completed {
+    for week in 0..<completedWeeks(since: state.seasonStart) {
       let start = state.seasonStart.addingTimeInterval(Double(week) * weekSeconds)
       banked += weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store)
     }
     return NativeSeasonSnapshot(
       division: division,
-      matchweek: completed,
+      matchweek: played,
       totalWeeks: weeksPerSeason,
       rows: rows,
       yourRow: yourRow,
@@ -3205,15 +3203,22 @@ enum NativeSeasonEngine {
     advance(&state, store: store)
     save(state)
     let division = NativeDivision(rawValue: state.divisionRaw) ?? .nationalLeague
-    let completed = completedWeeks(since: state.seasonStart)
     let total = weeksPerSeason
-    let weekIndex = min(completed, total - 1)
+    let completed = completedWeeks(since: state.seasonStart)
+    let offsets = activeOffsets(seasonStart: state.seasonStart, store: store)   // weeks ridden
+    let played = offsets.count
+    let seasonOver = completed >= total
+
+    // The live (or last) match sits on the current calendar week, but the
+    // matchweek number only counts weeks the driver actually rode.
+    let weekIndex = seasonOver ? (offsets.last ?? (total - 1)) : completed
     let weekStart = state.seasonStart.addingTimeInterval(Double(weekIndex) * weekSeconds)
     let weekEnd = weekStart.addingTimeInterval(weekSeconds)
-    let weekFinished = completed > weekIndex
+    let weekFinished = seasonOver
     let yourBanked = weeklyBanked(start: weekStart, end: weekFinished ? weekEnd : min(Date(), weekEnd), store: store)
 
-    let ghost = Ghost.allCases[weekIndex % Ghost.allCases.count]
+    let matchweek = min(seasonOver ? max(1, played) : played + 1, total)
+    let ghost = Ghost.allCases[max(0, matchweek - 1) % Ghost.allCases.count]
     let oppBanked = ghostWeekBanked(ghost: ghost, weekIndex: weekIndex, seasonStart: state.seasonStart, store: store)
 
     let goalUnit = max(1, winBar(division, store: store) / 3)
@@ -3221,7 +3226,7 @@ enum NativeSeasonEngine {
     let oppGoals = min(6, Int((oppBanked / goalUnit).rounded(.down)))
 
     let fxState: NativeFixture.State = weekFinished ? .fullTime : (yourBanked <= 0 ? .kickoff : .live)
-    let isFinal = weekIndex == total - 1
+    let isFinal = matchweek >= total
 
     var stakes: NativeFixture.Stakes = .none
     if isFinal {
@@ -3244,7 +3249,7 @@ enum NativeSeasonEngine {
       oppBanked: oppBanked,
       yourGoals: yourGoals,
       oppGoals: oppGoals,
-      matchweek: weekIndex + 1,
+      matchweek: matchweek,
       totalWeeks: total,
       isFinalDay: isFinal,
       state: fxState,
@@ -3270,35 +3275,36 @@ enum NativeSeasonEngine {
 
   static func standings(seasonStart: Date, divisionRaw: Int, store: OkkleStore) -> [NativeClubRow] {
     let division = NativeDivision(rawValue: divisionRaw) ?? .nationalLeague
-    let completed = completedWeeks(since: seasonStart)
+    let offsets = activeOffsets(seasonStart: seasonStart, store: store)   // only weeks you rode
+    let played = offsets.count
     let bar = winBar(division, store: store)
 
-    // You — this season's real weekly banked £.
+    // You — this season's real weekly banked £, on the weeks you worked.
     var yourForm: [Int] = []
     var yourPoints = 0
-    for week in 0..<completed {
+    for week in offsets {
       let start = seasonStart.addingTimeInterval(Double(week) * weekSeconds)
       let result = result(forBanked: weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store), bar: bar)
       yourPoints += result
       yourForm.append(result)
     }
     let yourName = clubIdentity(store: store).name
-    var rows = [NativeClubRow(id: 0, name: yourName, isYou: true, played: completed, points: yourPoints, form: Array(yourForm.suffix(5)))]
+    var rows = [NativeClubRow(id: 0, name: yourName, isYou: true, played: played, points: yourPoints, form: Array(yourForm.suffix(5)))]
 
-    // Your past selves — real history replayed, no fictional clubs.
-    let bestWeeks = topWeeklyBanked(count: weeksPerSeason, store: store)
+    // Your past selves — real history replayed, scored on the same active weeks.
+    let bestWeeks = topWeeklyBanked(count: max(1, played), store: store)
     let benchmark = weeklyBenchmark(store: store)
     for ghost in Ghost.allCases {
       var points = 0
       var form: [Int] = []
-      for week in 0..<completed {
+      for (i, week) in offsets.enumerated() {
         let banked: Double
         switch ghost {
         case .lastSeason:
           let start = seasonStart.addingTimeInterval(Double(week) * weekSeconds - weekSeconds * Double(weeksPerSeason))
           banked = weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store)
         case .bestEver:
-          banked = week < bestWeeks.count ? bestWeeks[week] : 0
+          banked = i < bestWeeks.count ? bestWeeks[i] : 0
         case .average:
           banked = benchmark
         }
@@ -3306,7 +3312,7 @@ enum NativeSeasonEngine {
         points += r
         form.append(r)
       }
-      rows.append(NativeClubRow(id: ghost.rawValue + 1, name: ghost.clubName, isYou: false, played: completed, points: points, form: Array(form.suffix(5))))
+      rows.append(NativeClubRow(id: ghost.rawValue + 1, name: ghost.clubName, isYou: false, played: played, points: points, form: Array(form.suffix(5))))
     }
 
     // Ties break in your favour, then by name — deterministic, no RNG.
@@ -3379,6 +3385,12 @@ enum NativeSeasonEngine {
     let seasonLength = weekSeconds * Double(weeksPerSeason)
     var guardrail = 0
     while Date().timeIntervalSince(state.seasonStart) >= seasonLength, guardrail < 240 {
+      // A season you sat out entirely never moves you up or down.
+      guard !activeOffsets(seasonStart: state.seasonStart, store: store).isEmpty else {
+        state.seasonStart = state.seasonStart.addingTimeInterval(seasonLength)
+        guardrail += 1
+        continue
+      }
       let rows = standings(seasonStart: state.seasonStart, divisionRaw: state.divisionRaw, store: store)
       let yourRow = rows.first { $0.isYou }
       let position = (rows.firstIndex { $0.isYou } ?? 0) + 1
@@ -3465,6 +3477,20 @@ enum NativeSeasonEngine {
 
   private static func completedWeeks(since seasonStart: Date) -> Int {
     max(0, min(weeksPerSeason, Int(floor(Date().timeIntervalSince(seasonStart) / weekSeconds))))
+  }
+
+  /// Did the driver actually ride in this aligned week? Off weeks don't count.
+  static func weekActive(start: Date, store: OkkleStore) -> Bool {
+    let range = start..<start.addingTimeInterval(weekSeconds)
+    return store.records.contains { range.contains($0.date) } || store.trips.contains { range.contains($0.startedAt) }
+  }
+
+  /// Completed weeks this season the driver actually worked — the league only
+  /// counts these, so rest days never trigger a fixture or cost you points.
+  static func activeOffsets(seasonStart: Date, store: OkkleStore) -> [Int] {
+    (0..<completedWeeks(since: seasonStart)).filter {
+      weekActive(start: seasonStart.addingTimeInterval(Double($0) * weekSeconds), store: store)
+    }
   }
 
   private static func alignedSeasonStart(for date: Date) -> Date {
