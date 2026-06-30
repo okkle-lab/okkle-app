@@ -3120,7 +3120,9 @@ struct NativeKitTile: View {
 /// club customisation. Cosmetic by design: Coins never help you win a match.
 @MainActor
 enum NativeWallet {
-  private static let unlockedKey = "uk.okkle.native.wallet.unlocked.v1"
+  // v2: reset purchases after the Coin rebalance, so everything past the free
+  // tier (Stripes/Hoops/Sash/Halves included) is locked again under new pricing.
+  private static let unlockedKey = "uk.okkle.native.wallet.unlocked.v2"
 
   /// Deterministic: total Coins earned to date from real achievements.
   static func earned(store: OkkleStore) -> Int {
