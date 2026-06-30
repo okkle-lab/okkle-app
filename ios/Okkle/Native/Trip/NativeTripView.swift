@@ -79,7 +79,10 @@ struct NativeTripView: View {
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       applyWidgetRequestIfNeeded()
     }
-    .toolbar(shouldShowTrackingMap ? .hidden : .visible, for: .tabBar)
+    // Keep the tab bar visible during tracking so the driver can switch tabs;
+    // the shared session keeps recording in the background and the live map is
+    // still here when they come back to the Trip tab.
+    .toolbar(.visible, for: .tabBar)
   }
 
   private var setupScreen: some View {
