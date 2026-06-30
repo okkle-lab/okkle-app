@@ -2103,6 +2103,59 @@ struct NativeLeagueBackground: View {
   }
 }
 
+/// A plain-English explainer for how the solo league works.
+struct NativeLeagueRulesView: View {
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          rule("figure.run", "You vs your past selves",
+               "Each week you race three versions of yourself — Peak You (your best-ever weeks), Last Month You, and Average You. No real opponents, nothing shared.")
+          rule("sterlingsign.circle.fill", "Win by saving tax",
+               "Every week has a target. Save more tax than it — by logging miles — to win the week and take 3 points; reach halfway for a draw and 1 point.")
+          rule("list.number", "Climb the table",
+               "Points stack over a four-week season. Finish 1st to go up automatically, 2nd–3rd play a one-week play-off final, and bottom is relegated.")
+          rule("chart.line.uptrend.xyaxis", "Tougher at the top",
+               "Every division raises your weekly target, so each step up the pyramid is a real stretch to win and to hold onto.")
+          rule("moon.zzz.fill", "Rest days don't count",
+               "Weeks you don't ride are simply skipped — the league never counts a day off against you.")
+          rule("bitcoinsign.circle.fill", "Coins are cosmetic",
+               "Medals and especially promotions earn Coins to spend on your club crest. They're cosmetic only and never help you win a match.")
+        }
+        .padding(20)
+      }
+      .background { NativeBackground() }
+      .navigationTitle("How the league works")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button("Done") { dismiss() }.font(.system(size: 16, weight: .bold))
+        }
+      }
+    }
+  }
+
+  private func rule(_ symbol: String, _ title: String, _ body: String) -> some View {
+    HStack(alignment: .top, spacing: 14) {
+      Image(systemName: symbol)
+        .font(.system(size: 20, weight: .semibold))
+        .foregroundStyle(OkkleColor.brand)
+        .frame(width: 30)
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title)
+          .font(.system(size: 16, weight: .heavy))
+          .foregroundStyle(OkkleColor.ink)
+        Text(body)
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+}
+
 /// League screen: a live season table (you vs your past selves, with
 /// promotion/relegation zones) and a Medals tab that drills into medals.
 struct NativeLeagueView: View {
@@ -2112,6 +2165,7 @@ struct NativeLeagueView: View {
   @State private var segment: Segment = .table
   @State private var ceremony: NativeDivision?
   @State private var editingClub = false
+  @State private var showingRules = false
 
   var body: some View {
     let snapshot = NativeSeasonEngine.snapshot(store: store)
@@ -2131,6 +2185,17 @@ struct NativeLeagueView: View {
           leaguePage { medalsTab(current: snapshot.division) }.tag(Segment.medals)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
+
+        // Carousel dots — a clear cue that you can swipe between the two.
+        HStack(spacing: 8) {
+          ForEach([Segment.table, Segment.medals], id: \.self) { page in
+            Capsule()
+              .fill(segment == page ? Color.white : Color.white.opacity(0.35))
+              .frame(width: segment == page ? 18 : 7, height: 7)
+              .animation(.easeInOut(duration: 0.2), value: segment)
+          }
+        }
+        .padding(.bottom, 6)
       }
       .padding(.top, 20)
       .background { NativeLeagueBackground(division: snapshot.division) }
@@ -2148,14 +2213,25 @@ struct NativeLeagueView: View {
           }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-          Button("Done") { dismiss() }
-            .font(.system(size: 16, weight: .bold))
-            .foregroundStyle(.white)
+          HStack(spacing: 14) {
+            Button { showingRules = true } label: {
+              Image(systemName: "questionmark.circle")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+            }
+            .accessibilityLabel("How the league works")
+            Button("Done") { dismiss() }
+              .font(.system(size: 16, weight: .bold))
+              .foregroundStyle(.white)
+          }
         }
       }
     }
     .sheet(isPresented: $editingClub) {
       NativeClubEditorView().environmentObject(store)
+    }
+    .sheet(isPresented: $showingRules) {
+      NativeLeagueRulesView()
     }
     .overlay {
       if let ceremony {
@@ -2992,14 +3068,17 @@ enum NativeWallet {
     var total = 0
     for medal in NativeMedalEngine.achievements(store: store) where medal.unlocked {
       switch medal.tier {
-      case .bronze:  total += 10
-      case .silver:  total += 25
+      // Easy medals pay little; the real Coins come from hard, sustained play —
+      // gold medals and (above all) climbing the league — so premium crests
+      // stay earned rather than handed out.
+      case .bronze:  total += 4
+      case .silver:  total += 12
       case .gold:    total += 50
-      case .special: total += 40
+      case .special: total += 20
       }
     }
     for honour in NativeSeasonEngine.honours() {
-      total += honour.kind == .champions ? 200 : 150
+      total += honour.kind == .champions ? 300 : 200
     }
     return total
   }
@@ -3158,9 +3237,9 @@ enum NativeSeasonEngine {
 
     var clubName: String {
       switch self {
-      case .lastSeason: return "Last Season You"
-      case .bestEver:   return "Your Best XI"
-      case .average:    return "The Form Book"
+      case .lastSeason: return "Last Month You"
+      case .bestEver:   return "Peak You"
+      case .average:    return "Average You"
       }
     }
 
