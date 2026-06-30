@@ -164,18 +164,18 @@ struct NativeBannerCard<Content: View>: View {
     VStack(spacing: 0) {
       HStack {
         Text(kicker)
-          .font(.system(size: 13, weight: .heavy))
-          .tracking(0.6)
+          .font(.system(size: 14, weight: .heavy))
+          .tracking(0.5)
           .foregroundStyle(.white)
         Spacer()
         if let trailing {
           Text(trailing)
             .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(.white.opacity(0.85))
+            .foregroundStyle(.white.opacity(0.9))
         }
       }
       .padding(.horizontal, 18)
-      .padding(.vertical, 11)
+      .padding(.vertical, 10)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
         band ?? LinearGradient(colors: [OkkleColor.bannerDark, OkkleColor.brand], startPoint: .leading, endPoint: .trailing)

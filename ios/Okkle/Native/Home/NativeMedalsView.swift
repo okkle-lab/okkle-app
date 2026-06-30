@@ -1197,51 +1197,61 @@ struct NativeLeagueCard: View {
       ) {
         VStack(spacing: 0) {
           HStack(spacing: 14) {
-            NativeDivisionCrest(division: snapshot.division, size: 46)
-            VStack(alignment: .leading, spacing: 5) {
+            NativeDivisionCrest(division: snapshot.division, size: 52)
+            VStack(alignment: .leading, spacing: 6) {
               if snapshot.matchweek == 0 {
                 Text("Kicking off")
-                  .font(.system(size: 16, weight: .heavy))
+                  .font(.system(size: 20, weight: .heavy))
                   .foregroundStyle(OkkleColor.ink)
                 Text("£\(Int(snapshot.winBar.rounded())) of tax saved this week wins it")
-                  .font(.system(size: 12, weight: .semibold))
+                  .font(.system(size: 13, weight: .semibold))
                   .foregroundStyle(OkkleColor.muted)
               } else {
                 Text("£\(Int(snapshot.bankedThisSeason.rounded())) banked")
-                  .font(.system(size: 16, weight: .heavy))
+                  .font(.system(size: 21, weight: .heavy, design: .rounded))
                   .foregroundStyle(OkkleColor.ink)
                 HStack(spacing: 8) {
-                  NativeFormGuide(form: snapshot.yourRow.form)
+                  NativeFormGuide(form: snapshot.yourRow.form, size: 9)
                   Text("Matchweek \(snapshot.matchweek)/\(snapshot.totalWeeks)")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(OkkleColor.muted)
                 }
               }
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
-              .font(.system(size: 13, weight: .bold))
+              .font(.system(size: 15, weight: .bold))
               .foregroundStyle(OkkleColor.muted)
           }
 
           if let fixture, fixture.matchweek > 0 {
             Divider().padding(.vertical, 13)
-            HStack(spacing: 10) {
-              Image(systemName: fixture.pointsThisWeek == 3 ? "checkmark.seal.fill" : "bolt.fill")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(fixture.pointsThisWeek == 3 ? OkkleColor.brand : snapshot.division.accent)
-              VStack(alignment: .leading, spacing: 2) {
-                Text(actionHeadline(fixture))
-                  .font(.system(size: 13, weight: .heavy))
-                  .foregroundStyle(fixture.pointsThisWeek == 3 ? OkkleColor.brand : OkkleColor.ink)
-                  .lineLimit(1)
-                  .minimumScaleFactor(0.8)
-                Text("vs \(fixture.opponent) · \(fixture.yourGoals)–\(fixture.oppGoals)")
-                  .font(.system(size: 11, weight: .semibold))
-                  .foregroundStyle(OkkleColor.muted)
-                  .lineLimit(1)
+            let won = fixture.pointsThisWeek == 3
+            let drawing = fixture.pointsThisWeek == 1
+            let bankedWeek = Int(fixture.yourBanked.rounded())
+            let targetWeek = Int(fixture.weeklyTarget.rounded())
+            let toWin = max(1, targetWeek - bankedWeek)
+            VStack(alignment: .leading, spacing: 7) {
+              HStack(spacing: 8) {
+                Image(systemName: won ? "checkmark.seal.fill" : "bolt.fill")
+                  .font(.system(size: 16, weight: .bold))
+                  .foregroundStyle(won ? OkkleColor.brand : snapshot.division.accent)
+                Text(won ? "This week won" : (drawing ? "On for a draw" : "Win this week"))
+                  .font(.system(size: 16, weight: .heavy))
+                  .foregroundStyle(won ? OkkleColor.brand : OkkleColor.ink)
+                Spacer()
+                Text(won ? "+3 pts" : "£\(toWin) to go")
+                  .font(.system(size: 15, weight: .heavy))
+                  .foregroundStyle(won ? OkkleColor.brand : snapshot.division.accent)
               }
-              Spacer(minLength: 6)
+              ProgressView(value: fixture.progressToTarget)
+                .tint(won ? OkkleColor.brand : snapshot.division.accent)
+                .scaleEffect(x: 1, y: 1.4, anchor: .center)
+              Text("£\(bankedWeek) of £\(targetWeek) tax saved · vs \(fixture.opponent)")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(OkkleColor.muted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
             }
           }
 
@@ -1249,15 +1259,15 @@ struct NativeLeagueCard: View {
             Divider().padding(.vertical, 13)
             HStack(spacing: 10) {
               Image(systemName: "rosette")
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(snapshot.division.accent)
               Text("\(earnedMedals) of \(medals.count) medals")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(OkkleColor.ink)
               Spacer()
               if let nextMedal {
                 Text("Next: \(nextMedal.label)")
-                  .font(.system(size: 12, weight: .semibold))
+                  .font(.system(size: 14, weight: .semibold))
                   .foregroundStyle(OkkleColor.muted)
                   .lineLimit(1)
               }
@@ -1269,17 +1279,6 @@ struct NativeLeagueCard: View {
     .buttonStyle(.plain)
   }
 
-  /// What to actually do this week, in real money — the driving goal.
-  private func actionHeadline(_ f: NativeFixture) -> String {
-    let toWin = max(1, Int((f.weeklyTarget - f.yourBanked).rounded(.up)))
-    switch f.state {
-    case .fullTime:
-      return f.pointsThisWeek == 3 ? "Week won — points banked" : "Next week: save £\(Int(f.weeklyTarget.rounded())) to win"
-    default:
-      if f.pointsThisWeek == 3 { return "Week won — keep banking" }
-      return "Save £\(toWin) more this week to win"
-    }
-  }
 }
 
 func ordinal(_ n: Int) -> String {
@@ -3173,10 +3172,17 @@ enum NativeSeasonEngine {
     let played = activeOffsets(seasonStart: state.seasonStart, store: store).count
     let yourRow = rows.first { $0.isYou } ?? NativeClubRow(id: 0, name: "You", isYou: true, played: 0, points: 0, form: [])
     let position = (rows.firstIndex { $0.isYou } ?? 0) + 1
+    let completed = completedWeeks(since: state.seasonStart)
     var banked = 0.0
-    for week in 0..<completedWeeks(since: state.seasonStart) {
+    for week in 0..<completed {
       let start = state.seasonStart.addingTimeInterval(Double(week) * weekSeconds)
       banked += weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store)
+    }
+    // Include the current, in-progress week so the season total is never less
+    // than what you've banked this week.
+    if completed < weeksPerSeason {
+      let start = state.seasonStart.addingTimeInterval(Double(completed) * weekSeconds)
+      banked += weeklyBanked(start: start, end: min(Date(), start.addingTimeInterval(weekSeconds)), store: store)
     }
     return NativeSeasonSnapshot(
       division: division,
@@ -3385,8 +3391,10 @@ enum NativeSeasonEngine {
     let seasonLength = weekSeconds * Double(weeksPerSeason)
     var guardrail = 0
     while Date().timeIntervalSince(state.seasonStart) >= seasonLength, guardrail < 240 {
-      // A season you sat out entirely never moves you up or down.
-      guard !activeOffsets(seasonStart: state.seasonStart, store: store).isEmpty else {
+      // A season needs at least 2 of 4 weeks of real driving to count. A break —
+      // a holiday, illness, a quiet spell — freezes your division: no relegation
+      // (and no promotion) off the back of one or two off weeks.
+      guard activeOffsets(seasonStart: state.seasonStart, store: store).count >= 2 else {
         state.seasonStart = state.seasonStart.addingTimeInterval(seasonLength)
         guardrail += 1
         continue

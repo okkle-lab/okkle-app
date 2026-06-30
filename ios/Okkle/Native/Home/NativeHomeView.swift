@@ -12,6 +12,8 @@ struct NativeHomeView: View {
   @Binding var selectedTab: NativeTab
   @State private var showLeague = false
   @State private var showSettings = false
+  @State private var taxPage = 0
+  @ObservedObject private var tripSession = NativeTripSession.shared
   @State private var medalAlert: NativeMedalAchievement?
   @State private var seenMedalKeys = Set<String>()
 
@@ -23,10 +25,9 @@ struct NativeHomeView: View {
 
       VStack(spacing: 16) {
         header
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
           sectionHeader("THIS TAX YEAR")
-          heroCard
-          statTiles
+          taxCard
         }
         VStack(alignment: .leading, spacing: 12) {
           sectionHeader("YOUR CLUB")
@@ -37,9 +38,7 @@ struct NativeHomeView: View {
           ) { showLeague = true }
         }
 
-        if !store.history.isEmpty {
-          recentCard
-        }
+        recentCard
 
         Spacer(minLength: 0)
       }
@@ -75,10 +74,10 @@ struct NativeHomeView: View {
     HStack(alignment: .center, spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(homeGreetingTitle)
-          .font(.system(size: 28, weight: .heavy, design: .rounded))
+          .font(.system(size: 42, weight: .heavy, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
           .lineLimit(1)
-          .minimumScaleFactor(0.7)
+          .minimumScaleFactor(0.6)
         Text(Date().formatted(.dateTime.weekday(.wide).day().month(.wide)))
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
@@ -115,32 +114,129 @@ struct NativeHomeView: View {
     .background(OkkleColor.amber.opacity(0.14), in: Capsule())
   }
 
-  // MARK: Hero
+  // MARK: Tax card (one swipeable card: Tax saved ↔ Set aside)
 
-  private var heroCard: some View {
-    Button { selectedTab = .insights } label: {
-      NativeBannerCard(kicker: "TAX SAVED THIS YEAR", trailing: taxYearLabel(for: store.taxYear), cornerRadius: 26) {
-        VStack(alignment: .leading, spacing: 12) {
-          Text(headlineGbp(store.taxSaved))
-            .font(.system(size: 56, weight: .heavy, design: .rounded))
-            .foregroundStyle(OkkleColor.ink)
-            .lineLimit(1)
-            .minimumScaleFactor(0.5)
-          VStack(alignment: .leading, spacing: 7) {
-            ProgressView(value: min(1, store.yearMiles / 10_000))
-              .tint(OkkleColor.brand)
-            HStack {
-              Text("\(miles(store.yearMiles)) logged")
-              Spacer()
-              Text(bandCaption)
-            }
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(OkkleColor.muted)
-          }
+  // Tax bill split colours — deliberately cool, to stay clear of the league's amber.
+  private var incomeTaxColor: Color { OkkleColor.blue }
+  private var class4Color: Color { Color(red: 0.48, green: 0.33, blue: 0.80) }
+
+  private var taxCard: some View {
+    VStack(spacing: 6) {
+      // Two SEPARATE cards (each its own halo) that page past each other. The
+      // frame is tall enough that the cards' bottom shadow isn't hard-clipped.
+      TabView(selection: $taxPage) {
+        taxSavedPage.tag(0)
+        setAsidePage.tag(1)
+      }
+      .tabViewStyle(.page(indexDisplayMode: .never))
+      .frame(height: 218)
+
+      HStack(spacing: 7) {
+        ForEach(0..<2, id: \.self) { index in
+          Capsule()
+            .fill(taxPage == index ? OkkleColor.ink : OkkleColor.muted.opacity(0.3))
+            .frame(width: taxPage == index ? 18 : 7, height: 7)
+            .animation(.easeInOut(duration: 0.2), value: taxPage)
+        }
+      }
+      .frame(maxWidth: .infinity)
+    }
+  }
+
+  private var taxSavedPage: some View {
+    taxPageShell(kicker: "TAX SAVED THIS YEAR", trailing: taxYearLabel(for: store.taxYear)) {
+      Text(headlineGbp(store.taxSaved))
+        .font(.system(size: 56, weight: .heavy, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+        .lineLimit(1)
+        .minimumScaleFactor(0.5)
+      VStack(alignment: .leading, spacing: 10) {
+        progressBar(value: min(1, store.yearMiles / 10_000), color: OkkleColor.brand)
+        HStack {
+          Text("\(miles(store.yearMiles)) logged")
+          Spacer()
+          Text(bandCaption)
+        }
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(OkkleColor.muted)
+      }
+    }
+  }
+
+  private var setAsidePage: some View {
+    let pos = store.taxPosition
+    let incomeTax = max(0, pos.incomeTax)
+    let class4 = max(0, pos.class4)
+    let composed = max(0.0001, incomeTax + class4)
+    let dueYear = Calendar.current.component(.year, from: store.taxYear.end) + 1
+    return taxPageShell(kicker: "SET ASIDE FOR TAX", trailing: "Due 31 Jan \(String(dueYear))") {
+      Text(gbp(pos.totalDue))
+        .font(.system(size: 56, weight: .heavy, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+        .lineLimit(1)
+        .minimumScaleFactor(0.5)
+      VStack(alignment: .leading, spacing: 10) {
+        splitBar(aFraction: incomeTax / composed, aColor: incomeTaxColor, bColor: class4Color)
+        HStack(spacing: 0) {
+          legendInline(incomeTaxColor, "Income tax", gbp(incomeTax))
+          Spacer(minLength: 8)
+          legendInline(class4Color, "Class 4 NIC", gbp(class4))
         }
       }
     }
-    .buttonStyle(.plain)
+  }
+
+  /// One self-contained tax card (slim green band + white body + its own halo),
+  /// inset so the two pages read as separate panels sliding past each other.
+  private func taxPageShell<Content: View>(kicker: String, trailing: String, @ViewBuilder content: () -> Content) -> some View {
+    VStack(spacing: 0) {
+      HStack {
+        Text(kicker)
+          .font(.system(size: 14, weight: .heavy))
+          .tracking(0.5)
+          .foregroundStyle(.white)
+        Spacer()
+        Text(trailing)
+          .font(.system(size: 12, weight: .bold))
+          .foregroundStyle(.white.opacity(0.9))
+      }
+      .padding(.horizontal, 18)
+      .padding(.vertical, 11)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(LinearGradient(colors: [OkkleColor.bannerDark, OkkleColor.brand], startPoint: .leading, endPoint: .trailing))
+
+      VStack(alignment: .leading, spacing: 16, content: content)
+        .padding(18)
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        .background(OkkleColor.card)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+    .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+    .shadow(color: .black.opacity(0.12), radius: 18, y: 9)
+    .padding(.horizontal, 6)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .contentShape(Rectangle())
+    .onTapGesture { selectedTab = .insights }
+  }
+
+  private func progressBar(value: Double, color: Color) -> some View {
+    GeometryReader { geo in
+      ZStack(alignment: .leading) {
+        Capsule().fill(OkkleColor.line.opacity(0.25))
+        Capsule().fill(color).frame(width: geo.size.width * value)
+      }
+    }
+    .frame(height: 8)
+  }
+
+  private func splitBar(aFraction: Double, aColor: Color, bColor: Color) -> some View {
+    GeometryReader { geo in
+      HStack(spacing: 3) {
+        Capsule().fill(aColor).frame(width: max(0, geo.size.width * aFraction - 1.5))
+        Capsule().fill(bColor)
+      }
+    }
+    .frame(height: 8)
   }
 
   private var bandCaption: String {
@@ -148,19 +244,18 @@ struct NativeHomeView: View {
     return remaining > 0 ? "\(miles(remaining)) to 25p rate" : "Into 25p band"
   }
 
-  // MARK: Stat tiles
-
-  private var statTiles: some View {
-    HStack(spacing: 12) {
-      Button { selectedTab = .insights } label: {
-        NativeMetricTile(title: "Mileage", value: miles(store.yearMiles), symbol: "road.lanes")
-      }
-      .buttonStyle(.plain)
-      Button { selectedTab = .insights } label: {
-        NativeMetricTile(title: "Set aside for tax", value: gbp(store.taxPosition.totalDue, whole: true), symbol: "shield.lefthalf.filled", color: OkkleColor.amber)
-      }
-      .buttonStyle(.plain)
+  private func legendInline(_ color: Color, _ label: String, _ value: String) -> some View {
+    HStack(spacing: 6) {
+      Circle().fill(color).frame(width: 9, height: 9)
+      Text(label)
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(OkkleColor.muted)
+      Text(value)
+        .font(.system(size: 14, weight: .heavy))
+        .foregroundStyle(OkkleColor.ink)
     }
+    .lineLimit(1)
+    .minimumScaleFactor(0.8)
   }
 
   // MARK: Recent
@@ -174,25 +269,76 @@ struct NativeHomeView: View {
       .padding(.horizontal, 4)
   }
 
+  /// A live trip in progress takes over → tap goes to Trip. Otherwise the most
+  /// recent past activity → tap goes to Records.
   private var recentCard: some View {
-    guard let latest = store.history.first else { return AnyView(EmptyView()) }
-    return AnyView(
-      VStack(alignment: .leading, spacing: 12) {
-        sectionHeader("RECENT ACTIVITY")
-        Button { selectedTab = .records } label: {
-          HStack(spacing: 12) {
-            NativeHistoryRow(item: latest)
-            Image(systemName: "chevron.right")
-              .font(.system(size: 13, weight: .bold))
+    if tripSession.phase == .live || tripSession.phase == .paused {
+      return AnyView(liveTripCard)
+    } else if let latest = store.history.first {
+      return AnyView(pastActivityCard(latest))
+    } else {
+      return AnyView(EmptyView())
+    }
+  }
+
+  private var liveTripCard: some View {
+    let paused = tripSession.phase == .paused
+    let accent = paused ? OkkleColor.amber : OkkleColor.brand
+    return VStack(alignment: .leading, spacing: 12) {
+      sectionHeader("TRIP IN PROGRESS")
+      Button { selectedTab = .trip } label: {
+        HStack(spacing: 12) {
+          ZStack {
+            Circle().fill(accent.opacity(0.15)).frame(width: 44, height: 44)
+            Image(systemName: paused ? "pause.fill" : "location.north.fill")
+              .font(.system(size: 18, weight: .bold))
+              .foregroundStyle(accent)
+          }
+          VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 7) {
+              Text(paused ? "Trip paused" : "Tracking trip")
+                .font(.system(size: 16, weight: .heavy))
+                .foregroundStyle(OkkleColor.ink)
+              Text(paused ? "PAUSED" : "LIVE")
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(paused ? OkkleColor.amber : OkkleColor.red, in: Capsule())
+            }
+            Text("\(miles(tripSession.miles)) tracked so far")
+              .font(.system(size: 13, weight: .semibold))
               .foregroundStyle(OkkleColor.muted)
           }
-          .padding(16)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .okkleCard()
+          Spacer()
+          Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
         }
-        .buttonStyle(.plain)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .okkleCard()
       }
-    )
+      .buttonStyle(.plain)
+    }
+  }
+
+  private func pastActivityCard(_ latest: NativeHistoryItem) -> some View {
+    VStack(alignment: .leading, spacing: 12) {
+      sectionHeader("RECENT ACTIVITY")
+      Button { selectedTab = .records } label: {
+        HStack(spacing: 12) {
+          NativeHistoryRow(item: latest)
+          Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .okkleCard()
+      }
+      .buttonStyle(.plain)
+    }
   }
 
   // MARK: Derived values
