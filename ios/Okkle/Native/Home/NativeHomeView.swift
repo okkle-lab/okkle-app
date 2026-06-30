@@ -85,6 +85,7 @@ struct NativeHomeView: View {
         Text(Date().formatted(.dateTime.weekday(.wide).day().month(.wide)))
           .font(.system(size: 16, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
+        taxDeadlineChip
       }
       Spacer()
       if loggingStreak > 0 {
@@ -355,6 +356,43 @@ struct NativeHomeView: View {
     guard !name.isEmpty else { return "Home" }
     // Long names get a short greeting so the line still fits.
     return "\(NativeGreeting.word(for: Date(), shortOnly: name.count > 8)), \(name)"
+  }
+
+  // MARK: Tax deadline countdown (next 31 January Self Assessment deadline)
+
+  private var taxDeadlineChip: some View {
+    let urgent = taxDeadlineDays <= 30
+    let tint = urgent ? OkkleColor.amber : OkkleColor.brand
+    return HStack(spacing: 5) {
+      Image(systemName: "calendar")
+        .font(.system(size: 11, weight: .bold))
+      Text(taxCountdownText)
+        .font(.system(size: 12, weight: .heavy))
+    }
+    .foregroundStyle(urgent ? OkkleColor.amber : OkkleColor.brandDark)
+    .padding(.horizontal, 9)
+    .padding(.vertical, 4)
+    .background(tint.opacity(0.13), in: Capsule())
+    .padding(.top, 4)
+  }
+
+  private var taxDeadlineDate: Date {
+    let cal = Calendar.current
+    let today = cal.startOfDay(for: Date())
+    let year = cal.component(.year, from: today)
+    let thisYear = cal.date(from: DateComponents(year: year, month: 1, day: 31)) ?? today
+    if thisYear >= today { return thisYear }
+    return cal.date(from: DateComponents(year: year + 1, month: 1, day: 31)) ?? today
+  }
+
+  private var taxDeadlineDays: Int {
+    Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()), to: taxDeadlineDate).day ?? 0
+  }
+
+  private var taxCountdownText: String {
+    let days = taxDeadlineDays
+    if days <= 0 { return "Tax return due today" }
+    return "\(days) day\(days == 1 ? "" : "s") to 31 Jan deadline"
   }
 
   /// Consecutive days (ending today or yesterday) with at least one logged record.
