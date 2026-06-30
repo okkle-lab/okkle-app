@@ -149,12 +149,14 @@ struct NativeBannerCard<Content: View>: View {
   let kicker: String
   var trailing: String? = nil
   var cornerRadius: CGFloat = 26
+  var band: LinearGradient? = nil
   var content: Content
 
-  init(kicker: String, trailing: String? = nil, cornerRadius: CGFloat = 26, @ViewBuilder content: () -> Content) {
+  init(kicker: String, trailing: String? = nil, cornerRadius: CGFloat = 26, band: LinearGradient? = nil, @ViewBuilder content: () -> Content) {
     self.kicker = kicker
     self.trailing = trailing
     self.cornerRadius = cornerRadius
+    self.band = band
     self.content = content()
   }
 
@@ -176,7 +178,7 @@ struct NativeBannerCard<Content: View>: View {
       .padding(.vertical, 11)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
-        LinearGradient(colors: [OkkleColor.bannerDark, OkkleColor.brand], startPoint: .leading, endPoint: .trailing)
+        band ?? LinearGradient(colors: [OkkleColor.bannerDark, OkkleColor.brand], startPoint: .leading, endPoint: .trailing)
       )
 
       content

@@ -21,14 +21,20 @@ struct NativeHomeView: View {
     ZStack {
       NativeBackground()
 
-      VStack(spacing: 14) {
+      VStack(spacing: 16) {
         header
-        heroCard
-        statTiles
-        NativeLeagueCard(
-          snapshot: NativeSeasonEngine.snapshot(store: store),
-          medals: NativeMedalEngine.achievements(store: store)
-        ) { showLeague = true }
+        VStack(alignment: .leading, spacing: 12) {
+          sectionHeader("THIS TAX YEAR")
+          heroCard
+          statTiles
+        }
+        VStack(alignment: .leading, spacing: 12) {
+          sectionHeader("YOUR CLUB")
+          NativeLeagueCard(
+            snapshot: NativeSeasonEngine.snapshot(store: store),
+            medals: NativeMedalEngine.achievements(store: store)
+          ) { showLeague = true }
+        }
 
         if !store.history.isEmpty {
           recentCard
@@ -158,15 +164,20 @@ struct NativeHomeView: View {
 
   // MARK: Recent
 
+  private func sectionHeader(_ title: String) -> some View {
+    Text(title)
+      .font(.system(size: 12, weight: .heavy))
+      .tracking(0.6)
+      .foregroundStyle(OkkleColor.muted)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, 4)
+  }
+
   private var recentCard: some View {
     let items = Array(store.history.prefix(3))
-    return VStack(alignment: .leading, spacing: 10) {
+    return VStack(alignment: .leading, spacing: 12) {
       HStack {
-        Text("RECENT ACTIVITY")
-          .font(.system(size: 12, weight: .heavy))
-          .tracking(0.6)
-          .foregroundStyle(OkkleColor.muted)
-        Spacer()
+        sectionHeader("RECENT ACTIVITY")
         Button { selectedTab = .records } label: {
           Image(systemName: "chevron.right")
             .font(.system(size: 12, weight: .bold))
@@ -185,10 +196,10 @@ struct NativeHomeView: View {
           }
         }
       }
+      .padding(16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .okkleCard()
     }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .okkleCard()
   }
 
   // MARK: Derived values
