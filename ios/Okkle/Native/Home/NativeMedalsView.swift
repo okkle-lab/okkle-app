@@ -1156,76 +1156,68 @@ struct NativeLeagueCard: View {
     medals.filter { !$0.unlocked }.max { $0.progress < $1.progress }
   }
 
+  private var positionLabel: String {
+    snapshot.matchweek > 0 ? "\(ordinal(snapshot.yourPosition)) OF \(snapshot.rows.count)" : "NEW SEASON"
+  }
+
   var body: some View {
     Button(action: onOpen) {
-      VStack(spacing: 0) {
-        HStack(spacing: 14) {
-          NativeDivisionCrest(division: snapshot.division, size: 48)
-          VStack(alignment: .leading, spacing: 6) {
-            HStack {
-              Text(snapshot.division.name)
-                .font(.system(size: 15, weight: .heavy))
-                .foregroundStyle(OkkleColor.ink)
-                .lineLimit(1)
-              Spacer()
-              if snapshot.matchweek > 0 {
-                Text("\(ordinal(snapshot.yourPosition)) of \(snapshot.rows.count)")
-                  .font(.system(size: 13, weight: .bold))
-                  .foregroundStyle(zoneColor)
-              } else {
-                Text("New season")
-                  .font(.system(size: 13, weight: .bold))
-                  .foregroundStyle(OkkleColor.muted)
-              }
-            }
-            if snapshot.matchweek == 0 {
-              Text("£\(Int(snapshot.winBar.rounded())) of tax saved this week wins it")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(OkkleColor.muted)
-            } else {
-              HStack(spacing: 8) {
-                NativeFormGuide(form: snapshot.yourRow.form)
-                Text("£\(Int(snapshot.bankedThisSeason.rounded())) banked · MW \(snapshot.matchweek)/\(snapshot.totalWeeks)")
+      NativeBannerCard(
+        kicker: snapshot.division.name.uppercased(),
+        trailing: positionLabel,
+        band: LinearGradient(colors: [snapshot.division.gradientBottom, snapshot.division.gradientTop], startPoint: .leading, endPoint: .trailing)
+      ) {
+        VStack(spacing: 0) {
+          HStack(spacing: 14) {
+            NativeDivisionCrest(division: snapshot.division, size: 46)
+            VStack(alignment: .leading, spacing: 5) {
+              if snapshot.matchweek == 0 {
+                Text("Kicking off")
+                  .font(.system(size: 16, weight: .heavy))
+                  .foregroundStyle(OkkleColor.ink)
+                Text("£\(Int(snapshot.winBar.rounded())) of tax saved this week wins it")
                   .font(.system(size: 12, weight: .semibold))
                   .foregroundStyle(OkkleColor.muted)
+              } else {
+                Text("£\(Int(snapshot.bankedThisSeason.rounded())) banked")
+                  .font(.system(size: 16, weight: .heavy))
+                  .foregroundStyle(OkkleColor.ink)
+                HStack(spacing: 8) {
+                  NativeFormGuide(form: snapshot.yourRow.form)
+                  Text("Matchweek \(snapshot.matchweek)/\(snapshot.totalWeeks)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                }
               }
             }
-          }
-          Image(systemName: "chevron.right")
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(OkkleColor.muted)
-        }
-
-        if !medals.isEmpty {
-          Divider().padding(.vertical, 13)
-          HStack(spacing: 10) {
-            Image(systemName: "rosette")
-              .font(.system(size: 15, weight: .bold))
-              .foregroundStyle(snapshot.division.accent)
-            Text("\(earnedMedals) of \(medals.count) medals")
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
               .font(.system(size: 13, weight: .bold))
-              .foregroundStyle(OkkleColor.ink)
-            Spacer()
-            if let nextMedal {
-              Text("Next: \(nextMedal.label)")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(OkkleColor.muted)
-                .lineLimit(1)
+              .foregroundStyle(OkkleColor.muted)
+          }
+
+          if !medals.isEmpty {
+            Divider().padding(.vertical, 13)
+            HStack(spacing: 10) {
+              Image(systemName: "rosette")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(snapshot.division.accent)
+              Text("\(earnedMedals) of \(medals.count) medals")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(OkkleColor.ink)
+              Spacer()
+              if let nextMedal {
+                Text("Next: \(nextMedal.label)")
+                  .font(.system(size: 12, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+                  .lineLimit(1)
+              }
             }
           }
         }
       }
-      .padding(16)
-      .frame(maxWidth: .infinity)
-      .okkleCard()
     }
     .buttonStyle(.plain)
-  }
-
-  private var zoneColor: Color {
-    if snapshot.yourPosition <= 2 { return OkkleColor.brand }
-    if snapshot.yourPosition >= snapshot.rows.count - 1 { return OkkleColor.red }
-    return OkkleColor.muted
   }
 }
 
@@ -2595,7 +2587,7 @@ struct NativeClubIdentity: Codable {
     Color(red: 0.55, green: 0.75, blue: 0.20),  // lime
     Color(red: 0.90, green: 0.36, blue: 0.30),  // coral
   ]
-  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill", "star.fill", "pawprint.fill", "anchor", "seal.fill", "hexagon.fill", "diamond.fill", "bird.fill", "tortoise.fill", "ant.fill", "fish.fill", "leaf.fill", "drop.fill", "cat.fill", "hammer.fill", "soccerball", "sailboat.fill", "building.columns.fill", "globe.europe.africa.fill"]
+  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill", "star.fill", "pawprint.fill", "anchor", "seal.fill", "hexagon.fill", "diamond.fill", "bird.fill", "tortoise.fill", "ant.fill", "fish.fill", "leaf.fill", "drop.fill", "cat.fill", "hammer.fill", "soccerball", "sailboat.fill", "building.columns.fill", "globe.europe.africa.fill", "dog.fill", "lizard.fill", "ladybug.fill", "car.fill", "bus.fill", "bicycle", "fuelpump.fill", "steeringwheel", "airplane", "gearshape.fill"]
 
   static let freeColours = 3
   static let freeCrests = 3
