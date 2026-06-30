@@ -81,7 +81,7 @@ struct NativeHomeView: View {
           .font(.system(size: 34, weight: .bold))
           .foregroundStyle(OkkleColor.ink)
           .lineLimit(1)
-          .minimumScaleFactor(0.7)
+          .minimumScaleFactor(0.55)
         Text(Date().formatted(.dateTime.weekday(.wide).day().month(.wide)))
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
@@ -125,15 +125,14 @@ struct NativeHomeView: View {
   private var class4Color: Color { Color(red: 0.48, green: 0.33, blue: 0.80) }
 
   private var taxCard: some View {
-    VStack(spacing: 6) {
-      // Two SEPARATE cards (each its own halo) that page past each other. The
-      // frame is tall enough that the cards' bottom shadow isn't hard-clipped.
+    VStack(spacing: 4) {
+      // Two SEPARATE cards (each its own halo) that page past each other.
       TabView(selection: $taxPage) {
         taxSavedPage.tag(0)
         setAsidePage.tag(1)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
-      .frame(height: 226)
+      .frame(height: 206)
 
       HStack(spacing: 7) {
         ForEach(0..<2, id: \.self) { index in
@@ -350,8 +349,10 @@ struct NativeHomeView: View {
   // MARK: Derived values
 
   private var homeGreetingTitle: String {
-    guard !store.settings.name.isEmpty else { return "Home" }
-    return "\(NativeGreeting.word(for: Date())), \(store.settings.name)"
+    let name = store.settings.name
+    guard !name.isEmpty else { return "Home" }
+    // Long names get a short greeting so the line still fits.
+    return "\(NativeGreeting.word(for: Date(), shortOnly: name.count > 8)), \(name)"
   }
 
   /// Consecutive days (ending today or yesterday) with at least one logged record.
@@ -431,7 +432,7 @@ let nativeExpenseCategories = [
 /// and American slang. Stable within the hour (no flicker), varies across the
 /// day. Kept light and friendly, never rude.
 enum NativeGreeting {
-  static func word(for date: Date) -> String {
+  static func word(for date: Date, shortOnly: Bool = false) -> String {
     let cal = Calendar.current
     let hour = cal.component(.hour, from: date)
     let month = cal.component(.month, from: date)
@@ -445,7 +446,12 @@ enum NativeGreeting {
     default:      pool = night
     }
     pool += anytime
-    pool += seasonal(month: month)
+    pool += seasonal(month: month)   // doubles as the weather flavour
+
+    if shortOnly {
+      let short = pool.filter { $0.count <= 7 }
+      pool = short.isEmpty ? ["Hi"] : short
+    }
 
     let index = (dayOfYear &* 24 &+ hour) % pool.count
     return pool[index]
@@ -457,14 +463,15 @@ enum NativeGreeting {
   private static let night = ["Night owl", "Burning the midnight oil", "Still grafting", "Late one", "Owl mode"]
   private static let anytime = ["Alright", "Wotcha", "Now then", "G'day", "Howdy", "Yo", "Oi oi", "Easy", "What's good", "Howzit", "Good on ya", "Let's get that bread", "Pedal to the metal", "Cha-ching", "Another day, another quid"]
 
+  // Season-appropriate weather flavour (no live feed, so it leans on the season).
   private static func seasonal(month: Int) -> [String] {
     switch month {
-    case 12:       return ["Merry one", "Festive grind", "Wrap up warm", "Ho ho, hustle"]
-    case 1, 2:     return ["New year, new miles", "Fresh start", "Frosty one", "Bundle up"]
-    case 3, 4, 5:  return ["Fresh one", "Spring in your step", "Bloomin' lovely"]
-    case 6, 7, 8:  return ["Scorcher today", "Sunny side up", "Tan weather", "Cracking day"]
-    case 9, 10, 11: return ["Crisp one", "Cosy season", "Sweater weather"]
-    default:       return []
+    case 12:        return ["Merry one", "Festive grind", "Wrap up warm", "Ho ho, hustle", "Frosty one", "Mind the ice"]
+    case 1, 2:      return ["New year, new miles", "Fresh start", "Frosty one", "Bundle up", "Brrr out there", "Mind the ice"]
+    case 3, 4, 5:   return ["Fresh one", "Spring in your step", "Bloomin' lovely", "Brolly weather", "April showers", "Grab a brolly"]
+    case 6, 7, 8:   return ["Scorcher today", "Sunny side up", "Tan weather", "Cracking day", "Suncream on?", "Sunny one"]
+    case 9, 10, 11: return ["Crisp one", "Cosy season", "Sweater weather", "Brolly weather", "Mind the puddles", "Chilly one"]
+    default:        return []
     }
   }
 }
