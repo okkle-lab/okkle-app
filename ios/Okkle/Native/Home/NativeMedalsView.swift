@@ -1544,7 +1544,7 @@ struct NativeClubEditorView: View {
   @State private var balance: Int = 0
   @State private var purchaseError = false
 
-  private let columns = [GridItem(.adaptive(minimum: 54), spacing: 14)]
+  private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 5)
   private var secondaryColor: Color? { secondaryIndex.map { NativeClubIdentity.palette[$0] } }
   private var titles: Int { NativeSeasonEngine.honours().filter { $0.kind == .champions }.count }
 
@@ -1644,15 +1644,19 @@ struct NativeClubEditorView: View {
         let id = NativeClubIdentity.shapeId(shape.rawValue)
         let owned = NativeWallet.isUnlocked(id, free: free)
         Button { select(shape: shape, id: id, owned: owned) } label: {
-          VStack(spacing: 5) {
+          VStack(spacing: 6) {
             shape.anyShape()
               .fill(NativeClubIdentity.palette[colorIndex])
-              .frame(width: 50, height: 50)
+              .frame(width: 48, height: 48)
               .overlay(shape.anyShape().stroke(OkkleColor.ink, lineWidth: shapeIndex == shape.rawValue ? 3 : 0))
               .overlay(lockBadge(owned))
               .opacity(owned ? 1 : 0.5)
-            Text(shape.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(OkkleColor.muted)
+            Text(shape.name)
+              .font(.system(size: 11, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+              .lineLimit(1).minimumScaleFactor(0.8)
           }
+          .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
       }
@@ -1673,7 +1677,8 @@ struct NativeClubEditorView: View {
               .font(.system(size: 22, weight: .semibold))
               .foregroundStyle(OkkleColor.muted)
               .frame(width: 46, height: 46)
-              .overlay(Circle().stroke(OkkleColor.ink, lineWidth: secondaryIndex == nil ? 3 : 0))
+              .overlay(Circle().strokeBorder(OkkleColor.ink, lineWidth: secondaryIndex == nil ? 3 : 0))
+              .frame(maxWidth: .infinity)
           }
           .buttonStyle(.plain)
         }
@@ -1686,9 +1691,10 @@ struct NativeClubEditorView: View {
             Circle()
               .fill(color)
               .frame(width: 46, height: 46)
-              .overlay(Circle().stroke(OkkleColor.ink, lineWidth: selected ? 3 : 0))
+              .overlay(Circle().strokeBorder(OkkleColor.ink, lineWidth: selected ? 3 : 0))
               .overlay(lockBadge(owned))
               .opacity(owned ? 1 : 0.5)
+              .frame(maxWidth: .infinity)
           }
           .buttonStyle(.plain)
         }
@@ -1703,13 +1709,17 @@ struct NativeClubEditorView: View {
         let id = NativeClubIdentity.kitId(kit.rawValue)
         let owned = NativeWallet.isUnlocked(id, free: free)
         Button { select(kit: kit, id: id, owned: owned) } label: {
-          VStack(spacing: 5) {
-            NativeKitTile(kit: kit, color: NativeClubIdentity.palette[colorIndex], secondary: secondaryColor, size: 50)
-              .overlay(RoundedRectangle(cornerRadius: 50 * 0.26, style: .continuous).stroke(OkkleColor.ink, lineWidth: kitIndex == kit.rawValue ? 3 : 0))
+          VStack(spacing: 6) {
+            NativeKitTile(kit: kit, color: NativeClubIdentity.palette[colorIndex], secondary: secondaryColor, size: 48)
+              .overlay(RoundedRectangle(cornerRadius: 48 * 0.26, style: .continuous).strokeBorder(OkkleColor.ink, lineWidth: kitIndex == kit.rawValue ? 3 : 0))
               .overlay(lockBadge(owned))
               .opacity(owned ? 1 : 0.5)
-            Text(kit.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(OkkleColor.muted)
+            Text(kit.name)
+              .font(.system(size: 11, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+              .lineLimit(1).minimumScaleFactor(0.8)
           }
+          .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
       }
@@ -1724,12 +1734,13 @@ struct NativeClubEditorView: View {
         let owned = NativeWallet.isUnlocked(id, free: free)
         Button { select(emblem: symbol, id: id, owned: owned) } label: {
           Image(systemName: symbol)
-            .font(.system(size: 22, weight: .semibold))
+            .font(.system(size: 21, weight: .semibold))
             .foregroundStyle(emblem == symbol ? .white : OkkleColor.muted)
-            .frame(width: 50, height: 50)
+            .frame(width: 48, height: 48)
             .background(emblem == symbol ? NativeClubIdentity.palette[colorIndex] : OkkleColor.muted.opacity(0.1), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             .overlay(lockBadge(owned))
             .opacity(owned ? 1 : 0.5)
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
       }
@@ -1743,16 +1754,20 @@ struct NativeClubEditorView: View {
         let id = NativeClubIdentity.trimId(trim.rawValue)
         let owned = NativeWallet.isUnlocked(id, free: free)
         Button { select(trim: trim, id: id, owned: owned) } label: {
-          VStack(spacing: 5) {
+          VStack(spacing: 6) {
             Circle()
               .fill(NativeClubIdentity.palette[colorIndex])
-              .frame(width: 50, height: 50)
-              .overlay(Circle().stroke(trim.color, lineWidth: trim == .none ? 1 : 4))
-              .overlay(Circle().stroke(OkkleColor.ink, lineWidth: trimIndex == trim.rawValue ? 3 : 0).padding(-4))
+              .frame(width: 48, height: 48)
+              .overlay(Circle().strokeBorder(trim.color, lineWidth: trim == .none ? 1.5 : 4))
+              .overlay(Circle().inset(by: 6).strokeBorder(OkkleColor.ink, lineWidth: trimIndex == trim.rawValue ? 2.5 : 0))
               .overlay(lockBadge(owned))
               .opacity(owned ? 1 : 0.5)
-            Text(trim.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(OkkleColor.muted)
+            Text(trim.name)
+              .font(.system(size: 11, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+              .lineLimit(1).minimumScaleFactor(0.8)
           }
+          .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
       }
