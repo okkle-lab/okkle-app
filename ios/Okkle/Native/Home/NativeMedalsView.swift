@@ -1003,15 +1003,18 @@ enum NativeDivision: Int, CaseIterable, Comparable {
 
   static func < (lhs: NativeDivision, rhs: NativeDivision) -> Bool { lhs.rawValue < rhs.rawValue }
 
-  /// Real tax £ banked this tax year required to sit in this division.
-  /// The pyramid position is literally how much real money you've saved.
-  var minBanked: Int {
+  /// Fixed weekly mileage that wins the week in this division — an absolute,
+  /// known effort, not something scaled to your own pace. Calibrated to real UK
+  /// courier weekly mileage so each tier is a genuine status: a casual driver
+  /// settles low, only a dedicated long-range driver holds the Premier League.
+  /// None of these are impossible — they're a full week's honest shifts.
+  var mileTarget: Int {
     switch self {
-    case .nationalLeague: return 0
-    case .leagueTwo: return 300
-    case .leagueOne: return 750
-    case .championship: return 1_500
-    case .premierLeague: return 3_000
+    case .nationalLeague: return 50    // a few shifts a week
+    case .leagueTwo:      return 120   // steady part-time
+    case .leagueOne:      return 220   // committed
+    case .championship:   return 340   // full-time
+    case .premierLeague:  return 480   // long-range grinder
     }
   }
 
@@ -1078,37 +1081,38 @@ enum NativeDivision: Int, CaseIterable, Comparable {
 }
 
 struct NativeLeagueStatus {
-  let banked: Int          // real £ tax saved this tax year
+  let weeklyMiles: Int     // your typical weekly mileage
   let division: NativeDivision
   let next: NativeDivision?
   let progressToNext: Double
-  let bankedToNext: Int    // real £ still to bank to climb
+  let milesToNext: Int     // weekly miles still to average to climb a tier
 }
 
 @MainActor
 enum NativeLeagueEngine {
-  /// Your standing in the pyramid is real money: the tax £ you've banked this
-  /// tax year. Every logged mile that lifts your deduction lifts your league.
+  /// Your standing in the pyramid is your sustained weekly mileage: the division
+  /// is the toughest tier whose fixed weekly target you can typically clear. It's
+  /// a status earned by how much you actually drive, not by a goal bent to your pace.
   static func banked(store: OkkleStore) -> Int {
     Int(store.taxSaved.rounded())
   }
 
   static func status(store: OkkleStore) -> NativeLeagueStatus {
-    let points = banked(store: store)
-    let division = NativeDivision.allCases.last(where: { points >= $0.minBanked }) ?? .nationalLeague
+    let pace = Int(NativeSeasonEngine.avgWeeklyMiles(store: store).rounded())
+    let division = NativeDivision.allCases.last(where: { pace >= $0.mileTarget }) ?? .nationalLeague
     let next = NativeDivision(rawValue: division.rawValue + 1)
     if let next {
-      let span = max(1, next.minBanked - division.minBanked)
-      let into = points - division.minBanked
+      let span = max(1, next.mileTarget - division.mileTarget)
+      let into = pace - division.mileTarget
       return NativeLeagueStatus(
-        banked: points,
+        weeklyMiles: pace,
         division: division,
         next: next,
         progressToNext: min(1, Double(into) / Double(span)),
-        bankedToNext: max(0, next.minBanked - points)
+        milesToNext: max(0, next.mileTarget - pace)
       )
     }
-    return NativeLeagueStatus(banked: points, division: division, next: nil, progressToNext: 1, bankedToNext: 0)
+    return NativeLeagueStatus(weeklyMiles: pace, division: division, next: nil, progressToNext: 1, milesToNext: 0)
   }
 
   /// Medals belonging to a division: within each category, easy→hard medals are
@@ -1203,7 +1207,7 @@ struct NativeLeagueCard: View {
                 Text("Kicking off")
                   .font(.system(size: 20, weight: .heavy))
                   .foregroundStyle(OkkleColor.ink)
-                Text("£\(Int(snapshot.winBar.rounded())) of tax saved this week wins it")
+                Text("\(Int(snapshot.winBar.rounded())) miles this week wins it")
                   .font(.system(size: 13, weight: .semibold))
                   .foregroundStyle(OkkleColor.muted)
               } else {
@@ -1240,14 +1244,14 @@ struct NativeLeagueCard: View {
                   .font(.system(size: 16, weight: .heavy))
                   .foregroundStyle(won ? OkkleColor.brand : OkkleColor.ink)
                 Spacer()
-                Text(won ? "+3 pts" : "£\(toWin) to go")
+                Text(won ? "+3 pts" : "\(toWin) mi to go")
                   .font(.system(size: 15, weight: .heavy))
                   .foregroundStyle(won ? OkkleColor.brand : snapshot.division.accent)
               }
               ProgressView(value: fixture.progressToTarget)
                 .tint(won ? OkkleColor.brand : snapshot.division.accent)
                 .scaleEffect(x: 1, y: 1.4, anchor: .center)
-              Text("£\(bankedWeek) of £\(targetWeek) tax saved · vs \(fixture.opponent)")
+              Text("\(bankedWeek) of \(targetWeek) mi · vs \(fixture.opponent)")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(OkkleColor.muted)
                 .lineLimit(1)
@@ -1424,15 +1428,15 @@ struct NativeMatchdayCard: View {
     let toDraw = max(0, Int((fixture.drawTarget - fixture.yourBanked).rounded(.up)))
     if fixture.state == .fullTime {
       switch fixture.pointsThisWeek {
-      case 3: return "Hit your £\(Int(fixture.weeklyTarget.rounded())) target — 3 points banked."
+      case 3: return "Hit your \(Int(fixture.weeklyTarget.rounded()))-mile target — 3 points banked."
       case 1: return "Reached the halfway mark — 1 point earned."
       default: return "Missed the target this week — no points."
       }
     }
     switch fixture.pointsThisWeek {
-    case 3: return "Target smashed — the 3 points are yours. Keep banking."
-    case 1: return "In the draw zone (1 pt). £\(toWin) more saved this week wins it (3 pts)."
-    default: return "£\(toDraw) more saved earns a draw (1 pt), £\(toWin) the win (3 pts)."
+    case 3: return "Target smashed — the 3 points are yours. Keep logging."
+    case 1: return "In the draw zone (1 pt). \(toWin) mi more this week wins it (3 pts)."
+    default: return "\(toDraw) mi earns a draw (1 pt), \(toWin) mi the win (3 pts)."
     }
   }
 
@@ -1483,7 +1487,7 @@ struct NativeMatchdayCard: View {
         .foregroundStyle(OkkleColor.ink)
         .lineLimit(1)
         .minimumScaleFactor(0.75)
-      Text("£\(Int(fixture.yourBanked.rounded())) saved")
+      Text("\(Int(fixture.yourBanked.rounded())) mi")
         .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(OkkleColor.muted)
     }
@@ -1505,7 +1509,7 @@ struct NativeMatchdayCard: View {
         .foregroundStyle(OkkleColor.ink)
         .lineLimit(1)
         .minimumScaleFactor(0.75)
-      Text("£\(Int(banked.rounded())) saved")
+      Text("\(Int(banked.rounded())) mi")
         .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(OkkleColor.muted)
     }
@@ -2115,13 +2119,13 @@ struct NativeLeagueRulesView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
           rule("figure.run", "You vs rival clubs",
-               "Each week you race AI clubs — Riverside Rovers, Parkside Athletic and Canal Street FC. Their targets scale to your pace, so the only way past them is to log more miles.")
-          rule("sterlingsign.circle.fill", "Win by saving tax",
-               "Every week has a target. Save more tax than it — by logging miles — to win the week and take 3 points; reach halfway for a draw and 1 point.")
+               "Each week you race three AI clubs — Riverside Rovers, Parkside Athletic and Canal Street FC. Out-drive them over the season to climb the table.")
+          rule("map.fill", "Hit the weekly miles",
+               "Every division has one fixed weekly mileage target — the same honest distance for everyone in that tier. Log it to win the week and take 3 points; reach halfway for a draw and 1 point.")
           rule("list.number", "Climb the table",
                "Points stack over a four-week season. Finish 1st to go up automatically, 2nd–3rd play a one-week play-off final, and bottom is relegated.")
-          rule("chart.line.uptrend.xyaxis", "Tougher at the top",
-               "Every division raises your weekly target, so each step up the pyramid is a real stretch to win and to hold onto.")
+          rule("chart.line.uptrend.xyaxis", "Your division is your status",
+               "Targets rise tier by tier — 50 mi/week in the National League up to 480 in the Premier League. Where you settle reflects how much you really drive: only dedicated long-range drivers hold the top, and the targets are always within a full week's shifts.")
           rule("moon.zzz.fill", "Rest days don't count",
                "Weeks you don't ride are simply skipped — the league never counts a day off against you.")
           rule("bitcoinsign.circle.fill", "Coins are cosmetic",
@@ -2298,7 +2302,7 @@ struct NativeLeagueView: View {
             Text("£\(Int(s.bankedThisSeason.rounded())) banked · MW \(min(s.matchweek + 1, s.totalWeeks)) of \(s.totalWeeks)")
               .font(.system(size: 13, weight: .heavy))
               .foregroundStyle(OkkleColor.ink)
-            Text("£\(Int(s.winBar.rounded()))/week saved is a win")
+            Text("\(Int(s.winBar.rounded())) mi/week is a win")
               .font(.system(size: 12, weight: .medium))
               .foregroundStyle(OkkleColor.muted)
           }
@@ -2435,7 +2439,7 @@ struct NativeLeagueView: View {
         Text(division.name)
           .font(.system(size: 16, weight: .semibold))
           .foregroundStyle(OkkleColor.ink)
-        Text(division.minBanked == 0 ? "Starting tier" : "£\(division.minBanked.formatted())+ tax banked")
+        Text(division == .nationalLeague ? "Starting tier" : "\(division.mileTarget) mi/week to hold")
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(OkkleColor.muted)
       }
@@ -3244,9 +3248,9 @@ enum NativeGaffer {
       switch f.state {
       case .kickoff: return "Title decider, this. Beat \(opp) and the trophy's ours. Let's not leave it to chance."
       case .live:
-        if f.youAreWinning { return "We're champions if this holds — £\(Int(f.lead.rounded())) clear of \(opp). See it home." }
+        if f.youAreWinning { return "We're champions if this holds — \(Int(f.lead.rounded())) mi clear of \(opp). See it home." }
         if f.isLevel { return "Level with \(opp) and the title on the line. One more shift wins it." }
-        return "We've slipped behind \(opp) with the trophy at stake. £\(toWin) saved snatches it back — go."
+        return "We've slipped behind \(opp) with the trophy at stake. \(toWin) mi snatches it back — go."
       case .fullTime:
         return f.youAreWinning ? "Champions! Saw off \(opp) when it mattered most. Up we go." : "So close. \(opp) pipped us — we'll settle for the play-offs."
       }
@@ -3254,9 +3258,9 @@ enum NativeGaffer {
       switch f.state {
       case .kickoff: return "Play-off final. Win this one match against \(opp) and we're promoted. Everything on it."
       case .live:
-        if f.youAreWinning { return "We're going up — £\(Int(f.lead.rounded())) ahead of \(opp) in the final. Hold your nerve." }
+        if f.youAreWinning { return "We're going up — \(Int(f.lead.rounded())) mi ahead of \(opp) in the final. Hold your nerve." }
         if f.isLevel { return "Dead level in the play-off final. Next shift could be the one that sends us up." }
-        return "Behind in the play-off final. £\(toWin) of tax saved beats \(opp) and books promotion — dig in."
+        return "Behind in the play-off final. \(toWin) mi beats \(opp) and books promotion — dig in."
       case .fullTime:
         return f.youAreWinning ? "We've done it! Beat \(opp) in the final — promotion through the play-offs!" : "Heartbreak. \(opp) won the final. We dust ourselves down and go again."
       }
@@ -3264,20 +3268,20 @@ enum NativeGaffer {
       switch f.state {
       case .kickoff: return "Must not lose this. Avoid defeat to \(opp) and we stay up. Roll your sleeves up."
       case .live:
-        if f.youAreWinning { return "This keeps us up — £\(Int(f.lead.rounded())) clear of \(opp). Don't switch off." }
+        if f.youAreWinning { return "This keeps us up — \(Int(f.lead.rounded())) mi clear of \(opp). Don't switch off." }
         if f.isLevel { return "A draw with \(opp) keeps us safe. Hold it together." }
-        return "We're going down as it stands. £\(toWin) saved beats \(opp) and saves our season — fight."
+        return "We're going down as it stands. \(toWin) mi beats \(opp) and saves our season — fight."
       case .fullTime:
         return f.youAreWinning || f.isLevel ? "Survived! Held off \(opp) when it counted. We live to fight another season." : "Relegated. \(opp) sent us down. We bounce straight back."
       }
     case .none:
       switch f.state {
       case .kickoff:
-        return "\(opp) up next. £\(Int(f.oppBanked.rounded())) of tax saved beats them — log your shifts and it's ours."
+        return "\(opp) up next. \(Int(f.oppBanked.rounded())) mi beats them — log your shifts and it's ours."
       case .live:
-        if f.youAreWinning { return "Tidy. £\(Int(f.lead.rounded())) clear of \(opp). Keep logging and the points are ours." }
+        if f.youAreWinning { return "Tidy. \(Int(f.lead.rounded())) mi clear of \(opp). Keep logging and the points are ours." }
         if f.isLevel { return "Neck and neck with \(opp). One more decent shift nicks it." }
-        return "We're chasing \(opp) — £\(toWin) of tax saved this week flips the result."
+        return "We're chasing \(opp) — \(toWin) mi this week flips the result."
       case .fullTime:
         if f.youAreWinning { return "Three points. Saw off \(opp) — that's how we climb." }
         if f.isLevel { return "A point apiece with \(opp). Take it and kick on." }
@@ -3390,7 +3394,7 @@ enum NativeSeasonEngine {
     let weekStart = state.seasonStart.addingTimeInterval(Double(weekIndex) * weekSeconds)
     let weekEnd = weekStart.addingTimeInterval(weekSeconds)
     let weekFinished = seasonOver
-    let yourBanked = weeklyBanked(start: weekStart, end: weekFinished ? weekEnd : min(Date(), weekEnd), store: store)
+    let yourBanked = weeklyMiles(start: weekStart, end: weekFinished ? weekEnd : min(Date(), weekEnd), store: store)
 
     let matchweek = min(seasonOver ? max(1, played) : played + 1, total)
     let ghost = Ghost.allCases[max(0, matchweek - 1) % Ghost.allCases.count]
@@ -3460,7 +3464,7 @@ enum NativeSeasonEngine {
     var yourPoints = 0
     for week in offsets {
       let start = seasonStart.addingTimeInterval(Double(week) * weekSeconds)
-      let result = result(forBanked: weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store), bar: bar)
+      let result = result(forBanked: weeklyMiles(start: start, end: start.addingTimeInterval(weekSeconds), store: store), bar: bar)
       yourPoints += result
       yourForm.append(result)
     }
@@ -3486,18 +3490,52 @@ enum NativeSeasonEngine {
     }
   }
 
-  // MARK: Mechanics — all in real banked £
+  // MARK: Mechanics — fixed weekly mileage targets
 
-  /// A "win" each week means out-earning your own pace. The bar compounds ~25%
-  /// per division, so each tier up is markedly harder to win and to hold:
-  /// National 1.0× → League Two 1.25× → League One 1.56× → Championship 1.95×
-  /// → Premier League 2.44× your personal weekly benchmark.
+  /// The week's win line, in miles. It's a fixed target for the division — the
+  /// same honest distance for everyone in that tier — so climbing is a real
+  /// status, not a goal that quietly stretches as you get fitter. Calibrated to
+  /// real courier mileage and always reachable in a full week's shifts.
   static func winBar(_ division: NativeDivision, store: OkkleStore) -> Double {
-    weeklyBenchmark(store: store) * pow(1.25, Double(division.rawValue))
+    Double(division.mileTarget)
   }
 
   private static func result(forBanked banked: Double, bar: Double) -> Int {
     banked >= bar ? 3 : (banked >= bar * 0.5 ? 1 : 0)
+  }
+
+  /// Miles logged in a week — records plus tracked trips. This is the league's
+  /// scoring unit: pure effort, the same yardstick whatever your tax rate.
+  static func weeklyMiles(start: Date, end: Date, store: OkkleStore) -> Double {
+    let range = start..<end
+    var miles = 0.0
+    for record in store.records where range.contains(record.date) {
+      miles += max(0, record.miles ?? 0)
+    }
+    for trip in store.trips where range.contains(trip.startedAt) {
+      miles += max(0, trip.miles)
+    }
+    return miles
+  }
+
+  /// Your typical weekly mileage across your whole history (weeks you actually
+  /// drove), with a gentle floor so a brand-new driver isn't stuck at the bottom.
+  static func avgWeeklyMiles(store: OkkleStore) -> Double {
+    let dates = store.records.map(\.date) + store.trips.map(\.startedAt)
+    guard let earliest = dates.min() else { return 0 }
+    let firstWeek = floor(earliest.timeIntervalSince1970 / weekSeconds)
+    let lastWeek = floor(Date().timeIntervalSince1970 / weekSeconds)
+    guard lastWeek >= firstWeek else { return 0 }
+    var buckets: [Double] = []
+    var w = firstWeek
+    while w <= lastWeek {
+      let start = Date(timeIntervalSince1970: w * weekSeconds)
+      buckets.append(weeklyMiles(start: start, end: start.addingTimeInterval(weekSeconds), store: store))
+      w += 1
+    }
+    let active = buckets.filter { $0 > 0 }
+    guard !active.isEmpty else { return 0 }
+    return active.reduce(0, +) / Double(active.count)
   }
 
   /// Real tax £ banked in a week = that week's mileage deduction × your marginal rate.
