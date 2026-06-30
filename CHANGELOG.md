@@ -2,6 +2,11 @@
 
 All notable changes to the Okkle app are recorded here. Most recent first.
 
+## 2026-06-30 (Home polish)
+
+- Enlarged the Home date line under the greeting for readability.
+- Matched the swipeable tax card's halo to the YOUR CLUB league card (soft two-layer shadow) so the panels read consistently, and gave the soft shadow enough room so it is no longer clipped.
+
 ## 0.4.2 - 2026-06-26 (Native SwiftUI iOS migration)
 
 - Rebuilt Okkle as a SwiftUI-only iOS app under `ios/Okkle.xcodeproj`, removing the Expo/React Native runtime, Metro bundling, npm dependencies, CocoaPods build phases and EAS build requirement.

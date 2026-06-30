@@ -83,7 +83,7 @@ struct NativeHomeView: View {
           .lineLimit(1)
           .minimumScaleFactor(0.55)
         Text(Date().formatted(.dateTime.weekday(.wide).day().month(.wide)))
-          .font(.system(size: 13, weight: .semibold))
+          .font(.system(size: 16, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
       }
       Spacer()
@@ -132,7 +132,7 @@ struct NativeHomeView: View {
         setAsidePage.tag(1)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
-      .frame(height: 206)
+      .frame(height: 216)
 
       HStack(spacing: 7) {
         ForEach(0..<2, id: \.self) { index in
@@ -214,9 +214,11 @@ struct NativeHomeView: View {
         .background(OkkleColor.card)
     }
     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-    .shadow(color: .black.opacity(0.10), radius: 10, y: 5)
+    .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+    .shadow(color: .black.opacity(0.12), radius: 20, y: 10)
     .padding(.horizontal, 20)
-    .padding(.vertical, 8)
+    .padding(.top, 4)
+    .padding(.bottom, 14)
     .contentShape(Rectangle())
     .onTapGesture {
       NotificationCenter.default.post(name: .nativeShowTaxRecords, object: nil)
