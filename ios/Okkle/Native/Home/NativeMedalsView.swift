@@ -1372,12 +1372,18 @@ struct NativeMatchdayCard: View {
 
   private var youTeam: some View {
     VStack(spacing: 7) {
-      NativeKitTile(
-        kit: club?.kit ?? .solid,
-        color: club?.color ?? OkkleColor.brand,
-        size: 46, cornerRadius: 13,
-        emblem: club?.emblem ?? "figure.walk"
-      )
+      ZStack(alignment: .top) {
+        NativeKitTile(
+          kit: club?.kit ?? .solid,
+          color: club?.color ?? OkkleColor.brand,
+          secondary: club?.secondaryColor,
+          crestShape: club?.crestShape ?? .rounded,
+          size: 46,
+          emblem: club?.emblem ?? "figure.walk"
+        )
+        NativeTitleStars(count: NativeSeasonEngine.honours().filter { $0.kind == .champions }.count, size: 8)
+          .offset(y: -7)
+      }
       Text(club?.name ?? "You")
         .font(.system(size: 13, weight: .bold))
         .foregroundStyle(OkkleColor.ink)
@@ -1524,18 +1530,27 @@ struct NativeClubEditorView: View {
   @State private var colorIndex: Int = 0
   @State private var emblem: String = "shield.fill"
   @State private var kitIndex: Int = 0
+  @State private var shapeIndex: Int = 0
+  @State private var secondaryIndex: Int? = nil
   @State private var balance: Int = 0
   @State private var purchaseError = false
+
+  private var secondaryColor: Color? { secondaryIndex.map { NativeClubIdentity.palette[$0] } }
 
   var body: some View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 22) {
           VStack(spacing: 14) {
-            NativeKitTile(kit: NativeKit(rawValue: kitIndex) ?? .solid,
-                          color: NativeClubIdentity.palette[colorIndex],
-                          size: 96, cornerRadius: 24, emblem: emblem)
-              .padding(.top, 8)
+            VStack(spacing: 6) {
+              NativeTitleStars(count: NativeSeasonEngine.honours().filter { $0.kind == .champions }.count, size: 13)
+              NativeKitTile(kit: NativeKit(rawValue: kitIndex) ?? .solid,
+                            color: NativeClubIdentity.palette[colorIndex],
+                            secondary: secondaryColor,
+                            crestShape: NativeCrestShape(rawValue: shapeIndex) ?? .rounded,
+                            size: 96, emblem: emblem)
+            }
+            .padding(.top, 8)
             Text(name.isEmpty ? "Your club" : name)
               .font(.system(size: 20, weight: .heavy, design: .rounded))
               .foregroundStyle(OkkleColor.ink)
@@ -1599,6 +1614,63 @@ struct NativeClubEditorView: View {
           }
 
           VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("BADGE SHAPE")
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 14) {
+                ForEach(NativeCrestShape.allCases, id: \.rawValue) { shape in
+                  let free = shape.rawValue < NativeClubIdentity.freeShapes
+                  let id = NativeClubIdentity.shapeId(shape.rawValue)
+                  let owned = NativeWallet.isUnlocked(id, free: free)
+                  Button { select(shape: shape, id: id, owned: owned) } label: {
+                    VStack(spacing: 5) {
+                      shape.anyShape()
+                        .fill(NativeClubIdentity.palette[colorIndex])
+                        .frame(width: 46, height: 46)
+                        .overlay(shape.anyShape().stroke(OkkleColor.ink, lineWidth: shapeIndex == shape.rawValue ? 3 : 0))
+                        .overlay(lockBadge(owned: owned, cost: NativeClubIdentity.shapeCost))
+                        .opacity(owned ? 1 : 0.5)
+                      Text(shape.name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(shapeIndex == shape.rawValue ? OkkleColor.ink : OkkleColor.muted)
+                    }
+                  }
+                  .buttonStyle(.plain)
+                }
+              }
+              .padding(.horizontal, 4).padding(.vertical, 6)
+            }
+          }
+
+          VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("SECOND COLOUR")
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 14) {
+                Button { secondaryIndex = nil } label: {
+                  Image(systemName: "slash.circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                    .frame(width: 42, height: 42)
+                    .overlay(Circle().stroke(OkkleColor.ink, lineWidth: secondaryIndex == nil ? 3 : 0))
+                }
+                .buttonStyle(.plain)
+                ForEach(Array(NativeClubIdentity.palette.enumerated()), id: \.offset) { index, color in
+                  Button { secondaryIndex = index } label: {
+                    Circle()
+                      .fill(color)
+                      .frame(width: 42, height: 42)
+                      .overlay(Circle().stroke(OkkleColor.ink, lineWidth: secondaryIndex == index ? 3 : 0))
+                  }
+                  .buttonStyle(.plain)
+                }
+              }
+              .padding(.horizontal, 4).padding(.vertical, 6)
+            }
+            Text("Pairs with stripes, hoops, sash and halves kits.")
+              .font(.system(size: 12, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
+          }
+
+          VStack(alignment: .leading, spacing: 10) {
             sectionLabel("KIT")
             ScrollView(.horizontal, showsIndicators: false) {
               HStack(spacing: 14) {
@@ -1608,9 +1680,9 @@ struct NativeClubEditorView: View {
                   let owned = NativeWallet.isUnlocked(id, free: free)
                   Button { select(kit: kit, id: id, owned: owned) } label: {
                     VStack(spacing: 5) {
-                      NativeKitTile(kit: kit, color: NativeClubIdentity.palette[colorIndex], size: 46, cornerRadius: 12)
+                      NativeKitTile(kit: kit, color: NativeClubIdentity.palette[colorIndex], secondary: secondaryColor, size: 46)
                         .overlay(
-                          RoundedRectangle(cornerRadius: 12, style: .continuous)
+                          RoundedRectangle(cornerRadius: 46 * 0.26, style: .continuous)
                             .stroke(OkkleColor.ink, lineWidth: kitIndex == kit.rawValue ? 3 : 0)
                         )
                         .overlay(lockBadge(owned: owned, cost: NativeClubIdentity.kitCost))
@@ -1642,7 +1714,7 @@ struct NativeClubEditorView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
           Button("Save") {
             let trimmed = name.trimmingCharacters(in: .whitespaces)
-            NativeSeasonEngine.saveClubIdentity(NativeClubIdentity(name: trimmed.isEmpty ? "Your club" : trimmed, colorIndex: colorIndex, emblem: emblem, kitIndex: kitIndex))
+            NativeSeasonEngine.saveClubIdentity(NativeClubIdentity(name: trimmed.isEmpty ? "Your club" : trimmed, colorIndex: colorIndex, emblem: emblem, kitIndex: kitIndex, shapeIndex: shapeIndex, secondaryIndex: secondaryIndex))
             dismiss()
           }
           .font(.system(size: 16, weight: .bold))
@@ -1659,6 +1731,8 @@ struct NativeClubEditorView: View {
         colorIndex = max(0, min(club.colorIndex, NativeClubIdentity.palette.count - 1))
         emblem = club.emblem
         kitIndex = club.kitIndex ?? 0
+        shapeIndex = club.shapeIndex ?? 0
+        secondaryIndex = club.secondaryIndex
         balance = NativeWallet.balance(store: store)
       }
     }
@@ -1716,6 +1790,14 @@ struct NativeClubEditorView: View {
     if owned { kitIndex = kit.rawValue; return }
     if NativeWallet.purchase(id, store: store) {
       kitIndex = kit.rawValue
+      balance = NativeWallet.balance(store: store)
+    } else { purchaseError = true }
+  }
+
+  private func select(shape: NativeCrestShape, id: String, owned: Bool) {
+    if owned { shapeIndex = shape.rawValue; return }
+    if NativeWallet.purchase(id, store: store) {
+      shapeIndex = shape.rawValue
       balance = NativeWallet.balance(store: store)
     } else { purchaseError = true }
   }
@@ -2251,11 +2333,98 @@ enum NativeKit: Int, CaseIterable {
   }
 }
 
+/// The outline of the badge — a real football-crest silhouette, not just a square.
+enum NativeCrestShape: Int, CaseIterable {
+  case rounded, circle, shield, hexagon, diamond
+
+  var name: String {
+    switch self {
+    case .rounded: return "Tile"
+    case .circle: return "Roundel"
+    case .shield: return "Shield"
+    case .hexagon: return "Hex"
+    case .diamond: return "Diamond"
+    }
+  }
+
+  func anyShape() -> AnyShape {
+    switch self {
+    case .rounded: return AnyShape(NativeRoundedRel())
+    case .circle: return AnyShape(Circle())
+    case .shield: return AnyShape(NativeShieldShape())
+    case .hexagon: return AnyShape(NativeHexagonShape())
+    case .diamond: return AnyShape(NativeDiamondShape())
+    }
+  }
+}
+
+struct NativeRoundedRel: Shape {
+  func path(in r: CGRect) -> Path { RoundedRectangle(cornerRadius: r.width * 0.26, style: .continuous).path(in: r) }
+}
+
+struct NativeShieldShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    p.move(to: CGPoint(x: r.minX, y: r.minY + r.height * 0.04))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + r.height * 0.04))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + r.height * 0.55))
+    p.addQuadCurve(to: CGPoint(x: r.midX, y: r.maxY), control: CGPoint(x: r.maxX, y: r.minY + r.height * 0.86))
+    p.addQuadCurve(to: CGPoint(x: r.minX, y: r.minY + r.height * 0.55), control: CGPoint(x: r.minX, y: r.minY + r.height * 0.86))
+    p.closeSubpath()
+    return p
+  }
+}
+
+struct NativeHexagonShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let cx = r.midX, cy = r.midY, rad = min(r.width, r.height) / 2
+    for i in 0..<6 {
+      let a = (Double(i) * 60.0 - 90.0) * .pi / 180.0
+      let pt = CGPoint(x: cx + rad * cos(a), y: cy + rad * sin(a))
+      if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+    }
+    p.closeSubpath()
+    return p
+  }
+}
+
+struct NativeDiamondShape: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    p.move(to: CGPoint(x: r.midX, y: r.minY))
+    p.addLine(to: CGPoint(x: r.maxX, y: r.midY))
+    p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
+    p.addLine(to: CGPoint(x: r.minX, y: r.midY))
+    p.closeSubpath()
+    return p
+  }
+}
+
+/// Gold stars above a crest — one per division title won, like a real badge.
+struct NativeTitleStars: View {
+  let count: Int
+  var size: CGFloat = 11
+  var body: some View {
+    if count > 0 {
+      HStack(spacing: 3) {
+        ForEach(0..<min(count, 5), id: \.self) { _ in
+          Image(systemName: "star.fill")
+            .font(.system(size: size, weight: .bold))
+            .foregroundStyle(Color(red: 0.95, green: 0.78, blue: 0.20))
+        }
+      }
+    }
+  }
+}
+
 struct NativeClubIdentity: Codable {
   var name: String
   var colorIndex: Int
   var emblem: String
   var kitIndex: Int? = nil
+  var shapeIndex: Int? = nil
+  var secondaryIndex: Int? = nil
 
   // First `free*` of each are free; the rest are bought with Coins.
   static let palette: [Color] = [
@@ -2277,16 +2446,25 @@ struct NativeClubIdentity: Codable {
   static let freeColours = 3
   static let freeCrests = 3
   static let freeKits = 2
+  static let freeShapes = 2
   static let colourCost = 300
   static let crestCost = 250
   static let kitCost = 200
+  static let shapeCost = 250
 
   static func colourId(_ index: Int) -> String { "colour-\(index)" }
   static func crestId(_ symbol: String) -> String { "crest-\(symbol)" }
   static func kitId(_ index: Int) -> String { "kit-\(index)" }
+  static func shapeId(_ index: Int) -> String { "shape-\(index)" }
 
-  var color: Color { NativeClubIdentity.palette[max(0, min(colorIndex, NativeClubIdentity.palette.count - 1))] }
+  private static func paletteColor(_ index: Int) -> Color {
+    palette[max(0, min(index, palette.count - 1))]
+  }
+
+  var color: Color { NativeClubIdentity.paletteColor(colorIndex) }
+  var secondaryColor: Color? { secondaryIndex.map { NativeClubIdentity.paletteColor($0) } }
   var kit: NativeKit { NativeKit(rawValue: kitIndex ?? 0) ?? .solid }
+  var crestShape: NativeCrestShape { NativeCrestShape(rawValue: shapeIndex ?? 0) ?? .rounded }
 }
 
 /// A rounded tile painted in the club colour with its kit pattern and (optional)
@@ -2294,12 +2472,17 @@ struct NativeClubIdentity: Codable {
 struct NativeKitTile: View {
   let kit: NativeKit
   let color: Color
+  var secondary: Color? = nil
+  var crestShape: NativeCrestShape = .rounded
   var size: CGFloat = 44
-  var cornerRadius: CGFloat = 12
   var emblem: String? = nil
 
+  private var darkAccent: Color { secondary ?? Color.black.opacity(0.20) }
+  private var lightAccent: Color { secondary ?? Color.white.opacity(0.24) }
+
   var body: some View {
-    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    let shape = crestShape.anyShape()
+    return shape
       .fill(color)
       .frame(width: size, height: size)
       .overlay(pattern)
@@ -2307,12 +2490,14 @@ struct NativeKitTile: View {
         Group {
           if let emblem {
             Image(systemName: emblem)
-              .font(.system(size: size * 0.46, weight: .semibold))
+              .font(.system(size: size * 0.44, weight: .semibold))
               .foregroundStyle(.white)
+              .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
           }
         }
       )
-      .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+      .clipShape(shape)
+      .overlay(shape.stroke(.white.opacity(0.30), lineWidth: max(1, size * 0.02)))
   }
 
   @ViewBuilder private var pattern: some View {
@@ -2324,13 +2509,13 @@ struct NativeKitTile: View {
     case .stripes:
       HStack(spacing: 0) {
         ForEach(0..<6, id: \.self) { i in
-          Rectangle().fill(i % 2 == 0 ? Color.clear : Color.black.opacity(0.18))
+          Rectangle().fill(i % 2 == 0 ? Color.clear : darkAccent)
         }
       }
     case .hoops:
       VStack(spacing: 0) {
         ForEach(0..<6, id: \.self) { i in
-          Rectangle().fill(i % 2 == 0 ? Color.clear : Color.white.opacity(0.22))
+          Rectangle().fill(i % 2 == 0 ? Color.clear : lightAccent)
         }
       }
     case .sash:
@@ -2342,12 +2527,12 @@ struct NativeKitTile: View {
           p.addLine(to: CGPoint(x: geo.size.width * 0.66, y: 0))
           p.closeSubpath()
         }
-        .fill(.white.opacity(0.30))
+        .fill(secondary ?? .white.opacity(0.30))
       }
     case .halves:
       HStack(spacing: 0) {
         Rectangle().fill(Color.clear)
-        Rectangle().fill(Color.black.opacity(0.20))
+        Rectangle().fill(darkAccent)
       }
     }
   }
@@ -2384,6 +2569,7 @@ enum NativeWallet {
     if id.hasPrefix("colour-") { return NativeClubIdentity.colourCost }
     if id.hasPrefix("crest-") { return NativeClubIdentity.crestCost }
     if id.hasPrefix("kit-") { return NativeClubIdentity.kitCost }
+    if id.hasPrefix("shape-") { return NativeClubIdentity.shapeCost }
     return 0
   }
 
