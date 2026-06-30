@@ -2120,14 +2120,12 @@ struct NativeLeagueView: View {
         }
         .pickerStyle(.segmented)
 
-        ScrollView {
-          if segment == .table {
-            tableTab(snapshot)
-          } else {
-            medalsTab(current: snapshot.division)
-          }
+        if segment == .table {
+          tableTab(snapshot)
+        } else {
+          medalsTab(current: snapshot.division)
         }
-        .scrollIndicators(.hidden)
+        Spacer(minLength: 0)
       }
       .padding(20)
       .background { NativeLeagueBackground(division: snapshot.division) }
@@ -2299,7 +2297,6 @@ struct NativeLeagueView: View {
     let earned = all.filter(\.unlocked).count
     return VStack(spacing: 16) {
       NativeMedalSummaryCard(earned: earned, total: all.count, completion: all.isEmpty ? 0 : Double(earned) / Double(all.count), coins: NativeWallet.balance(store: store))
-      NativeHonoursCard(honours: NativeSeasonEngine.honours())
       ladder(current: current)
     }
   }
