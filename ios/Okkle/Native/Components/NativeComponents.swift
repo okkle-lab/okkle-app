@@ -75,7 +75,7 @@ struct NativeScreen<Content: View>: View {
 
           content
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 20)
         .padding(.bottom, 120)
       }
       .scrollIndicators(.hidden)
