@@ -359,41 +359,54 @@ struct NativeHomeView: View {
     return "\(NativeGreeting.word(for: Date(), shortOnly: name.count > 8)), \(name)"
   }
 
-  // MARK: Tax deadline countdown (next 31 January Self Assessment deadline)
+  // MARK: Tax deadline countdown — only shows within a month of a key HMRC date
 
-  private var taxDeadlineChip: some View {
-    let urgent = taxDeadlineDays <= 30
-    let tint = urgent ? OkkleColor.amber : OkkleColor.brand
-    return HStack(spacing: 5) {
-      Image(systemName: "calendar")
-        .font(.system(size: 11, weight: .bold))
-      Text(taxCountdownText)
-        .font(.system(size: 12, weight: .heavy))
-    }
-    .foregroundStyle(urgent ? OkkleColor.amber : OkkleColor.brandDark)
-    .padding(.horizontal, 9)
-    .padding(.vertical, 4)
-    .background(tint.opacity(0.13), in: Capsule())
-    .padding(.top, 4)
-  }
+  /// The significant Self Assessment / HMRC dates, recurring each year.
+  private static let taxDays: [(month: Int, day: Int, label: String)] = [
+    (1, 31, "Self Assessment deadline"),   // file + balancing payment + 1st payment on account
+    (4, 5, "the tax year end"),
+    (7, 31, "the payment on account"),     // 2nd payment on account
+    (10, 5, "Self Assessment registration"),
+    (8, 7, "the MTD Q1 deadline"),
+    (11, 7, "the MTD Q2 deadline"),
+    (2, 7, "the MTD Q3 deadline"),
+    (5, 7, "the MTD Q4 deadline"),
+  ]
 
-  private var taxDeadlineDate: Date {
+  /// The soonest upcoming tax date and how many days away it is.
+  private var nextTaxDay: (label: String, days: Int)? {
     let cal = Calendar.current
     let today = cal.startOfDay(for: Date())
     let year = cal.component(.year, from: today)
-    let thisYear = cal.date(from: DateComponents(year: year, month: 1, day: 31)) ?? today
-    if thisYear >= today { return thisYear }
-    return cal.date(from: DateComponents(year: year + 1, month: 1, day: 31)) ?? today
+    var best: (String, Int)?
+    for entry in Self.taxDays {
+      for candidateYear in [year, year + 1] {
+        guard let date = cal.date(from: DateComponents(year: candidateYear, month: entry.month, day: entry.day)), date >= today else { continue }
+        let days = cal.dateComponents([.day], from: today, to: date).day ?? 0
+        if best == nil || days < best!.1 { best = (entry.label, days) }
+        break
+      }
+    }
+    return best
   }
 
-  private var taxDeadlineDays: Int {
-    Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()), to: taxDeadlineDate).day ?? 0
-  }
-
-  private var taxCountdownText: String {
-    let days = taxDeadlineDays
-    if days <= 0 { return "Tax return due today" }
-    return "\(days) day\(days == 1 ? "" : "s") to 31 Jan deadline"
+  @ViewBuilder
+  private var taxDeadlineChip: some View {
+    if let next = nextTaxDay, next.days <= 30 {
+      let urgent = next.days <= 7
+      let tint = urgent ? OkkleColor.red : OkkleColor.amber
+      HStack(spacing: 5) {
+        Image(systemName: "calendar")
+          .font(.system(size: 11, weight: .bold))
+        Text(next.days == 0 ? "\(next.label.prefix(1).uppercased() + next.label.dropFirst()) is today" : "\(next.days) day\(next.days == 1 ? "" : "s") to \(next.label)")
+          .font(.system(size: 12, weight: .heavy))
+      }
+      .foregroundStyle(tint)
+      .padding(.horizontal, 9)
+      .padding(.vertical, 4)
+      .background(tint.opacity(0.13), in: Capsule())
+      .padding(.top, 4)
+    }
   }
 
   /// Consecutive days (ending today or yesterday) with at least one logged record.
