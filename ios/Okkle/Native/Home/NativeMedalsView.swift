@@ -628,34 +628,55 @@ private struct NativeMedalSummaryCard: View {
   let earned: Int
   let total: Int
   let completion: Double
+  var coins: Int? = nil
 
   var body: some View {
     NativeGlassCard(cornerRadius: 30) {
-      HStack(spacing: 18) {
-        ZStack {
-          Circle()
-            .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 9)
-          Circle()
-            .trim(from: 0, to: completion)
-            .stroke(
-              AngularGradient(colors: [OkkleColor.brand, .green, .yellow, .purple, OkkleColor.brand], center: .center),
-              style: StrokeStyle(lineWidth: 9, lineCap: .round)
-            )
-            .rotationEffect(.degrees(-90))
-          Text("\(earned)")
-            .font(.system(size: 30, weight: .heavy, design: .rounded))
-        }
-        .frame(width: 82, height: 82)
+      VStack(spacing: 14) {
+        HStack(spacing: 18) {
+          ZStack {
+            Circle()
+              .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 9)
+            Circle()
+              .trim(from: 0, to: completion)
+              .stroke(
+                AngularGradient(colors: [OkkleColor.brand, .green, .yellow, .purple, OkkleColor.brand], center: .center),
+                style: StrokeStyle(lineWidth: 9, lineCap: .round)
+              )
+              .rotationEffect(.degrees(-90))
+            Text("\(earned)")
+              .font(.system(size: 30, weight: .heavy, design: .rounded))
+          }
+          .frame(width: 82, height: 82)
 
-        VStack(alignment: .leading, spacing: 6) {
-          Text("Medal room")
-            .font(.system(size: 24, weight: .heavy, design: .rounded))
-            .foregroundStyle(OkkleColor.ink)
-          Text("\(earned) of \(total) achievements unlocked")
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-          ProgressView(value: completion)
-            .tint(OkkleColor.brand)
+          VStack(alignment: .leading, spacing: 6) {
+            Text("Medal room")
+              .font(.system(size: 24, weight: .heavy, design: .rounded))
+              .foregroundStyle(OkkleColor.ink)
+            Text("\(earned) of \(total) achievements unlocked")
+              .font(.system(size: 15, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+            ProgressView(value: completion)
+              .tint(OkkleColor.brand)
+          }
+        }
+
+        if let coins {
+          Divider()
+          HStack(spacing: 12) {
+            Image(systemName: "bitcoinsign.circle.fill")
+              .font(.system(size: 20, weight: .bold))
+              .foregroundStyle(OkkleColor.amber)
+            VStack(alignment: .leading, spacing: 1) {
+              Text("\(coins) Coins to spend")
+                .font(.system(size: 16, weight: .heavy))
+                .foregroundStyle(OkkleColor.ink)
+              Text("Earned here · spend on your club crest")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(OkkleColor.muted)
+            }
+            Spacer()
+          }
         }
       }
     }
@@ -1950,21 +1971,21 @@ struct NativeLeagueBackground: View {
 
   var body: some View {
     ZStack {
+      // Deep, near-black base with only a whisper of the division hue — like
+      // Apple Sports' dark canvas, so the light cards read clearly on top.
       Color.black
+      division.gradientBottom.opacity(0.22)
       LinearGradient(
-        colors: [
-          division.gradientTop.opacity(0.55),
-          division.gradientBottom.opacity(0.9),
-          Color.black
-        ],
+        colors: [division.gradientBottom.opacity(0.16), .clear, .black.opacity(0.35)],
         startPoint: .top,
         endPoint: .bottom
       )
+      // A soft floodlight glow at the very top only.
       RadialGradient(
-        colors: [division.gradientTop.opacity(0.65), .clear],
-        center: .init(x: 0.5, y: 0.0),
+        colors: [division.gradientTop.opacity(0.32), .clear],
+        center: .init(x: 0.5, y: -0.02),
         startRadius: 0,
-        endRadius: 460
+        endRadius: 300
       )
       .blendMode(.screen)
     }
@@ -2172,39 +2193,17 @@ struct NativeLeagueView: View {
     let all = NativeMedalEngine.achievements(store: store)
     let earned = all.filter(\.unlocked).count
     return VStack(spacing: 16) {
-      NativeMedalSummaryCard(earned: earned, total: all.count, completion: all.isEmpty ? 0 : Double(earned) / Double(all.count))
-      coinsBanner
+      NativeMedalSummaryCard(earned: earned, total: all.count, completion: all.isEmpty ? 0 : Double(earned) / Double(all.count), coins: NativeWallet.balance(store: store))
+      NativeHonoursCard(honours: NativeSeasonEngine.honours())
       Text("Climb the table to unlock tougher medals — each division holds its own set.")
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(.white.opacity(0.75))
         .multilineTextAlignment(.center)
         .padding(.horizontal, 12)
       ladder(current: current)
-      NativeHonoursCard(honours: NativeSeasonEngine.honours())
     }
   }
 
-  private var coinsBanner: some View {
-    HStack(spacing: 10) {
-      Image(systemName: "bitcoinsign.circle.fill")
-        .font(.system(size: 18, weight: .bold))
-        .foregroundStyle(OkkleColor.amber)
-      VStack(alignment: .leading, spacing: 1) {
-        Text("\(NativeWallet.balance(store: store)) Coins to spend")
-          .font(.system(size: 14, weight: .heavy))
-          .foregroundStyle(OkkleColor.ink)
-        Text("Earned from medals, wins & promotions · spend on your club")
-          .font(.system(size: 11, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
-          .lineLimit(1)
-          .minimumScaleFactor(0.85)
-      }
-      Spacer()
-    }
-    .padding(12)
-    .frame(maxWidth: .infinity)
-    .okkleCard()
-  }
 
   private func ladder(current: NativeDivision) -> some View {
     let rows = NativeDivision.allCases.reversed()
