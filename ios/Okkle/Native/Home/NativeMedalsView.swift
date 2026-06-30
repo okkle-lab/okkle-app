@@ -2114,8 +2114,8 @@ struct NativeLeagueRulesView: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          rule("figure.run", "You vs your past selves",
-               "Each week you race three versions of yourself — Peak You (your best-ever weeks), Last Month You, and Average You. No real opponents, nothing shared.")
+          rule("figure.run", "You vs rival clubs",
+               "Each week you race AI clubs — Riverside Rovers, Parkside Athletic and Canal Street FC. Their targets scale to your pace, so the only way past them is to log more miles.")
           rule("sterlingsign.circle.fill", "Win by saving tax",
                "Every week has a target. Save more tax than it — by logging miles — to win the week and take 3 points; reach halfway for a draw and 1 point.")
           rule("list.number", "Climb the table",
@@ -3298,24 +3298,34 @@ enum NativeSeasonEngine {
 
   /// Your rivals are your own past selves — no fictional clubs, every result real.
   /// Each ghost replays real weekly banked £ drawn from your own history.
+  /// AI rival clubs. Their weekly tax-saved is pegged to YOUR target (the win
+  /// bar) times a strength, so they always sit just within reach — the only way
+  /// past them is to log more miles. They scale as you improve, staying a race.
   enum Ghost: Int, CaseIterable {
-    case lastSeason   // you, one 4-week block ago
-    case bestEver     // your best weeks ever, replayed
-    case average      // your all-time average week, held steady
+    case rovers, athletic, canal
 
     var clubName: String {
       switch self {
-      case .lastSeason: return "Last Month You"
-      case .bestEver:   return "Peak You"
-      case .average:    return "Average You"
+      case .rovers:   return "Riverside Rovers"
+      case .athletic: return "Parkside Athletic"
+      case .canal:    return "Canal Street FC"
+      }
+    }
+
+    /// Multiple of your weekly win bar that this club banks.
+    var strength: Double {
+      switch self {
+      case .rovers:   return 1.15   // pace-setters — win most weeks
+      case .athletic: return 0.92   // mid-table
+      case .canal:    return 0.62   // there to be beaten
       }
     }
 
     var symbol: String {
       switch self {
-      case .lastSeason: return "clock.arrow.circlepath"
-      case .bestEver:   return "star.fill"
-      case .average:    return "chart.bar.fill"
+      case .rovers:   return "shield.fill"
+      case .athletic: return "flame.fill"
+      case .canal:    return "bolt.fill"
       }
     }
   }
@@ -3384,7 +3394,7 @@ enum NativeSeasonEngine {
 
     let matchweek = min(seasonOver ? max(1, played) : played + 1, total)
     let ghost = Ghost.allCases[max(0, matchweek - 1) % Ghost.allCases.count]
-    let oppBanked = ghostWeekBanked(ghost: ghost, weekIndex: weekIndex, seasonStart: state.seasonStart, store: store)
+    let oppBanked = botWeekBanked(ghost, weekOffset: weekIndex, division: division, store: store)
 
     let goalUnit = max(1, winBar(division, store: store) / 3)
     let yourGoals = min(6, Int((yourBanked / goalUnit).rounded(.down)))
@@ -3423,17 +3433,18 @@ enum NativeSeasonEngine {
     )
   }
 
-  private static func ghostWeekBanked(ghost: Ghost, weekIndex: Int, seasonStart: Date, store: OkkleStore) -> Double {
-    switch ghost {
-    case .lastSeason:
-      let start = seasonStart.addingTimeInterval(Double(weekIndex) * weekSeconds - weekSeconds * Double(weeksPerSeason))
-      return weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store)
-    case .bestEver:
-      let best = Array(allWeeklyBanked(store: store).sorted(by: >).prefix(weeksPerSeason))
-      return weekIndex < best.count ? best[weekIndex] : 0
-    case .average:
-      return weeklyBenchmark(store: store)
-    }
+  /// A rival club's tax-saved for a week: pegged to your win bar × their
+  /// strength, with a little deterministic week-to-week form so they're not flat.
+  static func botWeekBanked(_ ghost: Ghost, weekOffset: Int, division: NativeDivision, store: OkkleStore) -> Double {
+    let bar = winBar(division, store: store)
+    let variation = 0.8 + 0.4 * botSeed(ghost.rawValue + 1, weekOffset + 1)
+    return bar * ghost.strength * variation
+  }
+
+  private static func botSeed(_ a: Int, _ b: Int) -> Double {
+    var x = UInt64(bitPattern: Int64((a &* 73_856_093) ^ (b &* 19_349_663)))
+    x ^= x >> 33; x = x &* 0xff51afd7ed558ccd; x ^= x >> 33
+    return Double(x % 1000) / 1000.0
   }
 
   // MARK: Standings
@@ -3456,23 +3467,12 @@ enum NativeSeasonEngine {
     let yourName = clubIdentity(store: store).name
     var rows = [NativeClubRow(id: 0, name: yourName, isYou: true, played: played, points: yourPoints, form: Array(yourForm.suffix(5)))]
 
-    // Your past selves — real history replayed, scored on the same active weeks.
-    let bestWeeks = topWeeklyBanked(count: max(1, played), store: store)
-    let benchmark = weeklyBenchmark(store: store)
+    // AI rival clubs — scored on the same active weeks, pegged to your bar.
     for ghost in Ghost.allCases {
       var points = 0
       var form: [Int] = []
-      for (i, week) in offsets.enumerated() {
-        let banked: Double
-        switch ghost {
-        case .lastSeason:
-          let start = seasonStart.addingTimeInterval(Double(week) * weekSeconds - weekSeconds * Double(weeksPerSeason))
-          banked = weeklyBanked(start: start, end: start.addingTimeInterval(weekSeconds), store: store)
-        case .bestEver:
-          banked = i < bestWeeks.count ? bestWeeks[i] : 0
-        case .average:
-          banked = benchmark
-        }
+      for week in offsets {
+        let banked = botWeekBanked(ghost, weekOffset: week, division: division, store: store)
         let r = result(forBanked: banked, bar: bar)
         points += r
         form.append(r)
