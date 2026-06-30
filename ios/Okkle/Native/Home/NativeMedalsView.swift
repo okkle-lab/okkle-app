@@ -1889,7 +1889,7 @@ struct NativeClubEditorView: View {
           VStack(spacing: 6) {
             NativeKitTile(kit: kit, color: NativeClubIdentity.palette[colorIndex], secondary: secondaryColor, size: 48)
               .overlay(RoundedRectangle(cornerRadius: 48 * 0.26, style: .continuous).strokeBorder(OkkleColor.ink, lineWidth: kitIndex == kit.rawValue ? 3 : 0))
-              .overlay(lockBadge(owned, cost: NativeClubIdentity.kitCost))
+              .overlay(lockBadge(owned, cost: kit.coins))
               .opacity(owned ? 1 : 0.5)
             Text(kit.name)
               .font(.system(size: 11, weight: .semibold))
@@ -1915,7 +1915,7 @@ struct NativeClubEditorView: View {
             .foregroundStyle(emblem == symbol ? .white : OkkleColor.muted)
             .frame(width: 48, height: 48)
             .background(emblem == symbol ? NativeClubIdentity.palette[colorIndex] : OkkleColor.muted.opacity(0.1), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay(lockBadge(owned, cost: NativeClubIdentity.crestCost))
+            .overlay(lockBadge(owned, cost: NativeClubIdentity.crestCoins(index)))
             .opacity(owned ? 1 : 0.5)
             .frame(maxWidth: .infinity)
         }
@@ -2625,7 +2625,7 @@ struct NativeHonour: Codable, Identifiable {
 /// The driver's club — name, colour and crest emblem, all theirs to shape.
 /// Kit patterns painted over the club colour — solid through to a diagonal sash.
 enum NativeKit: Int, CaseIterable {
-  case solid, gradient, stripes, hoops, sash, halves, quarters, chevron, pinstripe, checks
+  case solid, gradient, stripes, hoops, sash, halves, quarters, chevron, pinstripe, checks, band, cross, diagonal, spots
 
   var name: String {
     switch self {
@@ -2639,7 +2639,16 @@ enum NativeKit: Int, CaseIterable {
     case .chevron: return "Chevron"
     case .pinstripe: return "Pinstripe"
     case .checks: return "Checks"
+    case .band: return "Band"
+    case .cross: return "Cross"
+    case .diagonal: return "Diagonal"
+    case .spots: return "Spots"
     }
+  }
+
+  /// Solid + Fade free; price climbs as you go down the list.
+  var coins: Int {
+    rawValue < NativeClubIdentity.freeKits ? 0 : 150 + (rawValue - NativeClubIdentity.freeKits) * 30
   }
 }
 
@@ -2937,6 +2946,11 @@ struct NativeClubIdentity: Codable {
   static let shapeCost = 250
   static let trimCost = 200
 
+  /// Crest price climbs as you go down the list (first `freeCrests` are free).
+  static func crestCoins(_ index: Int) -> Int {
+    index < freeCrests ? 0 : 150 + (index - freeCrests) * 15
+  }
+
   static func colourId(_ index: Int) -> String { "colour-\(index)" }
   static func crestId(_ symbol: String) -> String { "crest-\(symbol)" }
   static func kitId(_ index: Int) -> String { "kit-\(index)" }
@@ -3062,6 +3076,42 @@ struct NativeKitTile: View {
           }
         }
       }
+    case .band:
+      VStack(spacing: 0) {
+        Rectangle().fill(Color.clear)
+        Rectangle().fill(secondary ?? .white.opacity(0.28)).frame(maxHeight: .infinity)
+        Rectangle().fill(Color.clear)
+      }
+    case .cross:
+      ZStack {
+        Rectangle().fill(secondary ?? darkAccent).frame(width: size * 0.26)
+        Rectangle().fill(secondary ?? darkAccent).frame(height: size * 0.26)
+      }
+    case .diagonal:
+      GeometryReader { geo in
+        let n = 7
+        HStack(spacing: 0) {
+          ForEach(0..<n, id: \.self) { i in
+            Rectangle().fill(i % 2 == 0 ? Color.clear : darkAccent.opacity(0.8))
+          }
+        }
+        .frame(width: geo.size.width * 1.6, height: geo.size.height * 1.6)
+        .rotationEffect(.degrees(35))
+        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+      }
+    case .spots:
+      GeometryReader { geo in
+        let cols = 3, rows = 3
+        ForEach(0..<rows, id: \.self) { r in
+          ForEach(0..<cols, id: \.self) { c in
+            Circle()
+              .fill(secondary ?? .white.opacity(0.30))
+              .frame(width: geo.size.width * 0.16)
+              .position(x: geo.size.width * (Double(c) + 0.5) / Double(cols),
+                        y: geo.size.height * (Double(r) + 0.5) / Double(rows))
+          }
+        }
+      }
     }
   }
 }
@@ -3098,8 +3148,15 @@ enum NativeWallet {
 
   static func cost(for id: String) -> Int {
     if id.hasPrefix("colour-") { return NativeClubIdentity.colourCost }
-    if id.hasPrefix("crest-") { return NativeClubIdentity.crestCost }
-    if id.hasPrefix("kit-") { return NativeClubIdentity.kitCost }
+    if id.hasPrefix("crest-") {
+      let symbol = String(id.dropFirst("crest-".count))
+      let index = NativeClubIdentity.emblems.firstIndex(of: symbol) ?? NativeClubIdentity.freeCrests
+      return NativeClubIdentity.crestCoins(index)
+    }
+    if id.hasPrefix("kit-") {
+      let raw = Int(id.dropFirst("kit-".count)) ?? 0
+      return NativeKit(rawValue: raw)?.coins ?? NativeClubIdentity.kitCost
+    }
     if id.hasPrefix("shape-") {
       let raw = Int(id.dropFirst("shape-".count)) ?? 0
       return NativeCrestShape(rawValue: raw)?.coins ?? NativeClubIdentity.shapeCost
