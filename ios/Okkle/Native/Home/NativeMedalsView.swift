@@ -1597,7 +1597,7 @@ struct NativeClubEditorView: View {
       .alert("Not enough Coins", isPresented: $purchaseError) {
         Button("OK", role: .cancel) {}
       } message: {
-        Text("Earn more Coins by unlocking medals and winning matchweeks, then come back to claim it.")
+        Text("This badge uses locked items worth \(lockedCost) Coins, but you have \(balance). Earn more from medals and wins, or switch the locked pieces back to free ones.")
       }
       .onAppear(perform: load)
     }
@@ -1624,7 +1624,19 @@ struct NativeClubEditorView: View {
         .padding(.horizontal, 16)
         .background(OkkleColor.muted.opacity(0.08), in: Capsule())
         .frame(maxWidth: 250)
-      coinsPill
+      if lockedCost > 0 {
+        HStack(spacing: 6) {
+          Image(systemName: "lock.fill").font(.system(size: 12, weight: .bold))
+          Text("Trying it on — unlocks for \(lockedCost) Coins on Save")
+            .font(.system(size: 13, weight: .bold))
+        }
+        .foregroundStyle(lockedCost <= balance ? OkkleColor.brandDark : OkkleColor.red)
+        .padding(.horizontal, 14)
+        .frame(height: 38)
+        .background((lockedCost <= balance ? OkkleColor.brand : OkkleColor.red).opacity(0.12), in: Capsule())
+      } else {
+        coinsPill
+      }
     }
     .frame(maxWidth: .infinity)
     .padding(.top, 10)
@@ -1797,7 +1809,38 @@ struct NativeClubEditorView: View {
     balance = NativeWallet.balance(store: store)
   }
 
+  /// Ids of the components currently on the crest that aren't owned yet.
+  private func lockedIds() -> [String] {
+    var ids: [String] = []
+    if !NativeWallet.isUnlocked(NativeClubIdentity.colourId(colorIndex), free: colorIndex < NativeClubIdentity.freeColours) {
+      ids.append(NativeClubIdentity.colourId(colorIndex))
+    }
+    if !NativeWallet.isUnlocked(NativeClubIdentity.kitId(kitIndex), free: kitIndex < NativeClubIdentity.freeKits) {
+      ids.append(NativeClubIdentity.kitId(kitIndex))
+    }
+    if !NativeWallet.isUnlocked(NativeClubIdentity.shapeId(shapeIndex), free: shapeIndex < NativeClubIdentity.freeShapes) {
+      ids.append(NativeClubIdentity.shapeId(shapeIndex))
+    }
+    if !NativeWallet.isUnlocked(NativeClubIdentity.trimId(trimIndex), free: trimIndex < NativeClubIdentity.freeTrims) {
+      ids.append(NativeClubIdentity.trimId(trimIndex))
+    }
+    if let ei = NativeClubIdentity.emblems.firstIndex(of: emblem),
+       !NativeWallet.isUnlocked(NativeClubIdentity.crestId(emblem), free: ei < NativeClubIdentity.freeCrests) {
+      ids.append(NativeClubIdentity.crestId(emblem))
+    }
+    return ids
+  }
+
+  private var lockedCost: Int { lockedIds().reduce(0) { $0 + NativeWallet.cost(for: $1) } }
+
   private func saveAndClose() {
+    let locked = lockedIds()
+    if !locked.isEmpty {
+      let total = locked.reduce(0) { $0 + NativeWallet.cost(for: $1) }
+      guard NativeWallet.balance(store: store) >= total else { purchaseError = true; return }
+      locked.forEach { _ = NativeWallet.purchase($0, store: store) }
+      balance = NativeWallet.balance(store: store)
+    }
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     NativeSeasonEngine.saveClubIdentity(NativeClubIdentity(
       name: trimmed.isEmpty ? "Your club" : trimmed,
@@ -1806,33 +1849,15 @@ struct NativeClubEditorView: View {
     dismiss()
   }
 
+  // Tapping any swatch just tries it on — nothing is bought until Save.
   private func tapColour(index: Int, id: String, owned: Bool) {
-    if editingSecondary { secondaryIndex = index; return }
-    select(colourIndex: index, id: id, owned: owned)
+    if editingSecondary { secondaryIndex = index } else { colorIndex = index }
   }
-
-  private func buy(_ id: String, then apply: () -> Void) {
-    if NativeWallet.purchase(id, store: store) {
-      apply()
-      balance = NativeWallet.balance(store: store)
-    } else { purchaseError = true }
-  }
-
-  private func select(colourIndex index: Int, id: String, owned: Bool) {
-    owned ? (colorIndex = index) : buy(id) { colorIndex = index }
-  }
-  private func select(emblem symbol: String, id: String, owned: Bool) {
-    owned ? (emblem = symbol) : buy(id) { emblem = symbol }
-  }
-  private func select(kit: NativeKit, id: String, owned: Bool) {
-    owned ? (kitIndex = kit.rawValue) : buy(id) { kitIndex = kit.rawValue }
-  }
-  private func select(shape: NativeCrestShape, id: String, owned: Bool) {
-    owned ? (shapeIndex = shape.rawValue) : buy(id) { shapeIndex = shape.rawValue }
-  }
-  private func select(trim: NativeTrim, id: String, owned: Bool) {
-    owned ? (trimIndex = trim.rawValue) : buy(id) { trimIndex = trim.rawValue }
-  }
+  private func select(colourIndex index: Int, id: String, owned: Bool) { colorIndex = index }
+  private func select(emblem symbol: String, id: String, owned: Bool) { emblem = symbol }
+  private func select(kit: NativeKit, id: String, owned: Bool) { kitIndex = kit.rawValue }
+  private func select(shape: NativeCrestShape, id: String, owned: Bool) { shapeIndex = shape.rawValue }
+  private func select(trim: NativeTrim, id: String, owned: Bool) { trimIndex = trim.rawValue }
 }
 
 extension View {
@@ -2570,7 +2595,7 @@ struct NativeClubIdentity: Codable {
     Color(red: 0.55, green: 0.75, blue: 0.20),  // lime
     Color(red: 0.90, green: 0.36, blue: 0.30),  // coral
   ]
-  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill", "star.fill", "pawprint.fill", "anchor", "seal.fill", "hexagon.fill", "diamond.fill", "bird.fill", "tortoise.fill", "ant.fill", "fish.fill", "leaf.fill", "drop.fill"]
+  static let emblems = ["shield.fill", "flame.fill", "bolt.fill", "hare.fill", "crown.fill", "flag.fill", "star.fill", "pawprint.fill", "anchor", "seal.fill", "hexagon.fill", "diamond.fill", "bird.fill", "tortoise.fill", "ant.fill", "fish.fill", "leaf.fill", "drop.fill", "cat.fill", "hammer.fill", "soccerball", "sailboat.fill", "building.columns.fill", "globe.europe.africa.fill"]
 
   static let freeColours = 3
   static let freeCrests = 3
