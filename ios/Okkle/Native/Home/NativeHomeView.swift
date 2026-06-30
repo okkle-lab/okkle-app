@@ -350,7 +350,8 @@ struct NativeHomeView: View {
   // MARK: Derived values
 
   private var homeGreetingTitle: String {
-    store.settings.name.isEmpty ? "Home" : "Hi, \(store.settings.name)"
+    guard !store.settings.name.isEmpty else { return "Home" }
+    return "\(NativeGreeting.word(for: Date())), \(store.settings.name)"
   }
 
   /// Consecutive days (ending today or yesterday) with at least one logged record.
@@ -425,3 +426,45 @@ let nativeExpenseCategories = [
   "Phone mount",
   "App subscription",
 ]
+
+/// A rotating home greeting — time of day, season, and a mix of British, Aussie
+/// and American slang. Stable within the hour (no flicker), varies across the
+/// day. Kept light and friendly, never rude.
+enum NativeGreeting {
+  static func word(for date: Date) -> String {
+    let cal = Calendar.current
+    let hour = cal.component(.hour, from: date)
+    let month = cal.component(.month, from: date)
+    let dayOfYear = cal.ordinality(of: .day, in: .year, for: date) ?? 1
+
+    var pool: [String]
+    switch hour {
+    case 5..<12:  pool = morning
+    case 12..<17: pool = afternoon
+    case 17..<22: pool = evening
+    default:      pool = night
+    }
+    pool += anytime
+    pool += seasonal(month: month)
+
+    let index = (dayOfYear &* 24 &+ hour) % pool.count
+    return pool[index]
+  }
+
+  private static let morning = ["Morning", "Mornin'", "Rise and grind", "Up and at 'em", "Top o' the morning", "Bright and early", "First light"]
+  private static let afternoon = ["Afternoon", "Arvo", "Howdy", "Alright", "Ey up", "G'day"]
+  private static let evening = ["Evening", "Evenin'", "Knock-off soon?", "Winding down", "Golden hour"]
+  private static let night = ["Night owl", "Burning the midnight oil", "Still grafting", "Late one", "Owl mode"]
+  private static let anytime = ["Alright", "Wotcha", "Now then", "G'day", "Howdy", "Yo", "Oi oi", "Easy", "What's good", "Howzit", "Good on ya", "Let's get that bread", "Pedal to the metal", "Cha-ching", "Another day, another quid"]
+
+  private static func seasonal(month: Int) -> [String] {
+    switch month {
+    case 12:       return ["Merry one", "Festive grind", "Wrap up warm", "Ho ho, hustle"]
+    case 1, 2:     return ["New year, new miles", "Fresh start", "Frosty one", "Bundle up"]
+    case 3, 4, 5:  return ["Fresh one", "Spring in your step", "Bloomin' lovely"]
+    case 6, 7, 8:  return ["Scorcher today", "Sunny side up", "Tan weather", "Cracking day"]
+    case 9, 10, 11: return ["Crisp one", "Cosy season", "Sweater weather"]
+    default:       return []
+    }
+  }
+}
