@@ -124,9 +124,11 @@ func nativeSelfAssessmentText(store: OkkleStore) -> String {
     "Okkle - Self Assessment summary \(nativeTaxYearLabel(for: store.taxYear))",
     "",
     "Turnover (income):        \(gbp(tax.turnover))",
-    "Allowable expenses:       \(gbp(tax.expenses))",
-    "Net profit:               \(gbp(tax.profit))",
+    "Logged expenses:          \(gbp(tax.expenses))",
+    "Deduction applied:        \(gbp(tax.deductionApplied))",
+    "Taxable profit:           \(gbp(tax.profit))",
     "Income tax band:          \(store.settings.incomeBracket.label)",
+    "Other income:             \(gbp(store.settings.otherIncome))",
     "",
     "Estimated Income Tax:     \(gbp(tax.incomeTax))",
     "Estimated Class 4 NIC:    \(gbp(tax.class4))",
@@ -335,7 +337,7 @@ final class NativeAccountantPackPdfRenderer {
   }
 
   private var incomeBracketLine: String {
-    "\(store.settings.incomeBracket.label) (\(Int(store.settings.incomeBracket.marginalRate(region: store.settings.region) * 100))% marginal estimate)"
+    "\(store.settings.incomeBracket.label) (\(Int(store.settings.incomeBracket.marginalRate(region: store.settings.region) * 100))% tax-saved estimate)"
   }
 
   private func beginPage() {
@@ -409,6 +411,7 @@ final class NativeAccountantPackPdfRenderer {
     drawKeyValue("Mileage method", "Simplified mileage using HMRC flat rates")
     drawKeyValue("Records source", "Tracked trips and manual entries logged in Okkle")
     drawKeyValue("Income tax band", incomeBracketLine)
+    drawKeyValue("Other income", gbp(store.settings.otherIncome))
     drawKeyValue("Income entries", "\(incomeRecords.count)")
     drawKeyValue("Expense entries", "\(expenseRecords.count) (\(expenseRecords.filter { $0.receiptImageData != nil }.count) with receipts)")
     drawKeyValue("Mileage entries", "\(yearTrips.count) tracked trips, \(manualMileageRecords.count) manual entries")
@@ -421,8 +424,8 @@ final class NativeAccountantPackPdfRenderer {
       headers: ["SA103S box", "Description", "Amount"],
       rows: [
         ["9", "Turnover - business income", gbp(tax.turnover)],
-        ["20", "Allowable business expenses, including mileage deduction", gbp(tax.expenses)],
-        ["31", "Net profit", gbp(tax.profit)]
+        ["20", "Allowable business expenses, including mileage deduction", gbp(tax.deductionApplied)],
+        ["31", "Taxable profit", gbp(tax.profit)]
       ],
       widths: [0.18, 0.54, 0.28],
       rightAligned: [2]

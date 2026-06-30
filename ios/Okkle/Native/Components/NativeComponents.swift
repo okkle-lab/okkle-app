@@ -260,17 +260,25 @@ struct NativeFreeTextDropdown: View {
   @Binding var text: String
   @FocusState private var focused: Bool
   @State private var expanded = false
+  @State private var filtersSuggestions = false
+  @State private var isSelectingOption = false
+
+  private var cleanOptions: [String] {
+    var seen = Set<String>()
+    return options.compactMap { option in
+      let clean = option.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !clean.isEmpty else { return nil }
+      let key = clean.lowercased()
+      guard !seen.contains(key) else { return nil }
+      seen.insert(key)
+      return clean
+    }
+  }
 
   private var matches: [String] {
-    var seen = Set<String>()
     let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    return options.filter { option in
-      let clean = option.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !clean.isEmpty else { return false }
-      let key = clean.lowercased()
-      guard !seen.contains(key) else { return false }
-      seen.insert(key)
-      return query.isEmpty || clean.localizedCaseInsensitiveContains(query)
+    return cleanOptions.filter { option in
+      !filtersSuggestions || query.isEmpty || option.localizedCaseInsensitiveContains(query)
     }
     .prefix(7)
     .map { $0 }
@@ -286,12 +294,27 @@ struct NativeFreeTextDropdown: View {
         TextField(placeholder, text: $text)
           .textInputAutocapitalization(.words)
           .focused($focused)
-          .onChange(of: text) { _ in expanded = true }
-          .onTapGesture { expanded = true }
+          .submitLabel(.done)
+          .onChange(of: text) { _ in
+            guard !isSelectingOption else { return }
+            filtersSuggestions = true
+            expanded = true
+          }
+          .onChange(of: focused) { isFocused in
+            guard isFocused else { return }
+            filtersSuggestions = false
+            expanded = true
+          }
+          .onTapGesture {
+            filtersSuggestions = false
+            expanded = true
+          }
 
         Button {
-          expanded.toggle()
-          focused = expanded
+          let willExpand = !expanded
+          expanded = willExpand
+          filtersSuggestions = false
+          focused = willExpand
         } label: {
           Image(systemName: expanded ? "chevron.up" : "chevron.down")
             .font(.system(size: 15, weight: .bold))
@@ -309,16 +332,26 @@ struct NativeFreeTextDropdown: View {
         VStack(spacing: 0) {
           ForEach(matches, id: \.self) { option in
             Button {
+              isSelectingOption = true
               text = option
               expanded = false
+              filtersSuggestions = false
               focused = false
               hideKeyboard()
+              DispatchQueue.main.async {
+                isSelectingOption = false
+              }
             } label: {
               HStack {
                 Text(option)
                   .font(.system(size: 15, weight: .semibold))
                   .foregroundStyle(OkkleColor.ink)
                 Spacer()
+                if option.caseInsensitiveCompare(text.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame {
+                  Image(systemName: "checkmark")
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(OkkleColor.brand)
+                }
               }
               .padding(.horizontal, 14)
               .padding(.vertical, 12)

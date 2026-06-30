@@ -21,7 +21,7 @@ final class OkkleStore: ObservableObject {
   @Published var trips: [NativeTrip] = [] { didSet { save() } }
 
   private let key = "uk.okkle.native.swiftui.snapshot.v1"
-  private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v2"
+  private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v3"
   private var isLoading = false
 
   init() {
@@ -47,8 +47,7 @@ final class OkkleStore: ObservableObject {
       }
     }
 
-    if !UserDefaults.standard.bool(forKey: legacyMigrationKey),
-       let imported = NativeLegacySQLiteImporter.importSnapshot() {
+    if let imported = NativeLegacySQLiteImporter.importSnapshot() {
       merge(imported)
       UserDefaults.standard.set(true, forKey: legacyMigrationKey)
       shouldPersist = true
@@ -65,6 +64,7 @@ final class OkkleStore: ObservableObject {
     if let data = try? JSONEncoder().encode(snapshot) {
       UserDefaults.standard.set(data, forKey: key)
     }
+    NativeLegacySQLiteExporter.write(snapshot: snapshot)
   }
 
   var backupPayload: NativeBackupPayload {
@@ -197,7 +197,13 @@ final class OkkleStore: ObservableObject {
   }
 
   var taxPosition: NativeTaxPosition {
-    TaxCalculator.estimate(turnover: yearIncome, expenses: yearExpenses, region: settings.region, incomeBracket: settings.incomeBracket)
+    TaxCalculator.estimate(
+      turnover: yearIncome,
+      expenses: yearExpenses,
+      region: settings.region,
+      incomeBracket: settings.incomeBracket,
+      otherIncome: settings.otherIncome
+    )
   }
 
   var history: [NativeHistoryItem] {
@@ -234,12 +240,16 @@ final class OkkleStore: ObservableObject {
       return snapshot
     }
 
+    if let legacySnapshot = NativeLegacyBackupImporter.snapshot(from: data) {
+      return legacySnapshot
+    }
+
     throw NativeBackupRestoreError.invalidBackup
   }
 
   private func merge(_ imported: NativeLegacyImportResult) {
     if let importedSettings = imported.settings {
-      settings = importedSettings
+      mergeSettings(importedSettings)
     }
 
     let existingTripLegacyIDs = Set(trips.compactMap(\.legacyID))
@@ -263,6 +273,40 @@ final class OkkleStore: ObservableObject {
     if !newRecords.isEmpty {
       records = (records + newRecords).sorted { $0.date > $1.date }
     }
+  }
+
+  private func mergeSettings(_ importedSettings: NativeSettings) {
+    let currentLooksEmpty = settings == NativeSettings() ||
+      (!settings.hasCompletedOnboarding &&
+       settings.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+       records.isEmpty &&
+       trips.isEmpty)
+
+    guard !currentLooksEmpty else {
+      settings = importedSettings
+      return
+    }
+
+    var updated = settings
+    if updated.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      updated.name = importedSettings.name
+    }
+    if updated.platforms == NativeSettings().platforms, importedSettings.platforms != NativeSettings().platforms {
+      updated.platforms = importedSettings.platforms
+    }
+    if updated.accountantUTR.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      updated.accountantUTR = importedSettings.accountantUTR
+    }
+    if updated.accountantNINumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      updated.accountantNINumber = importedSettings.accountantNINumber
+    }
+    if updated.accountantAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      updated.accountantAddress = importedSettings.accountantAddress
+    }
+    if updated.accountantBusinessDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      updated.accountantBusinessDescription = importedSettings.accountantBusinessDescription
+    }
+    settings = updated
   }
 
   private func normalizeOnboardingState() -> Bool {

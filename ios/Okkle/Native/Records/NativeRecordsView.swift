@@ -5,6 +5,7 @@ import PhotosUI
 import SQLite3
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 import Vision
 struct NativeRecordsView: View {
   @EnvironmentObject private var store: OkkleStore
@@ -322,6 +323,24 @@ struct NativeShareSheet: UIViewControllerRepresentable {
   func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
+struct NativeBackupDocument: FileDocument {
+  static var readableContentTypes: [UTType] { [.json] }
+
+  var data: Data
+
+  init(data: Data) {
+    self.data = data
+  }
+
+  init(configuration: ReadConfiguration) throws {
+    data = configuration.file.regularFileContents ?? Data()
+  }
+
+  func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+    FileWrapper(regularFileWithContents: data)
+  }
+}
+
 enum NativeBackupResult {
   case iCloud(URL)
   case share(NativeShareItem)
@@ -330,16 +349,30 @@ enum NativeBackupResult {
 
 @MainActor
 func nativeCreateBackup(store: OkkleStore) -> NativeBackupResult {
-  if let container = FileManager.default.url(forUbiquityContainerIdentifier: nativeICloudContainerIdentifier) {
+  let fileManager = FileManager.default
+  if let container = nativeICloudContainerURL(fileManager: fileManager) {
     do {
       let folder = container
         .appendingPathComponent("Documents", isDirectory: true)
         .appendingPathComponent("Okkle Backups", isDirectory: true)
-      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
 
-      let url = folder.appendingPathComponent(nativeBackupFileName())
-      try store.backupData().write(to: url, options: [.atomic])
-      return .iCloud(url)
+      let fileName = nativeBackupFileName()
+      let cloudURL = folder.appendingPathComponent(fileName)
+      let localURL = fileManager.temporaryDirectory.appendingPathComponent(fileName)
+      try store.backupData().write(to: localURL, options: [.atomic])
+      if fileManager.fileExists(atPath: cloudURL.path) {
+        try fileManager.removeItem(at: cloudURL)
+      }
+
+      do {
+        try fileManager.setUbiquitous(true, itemAt: localURL, destinationURL: cloudURL)
+      } catch {
+        try store.backupData().write(to: cloudURL, options: [.atomic])
+        try? fileManager.removeItem(at: localURL)
+      }
+
+      return .iCloud(cloudURL)
     } catch {
       if let item = nativeCreateShareBackup(store: store) {
         return .share(item)
@@ -355,6 +388,11 @@ func nativeCreateBackup(store: OkkleStore) -> NativeBackupResult {
 }
 
 let nativeICloudContainerIdentifier = "iCloud.okklelab.app"
+
+func nativeICloudContainerURL(fileManager: FileManager = .default) -> URL? {
+  fileManager.url(forUbiquityContainerIdentifier: nativeICloudContainerIdentifier)
+    ?? fileManager.url(forUbiquityContainerIdentifier: nil)
+}
 
 @MainActor
 func nativeCreateShareBackup(store: OkkleStore) -> NativeShareItem? {

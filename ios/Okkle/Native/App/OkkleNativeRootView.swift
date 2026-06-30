@@ -66,6 +66,7 @@ struct OkkleNativeRootView: View {
 }
 
 let nativeOnboardingPlatforms = ["Uber Eats", "Deliveroo", "Just Eat", "Stuart", "Amazon Flex", "Other"]
+let nativeDeliveryServiceOptions = nativeOnboardingPlatforms.filter { $0 != "Other" }
 
 func nativePlatformSymbol(_ platform: String) -> String {
   switch platform {

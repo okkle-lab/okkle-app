@@ -101,12 +101,37 @@ struct NativeSettingsPlatformsSection: View {
   }
 }
 
+struct NativeSettingsOtherIncomeField: View {
+  @EnvironmentObject private var store: OkkleStore
+  @State private var text = ""
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Other income this tax year")
+      NativeNumberDoneTextField(text: $text, placeholder: "0.00")
+        .frame(height: 34)
+      Text("Wages or other PAYE income. Courier profit is taxed on top of this, matching the 1.0 tax estimate model.")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+    }
+    .onAppear {
+      text = store.settings.otherIncome > 0 ? String(format: "%.2f", store.settings.otherIncome) : ""
+    }
+    .onChange(of: text) { value in
+      store.settings.otherIncome = max(0, Double(value.replacingOccurrences(of: ",", with: ".")) ?? 0)
+    }
+  }
+}
+
 struct NativeSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
   @Environment(\.dismiss) private var dismiss
   @State private var backupBusy = false
   @State private var backupMessage: String?
   @State private var backupShareItem: NativeShareItem?
+  @State private var backupExportDocument: NativeBackupDocument?
+  @State private var backupExportFileName = nativeBackupFileName()
+  @State private var showBackupExporter = false
   @State private var showBackupImporter = false
   @State private var showClearDataWarning = false
   @State private var showDataClearedConfirmation = false
@@ -136,9 +161,11 @@ struct NativeSettingsView: View {
             }
           }
 
-          Text("Used for tax saved and estimated tax due. Choose Higher if courier profit sits on top of higher-rate income.")
+          Text("Used for tax saved. Estimated tax due also uses the other income field below.")
             .font(.footnote)
             .foregroundStyle(.secondary)
+
+          NativeSettingsOtherIncomeField()
 
           Picker("Default vehicle", selection: Binding(
             get: { store.settings.defaultVehicle },
@@ -163,7 +190,7 @@ struct NativeSettingsView: View {
             backupBusy = true
             switch nativeCreateBackup(store: store) {
             case .iCloud(let url):
-              backupMessage = "Backed up to iCloud Drive as \(url.lastPathComponent)."
+              backupMessage = "Backed up to iCloud Drive > Okkle > Okkle Backups as \(url.lastPathComponent). It can take a moment to appear in Files."
             case .share(let item):
               backupShareItem = item
             case .failed(let message):
@@ -176,6 +203,16 @@ struct NativeSettingsView: View {
           .disabled(backupBusy)
 
           Text("Creates a JSON backup in iCloud Drive. If iCloud is not available, Okkle opens the native share sheet so you can save the backup to Files.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+
+          Button {
+            prepareBackupExport()
+          } label: {
+            Label("Choose backup location", systemImage: "folder")
+          }
+
+          Text("Opens the native Files picker so you can save the backup directly into iCloud Drive or another folder.")
             .font(.footnote)
             .foregroundStyle(.secondary)
 
@@ -210,6 +247,19 @@ struct NativeSettingsView: View {
       .navigationTitle("Settings")
       .sheet(item: $backupShareItem) { item in
         NativeShareSheet(items: [item.url])
+      }
+      .fileExporter(
+        isPresented: $showBackupExporter,
+        document: backupExportDocument,
+        contentType: .json,
+        defaultFilename: backupExportFileName
+      ) { result in
+        switch result {
+        case .success:
+          backupMessage = "Backup saved."
+        case .failure(let error):
+          backupMessage = "Could not save backup. \(error.localizedDescription)"
+        }
       }
       .fileImporter(
         isPresented: $showBackupImporter,
@@ -248,6 +298,16 @@ struct NativeSettingsView: View {
             .fontWeight(.bold)
         }
       }
+    }
+  }
+
+  private func prepareBackupExport() {
+    do {
+      backupExportFileName = nativeBackupFileName()
+      backupExportDocument = NativeBackupDocument(data: try store.backupData())
+      showBackupExporter = true
+    } catch {
+      backupMessage = "Could not prepare backup. \(error.localizedDescription)"
     }
   }
 

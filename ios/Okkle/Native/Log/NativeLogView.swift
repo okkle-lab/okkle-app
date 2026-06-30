@@ -6,6 +6,7 @@ import SQLite3
 import SwiftUI
 import UIKit
 import Vision
+
 struct NativeLogView: View {
   @EnvironmentObject private var store: OkkleStore
   @Binding var selectedTab: NativeTab
@@ -64,6 +65,7 @@ struct NativeLogView: View {
       guard let data else { return }
       scanReceipt(data)
     }
+    .toolbar(showSavedNotice ? .hidden : .visible, for: .tabBar)
   }
 
   private var steps: [LogStep] {
@@ -524,25 +526,48 @@ struct NativeLogView: View {
 
   private func savedNotice(for record: NativeRecord) -> some View {
     ZStack {
-      Color.black.opacity(0.22)
+      Rectangle()
+        .fill(.ultraThinMaterial)
+        .ignoresSafeArea()
+
+      Color.black.opacity(0.20)
         .ignoresSafeArea()
         .onTapGesture {}
 
-      VStack(spacing: 18) {
-        Image(systemName: "checkmark.circle.fill")
-          .font(.system(size: 42, weight: .bold))
-          .foregroundStyle(.green)
-          .shadow(color: .green.opacity(0.35), radius: 18, y: 8)
+      RadialGradient(
+        colors: [
+          .green.opacity(0.26),
+          .green.opacity(0.08),
+          .clear
+        ],
+        center: .center,
+        startRadius: 40,
+        endRadius: 310
+      )
+      .ignoresSafeArea()
+      .allowsHitTesting(false)
 
-        VStack(spacing: 8) {
-          Text("Saved to Records")
-            .font(.system(size: 24, weight: .heavy, design: .rounded))
-            .foregroundStyle(OkkleColor.ink)
-          Text(savedSummary(for: record))
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-            .multilineTextAlignment(.center)
+      VStack(spacing: 26) {
+        Spacer()
+
+        VStack(spacing: 16) {
+          Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 70, weight: .bold))
+            .foregroundStyle(.green)
+            .shadow(color: .green.opacity(0.34), radius: 28, y: 12)
+
+          VStack(spacing: 8) {
+            Text("Saved to Records")
+              .font(.system(size: 32, weight: .heavy, design: .rounded))
+              .foregroundStyle(.white)
+            Text(savedSummary(for: record))
+              .font(.system(size: 17, weight: .semibold))
+              .foregroundStyle(.white.opacity(0.78))
+              .multilineTextAlignment(.center)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
+        .frame(maxWidth: 360)
 
         HStack(spacing: 12) {
           Button {
@@ -551,9 +576,10 @@ struct NativeLogView: View {
             Text("Done")
               .font(.system(size: 16, weight: .bold))
               .frame(maxWidth: .infinity)
-              .padding(.vertical, 12)
           }
           .buttonStyle(.bordered)
+          .controlSize(.large)
+          .tint(.white)
 
           Button {
             resetEntry()
@@ -562,20 +588,18 @@ struct NativeLogView: View {
             Text("View records")
               .font(.system(size: 16, weight: .bold))
               .frame(maxWidth: .infinity)
-              .padding(.vertical, 12)
           }
           .buttonStyle(.borderedProminent)
+          .controlSize(.large)
           .tint(.green)
         }
+        .frame(maxWidth: 360)
+
+        Spacer()
       }
-      .padding(22)
-      .frame(maxWidth: 340)
-      .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
-      .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 34, style: .continuous))
-      .shadow(color: .green.opacity(0.22), radius: 34, y: 18)
-      .padding(.horizontal, 24)
+      .padding(.horizontal, 28)
     }
-    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+    .transition(.opacity)
   }
 
   private func savedSummary(for record: NativeRecord) -> String {
@@ -625,7 +649,7 @@ struct NativeLogView: View {
     let recent = store.records
       .filter { $0.kind == .income }
       .compactMap { $0.platform }
-    return uniqueStrings([platform] + store.settings.platforms + recent)
+    return uniqueStrings(store.settings.platforms + nativeDeliveryServiceOptions + recent + [platform])
   }
 
   private var categoryOptions: [String] {

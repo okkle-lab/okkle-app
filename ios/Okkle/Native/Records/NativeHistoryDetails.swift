@@ -125,6 +125,7 @@ struct NativeRecordDetailSheet: View {
   let onEdit: () -> Void
   let onDelete: () -> Void
   @Environment(\.dismiss) private var dismiss
+  @State private var showingFullScreenReceipt = false
 
   var body: some View {
     NavigationStack {
@@ -168,11 +169,27 @@ struct NativeRecordDetailSheet: View {
                 Label("Receipt", systemImage: "photo")
                   .font(.system(size: 16, weight: .bold))
                   .foregroundStyle(OkkleColor.ink)
-                Image(uiImage: image)
-                  .resizable()
-                  .scaledToFill()
-                  .frame(height: 220)
-                  .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                Button {
+                  showingFullScreenReceipt = true
+                } label: {
+                  Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 220)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(alignment: .bottomTrailing) {
+                      Label("View", systemImage: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.52), in: Capsule())
+                        .padding(12)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("View receipt full screen")
               }
             }
           }
@@ -189,6 +206,11 @@ struct NativeRecordDetailSheet: View {
           Button("Done") { dismiss() }
             .fontWeight(.bold)
         }
+      }
+    }
+    .fullScreenCover(isPresented: $showingFullScreenReceipt) {
+      if let image = receiptImage {
+        NativeReceiptFullScreenView(image: image)
       }
     }
   }
@@ -270,6 +292,62 @@ struct NativeRecordDetailSheet: View {
         .font(.system(size: 15, weight: .bold))
         .foregroundStyle(OkkleColor.ink)
         .multilineTextAlignment(.trailing)
+    }
+  }
+}
+
+struct NativeReceiptFullScreenView: View {
+  let image: UIImage
+  @Environment(\.dismiss) private var dismiss
+  @State private var scale: CGFloat = 1
+  @State private var lastScale: CGFloat = 1
+
+  var body: some View {
+    NavigationStack {
+      ZStack {
+        Color.black
+          .ignoresSafeArea()
+
+        ScrollView([.horizontal, .vertical], showsIndicators: false) {
+          Image(uiImage: image)
+            .resizable()
+            .scaledToFit()
+            .scaleEffect(scale)
+            .frame(
+              width: UIScreen.main.bounds.width,
+              height: UIScreen.main.bounds.height * 0.82
+            )
+            .padding(.vertical, 32)
+            .gesture(
+              MagnificationGesture()
+                .onChanged { value in
+                  scale = min(4, max(1, lastScale * value))
+                }
+                .onEnded { _ in
+                  lastScale = scale
+                }
+            )
+            .onTapGesture(count: 2) {
+              withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                scale = scale > 1 ? 1 : 2
+                lastScale = scale
+              }
+            }
+        }
+      }
+      .navigationTitle("Receipt")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbarColorScheme(.dark, for: .navigationBar)
+      .toolbarBackground(.hidden, for: .navigationBar)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") {
+            dismiss()
+          }
+          .fontWeight(.bold)
+          .foregroundStyle(.white)
+        }
+      }
     }
   }
 }
@@ -423,7 +501,7 @@ struct NativeRecordEditSheet: View {
     let recent = store.records
       .filter { $0.kind == .income }
       .compactMap { $0.platform }
-    return uniqueStrings([platform] + store.settings.platforms + recent)
+    return uniqueStrings(store.settings.platforms + nativeDeliveryServiceOptions + recent + [platform])
   }
 
   private var categoryOptions: [String] {

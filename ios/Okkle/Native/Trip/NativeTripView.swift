@@ -21,6 +21,7 @@ private struct NativeTopRoundedRectangle: Shape {
 }
 
 struct NativeTripView: View {
+  @Environment(\.colorScheme) private var colorScheme
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var session: NativeTripSession
   @State private var selectedVehicle: NativeVehicle = .car
@@ -83,35 +84,60 @@ struct NativeTripView: View {
 
   private var setupScreen: some View {
     NativeScreen(title: "Trip", subtitle: "Track GPS miles for HMRC mileage relief.") {
-      NativeGlassCard(cornerRadius: 34) {
-        VStack(spacing: 22) {
-          Picker("Vehicle", selection: $selectedVehicle) {
-            ForEach(NativeVehicle.allCases) { vehicle in
-              Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
-            }
-          }
-          .pickerStyle(.menu)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .disabled(session.phase == .live || session.phase == .paused)
-          .tint(OkkleColor.brand)
+      VStack(spacing: 18) {
+        Spacer(minLength: 44)
 
-          startTripButton
+        startTripButton
 
-          HStack(spacing: 12) {
-            NativeMetricTile(title: "Tax deduction", value: gbp(store.calcDeduction(miles: session.miles, vehicle: selectedVehicle), whole: true), symbol: "sterlingsign.arrow.circlepath")
-            NativeMetricTile(title: "Elapsed", value: elapsedLabel(session.elapsed), symbol: "timer", color: OkkleColor.blue)
-          }
+        vehicleSelector
 
-          if let message = session.permissionMessage {
-            Label(message, systemImage: "location.slash")
-              .font(.system(size: 14, weight: .semibold))
-              .foregroundStyle(OkkleColor.red)
-              .padding(12)
-              .background(OkkleColor.red.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
-          }
+        if let message = session.permissionMessage {
+          Label(message, systemImage: "location.slash")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(OkkleColor.red)
+            .multilineTextAlignment(.center)
+            .padding(12)
+            .background(OkkleColor.red.opacity(0.16), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 10)
+        }
+
+        Spacer(minLength: 72)
+      }
+      .frame(maxWidth: .infinity)
+      .frame(minHeight: max(460, UIScreen.main.bounds.height * 0.58), alignment: .center)
+    }
+  }
+
+  private var vehicleSelector: some View {
+    Menu {
+      ForEach(NativeVehicle.allCases) { vehicle in
+        Button {
+          selectedVehicle = vehicle
+        } label: {
+          Label(vehicle.label, systemImage: vehicle.symbol)
         }
       }
+    } label: {
+      HStack(spacing: 10) {
+        Image(systemName: selectedVehicle.symbol)
+          .font(.system(size: 16, weight: .bold))
+          .foregroundStyle(OkkleColor.brand)
+        Text(selectedVehicle.label)
+          .font(.system(size: 16, weight: .bold))
+          .foregroundStyle(OkkleColor.ink)
+        Image(systemName: "chevron.up.chevron.down")
+          .font(.system(size: 12, weight: .bold))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      .padding(.horizontal, 18)
+      .padding(.vertical, 12)
+      .background(.regularMaterial, in: Capsule())
+      .contentShape(Capsule())
     }
+    .buttonStyle(.plain)
+    .tint(OkkleColor.brand)
+    .accessibilityLabel("Vehicle")
+    .accessibilityValue(selectedVehicle.label)
   }
 
   private var startTripButton: some View {
@@ -181,10 +207,11 @@ struct NativeTripView: View {
       Text(session.vehicle.label)
         .font(.system(size: 13, weight: .semibold))
     }
-    .foregroundStyle(OkkleColor.ink)
+    .foregroundStyle(trackingPrimaryText)
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
-    .background(.regularMaterial, in: Capsule())
+    .background(trackingGlassMaterial, in: Capsule())
+    .background(trackingGlassTint, in: Capsule())
     .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
   }
 
@@ -197,15 +224,17 @@ struct NativeTripView: View {
             .foregroundStyle(trackingStatusColor)
           Text(miles(session.miles))
             .font(.system(size: 42, weight: .heavy, design: .rounded))
+            .foregroundStyle(trackingPrimaryText)
             .minimumScaleFactor(0.62)
         }
         Spacer()
         VStack(alignment: .trailing, spacing: 6) {
           Text("Elapsed")
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
+            .foregroundStyle(trackingSecondaryText)
           Text(elapsedLabel(session.elapsed))
             .font(.system(size: 24, weight: .bold, design: .rounded))
+            .foregroundStyle(trackingPrimaryText)
         }
       }
 
@@ -214,7 +243,7 @@ struct NativeTripView: View {
       if session.points.isEmpty {
         Label("Waiting for GPS signal. Your route will draw here once location points arrive.", systemImage: "location.magnifyingglass")
           .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
+          .foregroundStyle(trackingSecondaryText)
       }
 
       if let message = session.permissionMessage {
@@ -233,17 +262,11 @@ struct NativeTripView: View {
     .padding(.top, 18)
     .padding(.bottom, 16 + bottomInset)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.regularMaterial, in: trackingPanelShape)
+    .background(trackingGlassMaterial, in: trackingPanelShape)
+    .background(trackingPanelTint, in: trackingPanelShape)
     .overlay {
       trackingPanelShape
-        .fill(
-          LinearGradient(
-            colors: [.white.opacity(0.36), .white.opacity(0.10), .clear],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-          )
-        )
-        .blendMode(.overlay)
+        .fill(trackingPanelSheen)
         .allowsHitTesting(false)
     }
     .shadow(color: .black.opacity(0.18), radius: 30, y: 14)
@@ -299,21 +322,22 @@ struct NativeTripView: View {
       VStack(alignment: .leading, spacing: 2) {
         Text("Deduction")
           .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(OkkleColor.ink)
+          .foregroundStyle(trackingPrimaryText)
         Text("HMRC mileage relief")
           .font(.system(size: 12, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
+          .foregroundStyle(trackingSecondaryText)
       }
 
       Spacer(minLength: 12)
 
       Text(gbp(store.calcDeduction(miles: session.miles, vehicle: session.vehicle), whole: true))
         .font(.system(size: 20, weight: .bold, design: .rounded))
-        .foregroundStyle(OkkleColor.ink)
+        .foregroundStyle(trackingPrimaryText)
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 12)
     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .background(trackingInsetTint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
   }
 
   private var trackingStatusTitle: String {
@@ -340,6 +364,37 @@ struct NativeTripView: View {
 
   private var trackingStatusColor: Color {
     session.phase == .paused ? OkkleColor.blue : OkkleColor.brand
+  }
+
+  private var trackingGlassMaterial: Material {
+    colorScheme == .dark ? .ultraThinMaterial : .regularMaterial
+  }
+
+  private var trackingPrimaryText: Color {
+    colorScheme == .dark ? .white : OkkleColor.ink
+  }
+
+  private var trackingSecondaryText: Color {
+    colorScheme == .dark ? .white.opacity(0.66) : OkkleColor.muted
+  }
+
+  private var trackingGlassTint: Color {
+    colorScheme == .dark ? Color.black.opacity(0.30) : Color.white.opacity(0.06)
+  }
+
+  private var trackingPanelTint: Color {
+    colorScheme == .dark ? Color.black.opacity(0.22) : Color.white.opacity(0.10)
+  }
+
+  private var trackingInsetTint: Color {
+    colorScheme == .dark ? Color.black.opacity(0.18) : Color.white.opacity(0.08)
+  }
+
+  private var trackingPanelSheen: LinearGradient {
+    let colors: [Color] = colorScheme == .dark
+      ? [.white.opacity(0.08), .white.opacity(0.025), .clear]
+      : [.white.opacity(0.36), .white.opacity(0.10), .clear]
+    return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
   }
 
   private var isTracking: Bool {

@@ -52,16 +52,19 @@ enum TaxCalculator {
     return first * band.first + second * band.after
   }
 
-  static func estimate(turnover: Double, expenses: Double, region: NativeRegion, incomeBracket: NativeIncomeBracket) -> NativeTaxPosition {
+  static func estimate(turnover: Double, expenses: Double, region: NativeRegion, incomeBracket: NativeIncomeBracket, otherIncome: Double = 0) -> NativeTaxPosition {
     let tradingAllowance = 1_000.0
     let useTradingAllowance = tradingAllowance > expenses
     let deductible = min(turnover, useTradingAllowance ? tradingAllowance : expenses)
     let businessProfit = max(0, turnover - expenses)
     let profit = max(0, turnover - deductible)
-    let otherIncome = incomeBracket.assumedOtherIncome(region: region)
+    let otherIncome = max(0, otherIncome)
     let incomeTax = incomeTax(income: otherIncome + profit, region: region) - incomeTax(income: otherIncome, region: region)
     let class4 = class4(profit: profit)
     let total = incomeTax + class4
+    let totalLiability = self.incomeTax(income: otherIncome + profit, region: region) + class4
+    let taxAtSource = self.incomeTax(income: otherIncome, region: region)
+    let collectedAtSourceShare = totalLiability > 0 ? taxAtSource / totalLiability : 0
     return NativeTaxPosition(
       turnover: turnover,
       expenses: expenses,
@@ -71,7 +74,7 @@ enum TaxCalculator {
       incomeTax: incomeTax,
       class4: class4,
       totalDue: total,
-      paymentOnAccount: total > 1_000 ? total * 0.5 : 0,
+      paymentOnAccount: total > 1_000 && collectedAtSourceShare < 0.8 ? total * 0.5 : 0,
       usesTradingAllowance: useTradingAllowance
     )
   }

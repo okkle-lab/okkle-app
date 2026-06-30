@@ -36,6 +36,7 @@ struct NativeTaxSummaryView: View {
           taxRow("Deduction applied", headlineGbp(tax.deductionApplied))
           taxRow("Taxable profit", headlineGbp(tax.profit))
           taxRow("Income tax band", store.settings.incomeBracket.label)
+          taxRow("Other income", headlineGbp(store.settings.otherIncome))
           taxRow("Income tax", headlineGbp(tax.incomeTax))
           taxRow("Class 4 NIC", headlineGbp(tax.class4))
           taxRow("Payment on account", headlineGbp(tax.paymentOnAccount))

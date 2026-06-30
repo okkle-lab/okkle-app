@@ -174,6 +174,7 @@ struct NativeSettings: Codable, Equatable {
   var defaultVehicle: NativeVehicle = .car
   var region: NativeRegion = .ruk
   var incomeBracket: NativeIncomeBracket = .basic
+  var otherIncome: Double = 0
   var platforms = ["Uber Eats", "Deliveroo", "Just Eat"]
   var accountantUTR = ""
   var accountantNINumber = ""
@@ -193,6 +194,7 @@ struct NativeSettings: Codable, Equatable {
     case defaultVehicle
     case region
     case incomeBracket
+    case otherIncome
     case platforms
     case accountantUTR
     case accountantNINumber
@@ -212,6 +214,7 @@ struct NativeSettings: Codable, Equatable {
     defaultVehicle = try container.decodeIfPresent(NativeVehicle.self, forKey: .defaultVehicle) ?? .car
     region = try container.decodeIfPresent(NativeRegion.self, forKey: .region) ?? .ruk
     incomeBracket = try container.decodeIfPresent(NativeIncomeBracket.self, forKey: .incomeBracket) ?? .basic
+    otherIncome = try container.decodeIfPresent(Double.self, forKey: .otherIncome) ?? 0
     platforms = try container.decodeIfPresent([String].self, forKey: .platforms) ?? ["Uber Eats", "Deliveroo", "Just Eat"]
     accountantUTR = try container.decodeIfPresent(String.self, forKey: .accountantUTR) ?? ""
     accountantNINumber = try container.decodeIfPresent(String.self, forKey: .accountantNINumber) ?? ""
