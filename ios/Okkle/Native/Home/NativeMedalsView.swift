@@ -631,7 +631,14 @@ private struct NativeMedalSummaryCard: View {
   var coins: Int? = nil
 
   var body: some View {
-    NativeGlassCard(cornerRadius: 30) {
+    medalContent
+      .padding(20)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(OkkleColor.card, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+      .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
+  }
+
+  private var medalContent: some View {
       VStack(spacing: 14) {
         HStack(spacing: 18) {
           ZStack {
@@ -679,7 +686,6 @@ private struct NativeMedalSummaryCard: View {
           }
         }
       }
-    }
   }
 }
 
@@ -2119,6 +2125,7 @@ struct NativeLeagueView: View {
           Text("Medals").tag(Segment.medals)
         }
         .pickerStyle(.segmented)
+        .colorScheme(.dark)
 
         if segment == .table {
           tableTab(snapshot)
