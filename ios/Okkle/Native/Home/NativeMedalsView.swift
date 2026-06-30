@@ -1580,6 +1580,7 @@ struct NativeClubEditorView: View {
   @State private var editingSecondary = false
   @State private var balance: Int = 0
   @State private var purchaseError = false
+  @State private var confirmPurchase = false
 
   private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 5)
   private var secondaryColor: Color? { secondaryIndex.map { NativeClubIdentity.palette[$0] } }
@@ -1628,6 +1629,12 @@ struct NativeClubEditorView: View {
         Button("OK", role: .cancel) {}
       } message: {
         Text("This badge uses locked items worth \(lockedCost) Coins, but you have \(balance). Earn more from medals and wins, or switch the locked pieces back to free ones.")
+      }
+      .confirmationDialog("Unlock new items?", isPresented: $confirmPurchase, titleVisibility: .visible) {
+        Button("Unlock for \(lockedCost) Coins") { commitPurchaseAndSave() }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("You'll spend \(lockedCost) Coins on this badge, leaving \(balance - lockedCost). This can't be undone.")
       }
       .onAppear(perform: load)
     }
@@ -1883,12 +1890,18 @@ struct NativeClubEditorView: View {
 
   private func saveAndClose() {
     let locked = lockedIds()
-    if !locked.isEmpty {
-      let total = locked.reduce(0) { $0 + NativeWallet.cost(for: $1) }
-      guard NativeWallet.balance(store: store) >= total else { purchaseError = true; return }
-      locked.forEach { _ = NativeWallet.purchase($0, store: store) }
-      balance = NativeWallet.balance(store: store)
-    }
+    if locked.isEmpty { persistAndClose(); return }
+    guard NativeWallet.balance(store: store) >= lockedCost else { purchaseError = true; return }
+    confirmPurchase = true   // ask before spending Coins
+  }
+
+  private func commitPurchaseAndSave() {
+    lockedIds().forEach { _ = NativeWallet.purchase($0, store: store) }
+    balance = NativeWallet.balance(store: store)
+    persistAndClose()
+  }
+
+  private func persistAndClose() {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     NativeSeasonEngine.saveClubIdentity(NativeClubIdentity(
       name: trimmed.isEmpty ? "Your club" : trimmed,
@@ -2034,64 +2047,44 @@ struct NativeLeagueView: View {
 
   private func tableTab(_ snapshot: NativeSeasonSnapshot) -> some View {
     VStack(spacing: 16) {
+      leagueTableCard(snapshot)
       NativeMatchdayCard(
         fixture: NativeSeasonEngine.fixture(store: store),
         division: snapshot.division,
         club: NativeSeasonEngine.clubIdentity(store: store)
       )
-      seasonHeader(snapshot)
-      standingsTable(snapshot)
-      zonesLegend(snapshot.division)
-      NativeHonoursCard(honours: NativeSeasonEngine.honours())
     }
   }
 
-  private func seasonHeader(_ s: NativeSeasonSnapshot) -> some View {
-    VStack(spacing: 12) {
-      NativeDivisionCrest(division: s.division, size: 60)
-      Text(s.division.name)
-        .font(.system(size: 22, weight: .bold, design: .rounded))
-        .foregroundStyle(OkkleColor.ink)
-      Text("£\(Int(s.bankedThisSeason.rounded())) banked · Matchweek \(min(s.matchweek + 1, s.totalWeeks)) of \(s.totalWeeks)")
-        .font(.system(size: 13, weight: .semibold))
-        .foregroundStyle(OkkleColor.muted)
+  /// The division identity and the standings, combined into one card.
+  private func leagueTableCard(_ s: NativeSeasonSnapshot) -> some View {
+    VStack(spacing: 0) {
+      // Header band — crest, division name and position.
+      HStack(spacing: 12) {
+        NativeDivisionCrest(division: s.division, size: 42)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(s.division.name)
+            .font(.system(size: 18, weight: .heavy, design: .rounded))
+            .foregroundStyle(.white)
+          Text("£\(Int(s.bankedThisSeason.rounded())) banked · MW \(min(s.matchweek + 1, s.totalWeeks)) of \(s.totalWeeks)")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.85))
+        }
+        Spacer()
+        if !s.yourRow.form.isEmpty { NativeFormGuide(form: s.yourRow.form, size: 8) }
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 14)
+      .background(s.division.gradient)
+
       Text("Out-earn your past selves to go up. £\(Int(s.winBar.rounded()))/week saved is a win.")
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(OkkleColor.muted)
-        .multilineTextAlignment(.center)
-        .padding(.horizontal, 24)
-      if !s.yourRow.form.isEmpty {
-        HStack(spacing: 8) {
-          Text("Your form")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-          NativeFormGuide(form: s.yourRow.form, size: 9)
-        }
-      }
-    }
-    .frame(maxWidth: .infinity)
-    .padding(.vertical, 20)
-    .themedLeagueCard(s.division, cornerRadius: 22)
-  }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
 
-  private func standingsTable(_ s: NativeSeasonSnapshot) -> some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 8) {
-        Image(systemName: s.division.glyph)
-          .font(.system(size: 13, weight: .bold))
-        Text(s.division.name)
-          .font(.system(size: 13, weight: .heavy))
-        Spacer()
-        Text("TABLE")
-          .font(.system(size: 11, weight: .heavy))
-          .tracking(1)
-          .foregroundStyle(.white.opacity(0.85))
-      }
-      .foregroundStyle(.white)
-      .padding(.horizontal, 14)
-      .padding(.vertical, 11)
-      .background(s.division.gradient)
-
+      Divider()
       HStack(spacing: 10) {
         Text("#").frame(width: 22, alignment: .leading)
         Text("Club")
@@ -2111,8 +2104,11 @@ struct NativeLeagueView: View {
           Divider().padding(.leading, 40)
         }
       }
+      zonesLegend(s.division)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
-    .themedLeagueCard(s.division)
+    .themedLeagueCard(s.division, cornerRadius: 22)
   }
 
   private func standingRow(row: NativeClubRow, index: Int, total: Int, division: NativeDivision) -> some View {
@@ -2184,6 +2180,7 @@ struct NativeLeagueView: View {
         .multilineTextAlignment(.center)
         .padding(.horizontal, 12)
       ladder(current: current)
+      NativeHonoursCard(honours: NativeSeasonEngine.honours())
     }
   }
 
@@ -2450,9 +2447,9 @@ enum NativeCrestShape: Int, CaseIterable {
   /// bottom. Pennant + oval retired (kept in the enum so saved badges keep
   /// their raw values). Cost climbs with position in this list.
   static let pickable: [NativeCrestShape] = [
-    .rounded, .circle, .square, .hexagon, .diamond, .heater, .pentagon, .octagon, .spade, .tudor, .shield, .star, .banner
+    .rounded, .circle, .square, .hexagon, .diamond, .heater, .pentagon, .octagon, .spade, .tudor, .shield, .banner
   ]
-  private static let tiers = [0, 0, 120, 160, 200, 250, 300, 350, 400, 450, 550, 650, 800]
+  private static let tiers = [0, 0, 120, 160, 200, 250, 300, 350, 400, 450, 550, 800]
 
   /// Coins to unlock — derived from position, so it rises down the list.
   var coins: Int {
