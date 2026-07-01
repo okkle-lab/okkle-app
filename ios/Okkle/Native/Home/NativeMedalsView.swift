@@ -1366,7 +1366,7 @@ struct NativeMatchdayCard: View {
       band: division.gradient,
       accent: division.accent
     ) {
-      VStack(spacing: 14) {
+      VStack(spacing: 11) {
         if fixture.stakes != .none {
           banner
         }
@@ -1386,7 +1386,8 @@ struct NativeMatchdayCard: View {
         pointsProgress
         gaffer
       }
-      .padding(16)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 13)
     }
   }
 
@@ -1421,7 +1422,7 @@ struct NativeMatchdayCard: View {
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(OkkleColor.muted)
     }
-    .padding(12)
+    .padding(10)
     .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 
@@ -1537,7 +1538,7 @@ struct NativeMatchdayCard: View {
         .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 0)
     }
-    .padding(12)
+    .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
@@ -2278,17 +2279,12 @@ struct NativeLeagueView: View {
   /// One swipe page — content pinned to the top, padded so card glows aren't
   /// clipped by the paging view's edges.
   private func leaguePage<V: View>(@ViewBuilder _ content: () -> V) -> some View {
-    // A ScrollView that only actually scrolls when the content overflows the
-    // page — so short pages still sit as fixed cards, but a tall Table page no
-    // longer gets its top banner crushed to fit.
-    ScrollView(showsIndicators: false) {
-      VStack(spacing: 16) {
-        content()
-      }
-      .padding(.horizontal, 20)
-      .padding(.top, 6)
-      .padding(.bottom, 12)
+    VStack(spacing: 12) {
+      content()
+      Spacer(minLength: 0)
     }
+    .padding(.horizontal, 20)
+    .padding(.top, 6)
   }
 
   private func tableTab(_ snapshot: NativeSeasonSnapshot) -> some View {
