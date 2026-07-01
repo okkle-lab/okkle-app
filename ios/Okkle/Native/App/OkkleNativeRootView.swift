@@ -28,7 +28,13 @@ struct OkkleNativeRootView: View {
     }
     .environmentObject(store)
     .tint(OkkleColor.brand)
-    .onAppear(perform: routeWidgetTripRequestIfNeeded)
+    .onAppear {
+      NativeAutoTrackEngine.shared.configure(store: store)
+      routeWidgetTripRequestIfNeeded()
+    }
+    .onChange(of: store.settings.autoTrackTrips) { _ in
+      NativeAutoTrackEngine.shared.refresh()
+    }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
     }

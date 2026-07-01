@@ -313,7 +313,11 @@ struct NativeHeatLegend: View {
 
 struct NativeInsightsView: View {
   @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var heatFilter: NativeTimeFilter = .all
+  private var shift: NativeShiftInsights {
+    NativeShiftInsights.build(visits: autoTrack.visits, store: store)
+  }
   private var selectedHeatTrips: [NativeTrip] {
     nativeHeatTrips(from: store.trips, filter: heatFilter)
   }
@@ -336,6 +340,30 @@ struct NativeInsightsView: View {
         showsFilters: hasAnyHeatTrips,
         filter: $heatFilter
       )
+
+      if store.settings.autoTrackTrips, shift.hasData {
+        NativeAiCard(banner: "SHIFT PATTERNS") {
+          VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+              Text("Your best window")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(OkkleColor.muted)
+              Text(shift.bestWindow ?? "Building your pattern")
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundStyle(OkkleColor.ink)
+            }
+            HStack(spacing: 10) {
+              NativeHeatStatChip(title: "Deliveries", value: "\(shift.deliveries)", symbol: "bag.fill", color: OkkleColor.brand)
+              NativeHeatStatChip(title: "Unpaid miles", value: "\(shift.deadMilePct)%", symbol: "arrow.triangle.turn.up.right.diamond.fill", color: OkkleColor.amber)
+              NativeHeatStatChip(title: "Per hour", value: shift.perHour.map { gbp($0, whole: true) } ?? "—", symbol: "sterlingsign.circle.fill", color: .green)
+            }
+            Text("Learned automatically from your tracked stops — no input needed. Log your pay to sharpen the £/hour estimate.")
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+      }
 
       // These three cards are one-time set-up prompts: they only appear while
       // the feature is off. Once you turn one on it disappears here — the on/off
@@ -637,5 +665,310 @@ struct NativeTaxDeadlineRow: View {
     if days == 0 { return "today" }
     if days == 1 { return "tomorrow" }
     return "in \(days) days"
+  }
+}
+
+// MARK: - Passive auto-tracking engine
+
+import MapKit
+import SwiftUI
+
+// MARK: - Model
+
+/// One passively-detected stop (from Core Location Visit monitoring). A short
+/// stop with no food place nearby reads as a customer drop-off; a longer stop
+/// at (or beside) a restaurant reads as an order pick-up.
+struct NativeVisit: Codable, Identifiable, Equatable {
+  var id = UUID()
+  var latitude: Double
+  var longitude: Double
+  var arrival: Date
+  var departure: Date
+  var kindRaw: String = Kind.other.rawValue
+  var placeName: String?
+
+  enum Kind: String, Codable, CaseIterable { case pickup, dropoff, other }
+
+  var kind: Kind {
+    get { Kind(rawValue: kindRaw) ?? .other }
+    set { kindRaw = newValue.rawValue }
+  }
+  var dwell: TimeInterval { max(0, departure.timeIntervalSince(arrival)) }
+  var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+  var location: CLLocation { CLLocation(latitude: latitude, longitude: longitude) }
+}
+
+/// Whether a given weekday (0 = Sunday … 6 = Saturday) is a working day.
+func nativeIsWorkingDay(_ date: Date, settings: NativeSettings) -> Bool {
+  let weekday = Calendar.current.component(.weekday, from: date) - 1   // 1-based → 0-based
+  return settings.workingDays.contains(weekday)
+}
+
+// MARK: - Engine
+
+/// Passive, hands-off tracking. After a one-time "Always" location grant it
+/// watches Core Location Visits in the background and, on working days, records
+/// pick-up / drop-off stops — the raw material for the shift insights. No taps,
+/// no screenshots, no shortcuts.
+@MainActor
+final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
+  static let shared = NativeAutoTrackEngine()
+
+  @Published private(set) var visits: [NativeVisit] = []
+
+  private let manager = CLLocationManager()
+  private let storageKey = "uk.okkle.native.autotrack.visits.v1"
+  private weak var store: OkkleStore?
+
+  override init() {
+    super.init()
+    manager.delegate = self
+    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    load()
+  }
+
+  func configure(store: OkkleStore) {
+    self.store = store
+    refresh()
+  }
+
+  /// Start or stop passive monitoring to match the Automatic-tracking setting.
+  func refresh() {
+    let on = store?.settings.autoTrackTrips ?? false
+    guard on else {
+      manager.stopMonitoringVisits()
+      return
+    }
+    switch manager.authorizationStatus {
+    case .notDetermined:
+      manager.requestAlwaysAuthorization()
+    case .authorizedAlways:
+      manager.allowsBackgroundLocationUpdates = true
+      manager.startMonitoringVisits()
+    default:
+      // While-in-use still lets us collect visits when the app is foreground.
+      manager.startMonitoringVisits()
+    }
+  }
+
+  nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    Task { @MainActor in self.refresh() }
+  }
+
+  nonisolated func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
+    // Ignore the "arrived, still here" event — wait for a completed visit.
+    guard visit.departureDate != Date.distantFuture else { return }
+    Task { @MainActor in self.record(visit) }
+  }
+
+  private func record(_ clVisit: CLVisit) {
+    if let settings = store?.settings, !nativeIsWorkingDay(clVisit.departureDate, settings: settings) { return }
+    let arrival = clVisit.arrivalDate == Date.distantPast ? clVisit.departureDate : clVisit.arrivalDate
+    var visit = NativeVisit(
+      latitude: clVisit.coordinate.latitude,
+      longitude: clVisit.coordinate.longitude,
+      arrival: arrival,
+      departure: clVisit.departureDate
+    )
+    // Provisional guess from dwell; MapKit refines it below.
+    visit.kind = visit.dwell >= 150 ? .pickup : .dropoff
+    visits.append(visit)
+    trim()
+    save()
+    classifyWithMapKit(visit.id, coordinate: visit.coordinate)
+  }
+
+  /// Use Apple Maps as an information layer: if there's a food place right by the
+  /// stop it's a pick-up; otherwise it's most likely a customer drop-off.
+  private func classifyWithMapKit(_ id: UUID, coordinate: CLLocationCoordinate2D) {
+    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 45)
+    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
+    MKLocalSearch(request: request).start { [weak self] response, _ in
+      guard let self else { return }
+      Task { @MainActor in
+        guard let index = self.visits.firstIndex(where: { $0.id == id }) else { return }
+        if let food = response?.mapItems.first {
+          self.visits[index].kind = .pickup
+          self.visits[index].placeName = food.name
+        } else if self.visits[index].dwell < 240 {
+          self.visits[index].kind = .dropoff
+        }
+        self.save()
+      }
+    }
+  }
+
+  // MARK: Persistence
+
+  private func trim() {
+    // Keep the last 60 days of stops — plenty for pattern insights.
+    let cutoff = Date().addingTimeInterval(-60 * 86_400)
+    visits.removeAll { $0.departure < cutoff }
+  }
+
+  private func load() {
+    guard let data = UserDefaults.standard.data(forKey: storageKey),
+          let saved = try? JSONDecoder().decode([NativeVisit].self, from: data) else { return }
+    visits = saved
+  }
+
+  private func save() {
+    if let data = try? JSONEncoder().encode(visits) {
+      UserDefaults.standard.set(data, forKey: storageKey)
+    }
+  }
+
+  /// Test/demo seeding used by the SEED_DEMO launch flag only.
+  func seed(_ seeded: [NativeVisit]) {
+    visits = seeded
+    save()
+  }
+}
+
+/// Synthetic two-week stop history for the SEED_DEMO launch flag, weighted to
+/// Thu–Sat evenings so the "best window" reads as a weekend dinner slot.
+func nativeDemoVisits() -> [NativeVisit] {
+  var out: [NativeVisit] = []
+  let cal = Calendar.current
+  let base = CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
+  for dayOffset in 1...14 {
+    guard let day = cal.date(byAdding: .day, value: -dayOffset, to: Date()) else { continue }
+    let weekday = cal.component(.weekday, from: day) - 1   // 0 = Sun … 6 = Sat
+    let heavy = weekday >= 4                                // Thu/Fri/Sat
+    let count = heavy ? 6 : 2
+    for i in 0..<count {
+      let hour = heavy ? 18 + (i / 3) : 12
+      let minute = (i % 3) * 20
+      guard let start = cal.date(bySettingHour: hour, minute: minute, second: 0, of: day) else { continue }
+      let dLat = Double(i) * 0.004 - 0.01
+      let dLon = Double((i * 7) % 5) * 0.004 - 0.008
+      var pickup = NativeVisit(latitude: base.latitude + dLat, longitude: base.longitude + dLon,
+                               arrival: start, departure: start.addingTimeInterval(240))
+      pickup.kind = .pickup
+      pickup.placeName = "Restaurant"
+      out.append(pickup)
+      let dropStart = start.addingTimeInterval(600)
+      var drop = NativeVisit(latitude: base.latitude + dLat + 0.012, longitude: base.longitude + dLon + 0.01,
+                             arrival: dropStart, departure: dropStart.addingTimeInterval(90))
+      drop.kind = .dropoff
+      out.append(drop)
+    }
+  }
+  return out
+}
+
+// MARK: - Analysis
+
+/// Everything the passive engine can tell a driver, derived from the stops plus
+/// their (weekly) logged income. Aggregate totals stay exact; only the
+/// within-week distribution is modelled, so estimates are bounded.
+struct NativeShiftInsights {
+  let deliveries: Int
+  let activeHours: Double
+  let paidMiles: Double
+  let deadMiles: Double
+  let bestWindow: String?
+  let perHour: Double?
+
+  var hasData: Bool { deliveries > 0 }
+  var totalMiles: Double { paidMiles + deadMiles }
+  var deadMilePct: Int {
+    guard totalMiles > 0 else { return 0 }
+    return Int((deadMiles / totalMiles * 100).rounded())
+  }
+
+  @MainActor
+  static func build(visits: [NativeVisit], store: OkkleStore) -> NativeShiftInsights {
+    let sorted = visits.sorted { $0.arrival < $1.arrival }
+    guard sorted.count > 1 else {
+      return NativeShiftInsights(deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0, bestWindow: nil, perHour: nil)
+    }
+
+    let roadFactor = 1.3
+    let shiftGap: TimeInterval = 45 * 60   // a gap longer than this ends a shift
+
+    // Total distance + active time across legs within a shift.
+    var totalMeters = 0.0
+    var activeSeconds = 0.0
+    for k in 1..<sorted.count {
+      let prev = sorted[k - 1], cur = sorted[k]
+      let gap = cur.arrival.timeIntervalSince(prev.departure)
+      if gap < shiftGap {
+        totalMeters += cur.location.distance(from: prev.location)
+        activeSeconds += max(0, gap) + prev.dwell
+      }
+    }
+    activeSeconds += sorted.last?.dwell ?? 0
+
+    // Deliveries + paid distance: a pick-up drives to the next drop-off.
+    var deliveries = 0
+    var paidMeters = 0.0
+    var deliveryHits: [(weekday: Int, band: NativeTimeFilter)] = []
+    var index = 0
+    while index < sorted.count {
+      if sorted[index].kind == .pickup,
+         let dropIndex = (index + 1..<sorted.count).first(where: { sorted[$0].kind == .dropoff }) {
+        deliveries += 1
+        // Paid = the active delivery leg (restaurant → customer). Everything
+        // else (repositioning back out to the next pick-up, idle wandering) is
+        // unpaid mileage.
+        paidMeters += sorted[dropIndex].location.distance(from: sorted[index].location)
+        let date = sorted[dropIndex].arrival
+        let weekday = Calendar.current.component(.weekday, from: date) - 1
+        let band = NativeTimeFilter.allCases.first { $0 != .all && $0.includes(date) } ?? .afternoon
+        deliveryHits.append((weekday, band))
+        index = dropIndex + 1
+      } else {
+        index += 1
+      }
+    }
+
+    let paidMiles = paidMeters / 1609.34 * roadFactor
+    let totalMiles = max(totalMeters / 1609.34 * roadFactor, paidMiles)
+    let deadMiles = max(0, totalMiles - paidMiles)
+    let activeHours = activeSeconds / 3600
+
+    // Best window: the weekday + time-band with the most deliveries.
+    var counts: [String: Int] = [:]
+    for hit in deliveryHits {
+      counts["\(hit.weekday)|\(hit.band.rawValue)", default: 0] += 1
+    }
+    var bestWindow: String?
+    if let top = counts.max(by: { $0.value < $1.value })?.key {
+      let parts = top.split(separator: "|")
+      if parts.count == 2, let wd = Int(parts[0]) {
+        let day = Calendar.current.shortWeekdaySymbols[wd]
+        let band = NativeTimeFilter(rawValue: String(parts[1]))?.label.lowercased() ?? ""
+        bestWindow = "\(day) \(band)"
+      }
+    }
+
+    // £/hr over the last 14 days: logged income ÷ active hours in the window.
+    let windowStart = Date().addingTimeInterval(-14 * 86_400)
+    let income = store.records
+      .filter { $0.kind == .income && $0.date >= windowStart }
+      .reduce(0.0) { $0 + ($1.amount ?? 0) }
+    let recentActive = recentActiveHours(sorted, since: windowStart, shiftGap: shiftGap)
+    let perHour: Double? = (income > 0 && recentActive > 0.25) ? income / recentActive : nil
+
+    return NativeShiftInsights(
+      deliveries: deliveries,
+      activeHours: activeHours,
+      paidMiles: paidMiles,
+      deadMiles: deadMiles,
+      bestWindow: bestWindow,
+      perHour: perHour
+    )
+  }
+
+  private static func recentActiveHours(_ sorted: [NativeVisit], since: Date, shiftGap: TimeInterval) -> Double {
+    var seconds = 0.0
+    for k in 1..<max(sorted.count, 1) {
+      let prev = sorted[k - 1], cur = sorted[k]
+      guard cur.arrival >= since else { continue }
+      let gap = cur.arrival.timeIntervalSince(prev.departure)
+      if gap < shiftGap { seconds += max(0, gap) + prev.dwell }
+    }
+    return seconds / 3600
   }
 }
