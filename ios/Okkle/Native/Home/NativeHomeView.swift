@@ -28,9 +28,9 @@ struct NativeHomeView: View {
       // greeting never slides under the status bar nor the recent card under
       // the tab bar.
       ScrollView(showsIndicators: false) {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
           header
-          VStack(alignment: .leading, spacing: 10) {
+          VStack(alignment: .leading, spacing: 8) {
             sectionHeader("THIS TAX YEAR")
             taxCard
               .padding(.horizontal, -20)   // break out of the body inset so the
@@ -38,7 +38,7 @@ struct NativeHomeView: View {
                                            // the league/recent cards, with room
                                            // for its shadow inside the page
           }
-          VStack(alignment: .leading, spacing: 12) {
+          VStack(alignment: .leading, spacing: 8) {
             sectionHeader("YOUR CLUB")
             NativeLeagueCard(
               snapshot: NativeSeasonEngine.snapshot(store: store),
@@ -80,7 +80,7 @@ struct NativeHomeView: View {
   // MARK: Header
 
   private var header: some View {
-    HStack(alignment: .center, spacing: 8) {
+    HStack(alignment: .top, spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(homeGreetingTitle)
           .font(.system(size: 34, weight: .bold))
@@ -93,10 +93,6 @@ struct NativeHomeView: View {
         taxDeadlineChip
       }
       Spacer()
-      if loggingStreak > 0 {
-        Button { showLeague = true } label: { streakPill }
-          .buttonStyle(.plain)
-      }
       Button { showSettings = true } label: {
         Image(systemName: "gearshape.fill")
           .font(.system(size: 17, weight: .semibold))
@@ -108,21 +104,6 @@ struct NativeHomeView: View {
     }
   }
 
-  private var streakPill: some View {
-    HStack(spacing: 5) {
-      Image(systemName: "flame.fill")
-        .font(.system(size: 13, weight: .bold))
-      Text("\(loggingStreak)")
-        .font(.system(size: 16, weight: .heavy, design: .rounded))
-      Text("day\(loggingStreak == 1 ? "" : "s")")
-        .font(.system(size: 12, weight: .bold))
-        .opacity(0.8)
-    }
-    .foregroundStyle(OkkleColor.amber)
-    .padding(.horizontal, 12)
-    .frame(height: 44)
-    .background(OkkleColor.amber.opacity(0.14), in: Capsule())
-  }
 
   // MARK: Tax card (one swipeable card: Tax saved ↔ Set aside)
 
@@ -138,7 +119,7 @@ struct NativeHomeView: View {
         setAsidePage.tag(1)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
-      .frame(height: 216)
+      .frame(height: 186)
 
       HStack(spacing: 7) {
         ForEach(0..<2, id: \.self) { index in
