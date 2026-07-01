@@ -643,9 +643,9 @@ private struct NativeMedalSummaryCard: View {
         HStack(spacing: 18) {
           ZStack {
             Circle()
-              .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 9)
+              .stroke(OkkleColor.muted.opacity(0.22), lineWidth: 9)
             Circle()
-              .trim(from: 0, to: completion)
+              .trim(from: 0, to: max(completion, 0.001))
               .stroke(
                 AngularGradient(colors: [OkkleColor.brand, .green, .yellow, .purple, OkkleColor.brand], center: .center),
                 style: StrokeStyle(lineWidth: 9, lineCap: .round)
@@ -656,15 +656,15 @@ private struct NativeMedalSummaryCard: View {
           }
           .frame(width: 82, height: 82)
 
-          VStack(alignment: .leading, spacing: 6) {
+          VStack(alignment: .leading, spacing: 4) {
             Text("Medal room")
               .font(.system(size: 24, weight: .heavy, design: .rounded))
               .foregroundStyle(OkkleColor.ink)
-            Text("\(earned) of \(total) achievements unlocked")
+            Text("\(earned) of \(total) unlocked")
               .font(.system(size: 15, weight: .semibold))
               .foregroundStyle(OkkleColor.muted)
-            ProgressView(value: completion)
-              .tint(OkkleColor.brand)
+              .lineLimit(1)
+              .minimumScaleFactor(0.8)
           }
         }
 
@@ -1181,6 +1181,7 @@ struct NativeLeagueCard: View {
   let snapshot: NativeSeasonSnapshot
   var fixture: NativeFixture? = nil
   var medals: [NativeMedalAchievement] = []
+  var club: NativeClubIdentity? = nil
   let onOpen: () -> Void
 
   private var earnedMedals: Int { medals.filter(\.unlocked).count }
@@ -1201,7 +1202,15 @@ struct NativeLeagueCard: View {
       ) {
         VStack(spacing: 0) {
           HStack(spacing: 14) {
-            NativeDivisionCrest(division: snapshot.division, size: 52)
+            if let club {
+              NativeKitTile(
+                kit: club.kit, color: club.color, secondary: club.secondaryColor,
+                crestShape: club.crestShape, trimColor: club.trimColor,
+                trimWidth: club.trimWidthRatio, size: 52, emblem: club.emblem
+              )
+            } else {
+              NativeDivisionCrest(division: snapshot.division, size: 52)
+            }
             VStack(alignment: .leading, spacing: 6) {
               if snapshot.matchweek == 0 {
                 Text("Kicking off")

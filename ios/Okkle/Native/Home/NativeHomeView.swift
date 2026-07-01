@@ -38,7 +38,8 @@ struct NativeHomeView: View {
           NativeLeagueCard(
             snapshot: NativeSeasonEngine.snapshot(store: store),
             fixture: NativeSeasonEngine.fixture(store: store),
-            medals: NativeMedalEngine.achievements(store: store)
+            medals: NativeMedalEngine.achievements(store: store),
+            club: NativeSeasonEngine.clubIdentity(store: store)
           ) { showLeague = true }
         }
 
