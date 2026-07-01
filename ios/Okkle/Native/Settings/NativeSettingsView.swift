@@ -123,9 +123,231 @@ struct NativeSettingsOtherIncomeField: View {
   }
 }
 
+/// Settings home — a menu of categories, matching version 1's structure. Each
+/// row pushes to its own detail page.
 struct NativeSettingsView: View {
-  @EnvironmentObject private var store: OkkleStore
   @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          menuRow("Profile", "Name, vehicle, platforms & accountant details",
+                  symbol: "person.fill", tint: OkkleColor.brand) { NativeProfileSettingsView() }
+          menuRow("Tax settings", "Region, band & other income",
+                  symbol: "percent", tint: OkkleColor.amber) { NativeTaxSettingsView() }
+          menuRow("Automatic tracking", "Auto-start trips on your working days",
+                  symbol: "location.fill", tint: OkkleColor.blue) { NativeAutoTrackSettingsView() }
+          menuRow("Reminders", "Logging nudges & deadline alerts",
+                  symbol: "bell.fill", tint: .purple) { NativeRemindersSettingsView() }
+          menuRow("Export & share", "Accountant pack & CSV files",
+                  symbol: "square.and.arrow.up", tint: OkkleColor.brandDark) { NativeExportSettingsView() }
+          menuRow("Data & backup", "Back up, restore or delete",
+                  symbol: "externaldrive.fill", tint: OkkleColor.blue) { NativeDataSettingsView() }
+          menuRow("Help & feedback", "Support, app info & ways to help",
+                  symbol: "questionmark.circle.fill", tint: .gray) { NativeHelpSettingsView() }
+        }
+      }
+      .navigationTitle("Settings")
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }.fontWeight(.bold)
+        }
+      }
+    }
+  }
+
+  private func menuRow<Destination: View>(_ title: String, _ subtitle: String, symbol: String, tint: Color, @ViewBuilder destination: () -> Destination) -> some View {
+    NavigationLink {
+      destination()
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: symbol)
+          .font(.system(size: 15, weight: .bold))
+          .foregroundStyle(.white)
+          .frame(width: 32, height: 32)
+          .background(tint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(OkkleColor.ink)
+          Text(subtitle).font(.system(size: 12, weight: .medium)).foregroundStyle(OkkleColor.muted).lineLimit(1)
+        }
+      }
+      .padding(.vertical, 4)
+    }
+  }
+}
+
+// MARK: Profile
+
+struct NativeProfileSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    Form {
+      Section("Profile") {
+        TextField("Name", text: Binding(
+          get: { store.settings.name },
+          set: { store.settings.name = $0 }
+        ))
+
+        Picker("Default vehicle", selection: Binding(
+          get: { store.settings.defaultVehicle },
+          set: { store.settings.defaultVehicle = $0 }
+        )) {
+          ForEach(NativeVehicle.allCases) { vehicle in
+            Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
+          }
+        }
+
+        NavigationLink {
+          NativeAccountantDetailsSettingsView()
+        } label: {
+          Label("Accountant details", systemImage: "person.text.rectangle")
+        }
+      }
+
+      NativeSettingsPlatformsSection()
+    }
+    .navigationTitle("Profile")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+// MARK: Tax settings
+
+struct NativeTaxSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    Form {
+      Section {
+        Picker("Region", selection: Binding(
+          get: { store.settings.region },
+          set: { store.settings.region = $0 }
+        )) {
+          ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
+        }
+
+        Picker("Income tax band", selection: Binding(
+          get: { store.settings.incomeBracket },
+          set: { store.settings.incomeBracket = $0 }
+        )) {
+          ForEach(NativeIncomeBracket.allCases) { bracket in
+            Text(bracket.label).tag(bracket)
+          }
+        }
+
+        NativeSettingsOtherIncomeField()
+      } footer: {
+        Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
+      }
+    }
+    .navigationTitle("Tax settings")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+// MARK: Automatic tracking
+
+struct NativeAutoTrackSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    Form {
+      Section {
+        Toggle("Automatic trip tracking", isOn: Binding(
+          get: { store.settings.autoTrackTrips },
+          set: { store.settings.autoTrackTrips = $0 }
+        ))
+
+        if store.settings.autoTrackTrips {
+          NativeWorkingDaysPicker(days: Binding(
+            get: { store.settings.workingDays },
+            set: { store.settings.workingDays = $0 }
+          ))
+        }
+      } footer: {
+        Text("On your working days Okkle starts tracking a trip automatically when it detects you driving, so you never forget. Turn it off to track every trip by hand.")
+      }
+    }
+    .navigationTitle("Automatic tracking")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+// MARK: Reminders
+
+struct NativeRemindersSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    Form {
+      Section {
+        Toggle("Logging reminder", isOn: Binding(
+          get: { store.settings.loggingReminder },
+          set: { store.settings.loggingReminder = $0 }
+        ))
+
+        if store.settings.loggingReminder {
+          Picker("Frequency", selection: Binding(
+            get: { store.settings.logFrequency },
+            set: { store.settings.logFrequency = $0 }
+          )) {
+            ForEach(NativeLogFrequency.allCases) { frequency in
+              Text(frequency.label).tag(frequency)
+            }
+          }
+
+          Picker("Reminder day", selection: Binding(
+            get: { store.settings.reminderDay },
+            set: { store.settings.reminderDay = $0 }
+          )) {
+            ForEach(0..<Calendar.current.shortWeekdaySymbols.count, id: \.self) { index in
+              Text(Calendar.current.shortWeekdaySymbols[index]).tag(index)
+            }
+          }
+        }
+      } header: {
+        Text("Logging")
+      } footer: {
+        Text("A gentle nudge to log your miles and pay so nothing slips through the week.")
+      }
+
+      Section {
+        Toggle("Tax deadline reminders", isOn: Binding(
+          get: { store.settings.taxDeadlineReminders },
+          set: { store.settings.taxDeadlineReminders = $0 }
+        ))
+      } header: {
+        Text("Deadlines")
+      } footer: {
+        Text("Alerts ahead of the key HMRC Self Assessment dates.")
+      }
+    }
+    .navigationTitle("Reminders")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+// MARK: Export & share
+
+struct NativeExportSettingsView: View {
+  var body: some View {
+    ScrollView {
+      NativeExportCard()
+        .padding(20)
+    }
+    .scrollIndicators(.hidden)
+    .background { NativeBackground() }
+    .navigationTitle("Export & share")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+// MARK: Data & backup
+
+struct NativeDataSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
   @State private var backupBusy = false
   @State private var backupMessage: String?
   @State private var backupShareItem: NativeShareItem?
@@ -134,224 +356,89 @@ struct NativeSettingsView: View {
   @State private var showBackupExporter = false
   @State private var showBackupImporter = false
   @State private var showClearDataWarning = false
-  @State private var showDataClearedConfirmation = false
 
   var body: some View {
-    NavigationStack {
-      Form {
-        Section("Profile") {
-          TextField("Name", text: Binding(
-            get: { store.settings.name },
-            set: { store.settings.name = $0 }
-          ))
-
-          Picker("Default vehicle", selection: Binding(
-            get: { store.settings.defaultVehicle },
-            set: { store.settings.defaultVehicle = $0 }
-          )) {
-            ForEach(NativeVehicle.allCases) { vehicle in
-              Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
-            }
+    Form {
+      Section("Backup & restore") {
+        Button {
+          backupBusy = true
+          switch nativeCreateBackup(store: store) {
+          case .iCloud(let url):
+            backupMessage = "Backed up to iCloud Drive > Okkle > Okkle Backups as \(url.lastPathComponent). It can take a moment to appear in Files."
+          case .share(let item):
+            backupShareItem = item
+          case .failed(let message):
+            backupMessage = message
           }
+          backupBusy = false
+        } label: {
+          Label(backupBusy ? "Backing up..." : "Back up to iCloud", systemImage: "icloud.and.arrow.up")
+        }
+        .disabled(backupBusy)
 
-          NavigationLink {
-            NativeAccountantDetailsSettingsView()
-          } label: {
-            Label("Accountant details", systemImage: "person.text.rectangle")
-          }
+        Button {
+          prepareBackupExport()
+        } label: {
+          Label("Choose backup location", systemImage: "folder")
         }
 
-        NativeSettingsPlatformsSection()
-
-        Section {
-          Picker("Region", selection: Binding(
-            get: { store.settings.region },
-            set: { store.settings.region = $0 }
-          )) {
-            ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
-          }
-
-          Picker("Income tax band", selection: Binding(
-            get: { store.settings.incomeBracket },
-            set: { store.settings.incomeBracket = $0 }
-          )) {
-            ForEach(NativeIncomeBracket.allCases) { bracket in
-              Text(bracket.label).tag(bracket)
-            }
-          }
-
-          NativeSettingsOtherIncomeField()
-        } header: {
-          Text("Tax settings")
-        } footer: {
-          Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
-        }
-
-        Section {
-          Toggle("Automatic trip tracking", isOn: Binding(
-            get: { store.settings.autoTrackTrips },
-            set: { store.settings.autoTrackTrips = $0 }
-          ))
-
-          if store.settings.autoTrackTrips {
-            NativeWorkingDaysPicker(days: Binding(
-              get: { store.settings.workingDays },
-              set: { store.settings.workingDays = $0 }
-            ))
-          }
-        } header: {
-          Text("Automatic tracking")
-        } footer: {
-          Text("On your working days Okkle starts tracking a trip automatically when it detects you driving, so you never forget. Turn it off to track every trip by hand.")
-        }
-
-        Section {
-          Toggle("Logging reminder", isOn: Binding(
-            get: { store.settings.loggingReminder },
-            set: { store.settings.loggingReminder = $0 }
-          ))
-
-          if store.settings.loggingReminder {
-            Picker("Frequency", selection: Binding(
-              get: { store.settings.logFrequency },
-              set: { store.settings.logFrequency = $0 }
-            )) {
-              ForEach(NativeLogFrequency.allCases) { frequency in
-                Text(frequency.label).tag(frequency)
-              }
-            }
-
-            Picker("Reminder day", selection: Binding(
-              get: { store.settings.reminderDay },
-              set: { store.settings.reminderDay = $0 }
-            )) {
-              ForEach(0..<Calendar.current.shortWeekdaySymbols.count, id: \.self) { index in
-                Text(Calendar.current.shortWeekdaySymbols[index]).tag(index)
-              }
-            }
-          }
-
-          Toggle("Tax deadline reminders", isOn: Binding(
-            get: { store.settings.taxDeadlineReminders },
-            set: { store.settings.taxDeadlineReminders = $0 }
-          ))
-        } header: {
-          Text("Reminders")
-        } footer: {
-          Text("Turn these on from the prompts in Insights, or manage them here.")
-        }
-
-        Section("Data & backup") {
-          Button {
-            backupBusy = true
-            switch nativeCreateBackup(store: store) {
-            case .iCloud(let url):
-              backupMessage = "Backed up to iCloud Drive > Okkle > Okkle Backups as \(url.lastPathComponent). It can take a moment to appear in Files."
-            case .share(let item):
-              backupShareItem = item
-            case .failed(let message):
-              backupMessage = message
-            }
-            backupBusy = false
-          } label: {
-            Label(backupBusy ? "Backing up..." : "Back up to iCloud", systemImage: "icloud.and.arrow.up")
-          }
-          .disabled(backupBusy)
-
-          Text("Creates a JSON backup in iCloud Drive. If iCloud is not available, Okkle opens the native share sheet so you can save the backup to Files.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-          Button {
-            prepareBackupExport()
-          } label: {
-            Label("Choose backup location", systemImage: "folder")
-          }
-
-          Text("Opens the native Files picker so you can save the backup directly into iCloud Drive or another folder.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-          Button {
-            showBackupImporter = true
-          } label: {
-            Label("Load backup", systemImage: "icloud.and.arrow.down")
-          }
-
-          Text("Restores an Okkle JSON backup from iCloud Drive or Files onto this device.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-          Button(role: .destructive) {
-            showClearDataWarning = true
-          } label: {
-            Label("Clear all app data", systemImage: "trash")
-          }
-        }
-
-        Section("About") {
-          HStack {
-            Text("Version")
-            Spacer()
-            Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0")
-              .foregroundStyle(.secondary)
-          }
+        Button {
+          showBackupImporter = true
+        } label: {
+          Label("Load backup", systemImage: "icloud.and.arrow.down")
         }
       }
-      .navigationTitle("Settings")
-      .sheet(item: $backupShareItem) { item in
-        NativeShareSheet(items: [item.url])
-      }
-      .fileExporter(
-        isPresented: $showBackupExporter,
-        document: backupExportDocument,
-        contentType: .json,
-        defaultFilename: backupExportFileName
-      ) { result in
-        switch result {
-        case .success:
-          backupMessage = "Backup saved."
-        case .failure(let error):
-          backupMessage = "Could not save backup. \(error.localizedDescription)"
+
+      Section {
+        Button(role: .destructive) {
+          showClearDataWarning = true
+        } label: {
+          Label("Clear all app data", systemImage: "trash")
         }
+      } footer: {
+        Text("Creates a JSON backup you can save to Files or iCloud, or restore onto this device. Clearing removes everything and restarts sign-up.")
       }
-      .fileImporter(
-        isPresented: $showBackupImporter,
-        allowedContentTypes: [.json],
-        allowsMultipleSelection: false
-      ) { result in
-        restoreBackup(from: result)
+    }
+    .navigationTitle("Data & backup")
+    .navigationBarTitleDisplayMode(.inline)
+    .sheet(item: $backupShareItem) { item in
+      NativeShareSheet(items: [item.url])
+    }
+    .fileExporter(
+      isPresented: $showBackupExporter,
+      document: backupExportDocument,
+      contentType: .json,
+      defaultFilename: backupExportFileName
+    ) { result in
+      switch result {
+      case .success:
+        backupMessage = "Backup saved."
+      case .failure(let error):
+        backupMessage = "Could not save backup. \(error.localizedDescription)"
       }
-      .alert("Backup", isPresented: Binding(
-        get: { backupMessage != nil },
-        set: { if !$0 { backupMessage = nil } }
-      )) {
-        Button("OK", role: .cancel) {}
-      } message: {
-        Text(backupMessage ?? "")
+    }
+    .fileImporter(
+      isPresented: $showBackupImporter,
+      allowedContentTypes: [.json],
+      allowsMultipleSelection: false
+    ) { result in
+      restoreBackup(from: result)
+    }
+    .alert("Backup", isPresented: Binding(
+      get: { backupMessage != nil },
+      set: { if !$0 { backupMessage = nil } }
+    )) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(backupMessage ?? "")
+    }
+    .alert("Clear all app data?", isPresented: $showClearDataWarning) {
+      Button("Cancel", role: .cancel) {}
+      Button("Clear data", role: .destructive) {
+        store.resetAllData()
       }
-      .alert("Clear all app data?", isPresented: $showClearDataWarning) {
-        Button("Cancel", role: .cancel) {}
-        Button("Clear data", role: .destructive) {
-          store.resetAllData()
-          showDataClearedConfirmation = true
-        }
-      } message: {
-        Text("This permanently deletes your profile, settings, trips, earnings, expenses, mileage entries and routes from this device. The sign-up flow will restart. Create a backup first if you might need the data later.")
-      }
-      .alert("Data cleared", isPresented: $showDataClearedConfirmation) {
-        Button("OK", role: .cancel) {
-          dismiss()
-        }
-      } message: {
-        Text("Your data has been removed. Okkle will restart the sign-up flow.")
-      }
-      .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Done") { dismiss() }
-            .fontWeight(.bold)
-        }
-      }
+    } message: {
+      Text("This permanently deletes your profile, settings, trips, earnings, expenses, mileage entries and routes from this device. The sign-up flow will restart. Create a backup first if you might need the data later.")
     }
   }
 
@@ -381,7 +468,72 @@ struct NativeSettingsView: View {
       backupMessage = "Could not load backup. \(error.localizedDescription)"
     }
   }
+}
 
+// MARK: Help & feedback
+
+struct NativeHelpSettingsView: View {
+  @Environment(\.openURL) private var openURL
+
+  var body: some View {
+    Form {
+      Section {
+        Button {
+          openFeedback(problem: true)
+        } label: {
+          Label("Report a problem", systemImage: "exclamationmark.triangle")
+        }
+        Button {
+          openFeedback(problem: false)
+        } label: {
+          Label("Suggest an improvement", systemImage: "lightbulb")
+        }
+      } footer: {
+        Text("Opens your mail app to admin@okklelab.com.")
+      }
+
+      Section {
+        NavigationLink {
+          NativeAboutSettingsView()
+        } label: {
+          Label("About Okkle", systemImage: "info.circle")
+        }
+      }
+    }
+    .navigationTitle("Help & feedback")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+
+  private func openFeedback(problem: Bool) {
+    let subject = problem ? "[Okkle Problem]" : "[Okkle Suggestion]"
+    let encoded = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? subject
+    guard let url = URL(string: "mailto:admin@okklelab.com?subject=\(encoded)") else { return }
+    openURL(url)
+  }
+}
+
+// MARK: About
+
+struct NativeAboutSettingsView: View {
+  var body: some View {
+    Form {
+      Section {
+        HStack {
+          Text("Version")
+          Spacer()
+          Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0")
+            .foregroundStyle(.secondary)
+        }
+      }
+      Section {
+        Text("Okkle — mileage and tax tracking built for UK self-employed couriers. Your records stay on your device.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .navigationTitle("About Okkle")
+    .navigationBarTitleDisplayMode(.inline)
+  }
 }
 
 struct NativeAccountantDetailsSettingsView: View {
