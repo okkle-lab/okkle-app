@@ -67,7 +67,7 @@ struct NativeHomeView: View {
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
       }
     }
-    .sheet(isPresented: $showSettings) { NativeSettingsView() }
+    .fullScreenCover(isPresented: $showSettings) { NativeSettingsView() }
     .fullScreenCover(isPresented: $showLeague) {
       NativeLeagueView().environmentObject(store)
     }

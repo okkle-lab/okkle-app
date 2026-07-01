@@ -145,28 +145,6 @@ struct NativeSettingsView: View {
             set: { store.settings.name = $0 }
           ))
 
-          Picker("Region", selection: Binding(
-            get: { store.settings.region },
-            set: { store.settings.region = $0 }
-          )) {
-            ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
-          }
-
-          Picker("Income tax band", selection: Binding(
-            get: { store.settings.incomeBracket },
-            set: { store.settings.incomeBracket = $0 }
-          )) {
-            ForEach(NativeIncomeBracket.allCases) { bracket in
-              Text(bracket.label).tag(bracket)
-            }
-          }
-
-          Text("Used for tax saved. Estimated tax due also uses the other income field below.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-          NativeSettingsOtherIncomeField()
-
           Picker("Default vehicle", selection: Binding(
             get: { store.settings.defaultVehicle },
             set: { store.settings.defaultVehicle = $0 }
@@ -184,6 +162,30 @@ struct NativeSettingsView: View {
         }
 
         NativeSettingsPlatformsSection()
+
+        Section {
+          Picker("Region", selection: Binding(
+            get: { store.settings.region },
+            set: { store.settings.region = $0 }
+          )) {
+            ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
+          }
+
+          Picker("Income tax band", selection: Binding(
+            get: { store.settings.incomeBracket },
+            set: { store.settings.incomeBracket = $0 }
+          )) {
+            ForEach(NativeIncomeBracket.allCases) { bracket in
+              Text(bracket.label).tag(bracket)
+            }
+          }
+
+          NativeSettingsOtherIncomeField()
+        } header: {
+          Text("Tax settings")
+        } footer: {
+          Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
+        }
 
         Section {
           Toggle("Automatic trip tracking", isOn: Binding(
@@ -234,12 +236,12 @@ struct NativeSettingsView: View {
             set: { store.settings.taxDeadlineReminders = $0 }
           ))
         } header: {
-          Text("Notifications")
+          Text("Reminders")
         } footer: {
           Text("Turn these on from the prompts in Insights, or manage them here.")
         }
 
-        Section("Data") {
+        Section("Data & backup") {
           Button {
             backupBusy = true
             switch nativeCreateBackup(store: store) {
@@ -287,15 +289,13 @@ struct NativeSettingsView: View {
           }
         }
 
-        Section("Build") {
+        Section("About") {
           HStack {
             Text("Version")
             Spacer()
-            Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.4")
+            Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0")
               .foregroundStyle(.secondary)
           }
-          Text("Native SwiftUI iPhone rebuild for the 0.4 branch.")
-            .foregroundStyle(.secondary)
         }
       }
       .navigationTitle("Settings")

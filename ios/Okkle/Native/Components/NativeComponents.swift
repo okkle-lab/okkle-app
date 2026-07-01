@@ -79,7 +79,7 @@ struct NativeScreen<Content: View>: View {
       .scrollDismissesKeyboard(.interactively)
       .background { NativeBackground() }
       .navigationBarHidden(true)
-      .sheet(isPresented: $showSettings) {
+      .fullScreenCover(isPresented: $showSettings) {
         NativeSettingsView()
       }
     }
