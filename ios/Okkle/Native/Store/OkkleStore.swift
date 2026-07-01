@@ -26,6 +26,7 @@ final class OkkleStore: ObservableObject {
 
   init() {
     load()
+    scheduleLegacyImport()
   }
 
   func load() {
@@ -47,15 +48,27 @@ final class OkkleStore: ObservableObject {
       }
     }
 
-    if let imported = NativeLegacySQLiteImporter.importSnapshot() {
-      merge(imported)
-      UserDefaults.standard.set(true, forKey: legacyMigrationKey)
-      shouldPersist = true
-    }
-
     if normalizeOnboardingState() {
       shouldPersist = true
     }
+  }
+
+  private func scheduleLegacyImport() {
+    DispatchQueue.global(qos: .utility).async { [weak self] in
+      guard let imported = NativeLegacySQLiteImporter.importSnapshot() else { return }
+      DispatchQueue.main.async {
+        self?.applyLegacyImport(imported)
+      }
+    }
+  }
+
+  private func applyLegacyImport(_ imported: NativeLegacyImportResult) {
+    isLoading = true
+    merge(imported)
+    _ = normalizeOnboardingState()
+    isLoading = false
+    UserDefaults.standard.set(true, forKey: legacyMigrationKey)
+    save()
   }
 
   func save() {
