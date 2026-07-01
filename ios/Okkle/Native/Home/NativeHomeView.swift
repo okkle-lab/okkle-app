@@ -23,33 +23,37 @@ struct NativeHomeView: View {
     ZStack {
       NativeBackground()
 
-      VStack(spacing: 16) {
-        header
-        VStack(alignment: .leading, spacing: 10) {
-          sectionHeader("THIS TAX YEAR")
-          taxCard
-            .padding(.horizontal, -20)   // break out of the body inset so the
-                                         // paging card can align at 20pt like
-                                         // the league/recent cards, with room
-                                         // for its shadow inside the page
-        }
-        VStack(alignment: .leading, spacing: 12) {
-          sectionHeader("YOUR CLUB")
-          NativeLeagueCard(
-            snapshot: NativeSeasonEngine.snapshot(store: store),
-            fixture: NativeSeasonEngine.fixture(store: store),
-            medals: NativeMedalEngine.achievements(store: store),
-            club: NativeSeasonEngine.clubIdentity(store: store)
-          ) { showLeague = true }
-        }
+      // A ScrollView so the dashboard respects the top/bottom safe areas — it
+      // only actually scrolls if the content is taller than the screen, so the
+      // greeting never slides under the status bar nor the recent card under
+      // the tab bar.
+      ScrollView(showsIndicators: false) {
+        VStack(spacing: 16) {
+          header
+          VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("THIS TAX YEAR")
+            taxCard
+              .padding(.horizontal, -20)   // break out of the body inset so the
+                                           // paging card can align at 20pt like
+                                           // the league/recent cards, with room
+                                           // for its shadow inside the page
+          }
+          VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("YOUR CLUB")
+            NativeLeagueCard(
+              snapshot: NativeSeasonEngine.snapshot(store: store),
+              fixture: NativeSeasonEngine.fixture(store: store),
+              medals: NativeMedalEngine.achievements(store: store),
+              club: NativeSeasonEngine.clubIdentity(store: store)
+            ) { showLeague = true }
+          }
 
-        recentCard
-
-        Spacer(minLength: 0)
+          recentCard
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
       }
-      .padding(.horizontal, 20)
-      .padding(.top, 6)
-      .padding(.bottom, 10)
     }
     .overlay {
       if let medalAlert {
