@@ -1374,8 +1374,10 @@ struct NativeMatchdayCard: View {
           youTeam
           VStack(spacing: 2) {
             Text("\(fixture.yourGoals)–\(fixture.oppGoals)")
-              .font(.system(size: 26, weight: .heavy, design: .rounded))
+              .font(.system(size: 28, weight: .heavy, design: .rounded))
               .foregroundStyle(OkkleColor.ink)
+              .frame(height: 42)          // match the crest height so the score
+                                          // sits centred beside the badges
             Text(scoreCaption)
               .font(.system(size: 11, weight: .bold))
               .foregroundStyle(captionColor)
@@ -2184,6 +2186,9 @@ struct NativeLeagueView: View {
   @State private var ceremony: NativeDivision?
   @State private var editingClub = false
   @State private var showingRules = false
+  // Bumped when the club editor closes, to force the paging TabView to rebuild
+  // and re-read the (just-saved) club crest live, without leaving the screen.
+  @State private var clubRev = 0
 
   var body: some View {
     let snapshot = NativeSeasonEngine.snapshot(store: store)
@@ -2203,6 +2208,7 @@ struct NativeLeagueView: View {
           leaguePage { medalsTab(current: snapshot.division) }.tag(Segment.medals)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
+        .id(clubRev)
 
         // Carousel dots — a clear cue that you can swipe between the two.
         HStack(spacing: 8) {
@@ -2245,7 +2251,7 @@ struct NativeLeagueView: View {
         }
       }
     }
-    .sheet(isPresented: $editingClub) {
+    .sheet(isPresented: $editingClub, onDismiss: { clubRev += 1 }) {
       NativeClubEditorView().environmentObject(store)
     }
     .sheet(isPresented: $showingRules) {
