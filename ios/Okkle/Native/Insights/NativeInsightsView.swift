@@ -47,100 +47,6 @@ enum NativeTimeFilter: String, CaseIterable, Identifiable {
   }
 }
 
-struct NativeHeatSummary {
-  let tripCount: Int
-  let miles: Double
-  let deduction: Double
-
-  var hasData: Bool {
-    tripCount > 0
-  }
-}
-
-func nativeHeatTrips(from trips: [NativeTrip], filter: NativeTimeFilter) -> [NativeTrip] {
-  trips.filter { trip in
-    filter.includes(trip.startedAt) && trip.points.count > 1
-  }
-}
-
-func nativeHeatSummary(from trips: [NativeTrip], filter: NativeTimeFilter) -> NativeHeatSummary {
-  let filteredTrips = nativeHeatTrips(from: trips, filter: filter)
-  return NativeHeatSummary(
-    tripCount: filteredTrips.count,
-    miles: filteredTrips.reduce(0) { $0 + $1.miles },
-    deduction: filteredTrips.reduce(0) { $0 + $1.deduction }
-  )
-}
-
-func nativeStrongestHeatFilter(from trips: [NativeTrip]) -> NativeTimeFilter? {
-  NativeTimeFilter.allCases
-    .filter { $0 != .all }
-    .map { filter in
-      (filter: filter, summary: nativeHeatSummary(from: trips, filter: filter))
-    }
-    .filter { $0.summary.hasData }
-    .max {
-      if $0.summary.miles == $1.summary.miles {
-        return $0.summary.tripCount < $1.summary.tripCount
-      }
-      return $0.summary.miles < $1.summary.miles
-    }?
-    .filter
-}
-
-struct NativeHeatMapCard: View {
-  let trips: [NativeTrip]
-  let summary: NativeHeatSummary
-  let strongestFilter: NativeTimeFilter?
-  let showsFilters: Bool
-  @Binding var filter: NativeTimeFilter
-
-  var body: some View {
-    NativeAiCard(banner: "HOTSPOT MAP") {
-      VStack(alignment: .leading, spacing: 16) {
-        Text("See where your work clusters")
-          .font(.system(size: 26, weight: .bold, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
-        Text("Okkle shows the routes you have actually tracked. Repeated routes become stronger, while the map stays readable.")
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
-        if summary.hasData {
-          NativeHeatStatsRow(summary: summary)
-          if filter == .all, let strongestFilter {
-            Label("Most tracked mileage is currently around \(strongestFilter.label.lowercased()).", systemImage: "clock.fill")
-              .font(.system(size: 13, weight: .semibold))
-              .foregroundStyle(OkkleColor.brandDark)
-              .padding(.horizontal, 12)
-              .padding(.vertical, 10)
-              .background(OkkleColor.brand.opacity(0.11), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-          }
-        }
-        if showsFilters {
-          NativeHeatFilterBar(selection: $filter)
-        }
-        NativeHeatRouteMapView(trips: trips)
-        NativeHeatLegend()
-        Text("Built on-device from your tracked routes.")
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-  }
-}
-
-struct NativeHeatStatsRow: View {
-  let summary: NativeHeatSummary
-
-  var body: some View {
-    HStack(spacing: 10) {
-      NativeHeatStatChip(title: "Trips", value: "\(summary.tripCount)", symbol: "location.north.line.fill", color: OkkleColor.brand)
-      NativeHeatStatChip(title: "Miles", value: miles(summary.miles), symbol: "road.lanes", color: OkkleColor.blue)
-      NativeHeatStatChip(title: "Deduction", value: gbp(summary.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
-    }
-  }
-}
-
 struct NativeHeatStatChip: View {
   let title: String
   let value: String
@@ -168,82 +74,104 @@ struct NativeHeatStatChip: View {
   }
 }
 
-struct NativeHeatFilterBar: View {
-  @Binding var selection: NativeTimeFilter
+// MARK: - Zone colour scale
 
+/// Quiet → busiest, in one clear ramp (cool blue → teal → green → amber → red)
+/// instead of a single colour at varying opacity, so a glance tells you which
+/// zones and times are actually worth being in.
+func nativeHeatColor(_ t: Double) -> Color {
+  let stops: [(Double, Double, Double, Double)] = [
+    (0.00, 0.20, 0.47, 0.93),
+    (0.35, 0.10, 0.66, 0.62),
+    (0.60, 0.24, 0.72, 0.30),
+    (0.80, 0.95, 0.66, 0.23),
+    (1.00, 0.86, 0.16, 0.16)
+  ]
+  let clamped = max(0, min(1, t))
+  for i in 1..<stops.count {
+    guard clamped <= stops[i].0 else { continue }
+    let (t0, r0, g0, b0) = stops[i - 1]
+    let (t1, r1, g1, b1) = stops[i]
+    let f = t1 > t0 ? (clamped - t0) / (t1 - t0) : 0
+    return Color(red: r0 + (r1 - r0) * f, green: g0 + (g1 - g0) * f, blue: b0 + (b1 - b0) * f)
+  }
+  let last = stops.last!
+  return Color(red: last.1, green: last.2, blue: last.3)
+}
+
+func nativeHeatUIColor(_ t: Double) -> UIColor { UIColor(nativeHeatColor(t)) }
+
+struct NativeHeatLegend: View {
   var body: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
+    VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
-        ForEach(NativeTimeFilter.allCases) { filter in
-          Button {
-            selection = filter
-          } label: {
-            Text(filter.label)
-              .font(.system(size: 13, weight: .bold))
-              .foregroundStyle(selection == filter ? Color.white : OkkleColor.muted)
-              .padding(.horizontal, 14)
-              .padding(.vertical, 9)
-              .background(selection == filter ? OkkleColor.brand : OkkleColor.fieldBackground, in: Capsule())
-          }
-          .buttonStyle(.plain)
-        }
+        Text("Quiet")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+        Capsule()
+          .fill(LinearGradient(colors: stride(from: 0.0, through: 1.0, by: 0.05).map(nativeHeatColor), startPoint: .leading, endPoint: .trailing))
+          .frame(maxWidth: .infinity)
+          .frame(height: 10)
+        Text("Busiest")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
       }
     }
   }
 }
 
-struct NativeHeatMapEmpty: View {
-  var body: some View {
-    VStack(spacing: 10) {
-      Image(systemName: "map")
-        .font(.system(size: 30, weight: .bold))
-        .foregroundStyle(OkkleColor.brand)
-      Text("Track a few GPS trips and your routes will appear here.")
-        .font(.system(size: 15, weight: .semibold))
-        .multilineTextAlignment(.center)
-        .foregroundStyle(OkkleColor.muted)
-        .padding(.horizontal, 18)
-    }
-    .frame(maxWidth: .infinity)
-    .frame(height: 220)
-    .background(Color(uiColor: .secondarySystemBackground).opacity(0.86), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+// MARK: - One-shot location (so the map has somewhere to show before any data exists)
+
+@MainActor
+final class NativeOneShotLocator: NSObject, ObservableObject, CLLocationManagerDelegate {
+  static let shared = NativeOneShotLocator()
+  @Published private(set) var coordinate: CLLocationCoordinate2D?
+  private let manager = CLLocationManager()
+
+  override init() {
+    super.init()
+    manager.delegate = self
   }
+
+  func request() {
+    guard coordinate == nil else { return }
+    let status = manager.authorizationStatus
+    guard status == .authorizedAlways || status == .authorizedWhenInUse else { return }
+    manager.requestLocation()
+  }
+
+  nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    guard let location = locations.last else { return }
+    Task { @MainActor in self.coordinate = location.coordinate }
+  }
+
+  nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 }
 
-struct NativeHeatRouteMapView: View {
-  let trips: [NativeTrip]
-
-  private var hasEnoughRoutes: Bool {
-    trips.contains { $0.points.count > 1 }
-  }
-
-  var body: some View {
-    Group {
-      if hasEnoughRoutes {
-        NativeHeatRouteMapRepresentable(trips: trips)
-          .frame(height: 240)
-          .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-      } else {
-        NativeHeatMapEmpty()
-      }
-    }
-  }
+/// A coloured overlay circle for one zone — a plain MKCircle plus the weight
+/// that decides its colour.
+final class NativeZoneCircle: MKCircle {
+  var weight: Double = 0.5
 }
 
-struct NativeHeatRouteMapRepresentable: UIViewRepresentable {
-  let trips: [NativeTrip]
+// MARK: - Map (tracked routes + zone colouring, defaulting to the user's location)
 
-  func makeCoordinator() -> Coordinator {
-    Coordinator()
-  }
+struct NativeShiftMapRepresentable: UIViewRepresentable {
+  let trips: [NativeTrip]
+  let zones: [NativeZonePoint]
+  var interactive: Bool = false
+  @ObservedObject private var locator = NativeOneShotLocator.shared
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
 
   func makeUIView(context: Context) -> MKMapView {
     let mapView = MKMapView()
     mapView.delegate = context.coordinator
-    mapView.isUserInteractionEnabled = false
-    mapView.showsCompass = false
-    mapView.showsScale = true
+    mapView.isUserInteractionEnabled = interactive
+    mapView.showsCompass = interactive
+    mapView.showsScale = interactive
     mapView.isPitchEnabled = false
+    mapView.showsUserLocation = true
     return mapView
   }
 
@@ -259,15 +187,24 @@ struct NativeHeatRouteMapRepresentable: UIViewRepresentable {
       visibleRect = visibleRect.isNull ? polyline.boundingMapRect : visibleRect.union(polyline.boundingMapRect)
     }
 
+    // Zones layer gradually as stops accumulate — with none yet, nothing draws
+    // and the map just centres on you; each new pattern adds a coloured cell.
+    for zone in zones {
+      let circle = NativeZoneCircle(center: zone.coordinate, radius: 220)
+      circle.weight = zone.weight
+      mapView.addOverlay(circle)
+      let point = MKMapPoint(zone.coordinate)
+      let rect = MKMapRect(x: point.x - 400, y: point.y - 400, width: 800, height: 800)
+      visibleRect = visibleRect.isNull ? rect : visibleRect.union(rect)
+    }
+
     if visibleRect.isNull {
-      mapView.setRegion(MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276),
-        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
-      ), animated: false)
+      let center = locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
+      mapView.setRegion(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)), animated: false)
     } else {
       mapView.setVisibleMapRect(
         visibleRect,
-        edgePadding: UIEdgeInsets(top: 38, left: 30, bottom: 38, right: 30),
+        edgePadding: UIEdgeInsets(top: 40, left: 30, bottom: 40, right: 30),
         animated: false
       )
     }
@@ -275,38 +212,171 @@ struct NativeHeatRouteMapRepresentable: UIViewRepresentable {
 
   final class Coordinator: NSObject, MKMapViewDelegate {
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-      guard let polyline = overlay as? MKPolyline else {
-        return MKOverlayRenderer(overlay: overlay)
+      if let polyline = overlay as? MKPolyline {
+        let renderer = MKPolylineRenderer(polyline: polyline)
+        renderer.strokeColor = UIColor(red: 0.20, green: 0.47, blue: 0.93, alpha: 0.55)
+        renderer.lineWidth = 4
+        renderer.lineCap = .round
+        renderer.lineJoin = .round
+        return renderer
       }
-      let renderer = MKPolylineRenderer(polyline: polyline)
-      renderer.strokeColor = UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 0.42)
-      renderer.lineWidth = 5
-      renderer.lineCap = .round
-      renderer.lineJoin = .round
-      return renderer
+      if let circle = overlay as? NativeZoneCircle {
+        let color = nativeHeatUIColor(circle.weight)
+        let renderer = MKCircleRenderer(circle: circle)
+        renderer.fillColor = color.withAlphaComponent(0.34)
+        renderer.strokeColor = color.withAlphaComponent(0.8)
+        renderer.lineWidth = 1.5
+        return renderer
+      }
+      return MKOverlayRenderer(overlay: overlay)
     }
   }
 }
 
-struct NativeHeatLegend: View {
+/// The small, tappable map embedded in the Shift Patterns card. Tapping opens
+/// the full-screen, pannable version.
+struct NativeShiftMapPreview: View {
+  let trips: [NativeTrip]
+  let zones: [NativeZonePoint]
+  @State private var showDetail = false
+  @ObservedObject private var locator = NativeOneShotLocator.shared
+
   var body: some View {
-    HStack(spacing: 8) {
-      Text("Fewer")
-        .font(.system(size: 12, weight: .semibold))
+    Button { showDetail = true } label: {
+      ZStack(alignment: .bottomTrailing) {
+        NativeShiftMapRepresentable(trips: trips, zones: zones)
+          .frame(height: 190)
+          .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+          .allowsHitTesting(false)
+        Label("Explore map", systemImage: "arrow.up.left.and.arrow.down.right")
+          .font(.system(size: 12, weight: .bold))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 7)
+          .background(.black.opacity(0.55), in: Capsule())
+          .padding(10)
+      }
+    }
+    .buttonStyle(.plain)
+    .onAppear { locator.request() }
+    .sheet(isPresented: $showDetail) {
+      NativeShiftMapDetailView(trips: trips, zones: zones)
+    }
+  }
+}
+
+struct NativeShiftMapDetailView: View {
+  let trips: [NativeTrip]
+  let zones: [NativeZonePoint]
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      VStack(spacing: 0) {
+        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: true)
+          .ignoresSafeArea(edges: .bottom)
+        NativeHeatLegend()
+          .padding(16)
+          .background(.regularMaterial)
+      }
+      .navigationTitle("Where you earn")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }.fontWeight(.bold)
+        }
+      }
+    }
+  }
+}
+
+// MARK: - The main card: Shift Patterns (primary, always shown first)
+
+struct NativeShiftPatternsCard: View {
+  let shift: NativeShiftInsights
+  let trips: [NativeTrip]
+  @Binding var autoTrackTrips: Bool
+
+  var body: some View {
+    NativeAiCard(banner: "SHIFT PATTERNS") {
+      VStack(alignment: .leading, spacing: 16) {
+        Text("Where and when you earn most")
+          .font(.system(size: 26, weight: .bold, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+
+        if !autoTrackTrips {
+          offState
+        } else if !shift.hasData {
+          buildingState
+        } else {
+          dataState
+        }
+
+        NativeShiftMapPreview(trips: trips, zones: shift.zones)
+        NativeHeatLegend()
+
+        Text(autoTrackTrips
+             ? "Learned automatically from your tracked stops — no input needed. Log your pay to sharpen the £/hour estimate."
+             : "Turn on automatic tracking to see your best zones and times build up here, with no extra steps.")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
+  private var offState: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("Turn on automatic tracking so Okkle can learn your best times and zones passively — no screenshots, no shortcuts.")
+        .font(.system(size: 15, weight: .medium))
         .foregroundStyle(OkkleColor.muted)
-      Capsule()
-        .fill(
-          LinearGradient(
-            colors: [OkkleColor.brand.opacity(0.18), OkkleColor.brand.opacity(0.72)],
-            startPoint: .leading,
-            endPoint: .trailing
-          )
-        )
-      .frame(maxWidth: .infinity)
-      .frame(height: 8)
-      Text("More")
-        .font(.system(size: 12, weight: .semibold))
-        .foregroundStyle(OkkleColor.muted)
+      Toggle("Automatic trip tracking", isOn: $autoTrackTrips)
+        .font(.system(size: 17, weight: .bold))
+        .tint(OkkleColor.brand)
+    }
+  }
+
+  private var buildingState: some View {
+    Label("Building your pattern — keep driving on your working days and this fills in automatically.", systemImage: "hourglass")
+      .font(.system(size: 14, weight: .semibold))
+      .foregroundStyle(OkkleColor.brandDark)
+      .padding(14)
+      .background(OkkleColor.brand.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
+  }
+
+  private var dataState: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text("Your best window")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+        Text(shift.bestWindow ?? "—")
+          .font(.system(size: 30, weight: .bold, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+      }
+      HStack(spacing: 10) {
+        NativeHeatStatChip(title: "Deliveries", value: "\(shift.deliveries)", symbol: "bag.fill", color: OkkleColor.brand)
+        NativeHeatStatChip(title: "Unpaid miles", value: "\(shift.deadMilePct)%", symbol: "arrow.triangle.turn.up.right.diamond.fill", color: OkkleColor.amber)
+        NativeHeatStatChip(title: "Per hour", value: shift.perHour.map { gbp($0, whole: true) } ?? "—", symbol: "sterlingsign.circle.fill", color: .green)
+      }
+      if !shift.recommendations.isEmpty {
+        VStack(alignment: .leading, spacing: 9) {
+          ForEach(shift.recommendations, id: \.self) { tip in
+            HStack(alignment: .top, spacing: 8) {
+              Image(systemName: "arrow.up.right.circle.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(OkkleColor.brand)
+                .padding(.top, 1)
+              Text(tip)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(OkkleColor.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+        }
+        .padding(14)
+        .background(OkkleColor.brand.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+      }
     }
   }
 }
@@ -314,83 +384,24 @@ struct NativeHeatLegend: View {
 struct NativeInsightsView: View {
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
-  @State private var heatFilter: NativeTimeFilter = .all
   private var shift: NativeShiftInsights {
     NativeShiftInsights.build(visits: autoTrack.visits, store: store)
-  }
-  private var selectedHeatTrips: [NativeTrip] {
-    nativeHeatTrips(from: store.trips, filter: heatFilter)
-  }
-  private var selectedHeatSummary: NativeHeatSummary {
-    nativeHeatSummary(from: store.trips, filter: heatFilter)
-  }
-  private var strongestHeatFilter: NativeTimeFilter? {
-    nativeStrongestHeatFilter(from: store.trips)
-  }
-  private var hasAnyHeatTrips: Bool {
-    !nativeHeatTrips(from: store.trips, filter: .all).isEmpty
   }
 
   var body: some View {
     NativeScreen(title: "Insights", subtitle: "AI guidance, smart nudges and patterns from your work.") {
-      NativeHeatMapCard(
-        trips: selectedHeatTrips,
-        summary: selectedHeatSummary,
-        strongestFilter: strongestHeatFilter,
-        showsFilters: hasAnyHeatTrips,
-        filter: $heatFilter
+      NativeShiftPatternsCard(
+        shift: shift,
+        trips: store.trips,
+        autoTrackTrips: Binding(
+          get: { store.settings.autoTrackTrips },
+          set: { store.settings.autoTrackTrips = $0 }
+        )
       )
 
-      if store.settings.autoTrackTrips, shift.hasData {
-        NativeAiCard(banner: "SHIFT PATTERNS") {
-          VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-              Text("Your best window")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(OkkleColor.muted)
-              Text(shift.bestWindow ?? "Building your pattern")
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-                .foregroundStyle(OkkleColor.ink)
-            }
-            HStack(spacing: 10) {
-              NativeHeatStatChip(title: "Deliveries", value: "\(shift.deliveries)", symbol: "bag.fill", color: OkkleColor.brand)
-              NativeHeatStatChip(title: "Unpaid miles", value: "\(shift.deadMilePct)%", symbol: "arrow.triangle.turn.up.right.diamond.fill", color: OkkleColor.amber)
-              NativeHeatStatChip(title: "Per hour", value: shift.perHour.map { gbp($0, whole: true) } ?? "—", symbol: "sterlingsign.circle.fill", color: .green)
-            }
-            Text("Learned automatically from your tracked stops — no input needed. Log your pay to sharpen the £/hour estimate.")
-              .font(.system(size: 13, weight: .semibold))
-              .foregroundStyle(OkkleColor.muted)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-        }
-      }
-
-      // These three cards are one-time set-up prompts: they only appear while
+      // These two cards are one-time set-up prompts: they only appear while
       // the feature is off. Once you turn one on it disappears here — the on/off
       // switch then lives in Settings.
-      if !store.settings.autoTrackTrips {
-        NativeAiCard(banner: "AUTOMATIC TRACKING") {
-          VStack(alignment: .leading, spacing: 16) {
-            Text("Track every shift automatically")
-              .font(.system(size: 26, weight: .bold, design: .rounded))
-            Text("On your working days Okkle starts a trip for you the moment it detects you driving, so you never lose a mile. You can still start and stop by hand any time.")
-              .font(.system(size: 15, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-            Toggle("Automatic trip tracking", isOn: Binding(
-              get: { store.settings.autoTrackTrips },
-              set: { store.settings.autoTrackTrips = $0 }
-            ))
-            .font(.system(size: 17, weight: .bold))
-            .tint(OkkleColor.brand)
-            Label("Choose your working days in Settings.", systemImage: "calendar")
-              .font(.system(size: 14, weight: .semibold))
-              .foregroundStyle(OkkleColor.brandDark)
-              .padding(14)
-              .background(OkkleColor.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
-          }
-        }
-      }
-
       if !store.settings.loggingReminder {
         NativeAiCard(banner: "REMINDERS") {
           VStack(alignment: .leading, spacing: 16) {
@@ -859,6 +870,29 @@ func nativeDemoVisits() -> [NativeVisit] {
 
 // MARK: - Analysis
 
+/// One weekday + time-of-day bucket, ranked by how many deliveries land in it.
+struct NativeShiftWindow: Identifiable, Equatable {
+  let weekday: Int   // 0 = Sunday … 6 = Saturday
+  let band: NativeTimeFilter
+  let count: Int
+  let sharePct: Int
+
+  var id: String { "\(weekday)|\(band.rawValue)" }
+  var label: String { "\(Calendar.current.shortWeekdaySymbols[weekday]) \(band.label.lowercased())" }
+}
+
+/// A clustered zone of pick-up/drop-off activity, for colouring the map by how
+/// busy each area has been — not a real-time heatmap, just your own history.
+struct NativeZonePoint: Identifiable, Equatable {
+  let id = UUID()
+  let coordinate: CLLocationCoordinate2D
+  let weight: Double   // 0 (quiet) ... 1 (your busiest zone)
+
+  static func == (lhs: NativeZonePoint, rhs: NativeZonePoint) -> Bool {
+    lhs.id == rhs.id
+  }
+}
+
 /// Everything the passive engine can tell a driver, derived from the stops plus
 /// their (weekly) logged income. Aggregate totals stay exact; only the
 /// within-week distribution is modelled, so estimates are bounded.
@@ -869,6 +903,9 @@ struct NativeShiftInsights {
   let deadMiles: Double
   let bestWindow: String?
   let perHour: Double?
+  let windows: [NativeShiftWindow]
+  let quietWindow: NativeShiftWindow?
+  let zones: [NativeZonePoint]
 
   var hasData: Bool { deliveries > 0 }
   var totalMiles: Double { paidMiles + deadMiles }
@@ -877,12 +914,33 @@ struct NativeShiftInsights {
     return Int((deadMiles / totalMiles * 100).rounded())
   }
 
+  static let empty = NativeShiftInsights(
+    deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
+    bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: []
+  )
+
+  /// Plain-language "what to do about it" tips, ordered by how much they'd help.
+  var recommendations: [String] {
+    var tips: [String] = []
+    if let best = windows.first {
+      tips.append("Focus \(best.label) — \(best.sharePct)% of your deliveries land in this window.")
+    }
+    if let quiet = quietWindow {
+      tips.append("\(quiet.label) has been quiet for you — worth resting or trying a different zone instead.")
+    }
+    if deadMilePct >= 20 {
+      tips.append("\(deadMilePct)% of your miles are unpaid repositioning — try waiting nearer a pick-up zone between orders.")
+    }
+    if perHour == nil {
+      tips.append("Log your pay after a shift to unlock a real £/hour estimate for your windows.")
+    }
+    return tips
+  }
+
   @MainActor
   static func build(visits: [NativeVisit], store: OkkleStore) -> NativeShiftInsights {
     let sorted = visits.sorted { $0.arrival < $1.arrival }
-    guard sorted.count > 1 else {
-      return NativeShiftInsights(deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0, bestWindow: nil, perHour: nil)
-    }
+    guard sorted.count > 1 else { return .empty }
 
     let roadFactor = 1.3
     let shiftGap: TimeInterval = 45 * 60   // a gap longer than this ends a shift
@@ -903,7 +961,7 @@ struct NativeShiftInsights {
     // Deliveries + paid distance: a pick-up drives to the next drop-off.
     var deliveries = 0
     var paidMeters = 0.0
-    var deliveryHits: [(weekday: Int, band: NativeTimeFilter)] = []
+    var deliveryHits: [(weekday: Int, band: NativeTimeFilter, coordinate: CLLocationCoordinate2D)] = []
     var index = 0
     while index < sorted.count {
       if sorted[index].kind == .pickup,
@@ -916,7 +974,7 @@ struct NativeShiftInsights {
         let date = sorted[dropIndex].arrival
         let weekday = Calendar.current.component(.weekday, from: date) - 1
         let band = NativeTimeFilter.allCases.first { $0 != .all && $0.includes(date) } ?? .afternoon
-        deliveryHits.append((weekday, band))
+        deliveryHits.append((weekday, band, sorted[index].coordinate))
         index = dropIndex + 1
       } else {
         index += 1
@@ -928,20 +986,38 @@ struct NativeShiftInsights {
     let deadMiles = max(0, totalMiles - paidMiles)
     let activeHours = activeSeconds / 3600
 
-    // Best window: the weekday + time-band with the most deliveries.
+    // Rank every weekday + time-band bucket by delivery count.
     var counts: [String: Int] = [:]
     for hit in deliveryHits {
       counts["\(hit.weekday)|\(hit.band.rawValue)", default: 0] += 1
     }
-    var bestWindow: String?
-    if let top = counts.max(by: { $0.value < $1.value })?.key {
-      let parts = top.split(separator: "|")
-      if parts.count == 2, let wd = Int(parts[0]) {
-        let day = Calendar.current.shortWeekdaySymbols[wd]
-        let band = NativeTimeFilter(rawValue: String(parts[1]))?.label.lowercased() ?? ""
-        bestWindow = "\(day) \(band)"
+    let ranked: [NativeShiftWindow] = counts
+      .compactMap { key, count -> NativeShiftWindow? in
+        let parts = key.split(separator: "|")
+        guard parts.count == 2, let wd = Int(parts[0]), let band = NativeTimeFilter(rawValue: String(parts[1])) else { return nil }
+        let share = deliveries > 0 ? Int((Double(count) / Double(deliveries) * 100).rounded()) : 0
+        return NativeShiftWindow(weekday: wd, band: band, count: count, sharePct: share)
+      }
+      .sorted { $0.count > $1.count }
+    let bestWindow = ranked.first?.label
+    // The quietest bucket that still has a couple of data points — distinct
+    // from the best one, so "avoid this" is a real, different recommendation.
+    let quietWindow = ranked.count > 1 ? ranked.filter { $0.count >= 2 }.min { $0.count < $1.count } : nil
+
+    // Cluster delivery start points into zones (~500m cells) so the map can
+    // show relative busyness rather than a wall of overlapping pins.
+    var cells: [String: (coordinate: CLLocationCoordinate2D, count: Int)] = [:]
+    let cellSize = 0.006
+    for hit in deliveryHits {
+      let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
+      if let existing = cells[key] {
+        cells[key] = (existing.coordinate, existing.count + 1)
+      } else {
+        cells[key] = (hit.coordinate, 1)
       }
     }
+    let maxCount = cells.values.map(\.count).max() ?? 1
+    let zones = cells.values.map { NativeZonePoint(coordinate: $0.coordinate, weight: Double($0.count) / Double(maxCount)) }
 
     // £/hr over the last 14 days: logged income ÷ active hours in the window.
     let windowStart = Date().addingTimeInterval(-14 * 86_400)
@@ -957,7 +1033,10 @@ struct NativeShiftInsights {
       paidMiles: paidMiles,
       deadMiles: deadMiles,
       bestWindow: bestWindow,
-      perHour: perHour
+      perHour: perHour,
+      windows: Array(ranked.prefix(5)),
+      quietWindow: quietWindow,
+      zones: zones
     )
   }
 
