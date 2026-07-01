@@ -1372,9 +1372,9 @@ struct NativeMatchdayCard: View {
         }
         HStack(alignment: .top, spacing: 8) {
           youTeam
-          VStack(spacing: 3) {
+          VStack(spacing: 2) {
             Text("\(fixture.yourGoals)–\(fixture.oppGoals)")
-              .font(.system(size: 30, weight: .heavy, design: .rounded))
+              .font(.system(size: 26, weight: .heavy, design: .rounded))
               .foregroundStyle(OkkleColor.ink)
             Text(scoreCaption)
               .font(.system(size: 11, weight: .bold))
@@ -1387,7 +1387,7 @@ struct NativeMatchdayCard: View {
         gaffer
       }
       .padding(.horizontal, 14)
-      .padding(.vertical, 13)
+      .padding(.vertical, 11)
     }
   }
 
@@ -1487,7 +1487,7 @@ struct NativeMatchdayCard: View {
           crestShape: club?.crestShape ?? .rounded,
           trimColor: club?.trimColor ?? .white.opacity(0.30),
           trimWidth: club?.trimWidthRatio ?? 0.02,
-          size: 46,
+          size: 42,
           emblem: club?.emblem ?? "figure.walk"
         )
         NativeTitleStars(count: NativeSeasonEngine.honours().filter { $0.kind == .champions }.count, size: 8)
@@ -1507,12 +1507,12 @@ struct NativeMatchdayCard: View {
 
   private func team(name: String, symbol: String, banked: Double, accent: Color, filled: Bool) -> some View {
     VStack(spacing: 7) {
-      RoundedRectangle(cornerRadius: 13, style: .continuous)
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
         .fill(accent.opacity(filled ? 0.16 : 0.10))
-        .frame(width: 46, height: 46)
+        .frame(width: 42, height: 42)
         .overlay(
           Image(systemName: symbol)
-            .font(.system(size: 20, weight: .semibold))
+            .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(accent)
         )
       Text(name)
@@ -2283,6 +2283,7 @@ struct NativeLeagueView: View {
       content()
       Spacer(minLength: 0)
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .padding(.horizontal, 20)
     .padding(.top, 6)
   }
@@ -2321,8 +2322,8 @@ struct NativeLeagueView: View {
           if !s.yourRow.form.isEmpty { NativeFormGuide(form: s.yourRow.form, size: 8) }
         }
         .padding(.horizontal, 14)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
+        .padding(.top, 11)
+        .padding(.bottom, 10)
 
         Divider()
         HStack(spacing: 10) {
@@ -2335,8 +2336,8 @@ struct NativeLeagueView: View {
         .tracking(0.5)
         .foregroundStyle(OkkleColor.muted)
         .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.top, 9)
+        .padding(.bottom, 7)
         Divider()
         ForEach(Array(s.rows.enumerated()), id: \.element.id) { index, row in
           standingRow(row: row, index: index, total: s.rows.count, division: s.division)
@@ -2346,7 +2347,7 @@ struct NativeLeagueView: View {
         }
         zonesLegend(s.division)
           .padding(.horizontal, 14)
-          .padding(.vertical, 12)
+          .padding(.vertical, 9)
       }
     }
   }
@@ -2380,7 +2381,7 @@ struct NativeLeagueView: View {
         .frame(width: 30, alignment: .trailing)
     }
     .padding(.horizontal, 13)
-    .padding(.vertical, 11)
+    .padding(.vertical, 9)
     .background(
       row.isYou
         ? AnyShapeStyle(division.gradient.opacity(0.12))
