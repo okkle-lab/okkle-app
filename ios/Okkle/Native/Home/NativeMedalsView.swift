@@ -1340,6 +1340,7 @@ struct NativeLeagueSection<Content: View>: View {
       .padding(.vertical, 12)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(band)
+      .fixedSize(horizontal: false, vertical: true)
 
       content()
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2277,12 +2278,17 @@ struct NativeLeagueView: View {
   /// One swipe page — content pinned to the top, padded so card glows aren't
   /// clipped by the paging view's edges.
   private func leaguePage<V: View>(@ViewBuilder _ content: () -> V) -> some View {
-    VStack(spacing: 16) {
-      content()
-      Spacer(minLength: 0)
+    // A ScrollView that only actually scrolls when the content overflows the
+    // page — so short pages still sit as fixed cards, but a tall Table page no
+    // longer gets its top banner crushed to fit.
+    ScrollView(showsIndicators: false) {
+      VStack(spacing: 16) {
+        content()
+      }
+      .padding(.horizontal, 20)
+      .padding(.top, 6)
+      .padding(.bottom, 12)
     }
-    .padding(.horizontal, 20)
-    .padding(.top, 6)
   }
 
   private func tableTab(_ snapshot: NativeSeasonSnapshot) -> some View {
