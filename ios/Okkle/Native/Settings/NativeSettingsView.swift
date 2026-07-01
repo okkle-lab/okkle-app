@@ -186,11 +186,24 @@ struct NativeSettingsView: View {
         NativeSettingsPlatformsSection()
 
         Section {
-          Toggle("Trip nudges", isOn: Binding(
-            get: { store.settings.tripNudges },
-            set: { store.settings.tripNudges = $0 }
+          Toggle("Automatic trip tracking", isOn: Binding(
+            get: { store.settings.autoTrackTrips },
+            set: { store.settings.autoTrackTrips = $0 }
           ))
 
+          if store.settings.autoTrackTrips {
+            NativeWorkingDaysPicker(days: Binding(
+              get: { store.settings.workingDays },
+              set: { store.settings.workingDays = $0 }
+            ))
+          }
+        } header: {
+          Text("Automatic tracking")
+        } footer: {
+          Text("On your working days Okkle starts tracking a trip automatically when it detects you driving, so you never forget. Turn it off to track every trip by hand.")
+        }
+
+        Section {
           Toggle("Logging reminder", isOn: Binding(
             get: { store.settings.loggingReminder },
             set: { store.settings.loggingReminder = $0 }
@@ -408,6 +421,47 @@ struct NativeAccountantDetailsSettingsView: View {
     .navigationTitle("Accountant details")
     .navigationBarTitleDisplayMode(.inline)
     .nativeKeyboardDoneToolbar()
+  }
+}
+
+/// A row of day chips (S M T W T F S) for choosing which weekdays auto-tracking
+/// runs. Indices are 0 = Sunday … 6 = Saturday, matching Calendar's symbols.
+struct NativeWorkingDaysPicker: View {
+  @Binding var days: [Int]
+
+  private let symbols = Calendar.current.veryShortStandaloneWeekdaySymbols
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Working days")
+        .font(.subheadline.weight(.semibold))
+      HStack(spacing: 6) {
+        ForEach(0..<symbols.count, id: \.self) { index in
+          let on = days.contains(index)
+          Button {
+            toggle(index)
+          } label: {
+            Text(symbols[index])
+              .font(.system(size: 14, weight: .bold))
+              .frame(maxWidth: .infinity)
+              .frame(height: 38)
+              .foregroundStyle(on ? Color.white : OkkleColor.muted)
+              .background(on ? OkkleColor.brand : OkkleColor.brand.opacity(0.12), in: Circle())
+          }
+          .buttonStyle(.plain)
+        }
+      }
+    }
+    .padding(.vertical, 4)
+  }
+
+  private func toggle(_ index: Int) {
+    if let at = days.firstIndex(of: index) {
+      guard days.count > 1 else { return }   // keep at least one working day
+      days.remove(at: at)
+    } else {
+      days = (days + [index]).sorted()
+    }
   }
 }
 

@@ -340,25 +340,25 @@ struct NativeInsightsView: View {
       // These three cards are one-time set-up prompts: they only appear while
       // the feature is off. Once you turn one on it disappears here — the on/off
       // switch then lives in Settings.
-      if !store.settings.tripNudges {
-        NativeAiCard(banner: "TRIP NUDGES") {
+      if !store.settings.autoTrackTrips {
+        NativeAiCard(banner: "AUTOMATIC TRACKING") {
           VStack(alignment: .leading, spacing: 16) {
-            Text("Never forget to track a trip")
+            Text("Track every shift automatically")
               .font(.system(size: 26, weight: .bold, design: .rounded))
-            Text("Okkle watches both ends of your trip. When it senses you have started driving it nudges you to start tracking, then reminds you to end and save your miles once you have stopped.")
+            Text("On your working days Okkle starts a trip for you the moment it detects you driving, so you never lose a mile. You can still start and stop by hand any time.")
               .font(.system(size: 15, weight: .medium))
               .foregroundStyle(OkkleColor.muted)
-            Toggle("Trip nudges", isOn: Binding(
-              get: { store.settings.tripNudges },
-              set: { store.settings.tripNudges = $0 }
+            Toggle("Automatic trip tracking", isOn: Binding(
+              get: { store.settings.autoTrackTrips },
+              set: { store.settings.autoTrackTrips = $0 }
             ))
             .font(.system(size: 17, weight: .bold))
             .tint(OkkleColor.brand)
-            Label("Detection is a prompt, not auto-logging. Nothing is recorded until you confirm.", systemImage: "exclamationmark.circle")
+            Label("Choose your working days in Settings.", systemImage: "calendar")
               .font(.system(size: 14, weight: .semibold))
-              .foregroundStyle(OkkleColor.amber)
+              .foregroundStyle(OkkleColor.brandDark)
               .padding(14)
-              .background(Color.yellow.opacity(0.14), in: RoundedRectangle(cornerRadius: 16))
+              .background(OkkleColor.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
           }
         }
       }
