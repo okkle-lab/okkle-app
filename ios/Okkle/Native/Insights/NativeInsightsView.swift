@@ -324,9 +324,7 @@ struct NativeShiftPatternsCard: View {
   let shift: NativeShiftInsights
   let trips: [NativeTrip]
   @Binding var autoTrackTrips: Bool
-  @ObservedObject private var areaNamer = NativeAreaNamer.shared
-
-  private var todayWeekday: Int { Calendar.current.component(.weekday, from: Date()) - 1 }
+  @State private var page = 0   // 0 = daily, 1 = weekly
 
   var body: some View {
     NativeAiCard(banner: "SHIFT PATTERNS") {
@@ -337,14 +335,15 @@ struct NativeShiftPatternsCard: View {
 
         if !autoTrackTrips {
           offState
+          NativeShiftMapPreview(trips: trips, zones: shift.zones)
+          NativeHeatLegend()
         } else if !shift.hasData {
           buildingState
+          NativeShiftMapPreview(trips: trips, zones: shift.zones)
+          NativeHeatLegend()
         } else {
-          dataState
+          carousel
         }
-
-        NativeShiftMapPreview(trips: trips, zones: shift.zones)
-        NativeHeatLegend()
 
         Text(autoTrackTrips
              ? "Learned automatically from your tracked stops — no input needed. Log your pay to sharpen the £/hour estimate."
@@ -375,78 +374,112 @@ struct NativeShiftPatternsCard: View {
       .background(OkkleColor.brand.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
   }
 
-  private var dataState: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      todayPlanSection
-      weekOverviewSection
+  // Two swipeable panels: Daily plan and Weekly pattern.
+  private var carousel: some View {
+    VStack(spacing: 10) {
+      TabView(selection: $page) {
+        NativeDailyInsightPanel(shift: shift, trips: trips).tag(0)
+        NativeWeeklyInsightPanel(shift: shift).tag(1)
+      }
+      .tabViewStyle(.page(indexDisplayMode: .never))
+      .frame(height: 470)
 
-      VStack(alignment: .leading, spacing: 3) {
-        Text("Your best window overall")
-          .font(.system(size: 13, weight: .semibold))
+      HStack(spacing: 7) {
+        ForEach(0..<2, id: \.self) { i in
+          Capsule()
+            .fill(page == i ? OkkleColor.brand : OkkleColor.muted.opacity(0.3))
+            .frame(width: page == i ? 18 : 7, height: 7)
+            .animation(.easeInOut(duration: 0.2), value: page)
+        }
+        Text(page == 0 ? "Daily" : "Weekly")
+          .font(.system(size: 12, weight: .bold))
           .foregroundStyle(OkkleColor.muted)
-        Text(shift.bestWindow ?? "—")
-          .font(.system(size: 26, weight: .bold, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
+          .padding(.leading, 4)
       }
-      HStack(spacing: 10) {
-        NativeHeatStatChip(title: "Deliveries", value: "\(shift.deliveries)", symbol: "bag.fill", color: OkkleColor.brand)
-        NativeHeatStatChip(title: "Unpaid miles", value: "\(shift.deadMilePct)%", symbol: "arrow.triangle.turn.up.right.diamond.fill", color: OkkleColor.amber)
-        NativeHeatStatChip(title: "Per hour", value: shift.perHour.map { gbp($0, whole: true) } ?? "—", symbol: "sterlingsign.circle.fill", color: .green)
-      }
-      if !shift.recommendations.isEmpty {
-        VStack(alignment: .leading, spacing: 9) {
-          ForEach(shift.recommendations, id: \.self) { tip in
-            HStack(alignment: .top, spacing: 8) {
-              Image(systemName: "arrow.up.right.circle.fill")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(OkkleColor.brand)
-                .padding(.top, 1)
-              Text(tip)
-                .font(.system(size: 14, weight: .semibold))
+      .frame(maxWidth: .infinity)
+    }
+  }
+}
+
+// MARK: - Daily panel
+
+struct NativeDailyInsightPanel: View {
+  let shift: NativeShiftInsights
+  let trips: [NativeTrip]
+  @ObservedObject private var areaNamer = NativeAreaNamer.shared
+
+  var body: some View {
+    ScrollView(.vertical, showsIndicators: false) {
+      VStack(alignment: .leading, spacing: 12) {
+        if let plan = shift.todayPlan {
+          Text(plan.isToday
+               ? "TODAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())"
+               : "NEXT WORKING DAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())")
+            .font(.system(size: 12, weight: .heavy)).tracking(0.4)
+            .foregroundStyle(OkkleColor.muted)
+
+          if let now = rightNow(plan) {
+            HStack(alignment: .top, spacing: 10) {
+              Image(systemName: "location.fill.viewfinder")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+              Text(now)
+                .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(OkkleColor.ink)
                 .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OkkleColor.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
           }
+
+          ForEach(plan.driveWindows) { window in
+            planRow(
+              symbol: "bolt.fill", color: OkkleColor.brand,
+              title: window.id == plan.peakWindow?.id ? "Busiest — drive" : "Worth driving",
+              value: window.label,
+              detail: window.id == plan.peakWindow?.id ? areaText(for: plan.zone) : nil
+            )
+          }
+
+          if let brk = plan.breakWindow {
+            planRow(symbol: "cup.and.saucer.fill", color: OkkleColor.amber,
+                    title: "Quietest — good for a break", value: brk.label, detail: nil)
+          } else if plan.driveWindows.isEmpty {
+            Text("Not enough on \(plan.dayLabel) yet — a couple more shifts and the timing will sharpen up.")
+              .font(.system(size: 14, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
+          }
+
+          NativeHourStrip(hourCounts: plan.hourCounts)
+            .padding(.top, 2)
         }
-        .padding(14)
-        .background(OkkleColor.brand.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+
+        NativeShiftMapPreview(trips: trips, zones: shift.zones)
+        NativeHeatLegend()
       }
+      .padding(.bottom, 4)
     }
   }
 
-  // MARK: Today's plan
-
-  @ViewBuilder private var todayPlanSection: some View {
-    if let plan = shift.todayPlan {
-      VStack(alignment: .leading, spacing: 10) {
-        Text(plan.isToday ? "TODAY'S PLAN" : "NEXT WORKING DAY · \(plan.dayLabel.uppercased())")
-          .font(.system(size: 12, weight: .heavy))
-          .tracking(0.4)
-          .foregroundStyle(OkkleColor.muted)
-        if let best = plan.bestBand {
-          planRow(
-            symbol: "bolt.fill", color: OkkleColor.brand,
-            title: "Best time to work",
-            value: best.label,
-            detail: areaText(for: plan.zone)
-          )
-        }
-        if let brk = plan.breakBand {
-          planRow(
-            symbol: "cup.and.saucer.fill", color: OkkleColor.amber,
-            title: "Good time for a break",
-            value: brk.label,
-            detail: nil
-          )
-        }
-      }
-      .padding(14)
-      .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+  /// Continuous-analysis positioning: given the clock, where to head now.
+  private func rightNow(_ plan: NativeDayPlan) -> String? {
+    guard plan.isToday, !plan.driveWindows.isEmpty else { return nil }
+    let hour = Calendar.current.component(.hour, from: Date())
+    let area = areaNamer.name(for: plan.zone ?? CLLocationCoordinate2D()).map { " near \($0)" } ?? ""
+    if let current = plan.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
+      return "You're in a busy window (\(current.label)) — stay out\(area)."
     }
+    if let next = plan.driveWindows.first(where: { $0.startHour > hour }) {
+      return "Head out for \(nativeHourLabel(next.startHour))\(area) — that's when it picks up."
+    }
+    return "Your busy windows were earlier today — expect it quieter from here."
   }
 
   private func planRow(symbol: String, color: Color, title: String, value: String, detail: String?) -> some View {
-    HStack(alignment: .top, spacing: 10) {
+    HStack(alignment: .center, spacing: 10) {
       Image(systemName: symbol)
         .font(.system(size: 15, weight: .bold))
         .foregroundStyle(color)
@@ -466,6 +499,7 @@ struct NativeShiftPatternsCard: View {
           }
         }
       }
+      Spacer(minLength: 0)
     }
   }
 
@@ -473,28 +507,63 @@ struct NativeShiftPatternsCard: View {
     guard let coordinate, let name = areaNamer.name(for: coordinate) else { return nil }
     return "near \(name)"
   }
+}
 
-  // MARK: This week
+/// A slim hour-by-hour intensity strip (9am–11pm) so "when exactly" is visible.
+struct NativeHourStrip: View {
+  let hourCounts: [Int]
+  private let hours = Array(9...23)
+
+  var body: some View {
+    let peak = max(1, hourCounts.max() ?? 1)
+    VStack(alignment: .leading, spacing: 5) {
+      HStack(alignment: .bottom, spacing: 3) {
+        ForEach(hours, id: \.self) { h in
+          let value = h < hourCounts.count ? hourCounts[h] : 0
+          RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(value == 0 ? OkkleColor.muted.opacity(0.15) : nativeHeatColor(Double(value) / Double(peak)))
+            .frame(maxWidth: .infinity)
+            .frame(height: max(5, CGFloat(value) / CGFloat(peak) * 44))
+        }
+      }
+      .frame(height: 44, alignment: .bottom)
+      HStack(spacing: 0) {
+        ForEach([9, 12, 15, 18, 21], id: \.self) { h in
+          Text(nativeHourLabel(h))
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+    }
+  }
+}
+
+// MARK: - Weekly panel
+
+struct NativeWeeklyInsightPanel: View {
+  let shift: NativeShiftInsights
+  @ObservedObject private var areaNamer = NativeAreaNamer.shared
+  private var todayWeekday: Int { Calendar.current.component(.weekday, from: Date()) - 1 }
 
   private var orderedWeekdayStats: [NativeWeekdayStat] {
-    // Calendar indexes 0 = Sunday; reorder to a familiar Mon…Sun row.
     [1, 2, 3, 4, 5, 6, 0].compactMap { wd in shift.weekdayStats.first { $0.weekday == wd } }
   }
 
-  @ViewBuilder private var weekOverviewSection: some View {
-    if !shift.weekdayStats.isEmpty {
-      let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
-      VStack(alignment: .leading, spacing: 10) {
+  var body: some View {
+    ScrollView(.vertical, showsIndicators: false) {
+      VStack(alignment: .leading, spacing: 12) {
         Text("THIS WEEK'S PATTERN")
-          .font(.system(size: 12, weight: .heavy))
-          .tracking(0.4)
+          .font(.system(size: 12, weight: .heavy)).tracking(0.4)
           .foregroundStyle(OkkleColor.muted)
+
+        let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
         HStack(alignment: .bottom, spacing: 8) {
           ForEach(orderedWeekdayStats) { stat in
             VStack(spacing: 6) {
               Capsule()
                 .fill(stat.count == 0 ? OkkleColor.muted.opacity(0.18) : nativeHeatColor(Double(stat.sharePct) / Double(maxShare)))
-                .frame(width: 10, height: max(6, CGFloat(stat.sharePct) / CGFloat(maxShare) * 64))
+                .frame(width: 10, height: max(6, CGFloat(stat.sharePct) / CGFloat(maxShare) * 60))
               Text(stat.symbol)
                 .font(.system(size: 11, weight: stat.weekday == todayWeekday ? .heavy : .semibold))
                 .foregroundStyle(stat.weekday == todayWeekday ? OkkleColor.ink : OkkleColor.muted)
@@ -502,11 +571,62 @@ struct NativeShiftPatternsCard: View {
             .frame(maxWidth: .infinity)
           }
         }
-        .frame(height: 84, alignment: .bottom)
+        .frame(height: 78, alignment: .bottom)
+
+        // When & where each of your best days was good.
+        VStack(alignment: .leading, spacing: 8) {
+          Text("YOUR BEST DAYS")
+            .font(.system(size: 12, weight: .heavy)).tracking(0.4)
+            .foregroundStyle(OkkleColor.muted)
+          ForEach(shift.weekdayDetails.prefix(3)) { day in
+            HStack(spacing: 8) {
+              Text(day.shortName)
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(OkkleColor.ink)
+                .frame(width: 38, alignment: .leading)
+              Text(day.band.label.lowercased())
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(OkkleColor.brandDark)
+              if let area = areaText(for: day.coordinate) {
+                Text("· \(area)")
+                  .font(.system(size: 13, weight: .medium))
+                  .foregroundStyle(OkkleColor.muted)
+                  .lineLimit(1)
+              }
+              Spacer(minLength: 0)
+            }
+          }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+
+        HStack(spacing: 10) {
+          NativeHeatStatChip(title: "Deliveries", value: "\(shift.deliveries)", symbol: "bag.fill", color: OkkleColor.brand)
+          NativeHeatStatChip(title: "Unpaid miles", value: "\(shift.deadMilePct)%", symbol: "arrow.triangle.turn.up.right.diamond.fill", color: OkkleColor.amber)
+          NativeHeatStatChip(title: "Per hour", value: shift.perHour.map { gbp($0, whole: true) } ?? "—", symbol: "sterlingsign.circle.fill", color: .green)
+        }
+
+        ForEach(shift.weeklyTips, id: \.self) { tip in
+          HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "arrow.up.right.circle.fill")
+              .font(.system(size: 14, weight: .bold))
+              .foregroundStyle(OkkleColor.brand)
+              .padding(.top, 1)
+            Text(tip)
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.ink)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
       }
-      .padding(14)
-      .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+      .padding(.bottom, 4)
     }
+  }
+
+  private func areaText(for coordinate: CLLocationCoordinate2D?) -> String? {
+    guard let coordinate, let name = areaNamer.name(for: coordinate) else { return nil }
+    return name
   }
 }
 
@@ -1052,6 +1172,42 @@ struct NativeWeekdayStat: Identifiable, Equatable {
   var name: String { Calendar.current.weekdaySymbols[weekday] }
 }
 
+/// "6pm", "12pm", "1am" — a compact clock label for one hour of the day.
+func nativeHourLabel(_ hour: Int) -> String {
+  let h = ((hour % 24) + 24) % 24
+  let suffix = h < 12 ? "am" : "pm"
+  var twelve = h % 12
+  if twelve == 0 { twelve = 12 }
+  return "\(twelve)\(suffix)"
+}
+
+/// A contiguous run of busy (or, for a break, quiet) hours: "6–9pm".
+struct NativeHourWindow: Identifiable, Equatable {
+  let startHour: Int
+  let endHour: Int   // inclusive last hour
+  let count: Int
+
+  var id: Int { startHour }
+  var label: String { "\(nativeHourLabel(startHour))–\(nativeHourLabel(endHour + 1))" }
+}
+
+/// Per-weekday summary for the weekly panel: best band, roughly where, and how
+/// busy — so "this week" can say *when and where* each day was good.
+struct NativeWeekdayDetail: Identifiable, Equatable {
+  let weekday: Int
+  let band: NativeTimeFilter
+  let count: Int
+  let coordinate: CLLocationCoordinate2D?
+
+  var id: Int { weekday }
+  var name: String { Calendar.current.weekdaySymbols[weekday] }
+  var shortName: String { Calendar.current.shortWeekdaySymbols[weekday] }
+
+  static func == (lhs: NativeWeekdayDetail, rhs: NativeWeekdayDetail) -> Bool {
+    lhs.weekday == rhs.weekday && lhs.band == rhs.band && lhs.count == rhs.count
+  }
+}
+
 /// A same-day plan: the best window to work, a natural lull worth treating as
 /// a break, and roughly where the work has been — built from your own history
 /// for that specific weekday, not the whole week averaged together.
@@ -1062,8 +1218,14 @@ struct NativeDayPlan {
   let bestBand: NativeTimeFilter?
   let breakBand: NativeTimeFilter?
   let zone: CLLocationCoordinate2D?
+  let hourCounts: [Int]              // 24 buckets of delivery counts for this day
+  let driveWindows: [NativeHourWindow]
+  let breakWindow: NativeHourWindow?
 
   var dayLabel: String { isToday ? "Today" : Calendar.current.weekdaySymbols[weekday] }
+
+  /// The busiest drive window (most deliveries) — the one to anchor the day on.
+  var peakWindow: NativeHourWindow? { driveWindows.max { $0.count < $1.count } }
 }
 
 /// Everything the passive engine can tell a driver, derived from the stops plus
@@ -1080,6 +1242,7 @@ struct NativeShiftInsights {
   let quietWindow: NativeShiftWindow?
   let zones: [NativeZonePoint]
   let weekdayStats: [NativeWeekdayStat]
+  let weekdayDetails: [NativeWeekdayDetail]   // active days, busiest first
   let todayPlan: NativeDayPlan?
 
   var hasData: Bool { deliveries > 0 }
@@ -1092,23 +1255,17 @@ struct NativeShiftInsights {
   static let empty = NativeShiftInsights(
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
-    weekdayStats: [], todayPlan: nil
+    weekdayStats: [], weekdayDetails: [], todayPlan: nil
   )
 
-  /// Plain-language "what to do about it" tips, ordered by how much they'd help.
-  var recommendations: [String] {
+  /// A weekly tip or two — kept short, since the panels now carry the detail.
+  var weeklyTips: [String] {
     var tips: [String] = []
-    if let best = windows.first {
-      tips.append("Focus \(best.label) — \(best.sharePct)% of your deliveries land in this window.")
-    }
-    if let quiet = quietWindow {
-      tips.append("\(quiet.label) has been quiet for you — worth resting or trying a different zone instead.")
-    }
     if deadMilePct >= 20 {
-      tips.append("\(deadMilePct)% of your miles are unpaid repositioning — try waiting nearer a pick-up zone between orders.")
+      tips.append("\(deadMilePct)% of your miles are unpaid repositioning — wait nearer a pick-up zone between orders.")
     }
     if perHour == nil {
-      tips.append("Log your pay after a shift to unlock a real £/hour estimate for your windows.")
+      tips.append("Log your pay after a shift to unlock a real £/hour estimate.")
     }
     return tips
   }
@@ -1137,7 +1294,7 @@ struct NativeShiftInsights {
     // Deliveries + paid distance: a pick-up drives to the next drop-off.
     var deliveries = 0
     var paidMeters = 0.0
-    var deliveryHits: [(weekday: Int, band: NativeTimeFilter, coordinate: CLLocationCoordinate2D)] = []
+    var deliveryHits: [(weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D)] = []
     var index = 0
     while index < sorted.count {
       if sorted[index].kind == .pickup,
@@ -1149,8 +1306,9 @@ struct NativeShiftInsights {
         paidMeters += sorted[dropIndex].location.distance(from: sorted[index].location)
         let date = sorted[dropIndex].arrival
         let weekday = Calendar.current.component(.weekday, from: date) - 1
+        let hour = Calendar.current.component(.hour, from: date)
         let band = NativeTimeFilter.allCases.first { $0 != .all && $0.includes(date) } ?? .afternoon
-        deliveryHits.append((weekday, band, sorted[index].coordinate))
+        deliveryHits.append((weekday, band, hour, sorted[index].coordinate))
         index = dropIndex + 1
       } else {
         index += 1
@@ -1212,6 +1370,15 @@ struct NativeShiftInsights {
       return NativeWeekdayStat(weekday: wd, count: count, sharePct: share)
     }
 
+    // Per-weekday best band + zone (busiest first) — the "when & where" list.
+    let weekdayDetails: [NativeWeekdayDetail] = (0...6)
+      .filter { (weekdayCounts[$0] ?? 0) > 0 }
+      .map { wd -> NativeWeekdayDetail in
+        let (band, zone) = bestBandAndZone(for: wd, deliveryHits: deliveryHits, cellSize: cellSize)
+        return NativeWeekdayDetail(weekday: wd, band: band, count: weekdayCounts[wd] ?? 0, coordinate: zone)
+      }
+      .sorted { $0.count > $1.count }
+
     // Today's plan: today if it has data, otherwise the next weekday (working
     // day or not — we only ever have data on working days anyway) that does.
     let todayWeekday = Calendar.current.component(.weekday, from: Date()) - 1
@@ -1219,30 +1386,31 @@ struct NativeShiftInsights {
       .map { (todayWeekday + $0) % 7 }
       .first { weekdayCounts[$0, default: 0] > 0 }
     let todayPlan: NativeDayPlan? = planWeekday.map { wd in
+      let (bestBand, topZone) = bestBandAndZone(for: wd, deliveryHits: deliveryHits, cellSize: cellSize)
+
+      // Hour-level shape for that weekday → concrete drive/break windows.
+      var hourCounts = Array(repeating: 0, count: 24)
+      for hit in deliveryHits where hit.weekday == wd { hourCounts[hit.hour] += 1 }
+      let drives = nativeHourWindows(from: hourCounts)
+      let breakWin = nativeBreakWindow(from: drives)
+
       var bandCounts: [NativeTimeFilter: Int] = [:]
-      var bandCells: [String: (coordinate: CLLocationCoordinate2D, count: Int)] = [:]
-      for hit in deliveryHits where hit.weekday == wd {
-        bandCounts[hit.band, default: 0] += 1
-        let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
-        if let existing = bandCells[key] {
-          bandCells[key] = (existing.coordinate, existing.count + 1)
-        } else {
-          bandCells[key] = (hit.coordinate, 1)
-        }
-      }
-      let best = bandCounts.max { $0.value < $1.value }?.key
+      for hit in deliveryHits where hit.weekday == wd { bandCounts[hit.band, default: 0] += 1 }
       let order: [NativeTimeFilter] = [.morning, .lunch, .afternoon, .dinner, .late]
       let breakBand = order
-        .filter { $0 != best && (bandCounts[$0] ?? 0) >= 1 }
+        .filter { $0 != bestBand && (bandCounts[$0] ?? 0) >= 1 }
         .min { (bandCounts[$0] ?? 0) < (bandCounts[$1] ?? 0) }
-      let topZone = bandCells.values.max { $0.count < $1.count }?.coordinate
+
       return NativeDayPlan(
         weekday: wd,
         isToday: wd == todayWeekday,
         deliveries: weekdayCounts[wd] ?? 0,
-        bestBand: best,
+        bestBand: bestBand,
         breakBand: breakBand,
-        zone: topZone
+        zone: topZone,
+        hourCounts: hourCounts,
+        driveWindows: drives,
+        breakWindow: breakWin
       )
     }
 
@@ -1257,6 +1425,7 @@ struct NativeShiftInsights {
       quietWindow: quietWindow,
       zones: zones,
       weekdayStats: weekdayStats,
+      weekdayDetails: weekdayDetails,
       todayPlan: todayPlan
     )
   }
@@ -1271,4 +1440,61 @@ struct NativeShiftInsights {
     }
     return seconds / 3600
   }
+}
+
+typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D)
+
+/// The busiest time-band and roughly-where for one weekday.
+func bestBandAndZone(for weekday: Int, deliveryHits: [NativeDeliveryHit], cellSize: Double) -> (band: NativeTimeFilter, zone: CLLocationCoordinate2D?) {
+  var bandCounts: [NativeTimeFilter: Int] = [:]
+  var cells: [String: (coordinate: CLLocationCoordinate2D, count: Int)] = [:]
+  for hit in deliveryHits where hit.weekday == weekday {
+    bandCounts[hit.band, default: 0] += 1
+    let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
+    if let existing = cells[key] {
+      cells[key] = (existing.coordinate, existing.count + 1)
+    } else {
+      cells[key] = (hit.coordinate, 1)
+    }
+  }
+  let band = bandCounts.max { $0.value < $1.value }?.key ?? .afternoon
+  let zone = cells.values.max { $0.count < $1.count }?.coordinate
+  return (band, zone)
+}
+
+/// Contiguous runs of "busy" hours (≥ 40% of the day's peak), each a drive window.
+func nativeHourWindows(from hourCounts: [Int]) -> [NativeHourWindow] {
+  let peak = hourCounts.max() ?? 0
+  guard peak > 0 else { return [] }
+  let threshold = max(1, Int((Double(peak) * 0.4).rounded(.up)))
+  var windows: [NativeHourWindow] = []
+  var start: Int?
+  var runCount = 0
+  for h in 0..<24 {
+    if hourCounts[h] >= threshold {
+      if start == nil { start = h; runCount = 0 }
+      runCount += hourCounts[h]
+    } else if let s = start {
+      windows.append(NativeHourWindow(startHour: s, endHour: h - 1, count: runCount))
+      start = nil
+    }
+  }
+  if let s = start { windows.append(NativeHourWindow(startHour: s, endHour: 23, count: runCount)) }
+  return windows
+}
+
+/// The widest quiet gap between two drive windows — the natural break.
+func nativeBreakWindow(from drives: [NativeHourWindow]) -> NativeHourWindow? {
+  guard drives.count >= 2 else { return nil }
+  var best: NativeHourWindow?
+  for i in 1..<drives.count {
+    let gapStart = drives[i - 1].endHour + 1
+    let gapEnd = drives[i].startHour - 1
+    guard gapEnd >= gapStart else { continue }
+    let length = gapEnd - gapStart + 1
+    if best == nil || length > (best!.endHour - best!.startHour + 1) {
+      best = NativeHourWindow(startHour: gapStart, endHour: gapEnd, count: 0)
+    }
+  }
+  return best
 }
