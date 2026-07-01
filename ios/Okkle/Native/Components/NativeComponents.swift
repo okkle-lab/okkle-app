@@ -28,14 +28,23 @@ struct NativeScreen<Content: View>: View {
   let collapsedTitle: String?
   let subtitle: String?
   let style: NativeScreenStyle
+  let onClose: (() -> Void)?
   let content: Content
   @State private var showSettings = false
 
-  init(title: String, collapsedTitle: String? = nil, subtitle: String? = nil, style: NativeScreenStyle = .standard, @ViewBuilder content: () -> Content) {
+  init(
+    title: String,
+    collapsedTitle: String? = nil,
+    subtitle: String? = nil,
+    style: NativeScreenStyle = .standard,
+    onClose: (() -> Void)? = nil,
+    @ViewBuilder content: () -> Content
+  ) {
     self.title = title
     self.collapsedTitle = collapsedTitle
     self.subtitle = subtitle
     self.style = style
+    self.onClose = onClose
     self.content = content()
   }
 
@@ -43,46 +52,50 @@ struct NativeScreen<Content: View>: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          // Same top header as Home: title top-left, settings gear inline.
-          VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .center, spacing: 8) {
-              Text(title)
-                .font(.system(size: 34, weight: .bold))
-                .foregroundStyle(style.titleColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-              Spacer(minLength: 8)
-              Button { showSettings = true } label: {
-                Image(systemName: "gearshape.fill")
-                  .font(.system(size: 17, weight: .semibold))
-                  .foregroundStyle(OkkleColor.muted)
-                  .frame(width: 44, height: 44)
-                  .background(.thinMaterial, in: Circle())
-              }
-              .accessibilityLabel("Settings")
-            }
-            if let subtitle {
-              Text(subtitle)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(style.subtitleColor)
-                .fixedSize(horizontal: false, vertical: true)
-            }
+          if let subtitle {
+            Text(subtitle)
+              .font(.system(size: 17, weight: .medium))
+              .foregroundStyle(style.subtitleColor)
+              .fixedSize(horizontal: false, vertical: true)
           }
 
           content
         }
         .padding(.horizontal, 20)
-        .padding(.top, 6)
         .padding(.bottom, 120)
       }
       .scrollIndicators(.hidden)
       .scrollDismissesKeyboard(.interactively)
       .background { NativeBackground() }
-      .navigationBarHidden(true)
+      .navigationTitle(navigationBarTitle)
+      .navigationBarTitleDisplayMode(.large)
+      .toolbar {
+        if let onClose {
+          ToolbarItem(placement: .navigationBarLeading) {
+            Button(action: onClose) {
+              Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .bold))
+            }
+            .accessibilityLabel("Close")
+          }
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+          Button { showSettings = true } label: {
+            Image(systemName: "gearshape")
+              .font(.system(size: 17, weight: .semibold))
+          }
+          .accessibilityLabel("Settings")
+        }
+      }
       .fullScreenCover(isPresented: $showSettings) {
         NativeSettingsView()
       }
     }
+  }
+
+  private var navigationBarTitle: String {
+    collapsedTitle ?? title
   }
 }
 
@@ -184,43 +197,32 @@ struct NativeAiCard<Content: View>: View {
   }
 
   var body: some View {
-    cardBody
-      .shadow(color: Color(red: 0.32, green: 0.78, blue: 1.0).opacity(0.20), radius: 36, x: -18, y: 18)
-      .shadow(color: Color(red: 0.58, green: 0.36, blue: 1.0).opacity(0.16), radius: 44, x: 20, y: 20)
-      .shadow(color: Color(red: 1.0, green: 0.56, blue: 0.67).opacity(0.14), radius: 50, x: 0, y: -8)
+    NativeGlassCard(cornerRadius: 30) {
+      cardBody
+    }
   }
 
   @ViewBuilder private var cardBody: some View {
     if let banner {
-      VStack(spacing: 0) {
-        // Same coloured band header as the Home cards.
+      VStack(alignment: .leading, spacing: 16) {
         HStack(spacing: 8) {
           Text(banner)
-            .font(.system(size: 14, weight: .heavy))
+            .font(.system(size: 12, weight: .heavy))
             .tracking(0.5)
           Spacer(minLength: 8)
           if let bannerTrailing {
             Text(bannerTrailing)
               .font(.system(size: 12, weight: .bold))
-              .foregroundStyle(.white.opacity(0.9))
           }
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .foregroundStyle(OkkleColor.muted)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LinearGradient(colors: [OkkleColor.bannerDark, OkkleColor.brand], startPoint: .leading, endPoint: .trailing))
 
         content
-          .padding(20)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(.regularMaterial)
       }
-      .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
     } else {
-      NativeGlassCard(cornerRadius: 30) {
-        content
-      }
+      content
     }
   }
 }

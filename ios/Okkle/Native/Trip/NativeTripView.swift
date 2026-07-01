@@ -80,14 +80,13 @@ struct NativeTripView: View {
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       applyWidgetRequestIfNeeded()
     }
-    // Keep the tab bar visible during tracking so the driver can switch tabs;
-    // the shared session keeps recording in the background and the live map is
-    // still here when they come back to the Trip tab.
-    .toolbar(.visible, for: .tabBar)
+    // The live trip map owns the screen while recording or reviewing the end
+    // state; bring the tab bar back on the normal start screen.
+    .toolbar(shouldShowTrackingMap ? .hidden : .visible, for: .tabBar)
   }
 
   private var setupScreen: some View {
-    NativeScreen(title: "Trip", subtitle: "Track GPS miles for HMRC mileage relief.") {
+    NativeScreen(title: "Trip", collapsedTitle: "Trip", subtitle: "Track GPS miles for HMRC mileage relief.") {
       VStack(spacing: 18) {
         Spacer(minLength: 44)
 

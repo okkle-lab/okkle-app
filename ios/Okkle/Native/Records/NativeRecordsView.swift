@@ -15,6 +15,7 @@ struct NativeRecordsView: View {
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
+  var onClose: (() -> Void)? = nil
 
   enum RecordsMode: String, CaseIterable, Identifiable {
     case history
@@ -33,8 +34,13 @@ struct NativeRecordsView: View {
     var label: String { rawValue.capitalized }
   }
 
+  init(initialMode: RecordsMode = .history, onClose: (() -> Void)? = nil) {
+    _mode = State(initialValue: initialMode)
+    self.onClose = onClose
+  }
+
   var body: some View {
-    NativeScreen(title: "Records", subtitle: "Your logs, tax estimate and export-ready history.") {
+    NativeScreen(title: "Records", collapsedTitle: "Records", subtitle: "Your logs, tax estimate and export-ready history.", onClose: onClose) {
       Picker("Mode", selection: $mode) {
         Text("History").tag(RecordsMode.history)
         Text("Tax").tag(RecordsMode.tax)

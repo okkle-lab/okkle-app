@@ -34,11 +34,33 @@ final class TaxCalculatorTests: XCTestCase {
   }
 
   func testTaxEstimateUsesTradingAllowanceWhenBetterThanExpenses() {
-    let position = TaxCalculator.estimate(turnover: 20_000, expenses: 400, region: .ruk)
+    let position = TaxCalculator.estimate(
+      turnover: 20_000,
+      expenses: 400,
+      region: .ruk,
+      incomeBracket: .basic
+    )
 
     XCTAssertTrue(position.usesTradingAllowance)
     XCTAssertEqual(position.deductionApplied, 1_000, accuracy: 0.001)
     XCTAssertEqual(position.profit, 19_000, accuracy: 0.001)
+  }
+
+  func testTaxEstimateAccountsForOtherIncomeStacking() {
+    let position = TaxCalculator.estimate(
+      turnover: 20_000,
+      expenses: 2_000,
+      region: .ruk,
+      incomeBracket: .higher,
+      otherIncome: 45_000
+    )
+
+    XCTAssertFalse(position.usesTradingAllowance)
+    XCTAssertEqual(position.deductionApplied, 2_000, accuracy: 0.001)
+    XCTAssertEqual(position.profit, 18_000, accuracy: 0.001)
+    XCTAssertEqual(position.incomeTax, 6_146, accuracy: 0.001)
+    XCTAssertEqual(position.class4, 325.8, accuracy: 0.001)
+    XCTAssertEqual(position.totalDue, 6_471.8, accuracy: 0.001)
   }
 
   private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {

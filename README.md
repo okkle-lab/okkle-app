@@ -4,6 +4,8 @@ Okkle is now a native SwiftUI iOS app for UK courier tax tracking.
 
 The iOS app lives in `ios/Okkle.xcodeproj` and does not require Expo, Metro, EAS, npm, Pods, or a JavaScript bundle to run.
 
+The Android folder is still the legacy Expo/React Native shell. It is not used by the native iOS Xcode build.
+
 ## Open The App
 
 ```bash
@@ -81,4 +83,4 @@ For each PR, bump:
 - `MARKETING_VERSION`
 - `CFBundleVersion` / build number when preparing an App Store or TestFlight archive
 
-Current migration version: `0.4.5`.
+Current native version: `2.0`.

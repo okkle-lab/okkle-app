@@ -11,7 +11,7 @@ enum NativeTab {
   case log
   case trip
   case insights
-  case records
+  case league
 }
 
 struct OkkleNativeRootView: View {
@@ -57,9 +57,9 @@ struct OkkleNativeRootView: View {
       NativeLogView(selectedTab: $selectedTab)
         .tabItem { Label("Log", systemImage: "square.and.pencil") }
         .tag(NativeTab.log)
-      NativeRecordsView()
-        .tabItem { Label("Records", systemImage: "archivebox") }
-        .tag(NativeTab.records)
+      NativeLeagueView(showsDoneButton: false)
+        .tabItem { Label("League", systemImage: "trophy.fill") }
+        .tag(NativeTab.league)
     }
   }
 
