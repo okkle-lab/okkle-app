@@ -96,18 +96,8 @@ struct NativeHeatMapCard: View {
   @Binding var filter: NativeTimeFilter
 
   var body: some View {
-    NativeAiCard {
+    NativeAiCard(banner: "HOTSPOT MAP") {
       VStack(alignment: .leading, spacing: 16) {
-        HStack(spacing: 10) {
-          Image(systemName: "map.circle.fill")
-            .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(OkkleColor.brand)
-            .frame(width: 42, height: 42)
-            .background(OkkleColor.brand.opacity(0.14), in: Circle())
-          Text("HOTSPOT MAP")
-            .font(.system(size: 15, weight: .heavy))
-            .foregroundStyle(.purple)
-        }
         Text("See where your work clusters")
           .font(.system(size: 26, weight: .bold, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
@@ -324,7 +314,6 @@ struct NativeHeatLegend: View {
 struct NativeInsightsView: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var heatFilter: NativeTimeFilter = .all
-  private let weekdays = Calendar.current.shortWeekdaySymbols
   private var selectedHeatTrips: [NativeTrip] {
     nativeHeatTrips(from: store.trips, filter: heatFilter)
   }
@@ -348,92 +337,57 @@ struct NativeInsightsView: View {
         filter: $heatFilter
       )
 
-      NativeAiCard {
-        VStack(alignment: .leading, spacing: 16) {
-          cardHeader("Trip nudges", symbol: "location.north.circle.fill", color: OkkleColor.blue)
-          Text("Never forget to track a trip")
-            .font(.system(size: 26, weight: .bold, design: .rounded))
-          Text("Okkle watches both ends of your trip. When it senses you have started driving it nudges you to start tracking, then reminds you to end and save your miles once you have stopped.")
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
-          Toggle("Trip nudges", isOn: Binding(
-            get: { store.settings.tripNudges },
-            set: { store.settings.tripNudges = $0 }
-          ))
-          .font(.system(size: 17, weight: .bold))
-          .tint(OkkleColor.brand)
-          Label("Detection is a prompt, not auto-logging. Nothing is recorded until you confirm.", systemImage: "exclamationmark.circle")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(OkkleColor.amber)
-            .padding(14)
-            .background(Color.yellow.opacity(0.14), in: RoundedRectangle(cornerRadius: 16))
-        }
-      }
-
-      NativeAiCard {
-        VStack(alignment: .leading, spacing: 16) {
-          cardHeader("Reminders", symbol: "bell.circle.fill", color: .purple)
-          Text("Keep your records fresh")
-            .font(.system(size: 26, weight: .bold, design: .rounded))
-
-          Toggle("Logging reminder", isOn: Binding(
-            get: { store.settings.loggingReminder },
-            set: { store.settings.loggingReminder = $0 }
-          ))
-          .font(.system(size: 17, weight: .bold))
-          .tint(OkkleColor.brand)
-
-          if store.settings.loggingReminder {
-            Picker("Frequency", selection: Binding(
-              get: { store.settings.logFrequency },
-              set: { store.settings.logFrequency = $0 }
-            )) {
-              ForEach(NativeLogFrequency.allCases) { frequency in
-                Text(frequency.label).tag(frequency)
-              }
-            }
-            .pickerStyle(.segmented)
-
-            Picker("Reminder day", selection: Binding(
-              get: { store.settings.reminderDay },
-              set: { store.settings.reminderDay = $0 }
-            )) {
-              ForEach(0..<weekdays.count, id: \.self) { index in
-                Text(weekdays[index]).tag(index)
-              }
-            }
-            .pickerStyle(.segmented)
+      // These three cards are one-time set-up prompts: they only appear while
+      // the feature is off. Once you turn one on it disappears here — the on/off
+      // switch then lives in Settings.
+      if !store.settings.tripNudges {
+        NativeAiCard(banner: "TRIP NUDGES") {
+          VStack(alignment: .leading, spacing: 16) {
+            Text("Never forget to track a trip")
+              .font(.system(size: 26, weight: .bold, design: .rounded))
+            Text("Okkle watches both ends of your trip. When it senses you have started driving it nudges you to start tracking, then reminds you to end and save your miles once you have stopped.")
+              .font(.system(size: 15, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
+            Toggle("Trip nudges", isOn: Binding(
+              get: { store.settings.tripNudges },
+              set: { store.settings.tripNudges = $0 }
+            ))
+            .font(.system(size: 17, weight: .bold))
+            .tint(OkkleColor.brand)
+            Label("Detection is a prompt, not auto-logging. Nothing is recorded until you confirm.", systemImage: "exclamationmark.circle")
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(OkkleColor.amber)
+              .padding(14)
+              .background(Color.yellow.opacity(0.14), in: RoundedRectangle(cornerRadius: 16))
           }
-
-          Divider()
-
-          Toggle("Tax deadline reminders", isOn: Binding(
-            get: { store.settings.taxDeadlineReminders },
-            set: { store.settings.taxDeadlineReminders = $0 }
-          ))
-          .font(.system(size: 17, weight: .bold))
-          .tint(OkkleColor.brand)
         }
       }
 
-      NativeKeyTaxDatesPanel()
+      if !store.settings.loggingReminder {
+        NativeAiCard(banner: "REMINDERS") {
+          VStack(alignment: .leading, spacing: 16) {
+            Text("Keep your records fresh")
+              .font(.system(size: 26, weight: .bold, design: .rounded))
+            Text("Get a gentle nudge to log your miles and pay so nothing slips through the week.")
+              .font(.system(size: 15, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
+            Toggle("Logging reminder", isOn: Binding(
+              get: { store.settings.loggingReminder },
+              set: { store.settings.loggingReminder = $0 }
+            ))
+            .font(.system(size: 17, weight: .bold))
+            .tint(OkkleColor.brand)
+          }
+        }
+      }
+
+      if !store.settings.taxDeadlineReminders {
+        NativeKeyTaxDatesPanel()
+      }
 
       if store.history.isEmpty {
         NativeEmptyState(symbol: "sparkles", title: "Insights will grow with your data", message: "Track trips and log pay to unlock best zones, hours, platform mix and tax-aware suggestions.")
       }
-    }
-  }
-
-  private func cardHeader(_ title: String, symbol: String, color: Color) -> some View {
-    HStack(spacing: 10) {
-      Image(systemName: symbol)
-        .font(.system(size: 20, weight: .bold))
-        .foregroundStyle(color)
-        .frame(width: 42, height: 42)
-        .background(color.opacity(0.14), in: Circle())
-      Text(title.uppercased())
-        .font(.system(size: 15, weight: .heavy))
-        .foregroundStyle(.purple)
     }
   }
 }
@@ -514,27 +468,24 @@ func nativeAddDeadlineToCalendar(_ deadline: NativeTaxDeadline) async -> Bool {
 }
 
 struct NativeKeyTaxDatesPanel: View {
+  @EnvironmentObject private var store: OkkleStore
   @State private var showSheet = false
 
   var body: some View {
-    NativeAiCard {
+    NativeAiCard(banner: "KEY TAX DATES") {
       VStack(alignment: .leading, spacing: 16) {
-        HStack(spacing: 10) {
-          Image(systemName: "calendar.circle.fill")
-            .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(OkkleColor.brand)
-            .frame(width: 42, height: 42)
-            .background(OkkleColor.brand.opacity(0.14), in: Circle())
-          Text("KEY TAX DATES")
-            .font(.system(size: 15, weight: .heavy))
-            .foregroundStyle(.purple)
-        }
         Text("Keep HMRC deadlines close")
           .font(.system(size: 26, weight: .bold, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
         Text("Review Self Assessment dates and add reminders to your calendar.")
           .font(.system(size: 15, weight: .medium))
           .foregroundStyle(OkkleColor.muted)
+        Toggle("Tax deadline reminders", isOn: Binding(
+          get: { store.settings.taxDeadlineReminders },
+          set: { store.settings.taxDeadlineReminders = $0 }
+        ))
+        .font(.system(size: 17, weight: .bold))
+        .tint(OkkleColor.brand)
         Button {
           showSheet = true
         } label: {

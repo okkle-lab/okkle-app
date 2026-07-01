@@ -173,19 +173,55 @@ struct NativeGlassCard<Content: View>: View {
 }
 
 struct NativeAiCard<Content: View>: View {
+  var banner: String? = nil
+  var bannerTrailing: String? = nil
   let content: Content
 
-  init(@ViewBuilder content: () -> Content) {
+  init(banner: String? = nil, bannerTrailing: String? = nil, @ViewBuilder content: () -> Content) {
+    self.banner = banner
+    self.bannerTrailing = bannerTrailing
     self.content = content()
   }
 
   var body: some View {
-    NativeGlassCard(cornerRadius: 30) {
-      content
+    cardBody
+      .shadow(color: Color(red: 0.32, green: 0.78, blue: 1.0).opacity(0.20), radius: 36, x: -18, y: 18)
+      .shadow(color: Color(red: 0.58, green: 0.36, blue: 1.0).opacity(0.16), radius: 44, x: 20, y: 20)
+      .shadow(color: Color(red: 1.0, green: 0.56, blue: 0.67).opacity(0.14), radius: 50, x: 0, y: -8)
+  }
+
+  @ViewBuilder private var cardBody: some View {
+    if let banner {
+      VStack(spacing: 0) {
+        // Same coloured band header as the Home cards.
+        HStack(spacing: 8) {
+          Text(banner)
+            .font(.system(size: 14, weight: .heavy))
+            .tracking(0.5)
+          Spacer(minLength: 8)
+          if let bannerTrailing {
+            Text(bannerTrailing)
+              .font(.system(size: 12, weight: .bold))
+              .foregroundStyle(.white.opacity(0.9))
+          }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LinearGradient(colors: [OkkleColor.bannerDark, OkkleColor.brand], startPoint: .leading, endPoint: .trailing))
+
+        content
+          .padding(20)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(.regularMaterial)
+      }
+      .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+    } else {
+      NativeGlassCard(cornerRadius: 30) {
+        content
+      }
     }
-    .shadow(color: Color(red: 0.32, green: 0.78, blue: 1.0).opacity(0.20), radius: 36, x: -18, y: 18)
-    .shadow(color: Color(red: 0.58, green: 0.36, blue: 1.0).opacity(0.16), radius: 44, x: 20, y: 20)
-    .shadow(color: Color(red: 1.0, green: 0.56, blue: 0.67).opacity(0.14), radius: 50, x: 0, y: -8)
   }
 }
 

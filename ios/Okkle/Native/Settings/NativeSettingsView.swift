@@ -185,6 +185,47 @@ struct NativeSettingsView: View {
 
         NativeSettingsPlatformsSection()
 
+        Section {
+          Toggle("Trip nudges", isOn: Binding(
+            get: { store.settings.tripNudges },
+            set: { store.settings.tripNudges = $0 }
+          ))
+
+          Toggle("Logging reminder", isOn: Binding(
+            get: { store.settings.loggingReminder },
+            set: { store.settings.loggingReminder = $0 }
+          ))
+
+          if store.settings.loggingReminder {
+            Picker("Frequency", selection: Binding(
+              get: { store.settings.logFrequency },
+              set: { store.settings.logFrequency = $0 }
+            )) {
+              ForEach(NativeLogFrequency.allCases) { frequency in
+                Text(frequency.label).tag(frequency)
+              }
+            }
+
+            Picker("Reminder day", selection: Binding(
+              get: { store.settings.reminderDay },
+              set: { store.settings.reminderDay = $0 }
+            )) {
+              ForEach(0..<Calendar.current.shortWeekdaySymbols.count, id: \.self) { index in
+                Text(Calendar.current.shortWeekdaySymbols[index]).tag(index)
+              }
+            }
+          }
+
+          Toggle("Tax deadline reminders", isOn: Binding(
+            get: { store.settings.taxDeadlineReminders },
+            set: { store.settings.taxDeadlineReminders = $0 }
+          ))
+        } header: {
+          Text("Notifications")
+        } footer: {
+          Text("Turn these on from the prompts in Insights, or manage them here.")
+        }
+
         Section("Data") {
           Button {
             backupBusy = true
