@@ -23,6 +23,17 @@ enum NativeTimeFilter: String, CaseIterable, Identifiable {
     }
   }
 
+  var startHour: Int? {
+    switch self {
+    case .all: return nil
+    case .morning: return 6
+    case .lunch: return 11
+    case .afternoon: return 14
+    case .dinner: return 17
+    case .late: return 21
+    }
+  }
+
   func includes(_ date: Date) -> Bool {
     if self == .all { return true }
     let hour = Calendar.current.component(.hour, from: date)
@@ -440,6 +451,45 @@ struct NativeShiftMapPreview: View {
   }
 }
 
+/// A compact button (no always-on map) that opens the full explorable map. The
+/// inline map ate too much vertical space and didn't tell the driver what to do.
+struct NativeExploreMapButton: View {
+  let trips: [NativeTrip]
+  let zones: [NativeZonePoint]
+  @State private var showDetail = false
+
+  var body: some View {
+    Button { showDetail = true } label: {
+      HStack(spacing: 10) {
+        Image(systemName: "map.fill")
+          .font(.system(size: 15, weight: .bold))
+          .foregroundStyle(OkkleColor.brand)
+          .frame(width: 30, height: 30)
+          .background(OkkleColor.brand.opacity(0.14), in: Circle())
+        VStack(alignment: .leading, spacing: 1) {
+          Text("Explore your zones")
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(OkkleColor.ink)
+          Text("See your busy areas on the map")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+        }
+        Spacer(minLength: 0)
+        Image(systemName: "chevron.right")
+          .font(.system(size: 13, weight: .bold))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      .padding(12)
+      .frame(maxWidth: .infinity)
+      .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+    }
+    .buttonStyle(.plain)
+    .sheet(isPresented: $showDetail) {
+      NativeShiftMapDetailView(trips: trips, zones: zones)
+    }
+  }
+}
+
 struct NativeShiftMapDetailView: View {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
@@ -482,12 +532,8 @@ struct NativeShiftPatternsCard: View {
 
         if !autoTrackTrips {
           offState
-          NativeShiftMapPreview(trips: trips, zones: shift.zones)
-          NativeHeatLegend()
         } else if !shift.hasData {
           buildingState
-          NativeShiftMapPreview(trips: trips, zones: shift.zones)
-          NativeHeatLegend()
         } else {
           carousel
         }
@@ -561,13 +607,15 @@ struct NativeDailyInsightPanel: View {
     ScrollView(.vertical, showsIndicators: false) {
       VStack(alignment: .leading, spacing: 12) {
         if let plan = shift.todayPlan {
+          let strongDay = shift.weekdayDetails.prefix(3).contains { $0.weekday == plan.weekday }
+
           Text(plan.isToday
                ? "TODAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())"
                : "NEXT WORKING DAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())")
             .font(.system(size: 12, weight: .heavy)).tracking(0.4)
             .foregroundStyle(OkkleColor.muted)
 
-          weatherSection
+          weatherSection(plan: plan, strongDay: strongDay)
 
           if let now = rightNow(plan) {
             HStack(alignment: .top, spacing: 10) {
@@ -597,19 +645,22 @@ struct NativeDailyInsightPanel: View {
 
           if let brk = plan.breakWindow {
             planRow(symbol: "cup.and.saucer.fill", color: OkkleColor.amber,
-                    title: "Quietest — good for a break", value: brk.label, detail: nil)
+                    title: "Predicted lull — take your break", value: brk.label, detail: nil)
           } else if plan.driveWindows.isEmpty {
             Text("Not enough on \(plan.dayLabel) yet — a couple more shifts and the timing will sharpen up.")
               .font(.system(size: 14, weight: .medium))
               .foregroundStyle(OkkleColor.muted)
           }
 
+          if let pace = goalPace(plan) {
+            planRow(symbol: "target", color: .green, title: "Aim for", value: pace.money, detail: pace.detail)
+          }
+
           NativeHourStrip(hourCounts: plan.hourCounts)
             .padding(.top, 2)
         }
 
-        NativeShiftMapPreview(trips: trips, zones: shift.zones)
-        NativeHeatLegend()
+        NativeExploreMapButton(trips: trips, zones: shift.zones)
       }
       .padding(.bottom, 4)
     }
@@ -622,10 +673,19 @@ struct NativeDailyInsightPanel: View {
     }
   }
 
-  // MARK: Weather layer
+  // MARK: Goal pacing
 
-  @ViewBuilder private var weatherSection: some View {
-    if let today = weather.today, let insight = weatherInsight(today) {
+  private func goalPace(_ plan: NativeDayPlan) -> (money: String, detail: String)? {
+    guard let perHour = shift.perHour else { return nil }
+    let activeHours = max(1, plan.hourCounts.filter { $0 > 0 }.count)
+    let target = perHour * Double(activeHours)
+    return (gbp(target, whole: true), "≈ \(activeHours)h out at your ~\(gbp(perHour, whole: true))/hr")
+  }
+
+  // MARK: Weather layer + "big night" alert
+
+  @ViewBuilder private func weatherSection(plan: NativeDayPlan, strongDay: Bool) -> some View {
+    if let today = weather.today, let insight = weatherInsight(today, plan: plan, strongDay: strongDay) {
       HStack(alignment: .top, spacing: 10) {
         Image(systemName: insight.symbol)
           .font(.system(size: 18, weight: .semibold))
@@ -648,7 +708,7 @@ struct NativeDailyInsightPanel: View {
     }
   }
 
-  private func weatherInsight(_ weather: NativeDayWeather) -> (symbol: String, headline: String, detail: String, busy: Bool)? {
+  private func weatherInsight(_ weather: NativeDayWeather, plan: NativeDayPlan, strongDay: Bool) -> (symbol: String, headline: String, detail: String, busy: Bool)? {
     // Look at the working part of the day only.
     let daytime = weather.hours.filter { (10...23).contains($0.hour) }
     guard !daytime.isEmpty else { return nil }
@@ -657,10 +717,20 @@ struct NativeDailyInsightPanel: View {
     if let start = boost.map(\.hour).min(), let end = boost.map(\.hour).max() {
       let range = "\(nativeHourLabel(start))–\(nativeHourLabel(end + 1))"
       let wet = boost.contains(where: \.isWet)
+      let cold = boost.contains(where: \.isCold)
+      let dayName = Calendar.current.weekdaySymbols[plan.weekday]
+
+      // Big night: bad weather landing on one of your strong days.
+      if strongDay {
+        let cond = (wet && cold) ? "Cold and wet" : (wet ? "Wet" : "Cold")
+        return ("flame.fill",
+                "Don't skip \(plan.isToday ? "tonight" : dayName) — big one likely",
+                "\(cond) on a \(dayName), your classic busy night. Get out around \(range).",
+                true)
+      }
       let symbol = wet ? "cloud.rain.fill" : "thermometer.snowflake"
       let headline = wet ? "Rain around \(range) — likely busier" : "Cold around \(range) — likely busier"
-      let detail = "Orders usually spike and fewer drivers are out, so it can pay to be on."
-      return (symbol, headline, detail, true)
+      return (symbol, headline, "Orders usually spike and fewer drivers are out, so it can pay to be on.", true)
     }
 
     // No demand boost — just show a calm conditions summary from midday.
@@ -812,6 +882,10 @@ struct NativeWeeklyInsightPanel: View {
           NativeHeatStatChip(title: "Per hour", value: shift.perHour.map { gbp($0, whole: true) } ?? "—", symbol: "sterlingsign.circle.fill", color: .green)
         }
 
+        if let last = shift.lastShift {
+          debriefView(last)
+        }
+
         ForEach(shift.weeklyTips, id: \.self) { tip in
           HStack(alignment: .top, spacing: 8) {
             Image(systemName: "arrow.up.right.circle.fill")
@@ -832,6 +906,37 @@ struct NativeWeeklyInsightPanel: View {
   private func areaText(for coordinate: CLLocationCoordinate2D?) -> String? {
     guard let coordinate, let name = areaNamer.name(for: coordinate) else { return nil }
     return name
+  }
+
+  @ViewBuilder private func debriefView(_ last: NativeShiftDebrief) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("LAST SHIFT · \(last.dayName.uppercased())")
+        .font(.system(size: 12, weight: .heavy)).tracking(0.4)
+        .foregroundStyle(OkkleColor.muted)
+      HStack(spacing: 6) {
+        Text("\(gbp(last.perHour, whole: true))/hr")
+          .font(.system(size: 16, weight: .heavy))
+          .foregroundStyle(OkkleColor.ink)
+        if let avg = last.weekdayAvgPerHour {
+          let up = last.perHour >= avg
+          Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(up ? OkkleColor.brand : OkkleColor.amber)
+          Text("vs \(last.dayName) avg \(gbp(avg, whole: true))")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+      }
+      if last.finishedBeforePeak, let peak = last.peakLabel {
+        Text("You clocked off before your usual \(peak.lowercased()) peak — worth staying out for it next time.")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
   }
 }
 
@@ -1225,6 +1330,19 @@ struct NativeDayPlan {
   var peakWindow: NativeHourWindow? { driveWindows.max { $0.count < $1.count } }
 }
 
+/// A short "how did that shift go" read on your most recent logged day: the
+/// day's £/hr versus your usual for that weekday, and whether you clocked off
+/// before your typical peak.
+struct NativeShiftDebrief {
+  let weekday: Int
+  let perHour: Double
+  let weekdayAvgPerHour: Double?
+  let finishedBeforePeak: Bool
+  let peakLabel: String?
+
+  var dayName: String { Calendar.current.shortWeekdaySymbols[weekday] }
+}
+
 /// Everything the passive engine can tell a driver, derived from the stops plus
 /// their (weekly) logged income. Aggregate totals stay exact; only the
 /// within-week distribution is modelled, so estimates are bounded.
@@ -1241,6 +1359,7 @@ struct NativeShiftInsights {
   let weekdayStats: [NativeWeekdayStat]
   let weekdayDetails: [NativeWeekdayDetail]   // active days, busiest first
   let todayPlan: NativeDayPlan?
+  let lastShift: NativeShiftDebrief?
 
   var hasData: Bool { deliveries > 0 }
   var totalMiles: Double { paidMiles + deadMiles }
@@ -1252,7 +1371,7 @@ struct NativeShiftInsights {
   static let empty = NativeShiftInsights(
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
-    weekdayStats: [], weekdayDetails: [], todayPlan: nil
+    weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil
   )
 
   /// A weekly tip or two — kept short, since the panels now carry the detail.
@@ -1411,6 +1530,8 @@ struct NativeShiftInsights {
       )
     }
 
+    let lastShift = debrief(sorted: sorted, deliveryHits: deliveryHits, store: store, shiftGap: shiftGap, cellSize: cellSize)
+
     return NativeShiftInsights(
       deliveries: deliveries,
       activeHours: activeHours,
@@ -1423,7 +1544,55 @@ struct NativeShiftInsights {
       zones: zones,
       weekdayStats: weekdayStats,
       weekdayDetails: weekdayDetails,
-      todayPlan: todayPlan
+      todayPlan: todayPlan,
+      lastShift: lastShift
+    )
+  }
+
+  /// Read on the most recent day (in the last fortnight) that has both stops
+  /// and logged income: that day's £/hr vs your usual for that weekday, and
+  /// whether you finished before your typical peak band.
+  @MainActor
+  private static func debrief(sorted: [NativeVisit], deliveryHits: [NativeDeliveryHit], store: OkkleStore, shiftGap: TimeInterval, cellSize: Double) -> NativeShiftDebrief? {
+    let cal = Calendar.current
+    // Income by calendar day (last 14 days).
+    let since = Date().addingTimeInterval(-14 * 86_400)
+    var incomeByDay: [Date: Double] = [:]
+    for r in store.records where r.kind == .income && r.date >= since {
+      incomeByDay[cal.startOfDay(for: r.date), default: 0] += r.amount ?? 0
+    }
+    guard !incomeByDay.isEmpty else { return nil }
+
+    // The most recent day that also has tracked stops.
+    let daysWithStops = Set(sorted.map { cal.startOfDay(for: $0.arrival) })
+    guard let day = incomeByDay.keys.filter({ daysWithStops.contains($0) }).max() else { return nil }
+
+    let dayVisits = sorted.filter { cal.isDate($0.arrival, inSameDayAs: day) }
+    let activeHours = recentActiveHours(dayVisits, since: day, shiftGap: shiftGap)
+    guard activeHours > 0.25, let income = incomeByDay[day], income > 0 else { return nil }
+    let perHour = income / activeHours
+    let weekday = cal.component(.weekday, from: day) - 1
+
+    // Average £/hr for that weekday across the fortnight.
+    var wdIncome = 0.0
+    for (d, inc) in incomeByDay where cal.component(.weekday, from: d) - 1 == weekday { wdIncome += inc }
+    var wdHours = 0.0
+    let grouped = Dictionary(grouping: sorted.filter { cal.component(.weekday, from: $0.arrival) - 1 == weekday }) { cal.startOfDay(for: $0.arrival) }
+    for (d, vs) in grouped { wdHours += recentActiveHours(vs, since: d, shiftGap: shiftGap) }
+    let weekdayAvg: Double? = wdHours > 0.25 ? wdIncome / wdHours : nil
+
+    // Did they finish before their usual peak band for that weekday?
+    let (peakBand, _) = bestBandAndZone(for: weekday, deliveryHits: deliveryHits, cellSize: cellSize)
+    let lastHour = dayVisits.map { cal.component(.hour, from: $0.arrival) }.max() ?? 0
+    let peakStart = peakBand.startHour
+    let finishedBeforePeak = peakStart != nil && lastHour < (peakStart ?? 0)
+
+    return NativeShiftDebrief(
+      weekday: weekday,
+      perHour: perHour,
+      weekdayAvgPerHour: weekdayAvg,
+      finishedBeforePeak: finishedBeforePeak,
+      peakLabel: peakBand.label
     )
   }
 
