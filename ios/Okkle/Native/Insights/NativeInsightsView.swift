@@ -202,6 +202,166 @@ final class NativeOneShotLocator: NSObject, ObservableObject, CLLocationManagerD
   nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 }
 
+// MARK: - Areas to try (exploratory, not from the driver's own history)
+
+/// One exploratory patch worth testing — scored purely by nearby restaurant
+/// density, since there's no order-volume data to learn real demand from.
+/// Always kept separate from the data-backed "top areas": a bad guess here
+/// must never erode trust in what IS backed by the driver's own history.
+struct NativeSuggestedArea: Identifiable {
+  let id = UUID()
+  let name: String
+  let coordinate: CLLocationCoordinate2D
+  let poiCount: Int
+}
+
+/// Move a coordinate `distanceKm` along `bearingDeg` (0 = north, clockwise) —
+/// used to lay out a ring of candidate points around the driver.
+func nativeOffsetCoordinate(_ origin: CLLocationCoordinate2D, distanceKm: Double, bearingDeg: Double) -> CLLocationCoordinate2D {
+  let earthRadiusKm = 6371.0
+  let bearing = bearingDeg * .pi / 180
+  let lat1 = origin.latitude * .pi / 180
+  let lon1 = origin.longitude * .pi / 180
+  let angular = distanceKm / earthRadiusKm
+  let lat2 = asin(sin(lat1) * cos(angular) + cos(lat1) * sin(angular) * cos(bearing))
+  let lon2 = lon1 + atan2(sin(bearing) * sin(angular) * cos(lat1), cos(angular) - sin(lat1) * sin(lat2))
+  return CLLocationCoordinate2D(latitude: lat2 * 180 / .pi, longitude: lon2 * 180 / .pi)
+}
+
+@MainActor
+final class NativeAreaSuggester: ObservableObject {
+  static let shared = NativeAreaSuggester()
+  @Published private(set) var suggestions: [NativeSuggestedArea] = []
+  private var fetchedForKey: String?
+  private var fetching = false
+
+  /// Lay out a ring of candidates 2km out around the driver, score them by
+  /// restaurant density, and keep the top two — excluding anywhere that
+  /// resolves to a name the driver already knows. Streets can run for over a
+  /// kilometre, so excluding by *name* (not just raw distance) is what
+  /// actually stops "Garratt Lane" showing up as both a known patch and a
+  /// "new" suggestion. The known names are resolved fresh inside this same
+  /// async task rather than read off another view's cache, so there's no
+  /// race where the exclusion list is still empty when we fetch.
+  func refresh(near origin: CLLocationCoordinate2D, knownZones: [CLLocationCoordinate2D]) {
+    let key = "\(Int((origin.latitude * 200).rounded())),\(Int((origin.longitude * 200).rounded()))"
+    guard key != fetchedForKey, !fetching else { return }
+    fetchedForKey = key
+    fetching = true
+    Task {
+      let found = await Self.discover(near: origin, knownZones: knownZones)
+      self.suggestions = found
+      self.fetching = false
+    }
+  }
+
+  private static func discover(near origin: CLLocationCoordinate2D, knownZones: [CLLocationCoordinate2D]) async -> [NativeSuggestedArea] {
+    var known = Set<String>()
+    for zone in knownZones {
+      if let name = await areaName(for: zone) { known.insert(name.lowercased()) }
+    }
+
+    let candidates = stride(from: 0.0, to: 360.0, by: 45.0)
+      .map { nativeOffsetCoordinate(origin, distanceKm: 2.0, bearingDeg: $0) }
+
+    // Sequential, not concurrent — MKLocalSearch (like CLGeocoder) cancels
+    // overlapping requests, so parallel calls would silently drop results.
+    var scored: [(CLLocationCoordinate2D, Int)] = []
+    for candidate in candidates {
+      let count = await poiCount(near: candidate)
+      if count > 0 { scored.append((candidate, count)) }
+    }
+    scored.sort { $0.1 > $1.1 }
+
+    var out: [NativeSuggestedArea] = []
+    var seenNames = Set<String>()
+    for (coordinate, count) in scored {
+      guard let name = await areaName(for: coordinate) else { continue }
+      guard !known.contains(name.lowercased()) else { continue }
+      if seenNames.insert(name.lowercased()).inserted {
+        out.append(NativeSuggestedArea(name: name, coordinate: coordinate, poiCount: count))
+      }
+      if out.count >= 2 { break }
+    }
+    return out
+  }
+
+  private static func poiCount(near coordinate: CLLocationCoordinate2D) async -> Int {
+    await withCheckedContinuation { continuation in
+      let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 400)
+      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
+      MKLocalSearch(request: request).start { response, _ in
+        continuation.resume(returning: response?.mapItems.count ?? 0)
+      }
+    }
+  }
+
+  private static func areaName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    await withCheckedContinuation { continuation in
+      CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
+        continuation.resume(returning: placemarks?.first.flatMap { $0.thoroughfare ?? $0.subLocality ?? $0.locality })
+      }
+    }
+  }
+}
+
+/// A dashed, clearly-experimental card — the "explore" counterpart to the
+/// data-backed "Where to go" list. Tapping a row hands off to Apple Maps for
+/// directions; this app doesn't claim to know these places are actually busy.
+struct NativeAreasToTryCard: View {
+  let suggestions: [NativeSuggestedArea]
+
+  var body: some View {
+    if !suggestions.isEmpty {
+      NativeGlassCard(cornerRadius: 30) {
+        VStack(alignment: .leading, spacing: 12) {
+          Text("AREAS TO TRY")
+            .font(.system(size: 12, weight: .heavy)).tracking(0.5)
+            .foregroundStyle(OkkleColor.muted)
+          Text("Experimental — scored by nearby restaurants, not your own history. Worth a test run.")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
+          VStack(spacing: 0) {
+            ForEach(Array(suggestions.enumerated()), id: \.element.id) { index, area in
+              Button {
+                let item = MKMapItem(placemark: MKPlacemark(coordinate: area.coordinate))
+                item.name = area.name
+                item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+              } label: {
+                HStack(spacing: 12) {
+                  Image(systemName: "questionmark.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                  VStack(alignment: .leading, spacing: 1) {
+                    Text(area.name)
+                      .font(.system(size: 16, weight: .semibold))
+                      .foregroundStyle(OkkleColor.ink)
+                    Text("Get directions")
+                      .font(.system(size: 13, weight: .medium))
+                      .foregroundStyle(OkkleColor.brand)
+                  }
+                  Spacer(minLength: 8)
+                  Image(systemName: "arrow.up.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(OkkleColor.muted)
+                }
+                .padding(.vertical, 10)
+              }
+              .buttonStyle(.plain)
+              if index < suggestions.count - 1 { Divider().padding(.leading, 32) }
+            }
+          }
+        }
+      }
+      .overlay(
+        RoundedRectangle(cornerRadius: 30, style: .continuous)
+          .strokeBorder(OkkleColor.muted.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+      )
+    }
+  }
+}
+
 /// A coloured overlay circle for one zone — a plain MKCircle plus the weight
 /// that decides its colour.
 final class NativeZoneCircle: MKCircle {
@@ -763,6 +923,7 @@ struct NativeDailyInsightPanel: View {
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @ObservedObject private var weather = NativeWeatherService.shared
   @ObservedObject private var locator = NativeOneShotLocator.shared
+  @ObservedObject private var suggester = NativeAreaSuggester.shared
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -802,14 +963,24 @@ struct NativeDailyInsightPanel: View {
               .fixedSize(horizontal: false, vertical: true)
           }
         }
+
+        // Panel 3 — exploratory, kept visually separate from the data-backed
+        // panels above: a guess, not a reflection of the driver's history.
+        NativeAreasToTryCard(suggestions: suggester.suggestions)
       }
     }
     .onAppear {
       locator.request()
-      if let c = locator.coordinate { weather.refresh(for: c) }
+      if let c = locator.coordinate {
+        weather.refresh(for: c)
+        suggester.refresh(near: c, knownZones: nativeTopZones(shift.zones, near: c, limit: 8).map(\.coordinate))
+      }
     }
     .onChange(of: locator.coordinate?.latitude) { _ in
-      if let c = locator.coordinate { weather.refresh(for: c) }
+      if let c = locator.coordinate {
+        weather.refresh(for: c)
+        suggester.refresh(near: c, knownZones: nativeTopZones(shift.zones, near: c, limit: 8).map(\.coordinate))
+      }
     }
   }
 
