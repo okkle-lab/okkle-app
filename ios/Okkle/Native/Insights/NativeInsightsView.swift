@@ -96,6 +96,18 @@ enum NativeTimeFilter: String, CaseIterable, Identifiable {
     }
   }
 
+  /// A clock range for the band — so the UI can show *when*, not a vague label.
+  var timeRange: String {
+    switch self {
+    case .all: return "All day"
+    case .morning: return "6–11am"
+    case .lunch: return "11am–2pm"
+    case .afternoon: return "2–5pm"
+    case .dinner: return "5–9pm"
+    case .late: return "9pm–late"
+    }
+  }
+
   func includes(_ date: Date) -> Bool {
     if self == .all { return true }
     let hour = Calendar.current.component(.hour, from: date)
@@ -215,11 +227,11 @@ final class NativeAreaNamer: ObservableObject {
       guard let self else { return }
       Task { @MainActor in
         self.inFlight.remove(key)
-        // Aim for a neighbourhood-sized patch a driver can actually cruise to —
-        // a district ("Camden Town") or a street, not a whole borough ("City of
-        // Westminster"), which is too broad to act on.
+        // Aim for the tightest patch a driver can actually head to: a street
+        // ("The Broadway") or a small district, never a whole borough ("Merton",
+        // "City of Westminster") which is too broad to act on.
         if let p = placemarks?.first,
-           let area = p.subLocality ?? p.thoroughfare ?? p.locality {
+           let area = p.thoroughfare ?? p.subLocality ?? p.locality {
           self.names[key] = area
         }
       }
@@ -391,8 +403,6 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
   var interactive: Bool = false
-  /// When set, draws a rough "cruise loop" from you through the ranked areas.
-  var suggestLoop: Bool = false
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
   func makeCoordinator() -> Coordinator { Coordinator() }
@@ -443,18 +453,6 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       mapView.addAnnotation(pin)
     }
 
-    // Optional rough cruise loop: you → area 1 → 2 → … (straight legs, clearly
-    // a rough guide, not turn-by-turn).
-    if suggestLoop, let start = locator.coordinate, top.count >= 2 {
-      // Order the legs by nearest-neighbour from the driver so the cruise route
-      // is a sensible sweep, not a criss-cross ranked by busyness.
-      let ordered = nativeNearestNeighbourOrder(from: start, points: top.map(\.coordinate))
-      let coords = [start] + ordered
-      let loop = MKPolyline(coordinates: coords, count: coords.count)
-      loop.title = "loop"
-      mapView.addOverlay(loop)
-    }
-
     if visibleRect.isNull {
       let center = locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
       mapView.setRegion(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)), animated: false)
@@ -471,14 +469,8 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
       if let polyline = overlay as? MKPolyline {
         let renderer = MKPolylineRenderer(polyline: polyline)
-        if polyline.title == "loop" {
-          renderer.strokeColor = UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 0.8)
-          renderer.lineWidth = 3
-          renderer.lineDashPattern = [2, 6]
-        } else {
-          renderer.strokeColor = UIColor(red: 0.20, green: 0.47, blue: 0.93, alpha: 0.55)
-          renderer.lineWidth = 4
-        }
+        renderer.strokeColor = UIColor(red: 0.20, green: 0.47, blue: 0.93, alpha: 0.55)
+        renderer.lineWidth = 4
         renderer.lineCap = .round
         renderer.lineJoin = .round
         return renderer
@@ -518,37 +510,33 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
   }
 }
 
-/// A compact button (no always-on map) that opens the full explorable map. The
-/// inline map ate too much vertical space and didn't tell the driver what to do.
-struct NativeExploreMapButton: View {
+/// A small live heat-map of your busy areas, right on the daily panel — a glance
+/// tells you where the warm patches are. Tap to open the full explorable map.
+struct NativeZoneMiniMap: View {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
   @State private var showDetail = false
 
   var body: some View {
     Button { showDetail = true } label: {
-      HStack(spacing: 10) {
-        Image(systemName: "map.fill")
-          .font(.system(size: 15, weight: .bold))
-          .foregroundStyle(OkkleColor.brand)
-          .frame(width: 30, height: 30)
-          .background(OkkleColor.brand.opacity(0.14), in: Circle())
-        VStack(alignment: .leading, spacing: 1) {
-          Text("Explore your zones")
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(OkkleColor.ink)
-          Text("See your busy areas on the map")
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
+      ZStack(alignment: .bottomTrailing) {
+        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: false)
+          .frame(height: 150)
+          .allowsHitTesting(false)
+        // Little affordance so it clearly opens something bigger.
+        HStack(spacing: 5) {
+          Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.system(size: 11, weight: .bold))
+          Text("Explore")
+            .font(.system(size: 12, weight: .bold))
         }
-        Spacer(minLength: 0)
-        Image(systemName: "chevron.right")
-          .font(.system(size: 13, weight: .bold))
-          .foregroundStyle(OkkleColor.muted)
+        .foregroundStyle(OkkleColor.ink)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: Capsule())
+        .padding(10)
       }
-      .padding(12)
-      .frame(maxWidth: .infinity)
-      .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+      .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
     .buttonStyle(.plain)
     .sheet(isPresented: $showDetail) {
@@ -625,20 +613,14 @@ struct NativeShiftMapDetailView: View {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
   @Environment(\.dismiss) private var dismiss
-  @State private var showLoop = false
 
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: true, suggestLoop: showLoop)
+        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: true)
           .ignoresSafeArea(edges: .bottom)
         VStack(spacing: 12) {
-          Toggle(isOn: $showLoop) {
-            Label("Suggest a cruise loop", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-              .font(.system(size: 14, weight: .bold))
-          }
-          .tint(OkkleColor.brand)
-          Text("Numbered pins are your busiest areas near you, ranked. The loop is a rough guide through them — not turn-by-turn.")
+          Text("Numbered pins are your busiest areas near you, ranked 1–5. Warmer patches are where you pick up and drop off most.")
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)
@@ -668,26 +650,24 @@ struct NativeShiftPatternsCard: View {
   @State private var tab = 0   // 0 = today, 1 = week
 
   var body: some View {
-    NativeAiCard {
-      VStack(alignment: .leading, spacing: 18) {
-        if !autoTrackTrips {
-          offState
-        } else if !shift.hasData {
-          buildingState
-        } else {
-          Picker("", selection: $tab.animation(.easeInOut(duration: 0.2))) {
-            Text("Today").tag(0)
-            Text("This week").tag(1)
-          }
-          .pickerStyle(.segmented)
+    if !autoTrackTrips {
+      NativeAiCard { offState }
+    } else if !shift.hasData {
+      NativeAiCard { buildingState }
+    } else {
+      VStack(alignment: .leading, spacing: 14) {
+        Picker("", selection: $tab.animation(.easeInOut(duration: 0.2))) {
+          Text("Today").tag(0)
+          Text("This week").tag(1)
+        }
+        .pickerStyle(.segmented)
 
-          if tab == 0 {
-            NativeDailyInsightPanel(shift: shift, trips: trips)
-              .transition(.opacity)
-          } else {
-            NativeWeeklyInsightPanel(shift: shift)
-              .transition(.opacity)
-          }
+        if tab == 0 {
+          NativeDailyInsightPanel(shift: shift, trips: trips)
+            .transition(.opacity)
+        } else {
+          NativeWeeklyInsightPanel(shift: shift)
+            .transition(.opacity)
         }
       }
     }
@@ -759,20 +739,31 @@ struct NativeDailyInsightPanel: View {
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
+    VStack(alignment: .leading, spacing: 14) {
       if let plan = shift.todayPlan {
-        heroSection(plan)
-
-        section("WHERE TO GO") {
-          NativeTopAreasList(zones: shift.zones, limit: 3)
+        // Panel 1 — WHEN: the one thing to do, plus the busy shape of the day.
+        NativeAiCard {
+          VStack(alignment: .leading, spacing: 16) {
+            heroSection(plan)
+            if let brk = plan.breakWindow {
+              Label("Quiet \(brk.label) — a good window for your break.", systemImage: "cup.and.saucer.fill")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(OkkleColor.muted)
+            }
+            NativeHourStrip(hourCounts: plan.hourCounts)
+          }
         }
 
-        section("WHEN IT'S BUSY") {
-          NativeHourStrip(hourCounts: plan.hourCounts)
+        // Panel 2 — WHERE: your best patches and a live heat-map to explore.
+        NativeAiCard {
+          VStack(alignment: .leading, spacing: 14) {
+            section("WHERE TO GO") {
+              NativeTopAreasList(zones: shift.zones, limit: 3)
+            }
+            NativeZoneMiniMap(trips: trips, zones: shift.zones)
+          }
         }
       }
-
-      NativeExploreMapButton(trips: trips, zones: shift.zones)
     }
     .onAppear {
       locator.request()
@@ -929,6 +920,7 @@ struct NativeWeeklyInsightPanel: View {
   }
 
   var body: some View {
+    NativeAiCard {
     VStack(alignment: .leading, spacing: 22) {
       // Busiest days at a glance.
       section("BUSIEST DAYS") {
@@ -982,7 +974,7 @@ struct NativeWeeklyInsightPanel: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(OkkleColor.ink)
               Spacer(minLength: 8)
-              Text(day.band.label)
+              Text(day.band.timeRange)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(OkkleColor.brandDark)
             }
@@ -991,6 +983,7 @@ struct NativeWeeklyInsightPanel: View {
           }
         }
       }
+    }
     }
   }
 
@@ -1053,7 +1046,8 @@ struct NativeInsightsView: View {
   }
 
   var body: some View {
-    NativeScreen(title: "Insights", collapsedTitle: "Insights") {
+    NativeScreen(title: "Insights", collapsedTitle: "Insights",
+                 subtitle: "Okkle learns your busy times and best areas from how you actually drive — no typing, no screenshots.") {
       NativeShiftPatternsCard(
         shift: shift,
         trips: store.trips,
@@ -1388,26 +1382,6 @@ func nativeTopZones(_ zones: [NativeZonePoint], near origin: CLLocationCoordinat
     if candidates.isEmpty { candidates = zones }   // never leave them with nothing
   }
   return Array(candidates.sorted { $0.weight > $1.weight }.prefix(limit))
-}
-
-/// Greedy nearest-neighbour ordering of `points` starting from `origin` — turns a
-/// busyness-ranked set of zones into a sensible driving sweep for the cruise loop.
-func nativeNearestNeighbourOrder(from origin: CLLocationCoordinate2D, points: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D] {
-  var remaining = points
-  var ordered: [CLLocationCoordinate2D] = []
-  var current = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
-  while !remaining.isEmpty {
-    var bestIndex = 0
-    var bestDistance = Double.greatestFiniteMagnitude
-    for (index, point) in remaining.enumerated() {
-      let d = current.distance(from: CLLocation(latitude: point.latitude, longitude: point.longitude))
-      if d < bestDistance { bestDistance = d; bestIndex = index }
-    }
-    let next = remaining.remove(at: bestIndex)
-    ordered.append(next)
-    current = CLLocation(latitude: next.latitude, longitude: next.longitude)
-  }
-  return ordered
 }
 
 /// How many deliveries land on one weekday, for the weekly overview bar list.
