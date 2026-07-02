@@ -8,10 +8,10 @@ import UIKit
 import Vision
 
 struct NativeHomeView: View {
+  @Environment(\.nativeViewportHeight) private var nativeViewportHeight
   @EnvironmentObject private var store: OkkleStore
   @Binding var selectedTab: NativeTab
-  @State private var showRecords = false
-  @State private var recordsMode = NativeRecordsView.RecordsMode.history
+  @State private var recordsDestination: RecordsDestination?
   @ObservedObject private var tripSession = NativeTripSession.shared
   @State private var medalAlert: NativeMedalAchievement?
   @State private var seenMedalKeys = Set<String>()
@@ -19,6 +19,14 @@ struct NativeHomeView: View {
   @State private var itemPendingDeletion: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
+  @State private var recentPanelContentY: CGFloat = 0
+
+  private enum RecordsDestination: String, Identifiable {
+    case history
+    case tax
+
+    var id: String { rawValue }
+  }
 
   // MARK: Body
 
@@ -36,9 +44,7 @@ struct NativeHomeView: View {
           summaryMetricsGrid
 
           recentSection
-            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
       }
     }
     .overlay {
@@ -54,12 +60,19 @@ struct NativeHomeView: View {
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
       }
     }
-    .fullScreenCover(isPresented: $showRecords) {
-      NativeRecordsView(initialMode: recordsMode) {
-        showRecords = false
+    .fullScreenCover(item: $recordsDestination) { destination in
+      switch destination {
+      case .history:
+        NativeRecordsView {
+          recordsDestination = nil
+        }
+        .environmentObject(store)
+      case .tax:
+        NativeTaxDetailView {
+          recordsDestination = nil
+        }
+        .environmentObject(store)
       }
-      .id(recordsMode.rawValue)
-      .environmentObject(store)
     }
     .alert("Delete this entry?", isPresented: Binding(
       get: { itemPendingDeletion != nil },
@@ -105,6 +118,11 @@ struct NativeHomeView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeShowTaxRecords)) { _ in
       openRecords(.tax)
+    }
+    .onPreferenceChange(RecentPanelTopPreferenceKey.self) { top in
+      if top > 0 {
+        recentPanelContentY = top
+      }
     }
   }
 
@@ -226,9 +244,8 @@ struct NativeHomeView: View {
       }
 
       recentPanel
-        .frame(maxHeight: .infinity, alignment: .top)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .frame(maxWidth: .infinity, alignment: .top)
   }
 
   private var recentHistory: [NativeHistoryItem] {
@@ -286,9 +303,22 @@ struct NativeHomeView: View {
       }
     }
     .padding(isEmpty ? 18 : 16)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isEmpty ? .center : .topLeading)
+    .frame(
+      maxWidth: .infinity,
+      minHeight: isEmpty ? emptyRecentPanelHeight : nil,
+      maxHeight: isEmpty ? emptyRecentPanelHeight : nil,
+      alignment: isEmpty ? .center : .topLeading
+    )
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     .shadow(color: .black.opacity(0.07), radius: 22, y: 12)
+    .background {
+      GeometryReader { proxy in
+        Color.clear.preference(
+          key: RecentPanelTopPreferenceKey.self,
+          value: proxy.frame(in: .named(nativeScreenContentCoordinateSpace)).minY
+        )
+      }
+    }
   }
 
   private var recentHistoryContent: some View {
@@ -347,6 +377,16 @@ struct NativeHomeView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
   }
 
+  private var emptyRecentPanelHeight: CGFloat {
+    guard nativeViewportHeight > 0, recentPanelContentY > 0 else {
+      return 320
+    }
+    // NativeScreen keeps 120pt of scroll padding so content clears the system
+    // tab bar. Use the same lower guard here so the empty panel stops above it
+    // and does not resize during scroll bounce.
+    return max(260, min(420, nativeViewportHeight - recentPanelContentY - 112))
+  }
+
   private func recentEmptyAction(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
       HStack(spacing: 6) {
@@ -374,9 +414,8 @@ struct NativeHomeView: View {
     return "\(NativeGreeting.word(for: Date(), shortOnly: name.count > 8)), \(name)"
   }
 
-  private func openRecords(_ mode: NativeRecordsView.RecordsMode) {
-    recordsMode = mode
-    showRecords = true
+  private func openRecords(_ destination: RecordsDestination) {
+    recordsDestination = destination
   }
 
   private func delete(_ item: NativeHistoryItem) {
@@ -550,6 +589,17 @@ struct NativeHomeView: View {
 
   private func saveSeenMedalKeys() {
     UserDefaults.standard.set(Array(seenMedalKeys).sorted(), forKey: nativeSeenMedalsKey)
+  }
+}
+
+private struct RecentPanelTopPreferenceKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    let next = nextValue()
+    if next > 0 {
+      value = next
+    }
   }
 }
 

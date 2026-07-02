@@ -6,6 +6,17 @@ import SQLite3
 import SwiftUI
 import UIKit
 import Vision
+
+struct NativeTaxDetailView: View {
+  var onClose: (() -> Void)? = nil
+
+  var body: some View {
+    NativeScreen(title: "Tax", collapsedTitle: "Tax", subtitle: "Your estimate, deductions and accountant exports.", onClose: onClose) {
+      NativeTaxSummaryView()
+    }
+  }
+}
+
 struct NativeTaxSummaryView: View {
   @EnvironmentObject private var store: OkkleStore
 

@@ -9,20 +9,12 @@ import UniformTypeIdentifiers
 import Vision
 struct NativeRecordsView: View {
   @EnvironmentObject private var store: OkkleStore
-  @State private var mode: RecordsMode = .history
   @State private var filter: RecordsFilter = .all
   @State private var itemPendingDeletion: NativeHistoryItem?
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
   var onClose: (() -> Void)? = nil
-
-  enum RecordsMode: String, CaseIterable, Identifiable {
-    case history
-    case tax
-
-    var id: String { rawValue }
-  }
 
   enum RecordsFilter: String, CaseIterable, Identifiable {
     case all
@@ -34,44 +26,33 @@ struct NativeRecordsView: View {
     var label: String { rawValue.capitalized }
   }
 
-  init(initialMode: RecordsMode = .history, onClose: (() -> Void)? = nil) {
-    _mode = State(initialValue: initialMode)
+  init(onClose: (() -> Void)? = nil) {
     self.onClose = onClose
   }
 
   var body: some View {
-    NativeScreen(title: "Records", collapsedTitle: "Records", subtitle: "Your logs, tax estimate and export-ready history.", onClose: onClose) {
-      Picker("Mode", selection: $mode) {
-        Text("History").tag(RecordsMode.history)
-        Text("Tax").tag(RecordsMode.tax)
+    NativeScreen(title: "Records", collapsedTitle: "Records", subtitle: "Trips, earnings and expenses.", onClose: onClose) {
+      Picker("Filter", selection: $filter) {
+        ForEach(RecordsFilter.allCases) { Text($0.label).tag($0) }
       }
       .pickerStyle(.segmented)
 
-      if mode == .history {
-        Picker("Filter", selection: $filter) {
-          ForEach(RecordsFilter.allCases) { Text($0.label).tag($0) }
-        }
-        .pickerStyle(.segmented)
-
-        if filteredHistory.isEmpty {
-          NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Trips, earnings and expenses appear here after you save them.")
-        } else {
-          NativeGlassCard {
-            VStack(spacing: 0) {
-              ForEach(filteredHistory) { item in
-                NativeSelectableHistoryRow(
-                  item: item,
-                  onSelect: { selectedHistoryItem = item }
-                )
-                if item.id != filteredHistory.last?.id {
-                  Divider().padding(.leading, 52)
-                }
+      if filteredHistory.isEmpty {
+        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Trips, earnings and expenses appear here after you save them.")
+      } else {
+        NativeGlassCard {
+          VStack(spacing: 0) {
+            ForEach(filteredHistory) { item in
+              NativeSelectableHistoryRow(
+                item: item,
+                onSelect: { selectedHistoryItem = item }
+              )
+              if item.id != filteredHistory.last?.id {
+                Divider().padding(.leading, 52)
               }
             }
           }
         }
-      } else {
-        NativeTaxSummaryView()
       }
     }
     .alert("Delete this entry?", isPresented: Binding(
@@ -109,12 +90,6 @@ struct NativeRecordsView: View {
         store.updateRecord(updatedRecord)
         recordPendingEdit = nil
       }
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .nativeShowTaxRecords)) { _ in
-      mode = .tax
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .nativeShowRecords)) { _ in
-      mode = .history
     }
   }
 

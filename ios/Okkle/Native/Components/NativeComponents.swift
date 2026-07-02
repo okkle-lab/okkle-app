@@ -23,6 +23,19 @@ enum NativeScreenStyle {
 
 }
 
+let nativeScreenContentCoordinateSpace = "NativeScreenContentCoordinateSpace"
+
+private struct NativeViewportHeightKey: EnvironmentKey {
+  static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+  var nativeViewportHeight: CGFloat {
+    get { self[NativeViewportHeightKey.self] }
+    set { self[NativeViewportHeightKey.self] = newValue }
+  }
+}
+
 struct NativeScreen<Content: View>: View {
   let title: String
   let collapsedTitle: String?
@@ -73,6 +86,8 @@ struct NativeScreen<Content: View>: View {
           .frame(minHeight: fillsViewport ? max(0, proxy.size.height - 36) : nil, alignment: .topLeading)
           .padding(.horizontal, 20)
           .padding(.bottom, 120)
+          .coordinateSpace(name: nativeScreenContentCoordinateSpace)
+          .environment(\.nativeViewportHeight, proxy.size.height)
         }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
