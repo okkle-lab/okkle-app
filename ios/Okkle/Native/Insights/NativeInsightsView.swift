@@ -216,27 +216,46 @@ final class NativeAreaNamer: ObservableObject {
   static let shared = NativeAreaNamer()
   @Published private(set) var names: [String: String] = [:]
   private let geocoder = CLGeocoder()
-  private var inFlight: Set<String> = []
+  // CLGeocoder cancels overlapping requests, so asking for several areas at once
+  // leaves all but one unresolved. Queue them and resolve one at a time.
+  private var pending: [(key: String, coordinate: CLLocationCoordinate2D)] = []
+  private var enqueued: Set<String> = []
+  private var busy = false
 
   func name(for coordinate: CLLocationCoordinate2D) -> String? {
     let key = "\(Int((coordinate.latitude * 200).rounded())),\(Int((coordinate.longitude * 200).rounded()))"
     if let cached = names[key] { return cached }
-    guard !inFlight.contains(key) else { return nil }
-    inFlight.insert(key)
-    geocoder.reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { [weak self] placemarks, _ in
+    if !enqueued.contains(key) {
+      enqueued.insert(key)
+      pending.append((key, coordinate))
+      drain()
+    }
+    return nil
+  }
+
+  private func drain() {
+    guard !busy, !pending.isEmpty else { return }
+    busy = true
+    let job = pending.removeFirst()
+    geocoder.reverseGeocodeLocation(CLLocation(latitude: job.coordinate.latitude, longitude: job.coordinate.longitude)) { [weak self] placemarks, _ in
       guard let self else { return }
       Task { @MainActor in
-        self.inFlight.remove(key)
         // Aim for the tightest patch a driver can actually head to: a street
         // ("The Broadway") or a small district, never a whole borough ("Merton",
         // "City of Westminster") which is too broad to act on.
         if let p = placemarks?.first,
            let area = p.thoroughfare ?? p.subLocality ?? p.locality {
-          self.names[key] = area
+          self.names[job.key] = area
+        } else {
+          // Let a later pass retry (throttle/no-result) rather than caching a miss.
+          self.enqueued.remove(job.key)
         }
+        self.busy = false
+        // Small gap keeps us the right side of the geocoder's rate limit.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        self.drain()
       }
     }
-    return nil
   }
 }
 
@@ -455,7 +474,13 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       mapView.addAnnotation(pin)
     }
 
-    if visibleRect.isNull {
+    // The non-interactive preview centres on your busiest patch at a steady
+    // zoom — otherwise, when your areas are miles apart, fitting them all zooms
+    // out to the whole city and the pins become useless dots. The full,
+    // interactive map still fits everything so you can pan across the lot.
+    if !interactive, let focus = ranked.first?.coordinate ?? locator.coordinate {
+      mapView.setRegion(MKCoordinateRegion(center: focus, span: MKCoordinateSpan(latitudeDelta: 0.055, longitudeDelta: 0.055)), animated: false)
+    } else if visibleRect.isNull {
       let center = locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
       mapView.setRegion(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)), animated: false)
     } else {
