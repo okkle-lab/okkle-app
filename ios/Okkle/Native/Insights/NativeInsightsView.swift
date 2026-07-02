@@ -579,6 +579,9 @@ struct NativeZoneMiniMap: View {
 struct NativeTopAreasList: View {
   let zones: [NativeZonePoint]
   var limit: Int = 5
+  /// Show a thin bar of how much of your work each area carries — turns a plain
+  /// rank into a sense of *how dominant* the top patch really is.
+  var showShareBar: Bool = false
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
@@ -596,15 +599,25 @@ struct NativeTopAreasList: View {
               .foregroundStyle(.white)
               .frame(width: 24, height: 24)
               .background(OkkleColor.brand, in: Circle())
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: showShareBar ? 5 : 1) {
               Text(area.name)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(OkkleColor.ink)
               Text(area.time.map { "Busy \($0)" } ?? "One of your patches")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OkkleColor.muted)
+              if showShareBar {
+                GeometryReader { geo in
+                  ZStack(alignment: .leading) {
+                    Capsule().fill(OkkleColor.muted.opacity(0.12)).frame(height: 4)
+                    Capsule().fill(OkkleColor.brand).frame(width: max(6, geo.size.width * area.weight), height: 4)
+                  }
+                }
+                .frame(height: 4)
+                .padding(.top, 1)
+              }
             }
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
           }
           .padding(.vertical, 10)
           if index < rows.count - 1 {
@@ -1012,9 +1025,7 @@ struct NativeWeeklyInsightPanel: View {
           .fixedSize(horizontal: false, vertical: true)
       }
     }
-    .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
   }
 
   private func breakdownRow(_ symbol: String, _ label: String, _ value: String) -> some View {
@@ -1060,62 +1071,73 @@ struct NativeWeeklyInsightPanel: View {
   }
 
   var body: some View {
-    NativeAiCard {
-    VStack(alignment: .leading, spacing: 22) {
-      // Busiest days — tap a bar to reflect on that day's breakdown.
-      section("BUSIEST DAYS") {
-        let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
-        HStack(alignment: .bottom, spacing: 8) {
-          ForEach(orderedWeekdayStats) { stat in
-            let selected = stat.weekday == activeWeekday
-            VStack(spacing: 6) {
-              Text(stat.count > 0 ? "\(stat.sharePct)%" : "")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
-              Capsule()
-                .fill(stat.count == 0 ? OkkleColor.muted.opacity(0.18) : nativeHeatColor(Double(stat.sharePct) / Double(maxShare)))
-                .frame(width: 12, height: max(5, CGFloat(stat.sharePct) / CGFloat(maxShare) * 60))
-              Text(stat.symbol)
-                .font(.system(size: 12, weight: selected ? .heavy : .semibold))
-                .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
+    VStack(alignment: .leading, spacing: 14) {
+      // Card 1 — a reflection on how your week actually went.
+      NativeAiCard {
+        VStack(alignment: .leading, spacing: 18) {
+          section("BUSIEST DAYS") {
+            let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
+            HStack(alignment: .bottom, spacing: 8) {
+              ForEach(orderedWeekdayStats) { stat in
+                let selected = stat.weekday == activeWeekday
+                VStack(spacing: 6) {
+                  Text(stat.count > 0 ? "\(stat.sharePct)%" : "")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
+                  Capsule()
+                    .fill(stat.count == 0 ? OkkleColor.muted.opacity(0.18) : nativeHeatColor(Double(stat.sharePct) / Double(maxShare)))
+                    .frame(width: 12, height: max(5, CGFloat(stat.sharePct) / CGFloat(maxShare) * 60))
+                  Text(stat.symbol)
+                    .font(.system(size: 12, weight: selected ? .heavy : .semibold))
+                    .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(selected ? OkkleColor.muted.opacity(0.10) : .clear,
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                  withAnimation(.easeInOut(duration: 0.15)) { selectedWeekday = stat.weekday }
+                }
+              }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background(selected ? OkkleColor.muted.opacity(0.10) : .clear,
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .contentShape(Rectangle())
-            .onTapGesture {
-              withAnimation(.easeInOut(duration: 0.15)) { selectedWeekday = stat.weekday }
-            }
+            .frame(height: 100, alignment: .bottom)
+          }
+
+          Divider()
+          dayBreakdown
+          Divider()
+          statsStrip
+
+          // A gentle comparison to your usual — reflection, not accounting.
+          if let last = shift.lastShift, let line = last.comparative {
+            Divider()
+            insightLine(
+              symbol: last.wasUp ? "arrow.up.right.circle.fill" : "equal.circle.fill",
+              color: last.wasUp ? OkkleColor.brand : OkkleColor.muted,
+              text: last.finishedBeforePeak && last.peakLabel != nil
+                ? "\(line) You clocked off before your usual \(last.peakLabel!.lowercased()) peak."
+                : line
+            )
           }
         }
-        .frame(height: 100, alignment: .bottom)
       }
 
-      dayBreakdown
-
-      statsStrip
-
-      // One improvement, one warning — comparative only, never accounting.
-      VStack(alignment: .leading, spacing: 12) {
-        if let last = shift.lastShift, let line = last.comparative {
-          insightLine(
-            symbol: last.wasUp ? "arrow.up.right.circle.fill" : "equal.circle.fill",
-            color: last.wasUp ? OkkleColor.brand : OkkleColor.muted,
-            text: last.finishedBeforePeak && last.peakLabel != nil
-              ? "\(line) You clocked off before your usual \(last.peakLabel!.lowercased()) peak."
-              : line
-          )
-        }
-        if let advice = specificAdvice {
-          insightLine(symbol: advice.symbol, color: advice.color, text: advice.text)
+      // Card 2 — a suggestion, clearly set apart as advice (not a stat).
+      if let advice = specificAdvice {
+        NativeAiCard {
+          section("SUGGESTION") {
+            insightLine(symbol: advice.symbol, color: advice.color, text: advice.text)
+          }
         }
       }
 
-      section("YOUR TOP AREAS") {
-        NativeTopAreasList(zones: shift.zones, limit: 4)
+      // Card 3 — your top areas, with how much of your work each one carries.
+      NativeAiCard {
+        section("YOUR TOP AREAS") {
+          NativeTopAreasList(zones: shift.zones, limit: 4, showShareBar: true)
+        }
       }
-    }
     }
   }
 
@@ -1137,8 +1159,7 @@ struct NativeWeeklyInsightPanel: View {
       }
       stat("Unpaid miles", "\(shift.deadMilePct)%")
     }
-    .padding(.vertical, 12)
-    .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .padding(.vertical, 4)
   }
 
   private func stat(_ title: String, _ value: String) -> some View {
