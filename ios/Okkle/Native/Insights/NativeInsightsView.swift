@@ -1221,105 +1221,6 @@ struct NativeHourStrip: View {
   }
 }
 
-// MARK: - Rate trend panel (Apple-Health-"Trends"-style)
-
-/// A weekly £/hr history chart, in the spirit of Apple Health's Trends
-/// cards: bars for the shape, one highlighted line for the fuller-window
-/// average, one shorter line for the recent-weeks average, and both reported
-/// as bands rather than a single modelled figure.
-struct NativeRateTrendCard: View {
-  let trend: NativeRateTrend
-
-  private var headline: String {
-    switch trend.direction {
-    case .up: return "You've been earning more per hour over your last \(trend.recentWeeks) weeks."
-    case .down: return "You've been earning a bit less per hour over your last \(trend.recentWeeks) weeks."
-    case .steady: return "Your rate's held about the same over your last \(trend.recentWeeks) weeks."
-    }
-  }
-
-  var body: some View {
-    NativeAiCard {
-      VStack(alignment: .leading, spacing: 14) {
-        HStack(spacing: 6) {
-          Image(systemName: "sterlingsign.circle.fill")
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(OkkleColor.brand)
-          Text("EST. RATE TREND")
-            .font(.system(size: 12, weight: .heavy)).tracking(0.5)
-            .foregroundStyle(OkkleColor.brand)
-        }
-        Text(headline)
-          .font(.system(size: 16, weight: .bold))
-          .foregroundStyle(OkkleColor.ink)
-          .fixedSize(horizontal: false, vertical: true)
-
-        chart
-          .frame(height: 84)
-          .padding(.top, 4)
-
-        HStack {
-          VStack(alignment: .leading, spacing: 1) {
-            Text(trend.recentBand)
-              .font(.system(size: 15, weight: .bold, design: .rounded))
-              .foregroundStyle(OkkleColor.ink)
-            Text("Last \(trend.recentWeeks)-week avg")
-              .font(.system(size: 11, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-          }
-          Spacer()
-          VStack(alignment: .trailing, spacing: 1) {
-            Text(trend.overallBand)
-              .font(.system(size: 15, weight: .bold, design: .rounded))
-              .foregroundStyle(OkkleColor.brand)
-            Text("\(trend.totalWeeks)-week avg")
-              .font(.system(size: 11, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-          }
-        }
-      }
-    }
-  }
-
-  private var chart: some View {
-    GeometryReader { geo in
-      let maxVal = max(trend.bars.max() ?? 1, 1)
-      let count = max(trend.bars.count, 1)
-      let spacing = geo.size.width / CGFloat(count)
-      let barWidth = spacing * 0.5
-      let recentY = geo.size.height * (1 - CGFloat(trend.recentAvg / maxVal))
-      let overallY = geo.size.height * (1 - CGFloat(trend.overallAvg / maxVal))
-      let recentStartIndex = max(0, trend.bars.count - trend.recentWeeks)
-      let recentStartX = CGFloat(recentStartIndex) * spacing
-
-      ZStack(alignment: .bottomLeading) {
-        HStack(alignment: .bottom, spacing: spacing - barWidth) {
-          ForEach(Array(trend.bars.enumerated()), id: \.offset) { _, value in
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-              .fill(OkkleColor.muted.opacity(0.28))
-              .frame(width: barWidth, height: max(4, geo.size.height * CGFloat(value / maxVal)))
-          }
-        }
-
-        // Fuller-window average — spans the whole chart, brand-coloured.
-        Path { p in
-          p.move(to: CGPoint(x: 0, y: overallY))
-          p.addLine(to: CGPoint(x: geo.size.width, y: overallY))
-        }
-        .stroke(OkkleColor.brand, lineWidth: 2)
-
-        // Recent-weeks average — only spans the recent bars, so it reads as
-        // "just this stretch" rather than the whole history.
-        Path { p in
-          p.move(to: CGPoint(x: recentStartX, y: recentY))
-          p.addLine(to: CGPoint(x: geo.size.width, y: recentY))
-        }
-        .stroke(OkkleColor.ink.opacity(0.55), lineWidth: 2)
-      }
-    }
-  }
-}
-
 /// A ranked, real (logged, not modelled) breakdown of this period's earnings
 /// by platform — a cross-platform view no single delivery app can offer.
 struct NativePlatformShareList: View {
@@ -1517,11 +1418,6 @@ struct NativeWeeklyInsightPanel: View {
             insightLine(symbol: hitRate.symbol, color: hitRate.color, text: hitRate.text)
           }
         }
-      }
-
-      // Card 2 — an Apple-Health-style trend panel, not a floating sentence.
-      if let trend = shift.rateTrend {
-        NativeRateTrendCard(trend: trend)
       }
 
       // Card 3 — a suggestion, clearly set apart as advice (not a stat).
@@ -2078,27 +1974,6 @@ enum NativeDayReliability {
   case reliable, erratic
 }
 
-/// Direction of the driver's own £/hr, recent weeks vs the fuller window —
-/// deliberately coarse (up/down/steady), never a modelled percentage.
-enum NativeTrendDirection {
-  case up, down, steady
-}
-
-/// Chart-ready weekly £/hr history — an Apple-Health-style "Trends" panel
-/// instead of a single flat sentence. Bars are for the visual only; the two
-/// numbers shown to the driver are always bands (`recentBand`/`overallBand`),
-/// never a bare modelled figure.
-struct NativeRateTrend {
-  let bars: [Double]          // per-week rate, oldest → newest, chart only
-  let recentAvg: Double       // raw, for line placement only
-  let overallAvg: Double      // raw, for line placement only
-  let recentBand: String      // e.g. "£14–18"
-  let overallBand: String
-  let direction: NativeTrendDirection
-  let recentWeeks: Int
-  let totalWeeks: Int
-}
-
 /// One platform's real, logged share of income this period — the ranked
 /// counterpart to the single "top platform" line, only ever populated when
 /// there's an actual mix (2+ platforms) to rank.
@@ -2160,7 +2035,6 @@ struct NativeShiftInsights {
   let activeDays: Int                          // distinct days with tracked stops
   let peakHitRate: Double?                     // how often "your peak" has actually paid off
   let weekdayReliability: [Int: NativeDayReliability]   // per-weekday, week-to-week consistency
-  let rateTrend: NativeRateTrend?                       // recent weeks vs the fuller window, chart-ready
   let platformShares: [NativePlatformShare]             // ranked, only populated with 2+ platforms logged
 
   var hasData: Bool { deliveries > 0 }
@@ -2243,7 +2117,7 @@ struct NativeShiftInsights {
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
     weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
-    activeDays: 0, peakHitRate: nil, weekdayReliability: [:], rateTrend: nil,
+    activeDays: 0, peakHitRate: nil, weekdayReliability: [:],
     platformShares: []
   )
 
@@ -2346,42 +2220,6 @@ struct NativeShiftInsights {
     let perHour: Double? = rawPerHour.flatMap { (4...45).contains($0) ? $0 : nil }
 
     let prevWindowStart = windowStart.addingTimeInterval(-14 * 86_400)
-
-    // Rate trend: bucket £/hr week by week (as many as we have, up to 8), the
-    // same believable-range gate as the headline figure, so the chart is an
-    // Apple-Health-style "Trends" panel rather than a single flat sentence.
-    // Needs at least 4 valid weeks before it's worth showing at all.
-    var weeklyRates: [Double] = []
-    var weekCursor = Date()
-    for _ in 0..<8 {
-      guard let weekInterval = Calendar.current.dateInterval(of: .weekOfYear, for: weekCursor) else { break }
-      let weekIncome = store.records
-        .filter { $0.kind == .income && $0.date >= weekInterval.start && $0.date < weekInterval.end }
-        .reduce(0.0) { $0 + ($1.amount ?? 0) }
-      let weekActive = windowedActiveHours(sorted, from: weekInterval.start, to: weekInterval.end, shiftGap: shiftGap)
-      if weekIncome > 0, weekActive > 1 {
-        let rate = weekIncome / weekActive
-        if (4...45).contains(rate) { weeklyRates.insert(rate, at: 0) }
-      }
-      weekCursor = weekInterval.start.addingTimeInterval(-1)
-    }
-    var rateTrend: NativeRateTrend? = nil
-    if weeklyRates.count >= 4 {
-      let recentCount = min(3, weeklyRates.count)
-      let recentSlice = weeklyRates.suffix(recentCount)
-      let recentAvg = recentSlice.reduce(0, +) / Double(recentCount)
-      let overallAvg = weeklyRates.reduce(0, +) / Double(weeklyRates.count)
-      func band(_ v: Double) -> String {
-        "£\(Int((v * 0.85).rounded(.down)))–\(Int((v * 1.15).rounded(.up)))"
-      }
-      let change = overallAvg > 0 ? (recentAvg - overallAvg) / overallAvg : 0
-      let direction: NativeTrendDirection = change > 0.08 ? .up : (change < -0.08 ? .down : .steady)
-      rateTrend = NativeRateTrend(
-        bars: weeklyRates, recentAvg: recentAvg, overallAvg: overallAvg,
-        recentBand: band(recentAvg), overallBand: band(overallAvg),
-        direction: direction, recentWeeks: recentCount, totalWeeks: weeklyRates.count
-      )
-    }
 
     // Platform mix: a real, cross-platform ranking no single delivery app can
     // offer — every platform's real, logged share of this period's income,
@@ -2505,7 +2343,6 @@ struct NativeShiftInsights {
       activeDays: activeDays,
       peakHitRate: NativeOutcomeTracker.shared.peakHitRate,
       weekdayReliability: weekdayReliability,
-      rateTrend: rateTrend,
       platformShares: platformShares
     )
   }
@@ -2562,19 +2399,6 @@ struct NativeShiftInsights {
     for k in 1..<max(sorted.count, 1) {
       let prev = sorted[k - 1], cur = sorted[k]
       guard cur.arrival >= since else { continue }
-      let gap = cur.arrival.timeIntervalSince(prev.departure)
-      if gap < shiftGap { seconds += max(0, gap) + prev.dwell }
-    }
-    return seconds / 3600
-  }
-
-  /// Same idea, but bounded on both ends — used to measure a specific past
-  /// fortnight (rather than "everything since") for the trend comparison.
-  private static func windowedActiveHours(_ sorted: [NativeVisit], from: Date, to: Date, shiftGap: TimeInterval) -> Double {
-    var seconds = 0.0
-    for k in 1..<max(sorted.count, 1) {
-      let prev = sorted[k - 1], cur = sorted[k]
-      guard cur.arrival >= from, cur.arrival < to else { continue }
       let gap = cur.arrival.timeIntervalSince(prev.departure)
       if gap < shiftGap { seconds += max(0, gap) + prev.dwell }
     }
