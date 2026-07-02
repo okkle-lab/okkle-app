@@ -314,20 +314,21 @@ struct NativeTripView: View {
     .font(.system(size: 16, weight: .bold))
   }
 
-  // Swipe between the live deduction and this week's league goal — each its own
-  // clean panel, kept to the deduction row's height.
+  // Swipe between the live coach, the live deduction and this week's league
+  // goal — each its own clean panel, kept to the deduction row's height.
   private var trackingInfoCarousel: some View {
     let fixture = NativeSeasonEngine.fixture(store: store)
     let division = NativeSeasonEngine.snapshot(store: store).division
     return VStack(spacing: 8) {
       TabView(selection: $infoCard) {
-        trackingDeductionRow.tag(0)
-        trackingLeagueRow(fixture: fixture, division: division).tag(1)
+        trackingLiveCoachRow.tag(0)
+        trackingDeductionRow.tag(1)
+        trackingLeagueRow(fixture: fixture, division: division).tag(2)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
       .frame(height: 60)
       HStack(spacing: 6) {
-        ForEach(0..<2, id: \.self) { index in
+        ForEach(0..<3, id: \.self) { index in
           Capsule()
             .fill(infoCard == index ? trackingPrimaryText : trackingSecondaryText.opacity(0.35))
             .frame(width: infoCard == index ? 16 : 6, height: 6)
@@ -335,6 +336,71 @@ struct NativeTripView: View {
         }
       }
     }
+  }
+
+  // Live driving coach: one context-aware nudge based on the time of day vs
+  // your own shift pattern, how long you've been out, and the weather.
+  private var trackingLiveCoachRow: some View {
+    let tip = liveCoachTip()
+    return carouselCard {
+      HStack(spacing: 12) {
+        Image(systemName: tip.symbol)
+          .font(.system(size: 17, weight: .bold))
+          .foregroundStyle(tip.color)
+          .frame(width: 36, height: 36)
+          .background(tip.color.opacity(0.16), in: Circle())
+        VStack(alignment: .leading, spacing: 2) {
+          Text(tip.title)
+            .font(.system(size: 13, weight: .heavy))
+            .foregroundStyle(trackingPrimaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+          Text(tip.detail)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(trackingSecondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+        Spacer(minLength: 8)
+      }
+    }
+  }
+
+  private func liveCoachTip() -> (symbol: String, color: Color, title: String, detail: String) {
+    let hour = Calendar.current.component(.hour, from: Date())
+    let elapsedHours = session.elapsed / 3600
+    let shift = NativeShiftInsights.build(visits: NativeAutoTrackEngine.shared.visits, store: store)
+    let plan = shift.todayPlan
+    let area = plan?.zone.flatMap { NativeAreaNamer.shared.name(for: $0) }
+
+    // 1. Safety first — a long stint at the wheel.
+    if elapsedHours >= 3 {
+      return ("figure.walk.motion", OkkleColor.amber, "Take a breather",
+              "You've been out \(Int(elapsedHours))h — stay sharp.")
+    }
+    // 2. In a predicted lull → good moment to rest.
+    if let brk = plan?.breakWindow, brk.startHour <= hour, hour <= brk.endHour {
+      return ("cup.and.saucer.fill", OkkleColor.amber, "Quiet spell now",
+              "Usually a lull — good time for a break.")
+    }
+    // 3. In a busy window → stay out where the orders are.
+    if let win = plan?.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
+      return ("bolt.fill", OkkleColor.brand, "Busy window now",
+              area.map { "Stay around \($0) — your peak." } ?? "This is one of your peaks.")
+    }
+    // 4. A rush is coming up soon → start heading over.
+    if let next = plan?.driveWindows.first(where: { $0.startHour > hour && $0.startHour - hour <= 1 }) {
+      return ("location.fill.viewfinder", OkkleColor.brand, "Rush coming up",
+              area.map { "Head toward \($0) for \(nativeHourLabel(next.startHour))." } ?? "Get set for \(nativeHourLabel(next.startHour)).")
+    }
+    // 5. Rain right now → drive steady.
+    if let now = NativeWeatherService.shared.today?.at(hour), now.isWet {
+      return ("cloud.rain.fill", OkkleColor.blue, "Rain right now",
+              "Roads slower — take it steady out there.")
+    }
+    // 6. Default.
+    return ("steeringwheel", trackingSecondaryText, "On the road",
+            "Keep it steady — you're doing great.")
   }
 
   private func carouselCard<V: View>(@ViewBuilder _ content: () -> V) -> some View {
