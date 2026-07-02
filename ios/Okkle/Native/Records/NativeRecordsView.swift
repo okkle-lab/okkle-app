@@ -113,6 +113,9 @@ struct NativeRecordsView: View {
     .onReceive(NotificationCenter.default.publisher(for: .nativeShowTaxRecords)) { _ in
       mode = .tax
     }
+    .onReceive(NotificationCenter.default.publisher(for: .nativeShowRecords)) { _ in
+      mode = .history
+    }
   }
 
   private var filteredHistory: [NativeHistoryItem] {

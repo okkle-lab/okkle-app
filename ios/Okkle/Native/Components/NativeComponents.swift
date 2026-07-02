@@ -29,6 +29,7 @@ struct NativeScreen<Content: View>: View {
   let subtitle: String?
   let style: NativeScreenStyle
   let onClose: (() -> Void)?
+  let fillsViewport: Bool
   let content: Content
   @State private var showSettings = false
 
@@ -38,6 +39,7 @@ struct NativeScreen<Content: View>: View {
     subtitle: String? = nil,
     style: NativeScreenStyle = .standard,
     onClose: (() -> Void)? = nil,
+    fillsViewport: Bool = false,
     @ViewBuilder content: () -> Content
   ) {
     self.title = title
@@ -45,27 +47,36 @@ struct NativeScreen<Content: View>: View {
     self.subtitle = subtitle
     self.style = style
     self.onClose = onClose
+    self.fillsViewport = fillsViewport
     self.content = content()
   }
 
   var body: some View {
     NavigationStack {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 20) {
-          if let subtitle {
-            Text(subtitle)
-              .font(.system(size: 17, weight: .medium))
-              .foregroundStyle(style.subtitleColor)
-              .fixedSize(horizontal: false, vertical: true)
-          }
+      GeometryReader { proxy in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 20) {
+            if let subtitle {
+              Text(subtitle)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(style.subtitleColor)
+                .fixedSize(horizontal: false, vertical: true)
+            }
 
-          content
+            if fillsViewport {
+              content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+              content
+            }
+          }
+          .frame(minHeight: fillsViewport ? max(0, proxy.size.height - 36) : nil, alignment: .topLeading)
+          .padding(.horizontal, 20)
+          .padding(.bottom, 120)
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 120)
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
       }
-      .scrollIndicators(.hidden)
-      .scrollDismissesKeyboard(.interactively)
       .background { NativeBackground() }
       .navigationTitle(navigationBarTitle)
       .navigationBarTitleDisplayMode(.large)
