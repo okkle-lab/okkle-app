@@ -1097,7 +1097,7 @@ struct NativeInsightsView: View {
 
   var body: some View {
     NativeScreen(title: "Insights", collapsedTitle: "Insights",
-                 subtitle: "When to head out and where to go — worked out automatically from how you drive. Nothing to log or upload.") {
+                 subtitle: "Based on your trips, Okkle gives you insights and recommendations on when to head out and where to go. The more you drive, the more accurate they get.") {
       NativeShiftPatternsCard(
         shift: shift,
         trips: store.trips,
