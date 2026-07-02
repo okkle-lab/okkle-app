@@ -1249,11 +1249,20 @@ struct NativeWeeklyInsightPanel: View {
     let detail = shift.weekdayDetails.first { $0.weekday == wd }
     let area = detail?.coordinate.flatMap { areaNamer.name(for: $0) }
 
+    let reliability = shift.weekdayReliability[wd]
+
     return VStack(alignment: .leading, spacing: 12) {
       HStack(alignment: .firstTextBaseline) {
         Text(name)
           .font(.system(size: 18, weight: .bold))
           .foregroundStyle(OkkleColor.ink)
+        if let reliability {
+          Text(reliability == .reliable ? "Reliable" : "Hit or miss")
+            .font(.system(size: 10, weight: .heavy)).tracking(0.3)
+            .foregroundStyle(reliability == .reliable ? OkkleColor.brand : OkkleColor.amber)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background((reliability == .reliable ? OkkleColor.brand : OkkleColor.amber).opacity(0.14), in: Capsule())
+        }
         Spacer()
         if let stat, stat.count > 0 {
           Text("\(stat.sharePct)% of your week")
@@ -1319,6 +1328,39 @@ struct NativeWeeklyInsightPanel: View {
     return nil
   }
 
+  /// £/hr direction vs the fortnight before — coarse on purpose, never a
+  /// modelled number, and only shown once there's a real prior rate to
+  /// compare against.
+  private var trendLine: (symbol: String, color: Color, text: String)? {
+    switch shift.perHourTrend {
+    case .up: return ("chart.line.uptrend.xyaxis", OkkleColor.brand, "Your rate's been trending up over the last couple of weeks.")
+    case .down: return ("chart.line.downtrend.xyaxis", OkkleColor.muted, "Your rate's dipped a bit over the last couple of weeks — might be worth a look at your usual areas.")
+    case .steady: return ("chart.line.flattrend.xyaxis", OkkleColor.muted, "Your rate's been holding steady over the last couple of weeks.")
+    case nil: return nil
+    }
+  }
+
+  /// A real, logged cross-platform view — no single delivery app can tell a
+  /// driver this, since none of them see the others' earnings.
+  private var platformMixLine: (symbol: String, color: Color, text: String)? {
+    guard let platform = shift.topPlatform, let share = shift.topPlatformSharePct else { return nil }
+    let deltaNote = shift.topPlatformShareDeltaPct.map { delta in
+      delta > 0 ? ", up from last period" : ", down from last period"
+    } ?? ""
+    return ("chart.pie.fill", OkkleColor.brand, "\(platform) made up \(share)% of your earnings this period\(deltaNote).")
+  }
+
+  /// Surfaces the self-correcting confidence loop — whether "your peak" has
+  /// actually been paying off — so the check that runs silently in the
+  /// background isn't invisible to the driver.
+  private var peakHitRateLine: (symbol: String, color: Color, text: String)? {
+    guard let rate = shift.peakHitRate else { return nil }
+    if rate >= 0.55 {
+      return ("checkmark.seal.fill", OkkleColor.brand, "Your peak-day calls have been paying off lately.")
+    }
+    return ("arrow.triangle.2.circlepath", OkkleColor.muted, "Recent peak days haven't stood out much — we're adjusting.")
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       // Card 1 — a reflection on how your week actually went.
@@ -1368,6 +1410,21 @@ struct NativeWeeklyInsightPanel: View {
                 ? "\(line) You clocked off before your usual \(last.peakLabel!.lowercased()) peak."
                 : line
             )
+          }
+
+          // Optional reflection lines — each only appears once there's
+          // genuinely enough evidence, so a newer account just sees fewer.
+          if let trend = trendLine {
+            Divider()
+            insightLine(symbol: trend.symbol, color: trend.color, text: trend.text)
+          }
+          if let mix = platformMixLine {
+            Divider()
+            insightLine(symbol: mix.symbol, color: mix.color, text: mix.text)
+          }
+          if let hitRate = peakHitRateLine {
+            Divider()
+            insightLine(symbol: hitRate.symbol, color: hitRate.color, text: hitRate.text)
           }
         }
       }
@@ -1910,6 +1967,18 @@ struct NativeShiftDebrief {
   var wasUp: Bool { (weekdayAvgPerHour ?? perHour) <= perHour }
 }
 
+/// Whether a weekday's volume looks the same week to week, or is dominated by
+/// occasional big/quiet weeks — the per-day counterpart to overall confidence.
+enum NativeDayReliability {
+  case reliable, erratic
+}
+
+/// Direction of the driver's own £/hr over the last couple of fortnights —
+/// deliberately coarse (up/down/steady), never a modelled percentage.
+enum NativeTrendDirection {
+  case up, down, steady
+}
+
 /// How much evidence sits behind a recommendation. The engine should know when
 /// not to make a strong claim — thin data gets soft language, never certainty.
 enum NativeConfidence {
@@ -1960,6 +2029,11 @@ struct NativeShiftInsights {
   let lastShift: NativeShiftDebrief?
   let activeDays: Int                          // distinct days with tracked stops
   let peakHitRate: Double?                     // how often "your peak" has actually paid off
+  let weekdayReliability: [Int: NativeDayReliability]   // per-weekday, week-to-week consistency
+  let perHourTrend: NativeTrendDirection?               // this fortnight vs the one before
+  let topPlatform: String?                              // biggest earner this period
+  let topPlatformSharePct: Int?                         // its real, logged share of income
+  let topPlatformShareDeltaPct: Int?                    // change vs the previous period
 
   var hasData: Bool { deliveries > 0 }
   var totalMiles: Double { paidMiles + deadMiles }
@@ -2041,7 +2115,8 @@ struct NativeShiftInsights {
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
     weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
-    activeDays: 0, peakHitRate: nil
+    activeDays: 0, peakHitRate: nil, weekdayReliability: [:], perHourTrend: nil,
+    topPlatform: nil, topPlatformSharePct: nil, topPlatformShareDeltaPct: nil
   )
 
   @MainActor
@@ -2068,7 +2143,7 @@ struct NativeShiftInsights {
     // Deliveries + paid distance: a pick-up drives to the next drop-off.
     var deliveries = 0
     var paidMeters = 0.0
-    var deliveryHits: [(weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D)] = []
+    var deliveryHits: [(weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date)] = []
     var index = 0
     while index < sorted.count {
       if sorted[index].kind == .pickup,
@@ -2082,7 +2157,7 @@ struct NativeShiftInsights {
         let weekday = Calendar.current.component(.weekday, from: date) - 1
         let hour = Calendar.current.component(.hour, from: date)
         let band = NativeTimeFilter.allCases.first { $0 != .all && $0.includes(date) } ?? .afternoon
-        deliveryHits.append((weekday, band, hour, sorted[index].coordinate))
+        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date))
         index = dropIndex + 1
       } else {
         index += 1
@@ -2141,6 +2216,72 @@ struct NativeShiftInsights {
     // show a number that undermines trust.
     let rawPerHour = (income > 0 && recentActive > 1) ? income / recentActive : nil
     let perHour: Double? = rawPerHour.flatMap { (4...45).contains($0) ? $0 : nil }
+
+    // Trend: the same rolling £/hr, but for the fortnight before this one —
+    // deliberately coarse (up/down/steady) rather than a modelled percentage,
+    // and only shown at all once both windows have a real rate to compare.
+    let prevWindowStart = windowStart.addingTimeInterval(-14 * 86_400)
+    let prevIncome = store.records
+      .filter { $0.kind == .income && $0.date >= prevWindowStart && $0.date < windowStart }
+      .reduce(0.0) { $0 + ($1.amount ?? 0) }
+    let prevActive = windowedActiveHours(sorted, from: prevWindowStart, to: windowStart, shiftGap: shiftGap)
+    let prevRawPerHour = (prevIncome > 0 && prevActive > 1) ? prevIncome / prevActive : nil
+    let prevPerHour = prevRawPerHour.flatMap { (4...45).contains($0) ? $0 : nil }
+    var perHourTrend: NativeTrendDirection? = nil
+    if let cur = perHour, let prev = prevPerHour, prev > 0 {
+      let change = (cur - prev) / prev
+      perHourTrend = change > 0.08 ? .up : (change < -0.08 ? .down : .steady)
+    }
+
+    // Platform mix: a real, cross-platform view no single delivery app can
+    // offer — which platform actually earned the most this period, and by
+    // how much that's shifted, using only logged (not modelled) amounts.
+    let currentPlatformIncome = store.records.filter { $0.kind == .income && $0.date >= windowStart }
+    let previousPlatformIncome = store.records.filter { $0.kind == .income && $0.date >= prevWindowStart && $0.date < windowStart }
+    func platformTotals(_ records: [NativeRecord]) -> [String: Double] {
+      var totals: [String: Double] = [:]
+      for r in records { totals[r.platform ?? "Other", default: 0] += r.amount ?? 0 }
+      return totals
+    }
+    let currentTotals = platformTotals(currentPlatformIncome)
+    let previousTotals = platformTotals(previousPlatformIncome)
+    let currentSum = currentTotals.values.reduce(0, +)
+    let previousSum = previousTotals.values.reduce(0, +)
+    var topPlatform: String? = nil
+    var topPlatformSharePct: Int? = nil
+    var topPlatformShareDeltaPct: Int? = nil
+    // Only worth mentioning once there's an actual mix to compare — a single
+    // platform logged this period isn't a "mix" insight, just their only app.
+    if currentSum > 0, currentTotals.count >= 2, let top = currentTotals.max(by: { $0.value < $1.value }) {
+      topPlatform = top.key
+      let sharePct = Int((top.value / currentSum * 100).rounded())
+      topPlatformSharePct = sharePct
+      if previousSum > 0, let prevAmount = previousTotals[top.key] {
+        let prevSharePct = Int((prevAmount / previousSum * 100).rounded())
+        let delta = sharePct - prevSharePct
+        if abs(delta) >= 8 { topPlatformShareDeltaPct = delta }
+      }
+    }
+
+    // Reliability: does this weekday look the same week to week, or is one
+    // outlier week doing all the work? The per-day counterpart to the
+    // consistency check already folded into overall confidence.
+    var weekByWeekday: [Int: [Date: Int]] = [:]
+    for hit in deliveryHits {
+      guard let weekStart = Calendar.current.dateInterval(of: .weekOfYear, for: hit.date)?.start else { continue }
+      weekByWeekday[hit.weekday, default: [:]][weekStart, default: 0] += 1
+    }
+    var weekdayReliability: [Int: NativeDayReliability] = [:]
+    for (wd, weeks) in weekByWeekday {
+      let counts = weeks.values.map(Double.init)
+      guard counts.count >= 3 else { continue }   // need a few distinct weeks to say anything
+      let mean = counts.reduce(0, +) / Double(counts.count)
+      guard mean > 0 else { continue }
+      let variance = counts.reduce(0) { $0 + pow($1 - mean, 2) } / Double(counts.count)
+      let cv = sqrt(variance) / mean
+      if cv <= 0.6 { weekdayReliability[wd] = .reliable }
+      else if cv > 1.0 { weekdayReliability[wd] = .erratic }
+    }
 
     // Weekly overview: how deliveries split across the seven weekdays.
     var weekdayCounts: [Int: Int] = [:]
@@ -2213,7 +2354,12 @@ struct NativeShiftInsights {
       todayPlan: todayPlan,
       lastShift: lastShift,
       activeDays: activeDays,
-      peakHitRate: NativeOutcomeTracker.shared.peakHitRate
+      peakHitRate: NativeOutcomeTracker.shared.peakHitRate,
+      weekdayReliability: weekdayReliability,
+      perHourTrend: perHourTrend,
+      topPlatform: topPlatform,
+      topPlatformSharePct: topPlatformSharePct,
+      topPlatformShareDeltaPct: topPlatformShareDeltaPct
     )
   }
 
@@ -2274,9 +2420,22 @@ struct NativeShiftInsights {
     }
     return seconds / 3600
   }
+
+  /// Same idea, but bounded on both ends — used to measure a specific past
+  /// fortnight (rather than "everything since") for the trend comparison.
+  private static func windowedActiveHours(_ sorted: [NativeVisit], from: Date, to: Date, shiftGap: TimeInterval) -> Double {
+    var seconds = 0.0
+    for k in 1..<max(sorted.count, 1) {
+      let prev = sorted[k - 1], cur = sorted[k]
+      guard cur.arrival >= from, cur.arrival < to else { continue }
+      let gap = cur.arrival.timeIntervalSince(prev.departure)
+      if gap < shiftGap { seconds += max(0, gap) + prev.dwell }
+    }
+    return seconds / 3600
+  }
 }
 
-typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D)
+typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date)
 
 /// The busiest time-band and roughly-where for one weekday.
 func bestBandAndZone(for weekday: Int, deliveryHits: [NativeDeliveryHit], cellSize: Double) -> (band: NativeTimeFilter, zone: CLLocationCoordinate2D?) {
