@@ -189,6 +189,8 @@ struct NativeSettings: Codable, Equatable {
   // index) on which trips auto-start; default is every day.
   var autoTrackTrips = true
   var workingDays: [Int] = Array(0...6)
+  // A heads-up before your busy window starts, on working days.
+  var preShiftAlerts = true
   var hasCompletedOnboarding = false
 
   init() {}
@@ -210,6 +212,7 @@ struct NativeSettings: Codable, Equatable {
     case taxDeadlineReminders
     case autoTrackTrips
     case workingDays
+    case preShiftAlerts
     case hasCompletedOnboarding
   }
 
@@ -231,6 +234,7 @@ struct NativeSettings: Codable, Equatable {
     taxDeadlineReminders = try container.decodeIfPresent(Bool.self, forKey: .taxDeadlineReminders) ?? true
     autoTrackTrips = try container.decodeIfPresent(Bool.self, forKey: .autoTrackTrips) ?? true
     workingDays = try container.decodeIfPresent([Int].self, forKey: .workingDays) ?? Array(0...6)
+    preShiftAlerts = try container.decodeIfPresent(Bool.self, forKey: .preShiftAlerts) ?? true
     hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
   }
 }

@@ -30,13 +30,19 @@ struct OkkleNativeRootView: View {
     .tint(OkkleColor.brand)
     .onAppear {
       NativeAutoTrackEngine.shared.configure(store: store)
+      NativePreShiftNotifier.refresh(store: store)
       routeWidgetTripRequestIfNeeded()
     }
     .onChange(of: store.settings.autoTrackTrips) { _ in
       NativeAutoTrackEngine.shared.refresh()
+      NativePreShiftNotifier.refresh(store: store)
+    }
+    .onChange(of: store.settings.preShiftAlerts) { _ in
+      NativePreShiftNotifier.refresh(store: store)
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
+      NativePreShiftNotifier.refresh(store: store)
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       routeWidgetTripRequestIfNeeded()

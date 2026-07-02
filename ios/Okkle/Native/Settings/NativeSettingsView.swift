@@ -269,6 +269,17 @@ struct NativeAutoTrackSettingsView: View {
       } footer: {
         Text("On your working days Okkle starts tracking a trip automatically when it detects you driving, so you never forget. Turn it off to track every trip by hand.")
       }
+
+      if store.settings.autoTrackTrips {
+        Section {
+          Toggle("Pre-shift heads-up", isOn: Binding(
+            get: { store.settings.preShiftAlerts },
+            set: { store.settings.preShiftAlerts = $0 }
+          ))
+        } footer: {
+          Text("A notification about an hour before your busy window starts, telling you when and roughly where to head — plus a nudge on your classic big nights.")
+        }
+      }
     }
     .navigationTitle("Automatic tracking")
     .navigationBarTitleDisplayMode(.inline)

@@ -1,7 +1,69 @@
+import CoreLocation
 import EventKit
 import MapKit
 import SwiftUI
 import UIKit
+import UserNotifications
+
+// MARK: - Pre-shift heads-up (local notification)
+
+/// Schedules one local notification ahead of today's busy window — the hero
+/// instruction, pushed before the driver even opens the app. On-device, no
+/// server. Silently no-ops if permission is denied or there's nothing to say.
+@MainActor
+enum NativePreShiftNotifier {
+  private static let identifier = "uk.okkle.native.preshift"
+  private static var lastScheduledKey = ""
+
+  /// Recompute and (re)schedule today's alert. Cheap + idempotent; safe to call
+  /// on every launch / foreground.
+  static func refresh(store: OkkleStore) {
+    let center = UNUserNotificationCenter.current()
+    center.removePendingNotificationRequests(withIdentifiers: [identifier])
+
+    guard store.settings.autoTrackTrips, store.settings.preShiftAlerts else { return }
+
+    let shift = NativeShiftInsights.build(visits: NativeAutoTrackEngine.shared.visits, store: store)
+    guard let plan = shift.todayPlan, plan.isToday, let peak = plan.peakWindow else { return }
+
+    // Fire ~1h before the peak window, but only if that's still in the future.
+    let cal = Calendar.current
+    guard let fireDate = cal.date(bySettingHour: max(0, peak.startHour - 1), minute: 30, second: 0, of: Date()),
+          fireDate > Date().addingTimeInterval(120) else { return }
+
+    let areaName = NativeAreaNamer.shared.name(for: plan.zone ?? CLLocationCoordinate2D())
+    let areaSuffix = areaName.map { " near \($0)" } ?? ""
+    let boost = NativeWeatherService.shared.today?.hours.contains { (10...23).contains($0.hour) && $0.boostsDemand } ?? false
+    let strongDay = shift.weekdayDetails.prefix(3).contains { $0.weekday == plan.weekday }
+
+    let title: String
+    let body: String
+    if boost && strongDay {
+      title = "Don't skip tonight 🔥"
+      body = "Bad weather on a busy night — be out for \(peak.label)\(areaSuffix). Classic big one."
+    } else {
+      title = "Your busy window's coming up"
+      body = "Be out for \(peak.label)\(areaSuffix) — usually your strongest stretch today."
+    }
+
+    // Skip if we already scheduled an identical alert today (avoid churn).
+    let key = "\(cal.startOfDay(for: Date()).timeIntervalSince1970)-\(peak.startHour)-\(body.hashValue)"
+    guard key != lastScheduledKey else { return }
+
+    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+      guard granted else { return }
+      let content = UNMutableNotificationContent()
+      content.title = title
+      content.body = body
+      content.sound = .default
+      let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+      let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+      center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
+      Task { @MainActor in lastScheduledKey = key }
+    }
+  }
+}
+
 enum NativeTimeFilter: String, CaseIterable, Identifiable {
   case all
   case morning
@@ -315,10 +377,18 @@ func nativeDemoWeather() -> NativeDayWeather {
 
 // MARK: - Map (tracked routes + zone colouring, defaulting to the user's location)
 
+/// A numbered marker for a ranked top area on the detail map.
+final class NativeRankAnnotation: MKPointAnnotation {
+  var rank: Int = 0
+  var weight: Double = 0.5
+}
+
 struct NativeShiftMapRepresentable: UIViewRepresentable {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
   var interactive: Bool = false
+  /// When set, draws a rough "cruise loop" from you through the ranked areas.
+  var suggestLoop: Bool = false
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
   func makeCoordinator() -> Coordinator { Coordinator() }
@@ -336,6 +406,7 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
 
   func updateUIView(_ mapView: MKMapView, context: Context) {
     mapView.removeOverlays(mapView.overlays)
+    mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
 
     var visibleRect = MKMapRect.null
     for trip in trips {
@@ -357,6 +428,26 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       visibleRect = visibleRect.isNull ? rect : visibleRect.union(rect)
     }
 
+    // Rank the busiest few areas with numbered pins — the "where to head" list,
+    // shown on the map so it's obvious which patches matter most.
+    let top = nativeTopZones(zones, near: locator.coordinate, limit: 5)
+    for (index, zone) in top.enumerated() {
+      let pin = NativeRankAnnotation()
+      pin.coordinate = zone.coordinate
+      pin.rank = index + 1
+      pin.weight = zone.weight
+      mapView.addAnnotation(pin)
+    }
+
+    // Optional rough cruise loop: you → area 1 → 2 → … (straight legs, clearly
+    // a rough guide, not turn-by-turn).
+    if suggestLoop, let start = locator.coordinate, top.count >= 2 {
+      let coords = [start] + top.map(\.coordinate)
+      let loop = MKPolyline(coordinates: coords, count: coords.count)
+      loop.title = "loop"
+      mapView.addOverlay(loop)
+    }
+
     if visibleRect.isNull {
       let center = locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
       mapView.setRegion(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)), animated: false)
@@ -373,8 +464,14 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
       if let polyline = overlay as? MKPolyline {
         let renderer = MKPolylineRenderer(polyline: polyline)
-        renderer.strokeColor = UIColor(red: 0.20, green: 0.47, blue: 0.93, alpha: 0.55)
-        renderer.lineWidth = 4
+        if polyline.title == "loop" {
+          renderer.strokeColor = UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 0.8)
+          renderer.lineWidth = 3
+          renderer.lineDashPattern = [2, 6]
+        } else {
+          renderer.strokeColor = UIColor(red: 0.20, green: 0.47, blue: 0.93, alpha: 0.55)
+          renderer.lineWidth = 4
+        }
         renderer.lineCap = .round
         renderer.lineJoin = .round
         return renderer
@@ -388,6 +485,28 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
         return renderer
       }
       return MKOverlayRenderer(overlay: overlay)
+    }
+
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+      guard let rank = annotation as? NativeRankAnnotation else { return nil }
+      let id = "rank"
+      let view = mapView.dequeueReusableAnnotationView(withIdentifier: id) ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
+      view.annotation = annotation
+      let size: CGFloat = 26
+      let badge = UILabel(frame: CGRect(x: 0, y: 0, width: size, height: size))
+      badge.text = "\(rank.rank)"
+      badge.textAlignment = .center
+      badge.textColor = .white
+      badge.font = .systemFont(ofSize: 13, weight: .heavy)
+      badge.backgroundColor = nativeHeatUIColor(rank.weight)
+      badge.layer.cornerRadius = size / 2
+      badge.layer.borderColor = UIColor.white.cgColor
+      badge.layer.borderWidth = 2
+      badge.layer.masksToBounds = true
+      let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+      view.image = renderer.image { _ in badge.layer.render(in: UIGraphicsGetCurrentContext()!) }
+      view.centerOffset = .zero
+      return view
     }
   }
 }
@@ -431,19 +550,94 @@ struct NativeExploreMapButton: View {
   }
 }
 
+/// A ranked list of your busiest areas (top few near you). Resolves area names
+/// on-device and de-dupes, so "Camden · Soho · Islington" reads cleanly.
+struct NativeTopAreasList: View {
+  let zones: [NativeZonePoint]
+  var limit: Int = 5
+  @ObservedObject private var areaNamer = NativeAreaNamer.shared
+  @ObservedObject private var locator = NativeOneShotLocator.shared
+
+  private var ranked: [(name: String, weight: Double)] {
+    let top = nativeTopZones(zones, near: locator.coordinate, limit: limit + 3)
+    var seen = Set<String>()
+    var out: [(String, Double)] = []
+    for zone in top {
+      guard let name = areaNamer.name(for: zone.coordinate) else { continue }
+      if seen.insert(name).inserted { out.append((name, zone.weight)) }
+      if out.count >= limit { break }
+    }
+    return out
+  }
+
+  var body: some View {
+    let rows = ranked
+    if !rows.isEmpty {
+      VStack(alignment: .leading, spacing: 9) {
+        ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+          HStack(spacing: 10) {
+            Text("\(index + 1)")
+              .font(.system(size: 12, weight: .heavy, design: .rounded))
+              .foregroundStyle(.white)
+              .frame(width: 20, height: 20)
+              .background(nativeHeatColor(row.weight), in: Circle())
+            Text(row.name)
+              .font(.system(size: 15, weight: .semibold))
+              .foregroundStyle(OkkleColor.ink)
+            Spacer(minLength: 8)
+            NativeZoneBar(weight: row.weight)
+          }
+        }
+      }
+    } else {
+      Text("Building your area list — a few more shifts and your best patches show here.")
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(OkkleColor.muted)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+}
+
+private struct NativeZoneBar: View {
+  let weight: Double
+  var body: some View {
+    GeometryReader { geo in
+      ZStack(alignment: .leading) {
+        Capsule().fill(OkkleColor.muted.opacity(0.15))
+        Capsule().fill(nativeHeatColor(weight))
+          .frame(width: max(6, geo.size.width * weight))
+      }
+    }
+    .frame(width: 64, height: 6)
+  }
+}
+
 struct NativeShiftMapDetailView: View {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
   @Environment(\.dismiss) private var dismiss
+  @State private var showLoop = false
 
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: true)
+        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: true, suggestLoop: showLoop)
           .ignoresSafeArea(edges: .bottom)
-        NativeHeatLegend()
-          .padding(16)
-          .background(.regularMaterial)
+        VStack(spacing: 12) {
+          Toggle(isOn: $showLoop) {
+            Label("Suggest a cruise loop", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+              .font(.system(size: 14, weight: .bold))
+          }
+          .tint(OkkleColor.brand)
+          Text("Numbered pins are your busiest areas near you, ranked. The loop is a rough guide through them — not turn-by-turn.")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          NativeHeatLegend()
+        }
+        .padding(16)
+        .background(.regularMaterial)
       }
       .navigationTitle("Where you earn")
       .navigationBarTitleDisplayMode(.inline)
@@ -527,15 +721,25 @@ struct NativeShiftPatternsCard: View {
     }
   }
 
-  // Two swipeable panels: Today (act now) and This week (learn & improve).
+  // Two swipeable panels: Today (act now) and This week (learn & improve). The
+  // pager height follows the visible panel, so neither is cramped nor padded.
+  @State private var heights: [Int: CGFloat] = [:]
+
   private var carousel: some View {
-    VStack(spacing: 8) {
+    VStack(spacing: 10) {
       TabView(selection: $page) {
-        NativeDailyInsightPanel(shift: shift, trips: trips).tag(0)
-        NativeWeeklyInsightPanel(shift: shift).tag(1)
+        NativeDailyInsightPanel(shift: shift, trips: trips)
+          .fixedSize(horizontal: false, vertical: true)
+          .background(heightReader(0))
+          .tag(0)
+        NativeWeeklyInsightPanel(shift: shift)
+          .fixedSize(horizontal: false, vertical: true)
+          .background(heightReader(1))
+          .tag(1)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
-      .frame(height: 402)
+      .frame(height: max(240, heights[page] ?? 420))
+      .animation(.easeInOut(duration: 0.25), value: heights[page])
 
       HStack(spacing: 7) {
         ForEach(0..<2, id: \.self) { i in
@@ -551,6 +755,20 @@ struct NativeShiftPatternsCard: View {
       }
       .frame(maxWidth: .infinity)
     }
+    .onPreferenceChange(NativePanelHeightKey.self) { heights = $0 }
+  }
+
+  private func heightReader(_ tag: Int) -> some View {
+    GeometryReader { geo in
+      Color.clear.preference(key: NativePanelHeightKey.self, value: [tag: geo.size.height])
+    }
+  }
+}
+
+private struct NativePanelHeightKey: PreferenceKey {
+  static var defaultValue: [Int: CGFloat] = [:]
+  static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+    value.merge(nextValue()) { max($0, $1) }
   }
 }
 
@@ -564,7 +782,7 @@ struct NativeDailyInsightPanel: View {
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 16) {
       if let plan = shift.todayPlan {
         HStack {
           Text(plan.isToday
@@ -579,23 +797,35 @@ struct NativeDailyInsightPanel: View {
         heroSection(plan)
 
         if let brk = plan.breakWindow {
-          HStack(alignment: .top, spacing: 8) {
+          HStack(alignment: .top, spacing: 10) {
             Image(systemName: "cup.and.saucer.fill")
-              .font(.system(size: 13, weight: .bold))
+              .font(.system(size: 15, weight: .bold))
               .foregroundStyle(OkkleColor.amber)
-              .frame(width: 20)
+              .frame(width: 22)
               .padding(.top, 1)
             Text("Usual lull \(brk.label) — good time for a break.")
-              .font(.system(size: 14, weight: .semibold))
+              .font(.system(size: 15, weight: .semibold))
               .foregroundStyle(OkkleColor.ink)
               .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
           }
         }
 
+        VStack(alignment: .leading, spacing: 10) {
+          Text("WHERE TO HEAD · BUSIEST NEAR YOU")
+            .font(.system(size: 11, weight: .heavy)).tracking(0.4)
+            .foregroundStyle(OkkleColor.muted)
+          NativeTopAreasList(zones: shift.zones, limit: 4)
+        }
+
         kpiRow
 
-        NativeHourStrip(hourCounts: plan.hourCounts)
+        VStack(alignment: .leading, spacing: 6) {
+          Text("WHEN IT'S BUSY")
+            .font(.system(size: 11, weight: .heavy)).tracking(0.4)
+            .foregroundStyle(OkkleColor.muted)
+          NativeHourStrip(hourCounts: plan.hourCounts)
+        }
       }
 
       NativeExploreMapButton(trips: trips, zones: shift.zones)
@@ -605,7 +835,6 @@ struct NativeDailyInsightPanel: View {
           .font(.system(size: 12, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
       }
-      Spacer(minLength: 0)
     }
     .onAppear {
       locator.request()
@@ -631,27 +860,27 @@ struct NativeDailyInsightPanel: View {
 
   private func heroSection(_ plan: NativeDayPlan) -> some View {
     let hero = heroContent(plan)
-    return HStack(alignment: .top, spacing: 12) {
+    return HStack(alignment: .top, spacing: 13) {
       Image(systemName: hero.symbol)
-        .font(.system(size: 19, weight: .bold))
+        .font(.system(size: 22, weight: .bold))
         .foregroundStyle(.white)
-        .frame(width: 40, height: 40)
-        .background(hero.color, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-      VStack(alignment: .leading, spacing: 3) {
+        .frame(width: 46, height: 46)
+        .background(hero.color, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+      VStack(alignment: .leading, spacing: 4) {
         Text(hero.title)
-          .font(.system(size: 20, weight: .heavy, design: .rounded))
+          .font(.system(size: 22, weight: .heavy, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
           .fixedSize(horizontal: false, vertical: true)
         Text(hero.detail)
-          .font(.system(size: 13, weight: .semibold))
+          .font(.system(size: 14, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
           .fixedSize(horizontal: false, vertical: true)
       }
       Spacer(minLength: 0)
     }
-    .padding(13)
+    .padding(15)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(hero.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
+    .background(hero.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
   }
 
   /// One instruction, chosen by priority: big night → in a window now → window
@@ -724,26 +953,24 @@ struct NativeDailyInsightPanel: View {
   }
 
   private func miniKpi(_ title: String, _ value: String, _ symbol: String, _ color: Color) -> some View {
-    VStack(alignment: .leading, spacing: 3) {
-      HStack(spacing: 4) {
-        Image(systemName: symbol)
-          .font(.system(size: 10, weight: .bold))
-          .foregroundStyle(color)
-        Text(title)
-          .font(.system(size: 10, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
-          .lineLimit(1)
-      }
+    VStack(alignment: .leading, spacing: 6) {
+      Image(systemName: symbol)
+        .font(.system(size: 13, weight: .bold))
+        .foregroundStyle(color)
       Text(value)
-        .font(.system(size: 15, weight: .bold, design: .rounded))
+        .font(.system(size: 17, weight: .bold, design: .rounded))
         .foregroundStyle(OkkleColor.ink)
         .lineLimit(1)
-        .minimumScaleFactor(0.7)
+        .minimumScaleFactor(0.6)
+      Text(title)
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+        .lineLimit(1)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 10)
-    .padding(.vertical, 8)
-    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .padding(.horizontal, 11)
+    .padding(.vertical, 11)
+    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
   }
 }
 
@@ -789,7 +1016,7 @@ struct NativeWeeklyInsightPanel: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 14) {
       Text("YOUR WEEK")
         .font(.system(size: 12, weight: .heavy)).tracking(0.4)
         .foregroundStyle(OkkleColor.muted)
@@ -797,63 +1024,67 @@ struct NativeWeeklyInsightPanel: View {
       let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
       HStack(alignment: .bottom, spacing: 8) {
         ForEach(orderedWeekdayStats) { stat in
-          VStack(spacing: 5) {
+          VStack(spacing: 6) {
+            Text(stat.count > 0 ? "\(stat.sharePct)%" : "")
+              .font(.system(size: 10, weight: .bold))
+              .foregroundStyle(OkkleColor.muted)
             Capsule()
               .fill(stat.count == 0 ? OkkleColor.muted.opacity(0.18) : nativeHeatColor(Double(stat.sharePct) / Double(maxShare)))
-              .frame(width: 10, height: max(5, CGFloat(stat.sharePct) / CGFloat(maxShare) * 52))
+              .frame(width: 12, height: max(5, CGFloat(stat.sharePct) / CGFloat(maxShare) * 66))
             Text(stat.symbol)
-              .font(.system(size: 11, weight: stat.weekday == todayWeekday ? .heavy : .semibold))
+              .font(.system(size: 12, weight: stat.weekday == todayWeekday ? .heavy : .semibold))
               .foregroundStyle(stat.weekday == todayWeekday ? OkkleColor.ink : OkkleColor.muted)
           }
           .frame(maxWidth: .infinity)
         }
       }
-      .frame(height: 68, alignment: .bottom)
+      .frame(height: 96, alignment: .bottom)
 
       // One improvement, one warning — comparative language only, no accounting.
-      if let last = shift.lastShift, let line = last.comparative {
-        insightLine(
-          symbol: last.wasUp ? "arrow.up.right.circle.fill" : "equal.circle.fill",
-          color: last.wasUp ? OkkleColor.brand : OkkleColor.muted,
-          text: last.finishedBeforePeak && last.peakLabel != nil
-            ? "\(line) You clocked off before your usual \(last.peakLabel!.lowercased()) peak."
-            : line
-        )
+      VStack(alignment: .leading, spacing: 10) {
+        if let last = shift.lastShift, let line = last.comparative {
+          insightLine(
+            symbol: last.wasUp ? "arrow.up.right.circle.fill" : "equal.circle.fill",
+            color: last.wasUp ? OkkleColor.brand : OkkleColor.muted,
+            text: last.finishedBeforePeak && last.peakLabel != nil
+              ? "\(line) You clocked off before your usual \(last.peakLabel!.lowercased()) peak."
+              : line
+          )
+        }
+        if let warning = shift.warning {
+          insightLine(symbol: "exclamationmark.triangle.fill", color: OkkleColor.amber, text: warning)
+        }
       }
 
-      if let warning = shift.warning {
-        insightLine(symbol: "exclamationmark.triangle.fill", color: OkkleColor.amber, text: warning)
+      // Top earning areas over the fortnight — your patches, ranked.
+      VStack(alignment: .leading, spacing: 10) {
+        Text("YOUR TOP AREAS")
+          .font(.system(size: 11, weight: .heavy)).tracking(0.4)
+          .foregroundStyle(OkkleColor.muted)
+        NativeTopAreasList(zones: shift.zones, limit: 5)
       }
+      .padding(13)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
 
-      // When & where each of your best days is good.
-      VStack(alignment: .leading, spacing: 7) {
-        Text("BEST DAYS")
+      // When each of your best days is good.
+      VStack(alignment: .leading, spacing: 8) {
+        Text("BEST DAYS & TIMES")
           .font(.system(size: 11, weight: .heavy)).tracking(0.4)
           .foregroundStyle(OkkleColor.muted)
         ForEach(shift.weekdayDetails.prefix(3)) { day in
           HStack(spacing: 8) {
-            Text(day.shortName)
+            Text(day.name)
               .font(.system(size: 14, weight: .heavy))
               .foregroundStyle(OkkleColor.ink)
-              .frame(width: 38, alignment: .leading)
+              .frame(width: 78, alignment: .leading)
             Text(day.band.label.lowercased())
               .font(.system(size: 14, weight: .semibold))
               .foregroundStyle(OkkleColor.brandDark)
-            if let area = areaText(for: day.coordinate) {
-              Text("· \(area)")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(OkkleColor.muted)
-                .lineLimit(1)
-            }
             Spacer(minLength: 0)
           }
         }
       }
-      .padding(12)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-
-      Spacer(minLength: 0)
     }
   }
 
@@ -1194,10 +1425,25 @@ struct NativeZonePoint: Identifiable, Equatable {
   let id = UUID()
   let coordinate: CLLocationCoordinate2D
   let weight: Double   // 0 (quiet) ... 1 (your busiest zone)
+  var count: Int = 0   // raw deliveries in this cluster
 
   static func == (lhs: NativeZonePoint, rhs: NativeZonePoint) -> Bool {
     lhs.id == rhs.id
   }
+}
+
+/// Ranked, de-duplicated areas near the driver — the "where to go" shortlist.
+/// Keeps at most `limit`, prefers busier zones, drops anything absurdly far.
+func nativeTopZones(_ zones: [NativeZonePoint], near origin: CLLocationCoordinate2D?, limit: Int = 5, maxKm: Double = 12) -> [NativeZonePoint] {
+  var candidates = zones
+  if let origin {
+    let here = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+    candidates = zones.filter {
+      here.distance(from: CLLocation(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)) <= maxKm * 1000
+    }
+    if candidates.isEmpty { candidates = zones }   // never leave them with nothing
+  }
+  return Array(candidates.sorted { $0.weight > $1.weight }.prefix(limit))
 }
 
 /// How many deliveries land on one weekday, for the weekly overview bar list.
@@ -1465,7 +1711,7 @@ struct NativeShiftInsights {
       }
     }
     let maxCount = cells.values.map(\.count).max() ?? 1
-    let zones = cells.values.map { NativeZonePoint(coordinate: $0.coordinate, weight: Double($0.count) / Double(maxCount)) }
+    let zones = cells.values.map { NativeZonePoint(coordinate: $0.coordinate, weight: Double($0.count) / Double(maxCount), count: $0.count) }
 
     // £/hr over the last 14 days: logged income ÷ active hours in the window.
     let windowStart = Date().addingTimeInterval(-14 * 86_400)
