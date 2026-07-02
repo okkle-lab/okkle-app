@@ -6,11 +6,11 @@ import SQLite3
 import SwiftUI
 import UIKit
 import Vision
-enum NativeTab {
+enum NativeTab: String, CaseIterable, Hashable {
   case home
-  case log
-  case trip
   case insights
+  case trip
+  case log
   case records
 }
 
@@ -67,6 +67,7 @@ struct OkkleNativeRootView: View {
         .tabItem { Label("Records", systemImage: "archivebox") }
         .tag(NativeTab.records)
     }
+    .id("okkle-main-tabs-home-insights-trip-log-records")
   }
 
   private func routeWidgetTripRequestIfNeeded() {
