@@ -442,7 +442,7 @@ struct NativeOnboardingView: View {
           finish(destination: .trip)
         }
         Button {
-          finish(destination: .home)
+          finish(destination: .trip)
         } label: {
           Text("Explore the app first")
             .font(.system(size: 16, weight: .bold))
@@ -537,7 +537,7 @@ struct NativeOnboardingView: View {
       }
       let data = try Data(contentsOf: url)
       let summary = try store.restoreBackupData(data)
-      selectedTab = .home
+      selectedTab = .trip
       didSeed = false
       seedFromStore()
       restoreMessage = summary.message

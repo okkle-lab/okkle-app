@@ -24,12 +24,15 @@ struct NativeTripView: View {
   @Environment(\.colorScheme) private var colorScheme
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var session: NativeTripSession
+  @Binding private var selectedTab: NativeTab
   @State private var selectedVehicle: NativeVehicle = .car
   @State private var completedTrip: NativeTrip?
   @State private var infoCard = 0
+  @State private var showProfile = false
 
-  init(session: NativeTripSession = .shared) {
+  init(session: NativeTripSession = .shared, selectedTab: Binding<NativeTab> = .constant(.trip)) {
     self.session = session
+    self._selectedTab = selectedTab
   }
 
   var body: some View {
@@ -86,28 +89,57 @@ struct NativeTripView: View {
   }
 
   private var setupScreen: some View {
-    NativeScreen(title: "Trip", collapsedTitle: "Trip", subtitle: "Track GPS miles for HMRC mileage relief.") {
-      VStack(spacing: 18) {
-        Spacer(minLength: 44)
+    NavigationStack {
+      GeometryReader { proxy in
+        ZStack {
+          tripStartBackground
+            .ignoresSafeArea()
 
-        startTripButton
+          let centerY = proxy.size.height * 0.45
 
-        vehicleSelector
+          Text("Tap to Record")
+            .font(.system(size: 30, weight: .heavy, design: .rounded))
+            .foregroundStyle(.white)
+            .position(x: proxy.size.width / 2, y: centerY - 166)
 
-        if let message = session.permissionMessage {
-          Label(message, systemImage: "location.slash")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(OkkleColor.red)
-            .multilineTextAlignment(.center)
-            .padding(12)
-            .background(OkkleColor.red.opacity(0.16), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(.horizontal, 10)
+          startTripButton
+            .position(x: proxy.size.width / 2, y: centerY)
+
+          vehicleSelector
+            .position(x: proxy.size.width / 2, y: centerY + 176)
+
+          missedTripPanel
+            .padding(.horizontal, 18)
+            .position(x: proxy.size.width / 2, y: proxy.size.height - proxy.safeAreaInsets.bottom - (proxy.size.height * 0.05) + 56)
+
+          if let message = session.permissionMessage {
+            Label(message, systemImage: "location.slash")
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(.white)
+              .multilineTextAlignment(.center)
+              .padding(12)
+              .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+              .padding(.horizontal, 18)
+              .frame(maxWidth: proxy.size.width - 36)
+              .position(x: proxy.size.width / 2, y: min(proxy.size.height - proxy.safeAreaInsets.bottom - 148, centerY + 258))
+          }
         }
-
-        Spacer(minLength: 72)
       }
-      .frame(maxWidth: .infinity)
-      .frame(minHeight: max(460, UIScreen.main.bounds.height * 0.58), alignment: .center)
+      .navigationTitle("")
+      .navigationBarTitleDisplayMode(.large)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          NativeProfileToolbarButton {
+            showProfile = true
+          }
+        }
+      }
+      .sheet(isPresented: $showProfile) {
+        NativeSettingsView()
+          .presentationDetents([.large])
+          .presentationDragIndicator(.hidden)
+          .presentationCornerRadius(36)
+      }
     }
   }
 
@@ -124,50 +156,141 @@ struct NativeTripView: View {
       HStack(spacing: 10) {
         Image(systemName: selectedVehicle.symbol)
           .font(.system(size: 16, weight: .bold))
-          .foregroundStyle(OkkleColor.brand)
+          .foregroundStyle(.white)
         Text(selectedVehicle.label)
           .font(.system(size: 16, weight: .bold))
-          .foregroundStyle(OkkleColor.ink)
+          .foregroundStyle(.white)
         Image(systemName: "chevron.up.chevron.down")
           .font(.system(size: 12, weight: .bold))
-          .foregroundStyle(OkkleColor.muted)
+          .foregroundStyle(.white.opacity(0.72))
       }
       .padding(.horizontal, 18)
       .padding(.vertical, 12)
-      .background(.regularMaterial, in: Capsule())
+      .background(Color.white.opacity(0.16), in: Capsule())
+      .overlay {
+        Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1)
+      }
       .contentShape(Capsule())
     }
     .buttonStyle(.plain)
     .tint(OkkleColor.brand)
     .accessibilityLabel("Vehicle")
-    .accessibilityValue(selectedVehicle.label)
+      .accessibilityValue(selectedVehicle.label)
   }
 
-  private var startTripButton: some View {
-    ZStack {
-      Circle()
-        .stroke(OkkleColor.mint, lineWidth: 18)
-        .frame(width: 270, height: 270)
-      Circle()
-        .fill(
-          LinearGradient(colors: [OkkleColor.brand, OkkleColor.brandDark], startPoint: .topLeading, endPoint: .bottomTrailing)
-        )
-        .frame(width: 222, height: 222)
-        .shadow(color: OkkleColor.brand.opacity(0.32), radius: 28, y: 20)
+  private var missedTripPanel: some View {
+    Button {
+      selectedTab = .log
+    } label: {
+      HStack(spacing: 14) {
+        Image(systemName: "clock.arrow.circlepath")
+          .font(.system(size: 22, weight: .bold))
+          .foregroundStyle(.white)
+          .frame(width: 44, height: 44)
+          .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-      VStack(spacing: 8) {
-        Image(systemName: "location.north.fill")
-          .font(.system(size: 42, weight: .bold))
-        Text("Start")
-          .font(.system(size: 38, weight: .heavy, design: .rounded))
+        VStack(alignment: .leading, spacing: 3) {
+          Text("Missed a trip?")
+            .font(.system(size: 17, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+          Text("Log a previous journey")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.72))
+        }
+
+        Spacer()
+
+        Image(systemName: "chevron.right")
+          .font(.system(size: 15, weight: .bold))
+          .foregroundStyle(.white.opacity(0.76))
       }
-      .foregroundStyle(.white)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 14)
+      .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+          .stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+      }
+      .shadow(color: Color.black.opacity(0.18), radius: 22, y: 10)
     }
-    .frame(maxWidth: .infinity)
-    .contentShape(Circle())
-    .onTapGesture {
-      session.start(vehicle: selectedVehicle)
+    .buttonStyle(.plain)
+    .accessibilityLabel("Log a previous trip")
+  }
+
+  @ViewBuilder
+  private var startTripButton: some View {
+    if #available(iOS 26.0, *) {
+      Button {
+        session.start(vehicle: selectedVehicle)
+      } label: {
+        ZStack {
+          Circle()
+            .fill(startButtonFill)
+            .overlay {
+              Circle()
+                .stroke(Color.white.opacity(0.22), lineWidth: 0.35)
+            }
+          Image(systemName: "location.north.fill")
+            .font(.system(size: 76, weight: .heavy))
+            .foregroundStyle(.white)
+        }
+        .frame(width: 236, height: 236)
+        .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .shadow(color: Color.black.opacity(0.22), radius: 34, y: 18)
+      .shadow(color: OkkleColor.brand.opacity(0.30), radius: 24)
+    } else {
+      Button {
+        session.start(vehicle: selectedVehicle)
+      } label: {
+        ZStack {
+          Circle()
+            .fill(startButtonFill)
+            .frame(width: 236, height: 236)
+            .overlay {
+              Circle().stroke(Color.white.opacity(0.22), lineWidth: 0.35)
+            }
+
+          Image(systemName: "location.north.fill")
+            .font(.system(size: 76, weight: .heavy))
+            .foregroundStyle(.white)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .shadow(color: Color.black.opacity(0.22), radius: 34, y: 18)
+      .shadow(color: OkkleColor.brand.opacity(0.30), radius: 24)
     }
+  }
+
+  private var startButtonHighlight: Color {
+    Color(red: 0.10, green: 0.70, blue: 0.61)
+  }
+
+  private var startButtonFill: LinearGradient {
+    LinearGradient(
+      colors: [
+        startButtonHighlight,
+        OkkleColor.brand,
+        Color(red: 0.02, green: 0.42, blue: 0.36),
+      ],
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+  }
+
+  private var tripStartBackground: LinearGradient {
+    LinearGradient(
+      colors: [
+        Color(red: 0.07, green: 0.64, blue: 0.55),
+        OkkleColor.brand,
+        Color(red: 0.02, green: 0.30, blue: 0.26),
+      ],
+      startPoint: .top,
+      endPoint: .bottom
+    )
   }
 
   private var trackingMapScreen: some View {
@@ -381,7 +504,7 @@ struct NativeTripView: View {
               "Usually a lull — good time for a break.")
     }
     // 3. In a busy window → stay out where the orders are.
-    if let win = plan?.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
+    if plan?.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) != nil {
       return ("bolt.fill", OkkleColor.brand, "Busy window now",
               area.map { "Stay around \($0) — your peak." } ?? "This is one of your peaks.")
     }

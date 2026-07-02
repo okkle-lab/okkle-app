@@ -132,48 +132,87 @@ struct NativeSettingsView: View {
     NavigationStack {
       List {
         Section {
-          menuRow("Profile", "Name, vehicle, platforms & accountant details",
-                  symbol: "person.fill", tint: OkkleColor.brand) { NativeProfileSettingsView() }
-          menuRow("Tax settings", "Region, band & other income",
-                  symbol: "percent", tint: OkkleColor.amber) { NativeTaxSettingsView() }
-          menuRow("Automatic tracking", "Auto-start trips on your working days",
-                  symbol: "location.fill", tint: OkkleColor.blue) { NativeAutoTrackSettingsView() }
-          menuRow("Reminders", "Logging nudges & deadline alerts",
-                  symbol: "bell.fill", tint: .purple) { NativeRemindersSettingsView() }
-          menuRow("Export & share", "Accountant pack & CSV files",
-                  symbol: "square.and.arrow.up", tint: OkkleColor.brandDark) { NativeExportSettingsView() }
-          menuRow("Data & backup", "Back up, restore or delete",
-                  symbol: "externaldrive.fill", tint: OkkleColor.blue) { NativeDataSettingsView() }
-          menuRow("Help & feedback", "Support, app info & ways to help",
-                  symbol: "questionmark.circle.fill", tint: .gray) { NativeHelpSettingsView() }
+          NativeSettingsProfileHeader()
+            .listRowInsets(EdgeInsets(top: 22, leading: 0, bottom: 16, trailing: 0))
+            .listRowBackground(Color.clear)
+        }
+
+        Section {
+          menuRow("Profile details") { NativeProfileSettingsView() }
+          menuRow("Accountant details") { NativeAccountantDetailsSettingsView() }
+        }
+
+        Section {
+          menuRow("Tax settings") { NativeTaxSettingsView() }
+          menuRow("Automatic tracking") { NativeAutoTrackSettingsView() }
+          menuRow("Reminders") { NativeRemindersSettingsView() }
+          menuRow("Export & share") { NativeExportSettingsView() }
+        } header: {
+          Text("Features")
+        }
+
+        Section {
+          menuRow("Data & backup") { NativeDataSettingsView() }
+        } header: {
+          Text("Privacy")
+        } footer: {
+          Text("Your Okkle data stays on this device unless you choose to export or back it up.")
+        }
+
+        Section {
+          menuRow("Help & feedback") { NativeHelpSettingsView() }
         }
       }
-      .navigationTitle("Settings")
+      .listStyle(.insetGrouped)
+      .navigationTitle("")
+      .navigationBarTitleDisplayMode(.inline)
       .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Done") { dismiss() }.fontWeight(.bold)
+        ToolbarItem(placement: .topBarLeading) {
+          Button { dismiss() } label: {
+            Image(systemName: "xmark")
+              .font(.system(size: 15, weight: .bold))
+              .foregroundStyle(OkkleColor.ink)
+              .frame(width: 44, height: 44)
+              .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
+          }
+          .accessibilityLabel("Close")
         }
       }
     }
   }
 
-  private func menuRow<Destination: View>(_ title: String, _ subtitle: String, symbol: String, tint: Color, @ViewBuilder destination: () -> Destination) -> some View {
+  private func menuRow<Destination: View>(_ title: String, @ViewBuilder destination: () -> Destination) -> some View {
     NavigationLink {
       destination()
     } label: {
-      HStack(spacing: 12) {
-        Image(systemName: symbol)
-          .font(.system(size: 15, weight: .bold))
-          .foregroundStyle(.white)
-          .frame(width: 32, height: 32)
-          .background(tint, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        VStack(alignment: .leading, spacing: 2) {
-          Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(OkkleColor.ink)
-          Text(subtitle).font(.system(size: 12, weight: .medium)).foregroundStyle(OkkleColor.muted).lineLimit(1)
-        }
-      }
-      .padding(.vertical, 4)
+      Text(title)
     }
+  }
+}
+
+struct NativeSettingsProfileHeader: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  private var displayName: String {
+    let name = store.settings.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return name.isEmpty ? "Profile" : name
+  }
+
+  var body: some View {
+    VStack(spacing: 10) {
+      Image(systemName: "person.crop.circle.fill")
+        .font(.system(size: 64, weight: .regular))
+        .symbolRenderingMode(.hierarchical)
+        .foregroundStyle(OkkleColor.brand)
+        .shadow(color: OkkleColor.brand.opacity(0.34), radius: 18, y: 8)
+        .shadow(color: OkkleColor.brand.opacity(0.22), radius: 34, y: 14)
+
+      Text(displayName)
+        .font(.title2.weight(.semibold))
+        .multilineTextAlignment(.center)
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 6)
   }
 }
 
@@ -198,17 +237,11 @@ struct NativeProfileSettingsView: View {
             Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
           }
         }
-
-        NavigationLink {
-          NativeAccountantDetailsSettingsView()
-        } label: {
-          Label("Accountant details", systemImage: "person.text.rectangle")
-        }
       }
 
       NativeSettingsPlatformsSection()
     }
-    .navigationTitle("Profile")
+    .navigationTitle("Profile details")
     .navigationBarTitleDisplayMode(.inline)
   }
 }

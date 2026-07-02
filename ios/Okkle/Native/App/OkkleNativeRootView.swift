@@ -7,16 +7,16 @@ import SwiftUI
 import UIKit
 import Vision
 enum NativeTab: String, CaseIterable, Hashable {
-  case home
-  case insights
   case trip
   case log
+  case insights
   case records
+  case progress
 }
 
 struct OkkleNativeRootView: View {
   @StateObject private var store = OkkleStore.shared
-  @State private var selectedTab: NativeTab = .home
+  @State private var selectedTab: NativeTab = .trip
 
   var body: some View {
     Group {
@@ -51,23 +51,31 @@ struct OkkleNativeRootView: View {
 
   private var appTabs: some View {
     TabView(selection: $selectedTab) {
-      NativeHomeView(selectedTab: $selectedTab)
-        .tabItem { Label("Home", systemImage: "person.crop.circle") }
-        .tag(NativeTab.home)
+      NativeTripView(selectedTab: $selectedTab)
+        .tabItem { Label("Trip", systemImage: "location.north") }
+        .tag(NativeTab.trip)
       NativeInsightsView()
         .tabItem { Label("Insights", systemImage: "sparkles") }
         .tag(NativeTab.insights)
-      NativeTripView()
-        .tabItem { Label("Trip", systemImage: "location.north") }
-        .tag(NativeTab.trip)
-      NativeLogView(selectedTab: $selectedTab)
-        .tabItem { Label("Log", systemImage: "square.and.pencil") }
-        .tag(NativeTab.log)
       NativeRecordsView()
         .tabItem { Label("Records", systemImage: "archivebox") }
         .tag(NativeTab.records)
+      NativeProgressView(selectedTab: $selectedTab)
+        .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
+        .tag(NativeTab.progress)
     }
-    .id("okkle-main-tabs-home-insights-trip-log-records")
+    .id("okkle-main-tabs-trip-log-insights-records-progress")
+    .fullScreenCover(isPresented: Binding(
+      get: { selectedTab == .log },
+      set: { isPresented in
+        if !isPresented, selectedTab == .log {
+          selectedTab = .trip
+        }
+      }
+    )) {
+      NativeLogView(selectedTab: $selectedTab)
+        .environmentObject(store)
+    }
   }
 
   private func routeWidgetTripRequestIfNeeded() {

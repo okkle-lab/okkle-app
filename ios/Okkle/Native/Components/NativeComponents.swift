@@ -69,8 +69,6 @@ struct NativeScreen<Content: View>: View {
       GeometryReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 20) {
-            header
-
             if let subtitle {
               Text(subtitle)
                 .font(.system(size: 17, weight: .medium))
@@ -87,7 +85,6 @@ struct NativeScreen<Content: View>: View {
           }
           .frame(minHeight: fillsViewport ? max(0, proxy.size.height - 36) : nil, alignment: .topLeading)
           .padding(.horizontal, 20)
-          .padding(.top, 8)
           .padding(.bottom, 120)
           .coordinateSpace(name: nativeScreenContentCoordinateSpace)
           .environment(\.nativeViewportHeight, proxy.size.height)
@@ -96,7 +93,25 @@ struct NativeScreen<Content: View>: View {
         .scrollDismissesKeyboard(.interactively)
       }
       .background { NativeBackground() }
-      .toolbar(.hidden, for: .navigationBar)
+      .navigationTitle(collapsedTitle ?? title)
+      .navigationBarTitleDisplayMode(.large)
+      .toolbar {
+        if let onClose {
+          ToolbarItem(placement: .topBarLeading) {
+            Button(action: onClose) {
+              Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .bold))
+            }
+            .accessibilityLabel("Close")
+          }
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+          NativeProfileToolbarButton {
+            showSettings = true
+          }
+        }
+      }
       .sheet(isPresented: $showSettings) {
         NativeSettingsView()
           .presentationDetents([.large])
@@ -105,30 +120,17 @@ struct NativeScreen<Content: View>: View {
       }
     }
   }
+}
 
-  /// Compact top header: the title sits on the same row as the settings gear
-  /// (and the optional close button), instead of a large title with a big gap.
-  private var header: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 12) {
-      if let onClose {
-        Button(action: onClose) {
-          Image(systemName: "xmark")
-            .font(.system(size: 16, weight: .bold))
-            .foregroundStyle(style.settingsColor)
-        }
-        .accessibilityLabel("Close")
-      }
-      Text(title)
-        .font(.system(size: 32, weight: .bold))
-        .foregroundStyle(style.titleColor)
-      Spacer(minLength: 8)
-      Button { showSettings = true } label: {
-        Image(systemName: "gearshape")
-          .font(.system(size: 19, weight: .semibold))
-          .foregroundStyle(style.settingsColor)
-      }
-      .accessibilityLabel("Settings")
+struct NativeProfileToolbarButton: View {
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "person.crop.circle")
+        .font(.system(size: 17, weight: .semibold))
     }
+    .accessibilityLabel("Profile")
   }
 }
 

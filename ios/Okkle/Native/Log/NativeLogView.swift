@@ -568,6 +568,7 @@ struct NativeLogView: View {
         HStack(spacing: 12) {
           Button {
             resetEntry()
+            selectedTab = .trip
           } label: {
             Text("Done")
               .font(.system(size: 16, weight: .bold))
@@ -579,10 +580,7 @@ struct NativeLogView: View {
 
           Button {
             resetEntry()
-            selectedTab = .home
-            DispatchQueue.main.async {
-              NotificationCenter.default.post(name: .nativeShowRecords, object: nil)
-            }
+            selectedTab = .records
           } label: {
             Text("View records")
               .font(.system(size: 16, weight: .bold))

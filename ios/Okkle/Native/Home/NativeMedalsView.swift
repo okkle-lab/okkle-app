@@ -11,6 +11,7 @@ struct NativeMedalPreviewCard: View {
   var weeklyProgress: NativeProgressTotals
   var yearToDateProgress: NativeProgressTotals
   var allTimeProgress: NativeProgressTotals
+  var showsMedalsSection = true
   let onOpen: () -> Void
   @State private var progressPeriod: NativeProgressPeriod = .yearToDate
 
@@ -95,8 +96,68 @@ struct NativeMedalPreviewCard: View {
         )
       }
 
-      Divider()
+      if showsMedalsSection {
+        Divider()
 
+        NativeMedalPreviewPanelContent(
+          achievements: achievements,
+          unlocked: unlocked,
+          featured: featured,
+          nextUp: nextUp,
+          onOpen: onOpen
+        )
+      }
+    }
+    .padding(16)
+  }
+}
+
+struct NativeMedalPreviewPanel: View {
+  let achievements: [NativeMedalAchievement]
+  let onOpen: () -> Void
+
+  private var unlocked: [NativeMedalAchievement] {
+    achievements.filter(\.unlocked)
+  }
+
+  private var featured: [NativeMedalAchievement] {
+    let earned = unlocked.suffix(3)
+    let close = achievements
+      .filter { !$0.unlocked }
+      .sorted { $0.progress > $1.progress }
+      .prefix(max(0, 3 - earned.count))
+    return Array(earned) + Array(close)
+  }
+
+  private var nextUp: [NativeMedalAchievement] {
+    achievements
+      .filter { !$0.unlocked && $0.progress > 0 }
+      .sorted { $0.progress > $1.progress }
+      .prefix(2)
+      .map { $0 }
+  }
+
+  var body: some View {
+    NativeMedalPreviewPanelContent(
+      achievements: achievements,
+      unlocked: unlocked,
+      featured: featured,
+      nextUp: nextUp,
+      onOpen: onOpen
+    )
+    .padding(16)
+  }
+}
+
+private struct NativeMedalPreviewPanelContent: View {
+  let achievements: [NativeMedalAchievement]
+  let unlocked: [NativeMedalAchievement]
+  let featured: [NativeMedalAchievement]
+  let nextUp: [NativeMedalAchievement]
+  let onOpen: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
       HStack(alignment: .center) {
         VStack(alignment: .leading, spacing: 3) {
           Text("Medals")
@@ -143,7 +204,6 @@ struct NativeMedalPreviewCard: View {
         }
       }
     }
-    .padding(16)
   }
 }
 

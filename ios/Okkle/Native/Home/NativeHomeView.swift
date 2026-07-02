@@ -7,7 +7,7 @@ import SwiftUI
 import UIKit
 import Vision
 
-struct NativeHomeView: View {
+struct NativeProgressView: View {
   @Environment(\.nativeViewportHeight) private var nativeViewportHeight
   @Environment(\.colorScheme) private var colorScheme
   @EnvironmentObject private var store: OkkleStore
@@ -43,12 +43,8 @@ struct NativeHomeView: View {
 
   var body: some View {
     ZStack {
-      NativeScreen(title: homeGreetingTitle, collapsedTitle: "Home", subtitle: Date().formatted(.dateTime.weekday(.wide).day().month(.wide)), fillsViewport: true) {
+      NativeScreen(title: "Progress", collapsedTitle: "Progress", fillsViewport: true) {
         VStack(alignment: .leading, spacing: 16) {
-          taxDeadlineChip
-
-          taxCard
-
           progressSection
 
           Spacer(minLength: 0)
@@ -263,8 +259,14 @@ struct NativeHomeView: View {
         achievements: NativeMedalEngine.achievements(store: store),
         weeklyProgress: weeklyProgressTotals,
         yearToDateProgress: yearToDateProgressTotals,
-        allTimeProgress: allTimeProgressTotals
+        allTimeProgress: allTimeProgressTotals,
+        showsMedalsSection: false
       ) {
+        showsMedals = true
+      }
+      .okkleLegacyCard()
+
+      NativeMedalPreviewPanel(achievements: NativeMedalEngine.achievements(store: store)) {
         showsMedals = true
       }
       .okkleLegacyCard()
