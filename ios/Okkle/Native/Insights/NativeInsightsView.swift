@@ -54,33 +54,6 @@ enum NativeTimeFilter: String, CaseIterable, Identifiable {
   }
 }
 
-struct NativeHeatStatChip: View {
-  let title: String
-  let value: String
-  let symbol: String
-  let color: Color
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      Image(systemName: symbol)
-        .font(.system(size: 14, weight: .bold))
-        .foregroundStyle(color)
-      Text(value)
-        .font(.system(size: 17, weight: .bold, design: .rounded))
-        .foregroundStyle(OkkleColor.ink)
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
-      Text(title)
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(OkkleColor.muted)
-        .lineLimit(1)
-    }
-    .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-    .padding(12)
-    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-  }
-}
-
 // MARK: - Zone colour scale
 
 /// Quiet → busiest, in one clear ramp (cool blue → teal → green → amber → red)
@@ -419,38 +392,6 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
   }
 }
 
-/// The small, tappable map embedded in the Shift Patterns card. Tapping opens
-/// the full-screen, pannable version.
-struct NativeShiftMapPreview: View {
-  let trips: [NativeTrip]
-  let zones: [NativeZonePoint]
-  @State private var showDetail = false
-  @ObservedObject private var locator = NativeOneShotLocator.shared
-
-  var body: some View {
-    Button { showDetail = true } label: {
-      ZStack(alignment: .bottomTrailing) {
-        NativeShiftMapRepresentable(trips: trips, zones: zones)
-          .frame(height: 190)
-          .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-          .allowsHitTesting(false)
-        Label("Explore map", systemImage: "arrow.up.left.and.arrow.down.right")
-          .font(.system(size: 12, weight: .bold))
-          .foregroundStyle(.white)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 7)
-          .background(.black.opacity(0.55), in: Capsule())
-          .padding(10)
-      }
-    }
-    .buttonStyle(.plain)
-    .onAppear { locator.request() }
-    .sheet(isPresented: $showDetail) {
-      NativeShiftMapDetailView(trips: trips, zones: zones)
-    }
-  }
-}
-
 /// A compact button (no always-on map) that opens the full explorable map. The
 /// inline map ate too much vertical space and didn't tell the driver what to do.
 struct NativeExploreMapButton: View {
@@ -524,12 +465,8 @@ struct NativeShiftPatternsCard: View {
   @State private var page = 0   // 0 = daily, 1 = weekly
 
   var body: some View {
-    NativeAiCard(banner: "SHIFT PATTERNS") {
-      VStack(alignment: .leading, spacing: 16) {
-        Text("Where and when you earn most")
-          .font(.system(size: 26, weight: .bold, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
-
+    NativeAiCard(banner: "SHIFT PATTERNS", bannerTrailing: shift.hasData ? shift.confidence.tag : nil) {
+      VStack(alignment: .leading, spacing: 14) {
         if !autoTrackTrips {
           offState
         } else if !shift.hasData {
@@ -537,13 +474,6 @@ struct NativeShiftPatternsCard: View {
         } else {
           carousel
         }
-
-        Text(autoTrackTrips
-             ? "Learned automatically from your tracked stops — no input needed. Log your pay to sharpen the £/hour estimate."
-             : "Turn on automatic tracking to see your best zones and times build up here, with no extra steps.")
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
-          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
@@ -559,23 +489,53 @@ struct NativeShiftPatternsCard: View {
     }
   }
 
+  /// Cold start: sensible built-in guidance so a day-1 driver still gets
+  /// something useful while their own pattern accrues. Clearly generic, never
+  /// dressed up as personal insight.
   private var buildingState: some View {
-    Label("Building your pattern — keep driving on your working days and this fills in automatically.", systemImage: "hourglass")
-      .font(.system(size: 14, weight: .semibold))
-      .foregroundStyle(OkkleColor.brandDark)
-      .padding(14)
-      .background(OkkleColor.brand.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
+    VStack(alignment: .leading, spacing: 12) {
+      Label("Learning your pattern — this fills in automatically as you drive.", systemImage: "hourglass")
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(OkkleColor.brandDark)
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("UNTIL THEN, WHAT WORKS FOR MOST COURIERS")
+          .font(.system(size: 11, weight: .heavy)).tracking(0.4)
+          .foregroundStyle(OkkleColor.muted)
+        baselineRow("fork.knife", "Dinner (5–9pm) usually beats mid-afternoon.")
+        baselineRow("calendar", "Friday to Sunday evenings are the strongest.")
+        baselineRow("cloud.rain.fill", "Rain and cold push orders up — and thin out drivers.")
+        baselineRow("fuelpump.fill", "Roaming between orders quietly eats your profit.")
+      }
+      .padding(12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+    }
   }
 
-  // Two swipeable panels: Daily plan and Weekly pattern.
+  private func baselineRow(_ symbol: String, _ text: String) -> some View {
+    HStack(alignment: .top, spacing: 8) {
+      Image(systemName: symbol)
+        .font(.system(size: 12, weight: .bold))
+        .foregroundStyle(OkkleColor.brand)
+        .frame(width: 18)
+        .padding(.top, 1)
+      Text(text)
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(OkkleColor.ink)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  // Two swipeable panels: Today (act now) and This week (learn & improve).
   private var carousel: some View {
-    VStack(spacing: 10) {
+    VStack(spacing: 8) {
       TabView(selection: $page) {
         NativeDailyInsightPanel(shift: shift, trips: trips).tag(0)
         NativeWeeklyInsightPanel(shift: shift).tag(1)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
-      .frame(height: 470)
+      .frame(height: 402)
 
       HStack(spacing: 7) {
         ForEach(0..<2, id: \.self) { i in
@@ -584,7 +544,7 @@ struct NativeShiftPatternsCard: View {
             .frame(width: page == i ? 18 : 7, height: 7)
             .animation(.easeInOut(duration: 0.2), value: page)
         }
-        Text(page == 0 ? "Daily" : "Weekly")
+        Text(page == 0 ? "Today" : "This week")
           .font(.system(size: 12, weight: .bold))
           .foregroundStyle(OkkleColor.muted)
           .padding(.leading, 4)
@@ -604,65 +564,48 @@ struct NativeDailyInsightPanel: View {
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
   var body: some View {
-    ScrollView(.vertical, showsIndicators: false) {
-      VStack(alignment: .leading, spacing: 12) {
-        if let plan = shift.todayPlan {
-          let strongDay = shift.weekdayDetails.prefix(3).contains { $0.weekday == plan.weekday }
-
+    VStack(alignment: .leading, spacing: 12) {
+      if let plan = shift.todayPlan {
+        HStack {
           Text(plan.isToday
                ? "TODAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())"
                : "NEXT WORKING DAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())")
             .font(.system(size: 12, weight: .heavy)).tracking(0.4)
             .foregroundStyle(OkkleColor.muted)
-
-          weatherSection(plan: plan, strongDay: strongDay)
-
-          if let now = rightNow(plan) {
-            HStack(alignment: .top, spacing: 10) {
-              Image(systemName: "location.fill.viewfinder")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-              Text(now)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(OkkleColor.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OkkleColor.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-          }
-
-          ForEach(plan.driveWindows) { window in
-            planRow(
-              symbol: "bolt.fill", color: OkkleColor.brand,
-              title: window.id == plan.peakWindow?.id ? "Busiest — drive" : "Worth driving",
-              value: window.label,
-              detail: window.id == plan.peakWindow?.id ? areaText(for: plan.zone) : nil
-            )
-          }
-
-          if let brk = plan.breakWindow {
-            planRow(symbol: "cup.and.saucer.fill", color: OkkleColor.amber,
-                    title: "Predicted lull — take your break", value: brk.label, detail: nil)
-          } else if plan.driveWindows.isEmpty {
-            Text("Not enough on \(plan.dayLabel) yet — a couple more shifts and the timing will sharpen up.")
-              .font(.system(size: 14, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-          }
-
-          if let pace = goalPace(plan) {
-            planRow(symbol: "target", color: .green, title: "Aim for", value: pace.money, detail: pace.detail)
-          }
-
-          NativeHourStrip(hourCounts: plan.hourCounts)
-            .padding(.top, 2)
+          Spacer()
+          confidenceDots
         }
 
-        NativeExploreMapButton(trips: trips, zones: shift.zones)
+        heroSection(plan)
+
+        if let brk = plan.breakWindow {
+          HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "cup.and.saucer.fill")
+              .font(.system(size: 13, weight: .bold))
+              .foregroundStyle(OkkleColor.amber)
+              .frame(width: 20)
+              .padding(.top, 1)
+            Text("Usual lull \(brk.label) — good time for a break.")
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(OkkleColor.ink)
+              .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+          }
+        }
+
+        kpiRow
+
+        NativeHourStrip(hourCounts: plan.hourCounts)
       }
-      .padding(.bottom, 4)
+
+      NativeExploreMapButton(trips: trips, zones: shift.zones)
+
+      if shift.confidence == .low {
+        Text("Early read — a few more tracked shifts will sharpen this.")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      Spacer(minLength: 0)
     }
     .onAppear {
       locator.request()
@@ -673,114 +616,134 @@ struct NativeDailyInsightPanel: View {
     }
   }
 
-  // MARK: Goal pacing
-
-  private func goalPace(_ plan: NativeDayPlan) -> (money: String, detail: String)? {
-    guard let perHour = shift.perHour else { return nil }
-    let activeHours = max(1, plan.hourCounts.filter { $0 > 0 }.count)
-    let target = perHour * Double(activeHours)
-    return (gbp(target, whole: true), "≈ \(activeHours)h out at your ~\(gbp(perHour, whole: true))/hr")
-  }
-
-  // MARK: Weather layer + "big night" alert
-
-  @ViewBuilder private func weatherSection(plan: NativeDayPlan, strongDay: Bool) -> some View {
-    if let today = weather.today, let insight = weatherInsight(today, plan: plan, strongDay: strongDay) {
-      HStack(alignment: .top, spacing: 10) {
-        Image(systemName: insight.symbol)
-          .font(.system(size: 18, weight: .semibold))
-          .foregroundStyle(insight.busy ? OkkleColor.brand : OkkleColor.muted)
-          .frame(width: 30)
-        VStack(alignment: .leading, spacing: 2) {
-          Text(insight.headline)
-            .font(.system(size: 13, weight: .heavy))
-            .foregroundStyle(insight.busy ? OkkleColor.brandDark : OkkleColor.ink)
-          Text(insight.detail)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        Spacer(minLength: 0)
+  private var confidenceDots: some View {
+    HStack(spacing: 3) {
+      ForEach(0..<3, id: \.self) { i in
+        Circle()
+          .fill(i < shift.confidence.dots ? OkkleColor.brand : OkkleColor.muted.opacity(0.25))
+          .frame(width: 6, height: 6)
       }
-      .padding(12)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background((insight.busy ? OkkleColor.brand : OkkleColor.muted).opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
     }
+    .accessibilityLabel("Confidence: \(shift.confidence.tag.lowercased())")
   }
 
-  private func weatherInsight(_ weather: NativeDayWeather, plan: NativeDayPlan, strongDay: Bool) -> (symbol: String, headline: String, detail: String, busy: Bool)? {
-    // Look at the working part of the day only.
-    let daytime = weather.hours.filter { (10...23).contains($0.hour) }
-    guard !daytime.isEmpty else { return nil }
-    let boost = daytime.filter(\.boostsDemand)
+  // MARK: Hero — the single instruction, weather folded in
 
-    if let start = boost.map(\.hour).min(), let end = boost.map(\.hour).max() {
-      let range = "\(nativeHourLabel(start))–\(nativeHourLabel(end + 1))"
-      let wet = boost.contains(where: \.isWet)
-      let cold = boost.contains(where: \.isCold)
-      let dayName = Calendar.current.weekdaySymbols[plan.weekday]
-
-      // Big night: bad weather landing on one of your strong days.
-      if strongDay {
-        let cond = (wet && cold) ? "Cold and wet" : (wet ? "Wet" : "Cold")
-        return ("flame.fill",
-                "Don't skip \(plan.isToday ? "tonight" : dayName) — big one likely",
-                "\(cond) on a \(dayName), your classic busy night. Get out around \(range).",
-                true)
-      }
-      let symbol = wet ? "cloud.rain.fill" : "thermometer.snowflake"
-      let headline = wet ? "Rain around \(range) — likely busier" : "Cold around \(range) — likely busier"
-      return (symbol, headline, "Orders usually spike and fewer drivers are out, so it can pay to be on.", true)
-    }
-
-    // No demand boost — just show a calm conditions summary from midday.
-    guard let mid = weather.at(15) ?? daytime.first else { return nil }
-    return (mid.symbol, "\(mid.label), \(Int(mid.temperature.rounded()))°",
-            "Fair conditions — expect a normal day out there.", false)
-  }
-
-  /// Continuous-analysis positioning: given the clock, where to head now.
-  private func rightNow(_ plan: NativeDayPlan) -> String? {
-    guard plan.isToday, !plan.driveWindows.isEmpty else { return nil }
-    let hour = Calendar.current.component(.hour, from: Date())
-    let area = areaNamer.name(for: plan.zone ?? CLLocationCoordinate2D()).map { " near \($0)" } ?? ""
-    if let current = plan.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
-      return "You're in a busy window (\(current.label)) — stay out\(area)."
-    }
-    if let next = plan.driveWindows.first(where: { $0.startHour > hour }) {
-      return "Head out for \(nativeHourLabel(next.startHour))\(area) — that's when it picks up."
-    }
-    return "Your busy windows were earlier today — expect it quieter from here."
-  }
-
-  private func planRow(symbol: String, color: Color, title: String, value: String, detail: String?) -> some View {
-    HStack(alignment: .center, spacing: 10) {
-      Image(systemName: symbol)
-        .font(.system(size: 15, weight: .bold))
-        .foregroundStyle(color)
-        .frame(width: 24)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(title)
-          .font(.system(size: 12, weight: .semibold))
+  private func heroSection(_ plan: NativeDayPlan) -> some View {
+    let hero = heroContent(plan)
+    return HStack(alignment: .top, spacing: 12) {
+      Image(systemName: hero.symbol)
+        .font(.system(size: 19, weight: .bold))
+        .foregroundStyle(.white)
+        .frame(width: 40, height: 40)
+        .background(hero.color, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+      VStack(alignment: .leading, spacing: 3) {
+        Text(hero.title)
+          .font(.system(size: 20, weight: .heavy, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+          .fixedSize(horizontal: false, vertical: true)
+        Text(hero.detail)
+          .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
-        HStack(spacing: 5) {
-          Text(value)
-            .font(.system(size: 16, weight: .bold))
-            .foregroundStyle(OkkleColor.ink)
-          if let detail {
-            Text(detail)
-              .font(.system(size: 13, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-          }
-        }
+          .fixedSize(horizontal: false, vertical: true)
       }
       Spacer(minLength: 0)
     }
+    .padding(13)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(hero.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))
   }
 
-  private func areaText(for coordinate: CLLocationCoordinate2D?) -> String? {
-    guard let coordinate, let name = areaNamer.name(for: coordinate) else { return nil }
-    return "near \(name)"
+  /// One instruction, chosen by priority: big night → in a window now → window
+  /// coming → wound down → next working day. Weather escalates, never competes.
+  private func heroContent(_ plan: NativeDayPlan) -> (symbol: String, color: Color, title: String, detail: String) {
+    let strongDay = shift.weekdayDetails.prefix(3).contains { $0.weekday == plan.weekday }
+    let dayName = Calendar.current.weekdaySymbols[plan.weekday]
+    let area = areaNamer.name(for: plan.zone ?? CLLocationCoordinate2D())
+    let soft = shift.confidence == .low
+    let peak = plan.peakWindow
+
+    // Weather demand boost across the working day.
+    let boost = weather.today?.hours.filter { (10...23).contains($0.hour) && $0.boostsDemand } ?? []
+    let wet = boost.contains(where: \.isWet)
+
+    // 1. Big night: bad weather on one of your strong days.
+    if !boost.isEmpty, strongDay, let peak {
+      let cond = wet ? "Wet" : "Cold"
+      return ("flame.fill", OkkleColor.brand,
+              plan.isToday ? "Don't skip tonight" : "Don't skip \(dayName)",
+              "\(cond) \(dayName) — your classic big night. Be out for \(peak.label)\(area.map { " near \($0)" } ?? "").")
+    }
+
+    if plan.isToday, let peak {
+      let hour = Calendar.current.component(.hour, from: Date())
+      // 2. In a busy window right now.
+      if let current = plan.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
+        return ("bolt.fill", OkkleColor.brand,
+                "Stay out — busy till \(nativeHourLabel(current.endHour + 1))",
+                area.map { "Around \($0) is \(soft ? "looking like" : "usually") your best bet." } ?? "You're inside \(soft ? "what looks like" : "") your busy window.")
+      }
+      // 3. A window still ahead today.
+      if let next = plan.driveWindows.first(where: { $0.startHour > hour }) {
+        let boostNote = boost.isEmpty ? "" : (wet ? " Rain should help." : " Cold should help.")
+        return ("figure.walk.arrival", OkkleColor.brand,
+                "Be out for \(nativeHourLabel(next.startHour))",
+                "\(soft ? "Early read: " : "")\(next.label)\(area.map { " near \($0)" } ?? "") \(soft ? "looks like" : "is usually") your strongest.\(boostNote)")
+      }
+      // 4. Peaks have passed.
+      return ("moon.stars.fill", OkkleColor.muted,
+              "Your peaks have passed",
+              "Quieter from here \(soft ? "by the early read" : "most \(dayName)s") — rest up for the next one.")
+    }
+
+    // 5. Planning ahead for the next working day.
+    if let peak {
+      return ("calendar", OkkleColor.brand,
+              "\(dayName): be out for \(nativeHourLabel(peak.startHour))",
+              "\(soft ? "Early read — " : "")\(peak.label)\(area.map { " near \($0)" } ?? "") \(soft ? "looks" : "is usually") strongest.")
+    }
+    return ("hourglass", OkkleColor.muted,
+            "Still learning \(dayName)s",
+            "A couple more shifts and the timing sharpens up.")
+  }
+
+  // MARK: KPI row — three, no more
+
+  private var kpiRow: some View {
+    HStack(spacing: 8) {
+      miniKpi("Est. rate", shift.perHourBand.map { "\($0)/hr" } ?? "—", "sterlingsign.circle.fill", .green)
+      miniKpi("Unpaid mi", "\(shift.deadMilePct)%", "arrow.triangle.turn.up.right.diamond.fill", OkkleColor.amber)
+      miniKpi("Trend", trendLabel, trendUp ? "arrow.up.right" : "arrow.right", trendUp ? OkkleColor.brand : OkkleColor.muted)
+    }
+  }
+
+  private var trendUp: Bool { shift.lastShift?.wasUp ?? false }
+  private var trendLabel: String {
+    guard let last = shift.lastShift, last.weekdayAvgPerHour != nil else { return "—" }
+    return trendUp ? "Up" : "Steady"
+  }
+
+  private func miniKpi(_ title: String, _ value: String, _ symbol: String, _ color: Color) -> some View {
+    VStack(alignment: .leading, spacing: 3) {
+      HStack(spacing: 4) {
+        Image(systemName: symbol)
+          .font(.system(size: 10, weight: .bold))
+          .foregroundStyle(color)
+        Text(title)
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .lineLimit(1)
+      }
+      Text(value)
+        .font(.system(size: 15, weight: .bold, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 }
 
@@ -791,17 +754,17 @@ struct NativeHourStrip: View {
 
   var body: some View {
     let peak = max(1, hourCounts.max() ?? 1)
-    VStack(alignment: .leading, spacing: 5) {
+    VStack(alignment: .leading, spacing: 4) {
       HStack(alignment: .bottom, spacing: 3) {
         ForEach(hours, id: \.self) { h in
           let value = h < hourCounts.count ? hourCounts[h] : 0
           RoundedRectangle(cornerRadius: 2, style: .continuous)
             .fill(value == 0 ? OkkleColor.muted.opacity(0.15) : nativeHeatColor(Double(value) / Double(peak)))
             .frame(maxWidth: .infinity)
-            .frame(height: max(5, CGFloat(value) / CGFloat(peak) * 44))
+            .frame(height: max(4, CGFloat(value) / CGFloat(peak) * 32))
         }
       }
-      .frame(height: 44, alignment: .bottom)
+      .frame(height: 32, alignment: .bottom)
       HStack(spacing: 0) {
         ForEach([9, 12, 15, 18, 21], id: \.self) { h in
           Text(nativeHourLabel(h))
@@ -826,117 +789,91 @@ struct NativeWeeklyInsightPanel: View {
   }
 
   var body: some View {
-    ScrollView(.vertical, showsIndicators: false) {
-      VStack(alignment: .leading, spacing: 12) {
-        Text("THIS WEEK'S PATTERN")
-          .font(.system(size: 12, weight: .heavy)).tracking(0.4)
+    VStack(alignment: .leading, spacing: 12) {
+      Text("YOUR WEEK")
+        .font(.system(size: 12, weight: .heavy)).tracking(0.4)
+        .foregroundStyle(OkkleColor.muted)
+
+      let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
+      HStack(alignment: .bottom, spacing: 8) {
+        ForEach(orderedWeekdayStats) { stat in
+          VStack(spacing: 5) {
+            Capsule()
+              .fill(stat.count == 0 ? OkkleColor.muted.opacity(0.18) : nativeHeatColor(Double(stat.sharePct) / Double(maxShare)))
+              .frame(width: 10, height: max(5, CGFloat(stat.sharePct) / CGFloat(maxShare) * 52))
+            Text(stat.symbol)
+              .font(.system(size: 11, weight: stat.weekday == todayWeekday ? .heavy : .semibold))
+              .foregroundStyle(stat.weekday == todayWeekday ? OkkleColor.ink : OkkleColor.muted)
+          }
+          .frame(maxWidth: .infinity)
+        }
+      }
+      .frame(height: 68, alignment: .bottom)
+
+      // One improvement, one warning — comparative language only, no accounting.
+      if let last = shift.lastShift, let line = last.comparative {
+        insightLine(
+          symbol: last.wasUp ? "arrow.up.right.circle.fill" : "equal.circle.fill",
+          color: last.wasUp ? OkkleColor.brand : OkkleColor.muted,
+          text: last.finishedBeforePeak && last.peakLabel != nil
+            ? "\(line) You clocked off before your usual \(last.peakLabel!.lowercased()) peak."
+            : line
+        )
+      }
+
+      if let warning = shift.warning {
+        insightLine(symbol: "exclamationmark.triangle.fill", color: OkkleColor.amber, text: warning)
+      }
+
+      // When & where each of your best days is good.
+      VStack(alignment: .leading, spacing: 7) {
+        Text("BEST DAYS")
+          .font(.system(size: 11, weight: .heavy)).tracking(0.4)
           .foregroundStyle(OkkleColor.muted)
-
-        let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
-        HStack(alignment: .bottom, spacing: 8) {
-          ForEach(orderedWeekdayStats) { stat in
-            VStack(spacing: 6) {
-              Capsule()
-                .fill(stat.count == 0 ? OkkleColor.muted.opacity(0.18) : nativeHeatColor(Double(stat.sharePct) / Double(maxShare)))
-                .frame(width: 10, height: max(6, CGFloat(stat.sharePct) / CGFloat(maxShare) * 60))
-              Text(stat.symbol)
-                .font(.system(size: 11, weight: stat.weekday == todayWeekday ? .heavy : .semibold))
-                .foregroundStyle(stat.weekday == todayWeekday ? OkkleColor.ink : OkkleColor.muted)
-            }
-            .frame(maxWidth: .infinity)
-          }
-        }
-        .frame(height: 78, alignment: .bottom)
-
-        // When & where each of your best days was good.
-        VStack(alignment: .leading, spacing: 8) {
-          Text("YOUR BEST DAYS")
-            .font(.system(size: 12, weight: .heavy)).tracking(0.4)
-            .foregroundStyle(OkkleColor.muted)
-          ForEach(shift.weekdayDetails.prefix(3)) { day in
-            HStack(spacing: 8) {
-              Text(day.shortName)
-                .font(.system(size: 14, weight: .heavy))
-                .foregroundStyle(OkkleColor.ink)
-                .frame(width: 38, alignment: .leading)
-              Text(day.band.label.lowercased())
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(OkkleColor.brandDark)
-              if let area = areaText(for: day.coordinate) {
-                Text("· \(area)")
-                  .font(.system(size: 13, weight: .medium))
-                  .foregroundStyle(OkkleColor.muted)
-                  .lineLimit(1)
-              }
-              Spacer(minLength: 0)
-            }
-          }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-
-        HStack(spacing: 10) {
-          NativeHeatStatChip(title: "Deliveries", value: "\(shift.deliveries)", symbol: "bag.fill", color: OkkleColor.brand)
-          NativeHeatStatChip(title: "Unpaid miles", value: "\(shift.deadMilePct)%", symbol: "arrow.triangle.turn.up.right.diamond.fill", color: OkkleColor.amber)
-          NativeHeatStatChip(title: "Per hour", value: shift.perHour.map { gbp($0, whole: true) } ?? "—", symbol: "sterlingsign.circle.fill", color: .green)
-        }
-
-        if let last = shift.lastShift {
-          debriefView(last)
-        }
-
-        ForEach(shift.weeklyTips, id: \.self) { tip in
-          HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "arrow.up.right.circle.fill")
-              .font(.system(size: 14, weight: .bold))
-              .foregroundStyle(OkkleColor.brand)
-              .padding(.top, 1)
-            Text(tip)
-              .font(.system(size: 13, weight: .semibold))
+        ForEach(shift.weekdayDetails.prefix(3)) { day in
+          HStack(spacing: 8) {
+            Text(day.shortName)
+              .font(.system(size: 14, weight: .heavy))
               .foregroundStyle(OkkleColor.ink)
-              .fixedSize(horizontal: false, vertical: true)
+              .frame(width: 38, alignment: .leading)
+            Text(day.band.label.lowercased())
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(OkkleColor.brandDark)
+            if let area = areaText(for: day.coordinate) {
+              Text("· \(area)")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(OkkleColor.muted)
+                .lineLimit(1)
+            }
+            Spacer(minLength: 0)
           }
         }
       }
-      .padding(.bottom, 4)
+      .padding(12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func insightLine(symbol: String, color: Color, text: String) -> some View {
+    HStack(alignment: .top, spacing: 8) {
+      Image(systemName: symbol)
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(color)
+        .padding(.top, 1)
+      Text(text)
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(OkkleColor.ink)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
     }
   }
 
   private func areaText(for coordinate: CLLocationCoordinate2D?) -> String? {
     guard let coordinate, let name = areaNamer.name(for: coordinate) else { return nil }
     return name
-  }
-
-  @ViewBuilder private func debriefView(_ last: NativeShiftDebrief) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text("LAST SHIFT · \(last.dayName.uppercased())")
-        .font(.system(size: 12, weight: .heavy)).tracking(0.4)
-        .foregroundStyle(OkkleColor.muted)
-      HStack(spacing: 6) {
-        Text("\(gbp(last.perHour, whole: true))/hr")
-          .font(.system(size: 16, weight: .heavy))
-          .foregroundStyle(OkkleColor.ink)
-        if let avg = last.weekdayAvgPerHour {
-          let up = last.perHour >= avg
-          Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(up ? OkkleColor.brand : OkkleColor.amber)
-          Text("vs \(last.dayName) avg \(gbp(avg, whole: true))")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-        }
-      }
-      if last.finishedBeforePeak, let peak = last.peakLabel {
-        Text("You clocked off before your usual \(peak.lowercased()) peak — worth staying out for it next time.")
-          .font(.system(size: 13, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-    .padding(12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
   }
 }
 
@@ -948,7 +885,7 @@ struct NativeInsightsView: View {
   }
 
   var body: some View {
-    NativeScreen(title: "Insights", collapsedTitle: "Insights", subtitle: "AI guidance, smart nudges and patterns from your work.") {
+    NativeScreen(title: "Insights", collapsedTitle: "Insights", subtitle: "What to do today, learned from how you actually work.") {
       NativeShiftPatternsCard(
         shift: shift,
         trips: store.trips,
@@ -1341,6 +1278,43 @@ struct NativeShiftDebrief {
   let peakLabel: String?
 
   var dayName: String { Calendar.current.shortWeekdaySymbols[weekday] }
+
+  /// Comparative read only — never exact accounting. The £/hr values behind
+  /// this are modelled from weekly pay spread over inferred hours.
+  var comparative: String? {
+    guard let avg = weekdayAvgPerHour, avg > 0 else { return nil }
+    let ratio = perHour / avg
+    switch ratio {
+    case 1.15...: return "Your last \(dayName) was well above your usual."
+    case 1.03..<1.15: return "Your last \(dayName) was a touch above your usual."
+    case 0.85..<1.03: return "Your last \(dayName) was around your usual."
+    default: return "Your last \(dayName) was below your usual."
+    }
+  }
+
+  var wasUp: Bool { (weekdayAvgPerHour ?? perHour) <= perHour }
+}
+
+/// How much evidence sits behind a recommendation. The engine should know when
+/// not to make a strong claim — thin data gets soft language, never certainty.
+enum NativeConfidence {
+  case low, medium, high
+
+  var tag: String {
+    switch self {
+    case .low: return "EARLY READ"
+    case .medium: return "GOOD READ"
+    case .high: return "SOLID PATTERN"
+    }
+  }
+
+  var dots: Int {
+    switch self {
+    case .low: return 1
+    case .medium: return 2
+    case .high: return 3
+    }
+  }
 }
 
 /// Everything the passive engine can tell a driver, derived from the stops plus
@@ -1360,6 +1334,7 @@ struct NativeShiftInsights {
   let weekdayDetails: [NativeWeekdayDetail]   // active days, busiest first
   let todayPlan: NativeDayPlan?
   let lastShift: NativeShiftDebrief?
+  let activeDays: Int                          // distinct days with tracked stops
 
   var hasData: Bool { deliveries > 0 }
   var totalMiles: Double { paidMiles + deadMiles }
@@ -1368,23 +1343,46 @@ struct NativeShiftInsights {
     return Int((deadMiles / totalMiles * 100).rounded())
   }
 
+  /// Overall evidence level: enough deliveries across enough distinct days.
+  var confidence: NativeConfidence {
+    if deliveries >= 20 && activeDays >= 6 { return .high }
+    if deliveries >= 8 && activeDays >= 3 { return .medium }
+    return .low
+  }
+
+  /// Rough shifts still needed before the pattern firms up (low confidence only).
+  var shiftsToSharpen: Int { max(1, 3 - min(activeDays, 3) + (deliveries < 8 ? 1 : 0)) }
+
+  /// £/hr as an honest range, never a fake-precise figure — the underlying
+  /// value is weekly pay spread over inferred active hours.
+  var perHourBand: String? {
+    guard let perHour, perHour > 0 else { return nil }
+    let lower = Int((perHour * 0.85 / 1).rounded(.down))
+    let upper = Int((perHour * 1.15 / 1).rounded(.up))
+    return "£\(lower)–\(upper)"
+  }
+
+  /// The single most useful warning — one only, per the "instruction beats
+  /// dashboards" principle.
+  var warning: String? {
+    if deadMilePct >= 25 {
+      return "About \(deadMilePct)% of your miles are unpaid roaming — wait nearer a pick-up zone between orders."
+    }
+    if let quiet = quietWindow, confidence != .low {
+      return "\(quiet.label.capitalized) is usually weak for you — worth resting or trying elsewhere."
+    }
+    if perHour == nil {
+      return "Log your pay after a shift to unlock an earnings-rate estimate."
+    }
+    return nil
+  }
+
   static let empty = NativeShiftInsights(
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
-    weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil
+    weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
+    activeDays: 0
   )
-
-  /// A weekly tip or two — kept short, since the panels now carry the detail.
-  var weeklyTips: [String] {
-    var tips: [String] = []
-    if deadMilePct >= 20 {
-      tips.append("\(deadMilePct)% of your miles are unpaid repositioning — wait nearer a pick-up zone between orders.")
-    }
-    if perHour == nil {
-      tips.append("Log your pay after a shift to unlock a real £/hour estimate.")
-    }
-    return tips
-  }
 
   @MainActor
   static func build(visits: [NativeVisit], store: OkkleStore) -> NativeShiftInsights {
@@ -1531,6 +1529,7 @@ struct NativeShiftInsights {
     }
 
     let lastShift = debrief(sorted: sorted, deliveryHits: deliveryHits, store: store, shiftGap: shiftGap, cellSize: cellSize)
+    let activeDays = Set(sorted.map { Calendar.current.startOfDay(for: $0.arrival) }).count
 
     return NativeShiftInsights(
       deliveries: deliveries,
@@ -1545,7 +1544,8 @@ struct NativeShiftInsights {
       weekdayStats: weekdayStats,
       weekdayDetails: weekdayDetails,
       todayPlan: todayPlan,
-      lastShift: lastShift
+      lastShift: lastShift,
+      activeDays: activeDays
     )
   }
 
