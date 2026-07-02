@@ -524,7 +524,7 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       badge.textAlignment = .center
       badge.textColor = .white
       badge.font = .systemFont(ofSize: 13, weight: .heavy)
-      badge.backgroundColor = nativeHeatUIColor(rank.weight)
+      badge.backgroundColor = UIColor(OkkleColor.brand)   // rank marker, not a heat value
       badge.layer.cornerRadius = size / 2
       badge.layer.borderColor = UIColor.white.cgColor
       badge.layer.borderWidth = 2
@@ -588,12 +588,14 @@ struct NativeTopAreasList: View {
       VStack(spacing: 0) {
         ForEach(Array(rows.enumerated()), id: \.element.id) { index, area in
           HStack(spacing: 12) {
-            // Numbered badge — matches the same-numbered pin on the map.
+            // Numbered badge — one brand colour so the number carries the rank.
+            // (Heat colours are reserved for the busy-hours graph and map, to
+            // avoid reading rank and busyness as the same scale.)
             Text("\(area.rank)")
               .font(.system(size: 13, weight: .heavy))
               .foregroundStyle(.white)
               .frame(width: 24, height: 24)
-              .background(nativeHeatColor(area.weight), in: Circle())
+              .background(OkkleColor.brand, in: Circle())
             VStack(alignment: .leading, spacing: 1) {
               Text(area.name)
                 .font(.system(size: 16, weight: .semibold))
@@ -761,7 +763,16 @@ struct NativeDailyInsightPanel: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OkkleColor.muted)
             }
-            NativeHourStrip(hourCounts: plan.hourCounts)
+            VStack(alignment: .leading, spacing: 8) {
+              HStack {
+                Text("WHEN IT'S BUSY")
+                  .font(.system(size: 12, weight: .heavy)).tracking(0.5)
+                  .foregroundStyle(OkkleColor.muted)
+                Spacer()
+                NativeBusyLegend()
+              }
+              NativeHourStrip(hourCounts: plan.hourCounts)
+            }
           }
         }
 
@@ -900,6 +911,25 @@ struct NativeDailyInsightPanel: View {
 }
 
 /// A slim hour-by-hour intensity strip (9am–11pm) so "when exactly" is visible.
+/// Tiny "quiet → busy" key so the heat colours on the graph read clearly and
+/// aren't mistaken for the ranked-area badges.
+struct NativeBusyLegend: View {
+  var body: some View {
+    HStack(spacing: 5) {
+      Text("Quiet")
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+      Capsule()
+        .fill(LinearGradient(colors: [nativeHeatColor(0), nativeHeatColor(0.5), nativeHeatColor(1)],
+                             startPoint: .leading, endPoint: .trailing))
+        .frame(width: 30, height: 5)
+      Text("Busy")
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+    }
+  }
+}
+
 struct NativeHourStrip: View {
   let hourCounts: [Int]
   private let hours = Array(9...23)
