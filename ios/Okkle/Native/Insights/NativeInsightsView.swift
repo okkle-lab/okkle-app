@@ -202,6 +202,76 @@ final class NativeOneShotLocator: NSObject, ObservableObject, CLLocationManagerD
   nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 }
 
+// MARK: - Self-correcting confidence — checks the model's own predictions
+// against what actually got logged, entirely silently.
+
+/// One logged pay entry, tagged with whether the model had called its date a
+/// "peak" day at the moment it was logged.
+struct NativeOutcomeSample: Codable {
+  let date: Date
+  let period: NativePayPeriod
+  let amount: Double
+  let wasPredictedPeakDay: Bool
+}
+
+/// Tracks whether "your peak" has actually been paying off. Confidence
+/// shouldn't just mean "I have a lot of data" — it should mean "and I've
+/// been right." Every time pay gets logged, this checks: was that date one
+/// the model called a peak, and did it come in at or above what the driver
+/// normally logs for that same period length (day vs week)? Only ever used to
+/// *cap* confidence when the hit rate is poor — a good hit rate never boosts
+/// confidence beyond what the sample size/consistency already earned, to stay
+/// on the conservative side.
+@MainActor
+final class NativeOutcomeTracker: ObservableObject {
+  static let shared = NativeOutcomeTracker()
+  @Published private(set) var samples: [NativeOutcomeSample] = []
+  private let storageKey = "uk.okkle.native.outcome.samples.v1"
+
+  init() { load() }
+
+  func record(amount: Double, period: NativePayPeriod, wasPredictedPeakDay: Bool) {
+    guard amount > 0 else { return }
+    samples.append(NativeOutcomeSample(date: Date(), period: period, amount: amount, wasPredictedPeakDay: wasPredictedPeakDay))
+    // A rolling log, not a growing ledger — recent evidence should dominate.
+    if samples.count > 40 { samples.removeFirst(samples.count - 40) }
+    save()
+  }
+
+  /// Of the times the model called a period "your peak", how often did the
+  /// logged pay for it actually beat the driver's own typical amount for that
+  /// same period length? Compares like-for-like (day logs against day logs,
+  /// week logs against week logs) since the two scale very differently. Stays
+  /// nil until there's enough evidence either way to say something honest.
+  var peakHitRate: Double? {
+    let peakSamples = samples.filter(\.wasPredictedPeakDay)
+    guard peakSamples.count >= 5 else { return nil }
+    var hits = 0
+    var evaluated = 0
+    for sample in peakSamples {
+      let sameScale = samples.filter { $0.period == sample.period }.map(\.amount).sorted()
+      guard sameScale.count >= 3 else { continue }
+      let median = sameScale[sameScale.count / 2]
+      evaluated += 1
+      if sample.amount >= median { hits += 1 }
+    }
+    guard evaluated >= 5 else { return nil }
+    return Double(hits) / Double(evaluated)
+  }
+
+  private func load() {
+    guard let data = UserDefaults.standard.data(forKey: storageKey),
+          let saved = try? JSONDecoder().decode([NativeOutcomeSample].self, from: data) else { return }
+    samples = saved
+  }
+
+  private func save() {
+    if let data = try? JSONEncoder().encode(samples) {
+      UserDefaults.standard.set(data, forKey: storageKey)
+    }
+  }
+}
+
 // MARK: - Areas to try — a silent background layer, not a UI feature.
 //
 // There's no order-volume data to learn real demand from, so any "try this
@@ -1889,6 +1959,7 @@ struct NativeShiftInsights {
   let todayPlan: NativeDayPlan?
   let lastShift: NativeShiftDebrief?
   let activeDays: Int                          // distinct days with tracked stops
+  let peakHitRate: Double?                     // how often "your peak" has actually paid off
 
   var hasData: Bool { deliveries > 0 }
   var totalMiles: Double { paidMiles + deadMiles }
@@ -1906,25 +1977,37 @@ struct NativeShiftInsights {
   /// catches that and caps confidence accordingly, even when the raw totals
   /// look strong.
   var confidence: NativeConfidence {
-    let raw: NativeConfidence
-    if deliveries >= 20 && activeDays >= 6 { raw = .high }
-    else if deliveries >= 8 && activeDays >= 3 { raw = .medium }
-    else { raw = .low }
+    var level: NativeConfidence
+    if deliveries >= 20 && activeDays >= 6 { level = .high }
+    else if deliveries >= 8 && activeDays >= 3 { level = .medium }
+    else { level = .low }
 
-    guard raw != .low else { return raw }
-    let counts = weekdayStats.filter { $0.count > 0 }.map { Double($0.count) }
-    guard counts.count >= 2 else { return raw }
-    let mean = counts.reduce(0, +) / Double(counts.count)
-    guard mean > 0 else { return raw }
-    let variance = counts.reduce(0) { $0 + pow($1 - mean, 2) } / Double(counts.count)
-    let coefficientOfVariation = sqrt(variance) / mean
+    if level != .low {
+      let counts = weekdayStats.filter { $0.count > 0 }.map { Double($0.count) }
+      if counts.count >= 2 {
+        let mean = counts.reduce(0, +) / Double(counts.count)
+        if mean > 0 {
+          let variance = counts.reduce(0) { $0 + pow($1 - mean, 2) } / Double(counts.count)
+          let coefficientOfVariation = sqrt(variance) / mean
+          // Roughly: one day carrying most of the volume (CV > ~1.1) downgrades
+          // two steps; a noticeably lopsided week (CV > ~0.75) downgrades one
+          // step from "high" only — a bit of natural variation shouldn't
+          // punish "medium".
+          if coefficientOfVariation > 1.1 { level = (level == .high) ? .medium : .low }
+          else if coefficientOfVariation > 0.75 && level == .high { level = .medium }
+        }
+      }
+    }
 
-    // Roughly: one day carrying most of the volume (CV > ~1.1) downgrades two
-    // steps; a noticeably lopsided week (CV > ~0.75) downgrades one step from
-    // "high" only — a bit of natural variation shouldn't punish "medium".
-    if coefficientOfVariation > 1.1 { return raw == .high ? .medium : .low }
-    if coefficientOfVariation > 0.75 && raw == .high { return .medium }
-    return raw
+    // Has "your peak" actually been paying off? Only ever downgrades — a
+    // good hit rate doesn't inflate confidence beyond what the sample size
+    // and consistency already earned, per the same restraint as elsewhere.
+    if let hitRate = peakHitRate, level != .low {
+      if hitRate < 0.35 { level = .low }
+      else if hitRate < 0.5 && level == .high { level = .medium }
+    }
+
+    return level
   }
 
   /// Rough shifts still needed before the pattern firms up (low confidence only).
@@ -1958,7 +2041,7 @@ struct NativeShiftInsights {
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
     weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
-    activeDays: 0
+    activeDays: 0, peakHitRate: nil
   )
 
   @MainActor
@@ -2129,7 +2212,8 @@ struct NativeShiftInsights {
       weekdayDetails: weekdayDetails,
       todayPlan: todayPlan,
       lastShift: lastShift,
-      activeDays: activeDays
+      activeDays: activeDays,
+      peakHitRate: NativeOutcomeTracker.shared.peakHitRate
     )
   }
 

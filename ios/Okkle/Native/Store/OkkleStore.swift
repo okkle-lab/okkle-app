@@ -109,8 +109,14 @@ final class OkkleStore: ObservableObject {
     return NativeBackupRestoreSummary(records: records.count, trips: trips.count)
   }
 
+  /// Set by the passive-insights layer so it can quietly check its own
+  /// predictions against newly logged pay, without this store needing to know
+  /// anything about Insights' domain types.
+  var onRecordAdded: ((NativeRecord) -> Void)?
+
   func addRecord(_ record: NativeRecord) {
     records.insert(record, at: 0)
+    onRecordAdded?(record)
   }
 
   func addTrip(_ trip: NativeTrip) {

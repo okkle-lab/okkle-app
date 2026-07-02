@@ -64,7 +64,21 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
 
   func configure(store: OkkleStore) {
     self.store = store
+    store.onRecordAdded = { [weak self] record in self?.checkOutcome(for: record) }
     refresh()
+  }
+
+  /// The self-correcting half of the confidence model: every time pay gets
+  /// logged, check whether that date was one the model had called a "peak"
+  /// day, and hand the outcome to the tracker. Entirely silent — this never
+  /// shows anything, it just quietly keeps the confidence label honest.
+  private func checkOutcome(for record: NativeRecord) {
+    guard record.kind == .income, let amount = record.amount, let store else { return }
+    let weekday = Calendar.current.component(.weekday, from: record.date) - 1
+    let peakWeekdays = NativeShiftInsights.build(visits: visits, store: store)
+      .weekdayDetails.prefix(3).map(\.weekday)
+    NativeOutcomeTracker.shared.record(amount: amount, period: record.period,
+                                       wasPredictedPeakDay: peakWeekdays.contains(weekday))
   }
 
   /// Start or stop passive monitoring to match the Automatic-tracking setting.
@@ -227,3 +241,4 @@ func nativeDemoVisits() -> [NativeVisit] {
   }
   return out
 }
+
