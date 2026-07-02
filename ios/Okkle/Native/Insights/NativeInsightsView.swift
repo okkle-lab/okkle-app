@@ -937,10 +937,73 @@ struct NativeHourStrip: View {
 struct NativeWeeklyInsightPanel: View {
   let shift: NativeShiftInsights
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
+  @State private var selectedWeekday: Int?
   private var todayWeekday: Int { Calendar.current.component(.weekday, from: Date()) - 1 }
 
   private var orderedWeekdayStats: [NativeWeekdayStat] {
     [1, 2, 3, 4, 5, 6, 0].compactMap { wd in shift.weekdayStats.first { $0.weekday == wd } }
+  }
+
+  /// Which day the breakdown reflects on: your tap, else today (if you worked
+  /// it), else your busiest day.
+  private var activeWeekday: Int {
+    if let selectedWeekday { return selectedWeekday }
+    if (shift.weekdayStats.first { $0.weekday == todayWeekday }?.count ?? 0) > 0 { return todayWeekday }
+    return shift.weekdayDetails.first?.weekday ?? todayWeekday
+  }
+
+  /// A calm reflection on one day: how big it was, when it peaked, where.
+  private var dayBreakdown: some View {
+    let wd = activeWeekday
+    let name = Calendar.current.weekdaySymbols[wd]
+    let stat = shift.weekdayStats.first { $0.weekday == wd }
+    let detail = shift.weekdayDetails.first { $0.weekday == wd }
+    let area = detail?.coordinate.flatMap { areaNamer.name(for: $0) }
+
+    return VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .firstTextBaseline) {
+        Text(name)
+          .font(.system(size: 18, weight: .bold))
+          .foregroundStyle(OkkleColor.ink)
+        Spacer()
+        if let stat, stat.count > 0 {
+          Text("\(stat.sharePct)% of your week")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+      }
+      if let detail {
+        breakdownRow("clock.fill", "Best window", detail.band.timeRange)
+        if let area {
+          breakdownRow("mappin.circle.fill", "Busiest area", area)
+        }
+        breakdownRow("shippingbox.fill", "Deliveries", "about \(detail.count)")
+      } else {
+        Text("You don't usually work \(name)s — nothing tracked yet.")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+  }
+
+  private func breakdownRow(_ symbol: String, _ label: String, _ value: String) -> some View {
+    HStack(spacing: 10) {
+      Image(systemName: symbol)
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(OkkleColor.brand)
+        .frame(width: 20)
+      Text(label)
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(OkkleColor.muted)
+      Spacer(minLength: 8)
+      Text(value)
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(OkkleColor.ink)
+    }
   }
 
   /// The busiest patch and when it peaks — so the advice can name a real place
@@ -972,27 +1035,37 @@ struct NativeWeeklyInsightPanel: View {
   var body: some View {
     NativeAiCard {
     VStack(alignment: .leading, spacing: 22) {
-      // Busiest days at a glance.
+      // Busiest days — tap a bar to reflect on that day's breakdown.
       section("BUSIEST DAYS") {
         let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
         HStack(alignment: .bottom, spacing: 8) {
           ForEach(orderedWeekdayStats) { stat in
+            let selected = stat.weekday == activeWeekday
             VStack(spacing: 6) {
               Text(stat.count > 0 ? "\(stat.sharePct)%" : "")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(OkkleColor.muted)
+                .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
               Capsule()
                 .fill(stat.count == 0 ? OkkleColor.muted.opacity(0.18) : nativeHeatColor(Double(stat.sharePct) / Double(maxShare)))
                 .frame(width: 12, height: max(5, CGFloat(stat.sharePct) / CGFloat(maxShare) * 60))
               Text(stat.symbol)
-                .font(.system(size: 12, weight: stat.weekday == todayWeekday ? .heavy : .semibold))
-                .foregroundStyle(stat.weekday == todayWeekday ? OkkleColor.ink : OkkleColor.muted)
+                .font(.system(size: 12, weight: selected ? .heavy : .semibold))
+                .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
             }
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(selected ? OkkleColor.muted.opacity(0.10) : .clear,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(Rectangle())
+            .onTapGesture {
+              withAnimation(.easeInOut(duration: 0.15)) { selectedWeekday = stat.weekday }
+            }
           }
         }
-        .frame(height: 88, alignment: .bottom)
+        .frame(height: 100, alignment: .bottom)
       }
+
+      dayBreakdown
 
       statsStrip
 
@@ -1014,24 +1087,6 @@ struct NativeWeeklyInsightPanel: View {
 
       section("YOUR TOP AREAS") {
         NativeTopAreasList(zones: shift.zones, limit: 4)
-      }
-
-      section("BEST DAYS & TIMES") {
-        VStack(spacing: 0) {
-          ForEach(Array(shift.weekdayDetails.prefix(3).enumerated()), id: \.element.id) { index, day in
-            HStack(spacing: 8) {
-              Text(day.name)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(OkkleColor.ink)
-              Spacer(minLength: 8)
-              Text(day.band.timeRange)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(OkkleColor.brandDark)
-            }
-            .padding(.vertical, 9)
-            if index < min(3, shift.weekdayDetails.count) - 1 { Divider() }
-          }
-        }
       }
     }
     }
