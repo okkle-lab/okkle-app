@@ -111,6 +111,23 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     trim()
     save()
     classifyWithMapKit(visit.id, coordinate: visit.coordinate)
+    runBackgroundExploration(for: visit)
+  }
+
+  /// The automatic feedback loop for "areas to try", entirely silent: log
+  /// this real visit against any candidate patch it lands near (the trial
+  /// evidence that eventually validates or drops a guess), then opportunistically
+  /// probe for new nearby candidates worth quietly testing next.
+  private func runBackgroundExploration(for visit: NativeVisit) {
+    guard let store else { return }
+    let today = Calendar.current.startOfDay(for: visit.arrival)
+    let dayIncome = store.records
+      .filter { $0.kind == .income && Calendar.current.isDate($0.date, inSameDayAs: today) }
+      .reduce(0.0) { $0 + ($1.amount ?? 0) }
+    NativeExploreCandidateStore.shared.recordVisit(visit.coordinate, dayIncome: dayIncome)
+
+    let zones = NativeShiftInsights.build(visits: visits, store: store).zones.map(\.coordinate)
+    NativeAreaSuggester.refresh(near: visit.coordinate, knownZones: zones)
   }
 
   /// Use Apple Maps as an information layer: if there's a food place right by the
