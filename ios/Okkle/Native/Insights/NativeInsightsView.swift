@@ -215,7 +215,11 @@ final class NativeAreaNamer: ObservableObject {
       guard let self else { return }
       Task { @MainActor in
         self.inFlight.remove(key)
-        if let area = placemarks?.first?.subLocality ?? placemarks?.first?.locality {
+        // Aim for a neighbourhood-sized patch a driver can actually cruise to —
+        // a district ("Camden Town") or a street, not a whole borough ("City of
+        // Westminster"), which is too broad to act on.
+        if let p = placemarks?.first,
+           let area = p.subLocality ?? p.thoroughfare ?? p.locality {
           self.names[key] = area
         }
       }
@@ -755,22 +759,13 @@ struct NativeDailyInsightPanel: View {
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 22) {
+    VStack(alignment: .leading, spacing: 20) {
       if let plan = shift.todayPlan {
         heroSection(plan)
 
-        if let brk = plan.breakWindow {
-          Text("Take your break \(brk.label) — usually your quietest stretch.")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
         section("WHERE TO GO") {
-          NativeTopAreasList(zones: shift.zones, limit: 4)
+          NativeTopAreasList(zones: shift.zones, limit: 3)
         }
-
-        statsStrip
 
         section("WHEN IT'S BUSY") {
           NativeHourStrip(hourCounts: plan.hourCounts)
@@ -848,12 +843,14 @@ struct NativeDailyInsightPanel: View {
     let boost = weather.today?.hours.filter { (10...23).contains($0.hour) && $0.boostsDemand } ?? []
     let wet = boost.contains(where: \.isWet)
 
+    let near = area.map { " near \($0)" } ?? ""
+
     // 1. Big night: bad weather on one of your strong days.
     if !boost.isEmpty, strongDay, let peak {
       let cond = wet ? "Wet" : "Cold"
       return ("flame.fill", OkkleColor.brand,
-              plan.isToday ? "Don't skip tonight" : "Don't skip \(dayName)",
-              "\(cond) \(dayName) — your classic big night. Be out for \(peak.label)\(area.map { " near \($0)" } ?? "").")
+              plan.isToday ? "Tonight could be a big one" : "\(dayName) could be a big one",
+              "\(cond) on one of your strong days — \(peak.label)\(near) tends to pay best.")
     }
 
     if plan.isToday, let peak {
@@ -861,61 +858,33 @@ struct NativeDailyInsightPanel: View {
       // 2. In a busy window right now.
       if let current = plan.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
         return ("bolt.fill", OkkleColor.brand,
-                "Stay out — busy till \(nativeHourLabel(current.endHour + 1))",
-                area.map { "Around \($0) is \(soft ? "looking like" : "usually") your best bet." } ?? "You're inside \(soft ? "what looks like" : "") your busy window.")
+                "Good time to be out",
+                area.map { "Busy till \(nativeHourLabel(current.endHour + 1))\(soft ? "" : " around \($0)")." } ?? "Busy till \(nativeHourLabel(current.endHour + 1)).")
       }
       // 3. A window still ahead today.
       if let next = plan.driveWindows.first(where: { $0.startHour > hour }) {
         let boostNote = boost.isEmpty ? "" : (wet ? " Rain should help." : " Cold should help.")
         return ("figure.walk.arrival", OkkleColor.brand,
-                "Be out for \(nativeHourLabel(next.startHour))",
-                "\(soft ? "Early read: " : "")\(next.label)\(area.map { " near \($0)" } ?? "") \(soft ? "looks like" : "is usually") your strongest.\(boostNote)")
+                "Great to be out for \(nativeHourLabel(next.startHour))",
+                "\(next.label)\(near) \(soft ? "looks like" : "is usually") your strongest.\(boostNote)")
       }
       // 4. Peaks have passed.
       return ("moon.stars.fill", OkkleColor.muted,
-              "Your peaks have passed",
-              "Quieter from here \(soft ? "by the early read" : "most \(dayName)s") — rest up for the next one.")
+              "Peaks are behind you",
+              "Quieter from here — a good point to call it.")
     }
 
     // 5. Planning ahead for the next working day.
     if let peak {
       return ("calendar", OkkleColor.brand,
-              "\(dayName): be out for \(nativeHourLabel(peak.startHour))",
-              "\(soft ? "Early read — " : "")\(peak.label)\(area.map { " near \($0)" } ?? "") \(soft ? "looks" : "is usually") strongest.")
+              "\(dayName) looks best from \(nativeHourLabel(peak.startHour))",
+              "\(peak.label)\(near) \(soft ? "looks" : "is usually") strongest.")
     }
     return ("hourglass", OkkleColor.muted,
             "Still learning \(dayName)s",
             "A couple more shifts and the timing sharpens up.")
   }
 
-  // MARK: Stats — two, clean, in one quiet strip
-
-  private var statsStrip: some View {
-    HStack(spacing: 0) {
-      // Est. rate only appears when the passive signal is strong enough to trust it.
-      if let band = shift.perHourBand {
-        stat("Est. rate", "\(band)/hr")
-        Divider().frame(height: 30)
-      }
-      stat("Unpaid miles", "\(shift.deadMilePct)%")
-    }
-    .padding(.vertical, 12)
-    .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-  }
-
-  private func stat(_ title: String, _ value: String) -> some View {
-    VStack(spacing: 3) {
-      Text(value)
-        .font(.system(size: 19, weight: .bold, design: .rounded))
-        .foregroundStyle(OkkleColor.ink)
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
-      Text(title)
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(OkkleColor.muted)
-    }
-    .frame(maxWidth: .infinity)
-  }
 }
 
 /// A slim hour-by-hour intensity strip (9am–11pm) so "when exactly" is visible.
@@ -983,6 +952,8 @@ struct NativeWeeklyInsightPanel: View {
         .frame(height: 88, alignment: .bottom)
       }
 
+      statsStrip
+
       // One improvement, one warning — comparative only, never accounting.
       VStack(alignment: .leading, spacing: 12) {
         if let last = shift.lastShift, let line = last.comparative {
@@ -1000,7 +971,7 @@ struct NativeWeeklyInsightPanel: View {
       }
 
       section("YOUR TOP AREAS") {
-        NativeTopAreasList(zones: shift.zones, limit: 5)
+        NativeTopAreasList(zones: shift.zones, limit: 4)
       }
 
       section("BEST DAYS & TIMES") {
@@ -1032,6 +1003,33 @@ struct NativeWeeklyInsightPanel: View {
     }
   }
 
+  // Your fortnight in two numbers — rate only when the passive signal is solid.
+  private var statsStrip: some View {
+    HStack(spacing: 0) {
+      if let band = shift.perHourBand {
+        stat("Est. rate", "\(band)/hr")
+        Divider().frame(height: 30)
+      }
+      stat("Unpaid miles", "\(shift.deadMilePct)%")
+    }
+    .padding(.vertical, 12)
+    .background(OkkleColor.muted.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+  }
+
+  private func stat(_ title: String, _ value: String) -> some View {
+    VStack(spacing: 3) {
+      Text(value)
+        .font(.system(size: 19, weight: .bold, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+      Text(title)
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(OkkleColor.muted)
+    }
+    .frame(maxWidth: .infinity)
+  }
+
   private func insightLine(symbol: String, color: Color, text: String) -> some View {
     HStack(alignment: .top, spacing: 10) {
       Image(systemName: symbol)
@@ -1055,7 +1053,7 @@ struct NativeInsightsView: View {
   }
 
   var body: some View {
-    NativeScreen(title: "Insights", collapsedTitle: "Insights", subtitle: "What to do today, learned from how you actually work.") {
+    NativeScreen(title: "Insights", collapsedTitle: "Insights") {
       NativeShiftPatternsCard(
         shift: shift,
         trips: store.trips,
