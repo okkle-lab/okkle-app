@@ -1,12 +1,37 @@
 import SwiftUI
 
-struct NativeMedalPreviewCard: View {
-  let achievements: [NativeMedalAchievement]
-  var mileageBandMiles: Double
+struct NativeProgressTotals {
+  var mileageMiles: Double
   var recordsLogged: Int
   var tripsTracked: Int
-  var cityDistanceMiles: Double
+}
+
+struct NativeMedalPreviewCard: View {
+  let achievements: [NativeMedalAchievement]
+  var weeklyProgress: NativeProgressTotals
+  var yearToDateProgress: NativeProgressTotals
+  var allTimeProgress: NativeProgressTotals
   let onOpen: () -> Void
+  @State private var progressPeriod: NativeProgressPeriod = .yearToDate
+
+  private enum NativeProgressPeriod: String, CaseIterable, Identifiable {
+    case weekly
+    case yearToDate
+    case allTime
+
+    var id: String { rawValue }
+
+    var label: String {
+      switch self {
+      case .weekly:
+        return "Weekly"
+      case .yearToDate:
+        return "YTD"
+      case .allTime:
+        return "All time"
+      }
+    }
+  }
 
   private var unlocked: [NativeMedalAchievement] {
     achievements.filter(\.unlocked)
@@ -29,27 +54,46 @@ struct NativeMedalPreviewCard: View {
       .map { $0 }
   }
 
+  private var selectedProgress: NativeProgressTotals {
+    switch progressPeriod {
+    case .weekly:
+      return weeklyProgress
+    case .yearToDate:
+      return yearToDateProgress
+    case .allTime:
+      return allTimeProgress
+    }
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
+      Picker("Progress period", selection: $progressPeriod) {
+        ForEach(NativeProgressPeriod.allCases) { period in
+          Text(period.label).tag(period)
+        }
+      }
+      .pickerStyle(.segmented)
+
       VStack(spacing: 16) {
         NativeProgressMetricRow(
           title: "First 10K mileage band",
-          value: "\(Int(mileageBandMiles.rounded()).formatted()) / 10,000 mi",
-          progress: mileageBandMiles / 10_000
+          value: "\(Int(selectedProgress.mileageMiles.rounded()).formatted()) / 10,000 mi",
+          progress: selectedProgress.mileageMiles / 10_000
         )
+
+        NativeCityDistanceDetail(totalMiles: selectedProgress.mileageMiles)
+
         NativeProgressMetricRow(
           title: "Records logged",
-          value: "\(recordsLogged.formatted()) \(recordsLogged == 1 ? "entry" : "entries")",
-          progress: Double(recordsLogged) / 25
+          value: "\(selectedProgress.recordsLogged.formatted()) \(selectedProgress.recordsLogged == 1 ? "entry" : "entries")",
+          progress: Double(selectedProgress.recordsLogged) / 25
         )
         NativeProgressMetricRow(
           title: "Trips tracked",
-          value: "\(tripsTracked.formatted()) \(tripsTracked == 1 ? "trip" : "trips")",
-          progress: Double(tripsTracked) / 20
+          value: "\(selectedProgress.tripsTracked.formatted()) \(selectedProgress.tripsTracked == 1 ? "trip" : "trips")",
+          progress: Double(selectedProgress.tripsTracked) / 20
         )
       }
-
-      NativeCityDistanceDetail(totalMiles: cityDistanceMiles)
 
       Divider()
 
@@ -138,13 +182,28 @@ private struct NativeCityDistanceDetail: View {
   }
 
   private static let routes = [
+    CityRoute(miles: 22, label: "London to Windsor"),
+    CityRoute(miles: 25, label: "London to St Albans"),
+    CityRoute(miles: 42, label: "London to Southend"),
     CityRoute(miles: 54, label: "London to Brighton"),
+    CityRoute(miles: 61, label: "London to Cambridge"),
+    CityRoute(miles: 62, label: "London to Oxford"),
+    CityRoute(miles: 101, label: "London to Birmingham"),
     CityRoute(miles: 118, label: "London to Bristol"),
     CityRoute(miles: 200, label: "London to Manchester"),
-    CityRoute(miles: 286, label: "Bristol to Newcastle"),
+    CityRoute(miles: 214, label: "London to Paris"),
     CityRoute(miles: 402, label: "London to Edinburgh"),
-    CityRoute(miles: 548, label: "Cardiff to Inverness"),
-    CityRoute(miles: 874, label: "Land's End to John o'Groats"),
+    CityRoute(miles: 579, label: "London to Berlin"),
+    CityRoute(miles: 890, label: "London to the Colosseum"),
+    CityRoute(miles: 1_550, label: "London to Istanbul"),
+    CityRoute(miles: 2_180, label: "London to the Pyramids"),
+    CityRoute(miles: 3_400, label: "London to Dubai"),
+    CityRoute(miles: 3_460, label: "London to New York"),
+    CityRoute(miles: 4_480, label: "London to Mumbai"),
+    CityRoute(miles: 5_450, label: "London to Los Angeles"),
+    CityRoute(miles: 5_960, label: "London to Tokyo"),
+    CityRoute(miles: 6_760, label: "London to Singapore"),
+    CityRoute(miles: 10_560, label: "London to Sydney"),
   ]
 
   var body: some View {
@@ -156,16 +215,9 @@ private struct NativeCityDistanceDetail: View {
         .background(OkkleColor.brand.opacity(0.12), in: Circle())
 
       VStack(alignment: .leading, spacing: 5) {
-        HStack(alignment: .firstTextBaseline) {
-          Text("City distance")
-            .font(.system(size: 13, weight: .heavy))
-            .foregroundStyle(OkkleColor.ink)
-          Spacer(minLength: 12)
-          Text(miles(totalMiles))
-            .font(.system(size: 13, weight: .heavy, design: .rounded))
-            .foregroundStyle(OkkleColor.brandDark)
-            .lineLimit(1)
-        }
+        Text("City distance")
+          .font(.system(size: 13, weight: .heavy))
+          .foregroundStyle(OkkleColor.ink)
 
         Text(routeSummary)
           .font(.system(size: 12, weight: .semibold))
@@ -198,7 +250,7 @@ private struct NativeCityDistanceDetail: View {
 
   private var routeSummary: String {
     guard totalMiles > 0 else {
-      return "Log miles to start building a city-to-city map."
+      return "Log miles to start building a world map."
     }
 
     if let previousRoute {

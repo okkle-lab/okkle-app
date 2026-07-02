@@ -261,10 +261,9 @@ struct NativeHomeView: View {
 
       NativeMedalPreviewCard(
         achievements: NativeMedalEngine.achievements(store: store),
-        mileageBandMiles: store.yearMiles,
-        recordsLogged: store.history.count,
-        tripsTracked: store.trips.count,
-        cityDistanceMiles: allTimeMileage
+        weeklyProgress: weeklyProgressTotals,
+        yearToDateProgress: yearToDateProgressTotals,
+        allTimeProgress: allTimeProgressTotals
       ) {
         showsMedals = true
       }
@@ -477,13 +476,37 @@ struct NativeHomeView: View {
     return "\(NativeGreeting.word(for: Date(), shortOnly: name.count > 8)), \(name)"
   }
 
-  private var allTimeMileage: Double {
-    let tripMiles = store.trips.reduce(0) { $0 + max(0, $1.miles) }
-    let manualMiles = store.records.reduce(0) { partial, record in
+  private var weeklyProgressTotals: NativeProgressTotals {
+    let calendar = Calendar.current
+    let interval = calendar.dateInterval(of: .weekOfYear, for: Date()) ?? DateInterval(
+      start: calendar.startOfDay(for: Date()),
+      duration: 7 * 24 * 60 * 60
+    )
+    return progressTotals(
+      records: store.records.filter { interval.contains($0.date) },
+      trips: store.trips.filter { interval.contains($0.startedAt) }
+    )
+  }
+
+  private var yearToDateProgressTotals: NativeProgressTotals {
+    progressTotals(records: store.yearRecords, trips: store.yearTrips)
+  }
+
+  private var allTimeProgressTotals: NativeProgressTotals {
+    progressTotals(records: store.records, trips: store.trips)
+  }
+
+  private func progressTotals(records: [NativeRecord], trips: [NativeTrip]) -> NativeProgressTotals {
+    let tripMiles = trips.reduce(0) { $0 + max(0, $1.miles) }
+    let manualMiles = records.reduce(0) { partial, record in
       guard record.kind == .mileage else { return partial }
       return partial + max(0, record.miles ?? 0)
     }
-    return tripMiles + manualMiles
+    return NativeProgressTotals(
+      mileageMiles: tripMiles + manualMiles,
+      recordsLogged: records.count,
+      tripsTracked: trips.count
+    )
   }
 
   private func openRecords(_ destination: RecordsDestination) {
