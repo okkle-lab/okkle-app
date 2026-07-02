@@ -1897,11 +1897,34 @@ struct NativeShiftInsights {
     return Int((deadMiles / totalMiles * 100).rounded())
   }
 
-  /// Overall evidence level: enough deliveries across enough distinct days.
+  /// Overall evidence level: enough deliveries across enough distinct days,
+  /// *and* those days actually look alike. Sample size alone can be
+  /// misleading — five visits that all landed near the same volume is a
+  /// genuinely repeatable pattern; five visits where one outlier day did most
+  /// of the work is really a single fluke wearing a big-sample-size costume.
+  /// The day-to-day spread (coefficient of variation across active weekdays)
+  /// catches that and caps confidence accordingly, even when the raw totals
+  /// look strong.
   var confidence: NativeConfidence {
-    if deliveries >= 20 && activeDays >= 6 { return .high }
-    if deliveries >= 8 && activeDays >= 3 { return .medium }
-    return .low
+    let raw: NativeConfidence
+    if deliveries >= 20 && activeDays >= 6 { raw = .high }
+    else if deliveries >= 8 && activeDays >= 3 { raw = .medium }
+    else { raw = .low }
+
+    guard raw != .low else { return raw }
+    let counts = weekdayStats.filter { $0.count > 0 }.map { Double($0.count) }
+    guard counts.count >= 2 else { return raw }
+    let mean = counts.reduce(0, +) / Double(counts.count)
+    guard mean > 0 else { return raw }
+    let variance = counts.reduce(0) { $0 + pow($1 - mean, 2) } / Double(counts.count)
+    let coefficientOfVariation = sqrt(variance) / mean
+
+    // Roughly: one day carrying most of the volume (CV > ~1.1) downgrades two
+    // steps; a noticeably lopsided week (CV > ~0.75) downgrades one step from
+    // "high" only — a bit of natural variation shouldn't punish "medium".
+    if coefficientOfVariation > 1.1 { return raw == .high ? .medium : .low }
+    if coefficientOfVariation > 0.75 && raw == .high { return .medium }
+    return raw
   }
 
   /// Rough shifts still needed before the pattern firms up (low confidence only).
