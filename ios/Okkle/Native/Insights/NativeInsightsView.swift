@@ -403,7 +403,9 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
   var interactive: Bool = false
+  var pinLimit: Int = 5
   @ObservedObject private var locator = NativeOneShotLocator.shared
+  @ObservedObject private var areaNamer = NativeAreaNamer.shared
 
   func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -442,14 +444,14 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       visibleRect = visibleRect.isNull ? rect : visibleRect.union(rect)
     }
 
-    // Rank the busiest few areas with numbered pins — the "where to head" list,
-    // shown on the map so it's obvious which patches matter most.
-    let top = nativeTopZones(zones, near: locator.coordinate, limit: 5)
-    for (index, zone) in top.enumerated() {
+    // Numbered pins that line up with the "Where to go" list — pin 2 is list
+    // row 2, the same named place — so the ranking reads as one idea.
+    let ranked = nativeRankedAreas(zones, near: locator.coordinate, namer: areaNamer, limit: pinLimit)
+    for area in ranked {
       let pin = NativeRankAnnotation()
-      pin.coordinate = zone.coordinate
-      pin.rank = index + 1
-      pin.weight = zone.weight
+      pin.coordinate = area.coordinate
+      pin.rank = area.rank
+      pin.weight = area.weight
       mapView.addAnnotation(pin)
     }
 
@@ -520,7 +522,7 @@ struct NativeZoneMiniMap: View {
   var body: some View {
     Button { showDetail = true } label: {
       ZStack(alignment: .bottomTrailing) {
-        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: false)
+        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: false, pinLimit: 3)
           .frame(height: 150)
           .allowsHitTesting(false)
         // Little affordance so it clearly opens something bigger.
@@ -555,34 +557,18 @@ struct NativeTopAreasList: View {
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
-  struct Area: Identifiable {
-    let id = UUID()
-    let name: String
-    let time: String?
-    let weight: Double
-  }
-
-  var ranked: [Area] {
-    let top = nativeTopZones(zones, near: locator.coordinate, limit: limit + 3)
-    var seen = Set<String>()
-    var out: [Area] = []
-    for zone in top {
-      guard let name = areaNamer.name(for: zone.coordinate) else { continue }
-      if seen.insert(name).inserted { out.append(Area(name: name, time: zone.timeLabel, weight: zone.weight)) }
-      if out.count >= limit { break }
-    }
-    return out
-  }
-
   var body: some View {
-    let rows = ranked
+    let rows = nativeRankedAreas(zones, near: locator.coordinate, namer: areaNamer, limit: limit)
     if !rows.isEmpty {
       VStack(spacing: 0) {
         ForEach(Array(rows.enumerated()), id: \.element.id) { index, area in
           HStack(spacing: 12) {
-            Image(systemName: "mappin.circle.fill")
-              .font(.system(size: 20, weight: .semibold))
-              .foregroundStyle(nativeHeatColor(area.weight))
+            // Numbered badge — matches the same-numbered pin on the map.
+            Text("\(area.rank)")
+              .font(.system(size: 13, weight: .heavy))
+              .foregroundStyle(.white)
+              .frame(width: 24, height: 24)
+              .background(nativeHeatColor(area.weight), in: Circle())
             VStack(alignment: .leading, spacing: 1) {
               Text(area.name)
                 .font(.system(size: 16, weight: .semibold))
@@ -595,7 +581,7 @@ struct NativeTopAreasList: View {
           }
           .padding(.vertical, 10)
           if index < rows.count - 1 {
-            Divider().padding(.leading, 32)
+            Divider().padding(.leading, 36)
           }
         }
       }
@@ -761,7 +747,7 @@ struct NativeDailyInsightPanel: View {
               NativeTopAreasList(zones: shift.zones, limit: 3)
             }
             NativeZoneMiniMap(trips: trips, zones: shift.zones)
-            Text("Numbered pins are your busiest patches, ranked. Tap the map to explore them full-screen.")
+            Text("Each pin matches the list above — 1 is your busiest patch. Tap the map to explore full-screen.")
               .font(.system(size: 12, weight: .medium))
               .foregroundStyle(OkkleColor.muted)
               .fixedSize(horizontal: false, vertical: true)
@@ -798,13 +784,13 @@ struct NativeDailyInsightPanel: View {
             .frame(width: 3, height: 4 + CGFloat(i) * 3)
         }
       }
-      Text(shift.confidence.tag)
+      Text("Confidence: \(shift.confidence.level)")
         .font(.system(size: 10, weight: .heavy)).tracking(0.3)
         .foregroundStyle(OkkleColor.muted)
     }
     .padding(.horizontal, 8).padding(.vertical, 4)
     .background(OkkleColor.muted.opacity(0.08), in: Capsule())
-    .accessibilityLabel("Confidence: \(shift.confidence.tag.lowercased())")
+    .accessibilityLabel("Confidence: \(shift.confidence.level)")
   }
 
   // MARK: Hero — one calm, confident instruction (Apple-style: type, not chrome)
@@ -1086,7 +1072,7 @@ struct NativeInsightsView: View {
 
   var body: some View {
     NativeScreen(title: "Insights", collapsedTitle: "Insights",
-                 subtitle: "Okkle learns your busy times and best areas from how you actually drive — no typing, no screenshots.") {
+                 subtitle: "When to head out and where to go — worked out automatically from how you drive. Nothing to log or upload.") {
       NativeShiftPatternsCard(
         shift: shift,
         trips: store.trips,
@@ -1423,6 +1409,35 @@ func nativeTopZones(_ zones: [NativeZonePoint], near origin: CLLocationCoordinat
   return Array(candidates.sorted { $0.weight > $1.weight }.prefix(limit))
 }
 
+/// One named, ranked area — the shared source of truth so the "where to go"
+/// list and the map pins carry the *same* number for the *same* place.
+struct NativeRankedArea: Identifiable {
+  let id = UUID()
+  let rank: Int
+  let name: String
+  let time: String?
+  let coordinate: CLLocationCoordinate2D
+  let weight: Double
+}
+
+/// Rank the busiest patches that have a resolved name, 1…limit. Both the list
+/// and the map build from this, so pin "2" and list row "2" are the same place.
+@MainActor
+func nativeRankedAreas(_ zones: [NativeZonePoint], near origin: CLLocationCoordinate2D?, namer: NativeAreaNamer, limit: Int) -> [NativeRankedArea] {
+  let top = nativeTopZones(zones, near: origin, limit: limit + 4)
+  var seen = Set<String>()
+  var out: [NativeRankedArea] = []
+  for zone in top {
+    guard let name = namer.name(for: zone.coordinate) else { continue }
+    if seen.insert(name).inserted {
+      out.append(NativeRankedArea(rank: out.count + 1, name: name, time: zone.timeLabel,
+                                  coordinate: zone.coordinate, weight: zone.weight))
+    }
+    if out.count >= limit { break }
+  }
+  return out
+}
+
 /// How many deliveries land on one weekday, for the weekly overview bar list.
 struct NativeWeekdayStat: Identifiable, Equatable {
   let weekday: Int   // 0 = Sunday … 6 = Saturday
@@ -1536,6 +1551,15 @@ enum NativeConfidence {
     case .low: return 1
     case .medium: return 2
     case .high: return 3
+    }
+  }
+
+  /// Plain-words strength for the header chip — "Confidence: High".
+  var level: String {
+    switch self {
+    case .low: return "Low"
+    case .medium: return "Medium"
+    case .high: return "High"
     }
   }
 }
