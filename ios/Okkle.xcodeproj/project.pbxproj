@@ -53,8 +53,6 @@
 		F8F483635DF782492C3978B9 /* NativeHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */; };
 		5AD9A5A2C9E34D75A74B0101 /* NativeMedalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */; };
 		A231C60E0E6944FC916AB873 /* NativeMedalEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */; };
-		DD38A7C8A40E4775B2B2CC2A /* NativeLeagueEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD38A7C7A40E4775B2B2CC29 /* NativeLeagueEngine.swift */; };
-		6561C8F57B7C4D97A729CD51 /* NativeLeagueModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6561C8F47B7C4D97A729CD50 /* NativeLeagueModels.swift */; };
 		67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D16F24230562870410B37EC /* NativeLogView.swift */; };
 		6474E5759C7C4E63B1CD0202 /* NativeLogMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6474E5749C7C4E63B1CD0201 /* NativeLogMedia.swift */; };
 		A34D4BFD69A2170618621603 /* NativeTripSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */; };
@@ -98,8 +96,6 @@
 		38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHomeView.swift; sourceTree = "<group>"; };
 		5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMedalsView.swift; sourceTree = "<group>"; };
 		A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMedalEngine.swift; sourceTree = "<group>"; };
-		DD38A7C7A40E4775B2B2CC29 /* NativeLeagueEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLeagueEngine.swift; sourceTree = "<group>"; };
-		6561C8F47B7C4D97A729CD50 /* NativeLeagueModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLeagueModels.swift; sourceTree = "<group>"; };
 		1D16F24230562870410B37EC /* NativeLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogView.swift; sourceTree = "<group>"; };
 		6474E5749C7C4E63B1CD0201 /* NativeLogMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogMedia.swift; sourceTree = "<group>"; };
 		9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSession.swift; sourceTree = "<group>"; };
@@ -233,8 +229,6 @@
 				38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */,
 				5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */,
 				A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */,
-				DD38A7C7A40E4775B2B2CC29 /* NativeLeagueEngine.swift */,
-				6561C8F47B7C4D97A729CD50 /* NativeLeagueModels.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -533,8 +527,6 @@
 				F8F483635DF782492C3978B9 /* NativeHomeView.swift in Sources */,
 				5AD9A5A2C9E34D75A74B0101 /* NativeMedalsView.swift in Sources */,
 				A231C60E0E6944FC916AB873 /* NativeMedalEngine.swift in Sources */,
-				DD38A7C8A40E4775B2B2CC2A /* NativeLeagueEngine.swift in Sources */,
-				6561C8F57B7C4D97A729CD51 /* NativeLeagueModels.swift in Sources */,
 				67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */,
 				6474E5759C7C4E63B1CD0202 /* NativeLogMedia.swift in Sources */,
 				A34D4BFD69A2170618621603 /* NativeTripSession.swift in Sources */,
@@ -587,6 +579,7 @@
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app;
 				PRODUCT_NAME = Okkle;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -610,6 +603,7 @@
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app;
 				PRODUCT_NAME = Okkle;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
@@ -632,6 +626,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -655,6 +650,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";

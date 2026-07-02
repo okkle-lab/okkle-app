@@ -314,21 +314,18 @@ struct NativeTripView: View {
     .font(.system(size: 16, weight: .bold))
   }
 
-  // Swipe between the live coach, the live deduction and this week's league
-  // goal — each its own clean panel, kept to the deduction row's height.
+  // Swipe between the live coach and mileage deduction — each its own clean
+  // panel, kept to the deduction row's height.
   private var trackingInfoCarousel: some View {
-    let fixture = NativeSeasonEngine.fixture(store: store)
-    let division = NativeSeasonEngine.snapshot(store: store).division
-    return VStack(spacing: 8) {
+    VStack(spacing: 8) {
       TabView(selection: $infoCard) {
         trackingLiveCoachRow.tag(0)
         trackingDeductionRow.tag(1)
-        trackingLeagueRow(fixture: fixture, division: division).tag(2)
       }
       .tabViewStyle(.page(indexDisplayMode: .never))
       .frame(height: 60)
       HStack(spacing: 6) {
-        ForEach(0..<3, id: \.self) { index in
+        ForEach(0..<2, id: \.self) { index in
           Capsule()
             .fill(infoCard == index ? trackingPrimaryText : trackingSecondaryText.opacity(0.35))
             .frame(width: infoCard == index ? 16 : 6, height: 6)
@@ -409,47 +406,6 @@ struct NativeTripView: View {
       .padding(.vertical, 12)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(trackingCardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-  }
-
-  // This week's league goal vs your past self, in the division's colours.
-  private func trackingLeagueRow(fixture: NativeFixture, division: NativeDivision) -> some View {
-    let target = max(1, Int(fixture.weeklyTarget.rounded()))
-    let saved = Int(fixture.yourBanked.rounded())
-    let toWin = max(0, Int((fixture.weeklyTarget - fixture.yourBanked).rounded(.up)))
-    let won = fixture.pointsThisWeek == 3
-    return carouselCard {
-      HStack(spacing: 12) {
-        Image(systemName: won ? "checkmark.seal.fill" : "bolt.fill")
-          .font(.system(size: 17, weight: .bold))
-          .foregroundStyle(won ? OkkleColor.brand : division.accent)
-          .frame(width: 36, height: 36)
-          .background(division.accent.opacity(0.16), in: Circle())
-        VStack(alignment: .leading, spacing: 2) {
-          Text(won ? "Week won — keep banking" : "£\(toWin) more to win")
-            .font(.system(size: 13, weight: .heavy))
-            .foregroundStyle(trackingPrimaryText)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-          Text("vs \(fixture.opponent)")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(trackingSecondaryText)
-        }
-        Spacer(minLength: 12)
-        Text("£\(saved) / £\(target)")
-          .font(.system(size: 20, weight: .bold, design: .rounded))
-          .foregroundStyle(trackingPrimaryText)
-      }
-    }
-    .overlay(alignment: .bottomLeading) {
-      GeometryReader { geo in
-        Capsule()
-          .fill(division.gradient)
-          .frame(width: max(6, geo.size.width * fixture.progressToTarget), height: 3)
-      }
-      .frame(height: 3)
-      .padding(.horizontal, 14)
-      .padding(.bottom, 5)
-    }
   }
 
   private var trackingDeductionRow: some View {

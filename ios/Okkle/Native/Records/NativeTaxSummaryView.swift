@@ -37,8 +37,8 @@ struct NativeTaxSummaryView: View {
       }
 
       HStack(spacing: 12) {
-        NativeMetricTile(title: "Turnover", value: headlineGbp(tax.turnover), symbol: "sterlingsign.circle.fill", color: .green)
-        NativeMetricTile(title: "Logged expenses", value: headlineGbp(tax.expenses), symbol: "minus.circle.fill", color: OkkleColor.amber)
+        taxMetricPanel(title: "Turnover", value: headlineGbp(tax.turnover), symbol: "sterlingsign.circle.fill", color: .green)
+        taxMetricPanel(title: "Logged expenses", value: headlineGbp(tax.expenses), symbol: "minus.circle.fill", color: OkkleColor.amber)
       }
 
       NativeGlassCard {
@@ -56,6 +56,26 @@ struct NativeTaxSummaryView: View {
       }
 
       NativeExportCard()
+    }
+  }
+
+  private func taxMetricPanel(title: String, value: String, symbol: String, color: Color) -> some View {
+    NativeGlassCard(contentPadding: 16) {
+      VStack(alignment: .leading, spacing: 10) {
+        Image(systemName: symbol)
+          .font(.system(size: 18, weight: .bold))
+          .foregroundStyle(color)
+        Text(value)
+          .font(.system(size: 22, weight: .bold, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.7)
+        Text(title)
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .lineLimit(1)
+      }
+      .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
     }
   }
 

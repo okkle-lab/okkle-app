@@ -9,10 +9,12 @@ import Vision
 
 struct NativeHomeView: View {
   @Environment(\.nativeViewportHeight) private var nativeViewportHeight
+  @Environment(\.colorScheme) private var colorScheme
   @EnvironmentObject private var store: OkkleStore
   @Binding var selectedTab: NativeTab
   @State private var recordsDestination: RecordsDestination?
   @ObservedObject private var tripSession = NativeTripSession.shared
+  @State private var showsMedals = false
   @State private var medalAlert: NativeMedalAchievement?
   @State private var seenMedalKeys = Set<String>()
   @State private var selectedHistoryItem: NativeHistoryItem?
@@ -26,6 +28,15 @@ struct NativeHomeView: View {
     case tax
 
     var id: String { rawValue }
+
+    var recordsMode: NativeRecordsView.RecordsMode {
+      switch self {
+      case .history:
+        return .history
+      case .tax:
+        return .tax
+      }
+    }
   }
 
   // MARK: Body
@@ -33,17 +44,14 @@ struct NativeHomeView: View {
   var body: some View {
     ZStack {
       NativeScreen(title: homeGreetingTitle, collapsedTitle: "Home", subtitle: Date().formatted(.dateTime.weekday(.wide).day().month(.wide)), fillsViewport: true) {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
           taxDeadlineChip
 
           taxCard
-            .padding(.horizontal, -20)   // break out of the body inset so the
-                                         // paging card can align at 20pt with
-                                         // room for its shadow inside the page
 
-          summaryMetricsGrid
+          progressSection
 
-          recentSection
+          Spacer(minLength: 0)
         }
       }
     }
@@ -61,18 +69,14 @@ struct NativeHomeView: View {
       }
     }
     .fullScreenCover(item: $recordsDestination) { destination in
-      switch destination {
-      case .history:
-        NativeRecordsView {
-          recordsDestination = nil
-        }
-        .environmentObject(store)
-      case .tax:
-        NativeTaxDetailView {
-          recordsDestination = nil
-        }
-        .environmentObject(store)
+      NativeRecordsView(initialMode: destination.recordsMode) {
+        recordsDestination = nil
       }
+      .environmentObject(store)
+    }
+    .fullScreenCover(isPresented: $showsMedals) {
+      NativeMedalsView()
+        .environmentObject(store)
     }
     .alert("Delete this entry?", isPresented: Binding(
       get: { itemPendingDeletion != nil },
@@ -129,55 +133,86 @@ struct NativeHomeView: View {
   // MARK: Tax card
 
   private var taxCard: some View {
-    taxSavedPage
-  }
-
-  private var taxSavedPage: some View {
-    taxPageShell(kicker: "TAX SAVED THIS YEAR", trailing: taxYearLabel(for: store.taxYear)) {
-      Text(headlineGbp(store.taxSaved))
-        .font(.system(size: 46, weight: .heavy, design: .rounded))
-        .foregroundStyle(OkkleColor.ink)
-        .lineLimit(1)
-        .minimumScaleFactor(0.5)
-
-      Text("From \(miles(store.yearMiles)) and \(gbp(store.yearMileageDeduction)) of mileage deductions.")
-        .font(.system(size: 13, weight: .bold))
-        .foregroundStyle(OkkleColor.muted)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-  }
-
-  /// Main tax summary card. It opens the detailed tax records, so it keeps a
-  /// lifted card treatment; the non-interactive metric tiles below stay flat.
-  private func taxPageShell<Content: View>(kicker: String, trailing: String, @ViewBuilder content: () -> Content) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Text(kicker)
-          .font(.system(size: 12, weight: .heavy))
-          .tracking(0.5)
-        Spacer()
-        Text(trailing)
-          .font(.system(size: 12, weight: .bold))
-      }
-      .foregroundStyle(OkkleColor.muted)
-      .frame(maxWidth: .infinity, alignment: .leading)
-
-      VStack(alignment: .leading, spacing: 10, content: content)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-    .padding(15)
-    .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-    // Single soft shadow that fits within the page padding — a bigger/clipped
-    // shadow in the paging view is what caused the uneven "shades".
-    .shadow(color: .black.opacity(0.10), radius: 10, y: 5)
-    .padding(.horizontal, 20)
-    .padding(.top, 2)
-    .padding(.bottom, 8)
-    .contentShape(Rectangle())
-    .onTapGesture {
+    Button {
       openRecords(.tax)
+    } label: {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 6) {
+          Image(systemName: "chart.line.uptrend.xyaxis")
+            .font(.system(size: 14, weight: .bold))
+          Text("Tax saved this year")
+            .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(taxHeroAccent)
+
+        Text(headlineGbp(store.taxSaved))
+          .font(.system(size: 40, weight: .heavy, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.52)
+
+        Text("from \(miles(store.yearMiles)) · \(gbp(store.yearMileageDeduction)) mileage deduction")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+
+        Text("Tax year \(taxYearLabel(for: store.taxYear)) · see breakdown")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(taxHeroAccent)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 6)
+          .background(taxHeroChipBackground, in: Capsule())
+          .overlay {
+            Capsule()
+              .stroke(taxHeroChipStroke, lineWidth: 1)
+          }
+          .padding(.top, 2)
+      }
+      .padding(20)
+      .frame(maxWidth: .infinity, minHeight: 176, alignment: .leading)
+      .background(taxHeroGradient, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 26, style: .continuous)
+          .stroke(taxHeroStroke, lineWidth: 1)
+      }
+      .shadow(color: taxHeroShadow, radius: 24, y: 14)
     }
+    .buttonStyle(.plain)
+  }
+
+  private var taxHeroGradient: LinearGradient {
+    let colors = colorScheme == .dark
+      ? [
+        Color(red: 0.12, green: 0.22, blue: 0.19),
+        Color(red: 0.08, green: 0.31, blue: 0.26),
+        Color(red: 0.03, green: 0.14, blue: 0.12),
+      ]
+      : [
+        Color(red: 0.96, green: 1.00, blue: 0.98),
+        Color(red: 0.83, green: 0.97, blue: 0.94),
+        Color(red: 0.64, green: 0.89, blue: 0.83),
+      ]
+    return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+  }
+
+  private var taxHeroAccent: Color {
+    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77) : OkkleColor.brandDark
+  }
+
+  private var taxHeroStroke: Color {
+    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77).opacity(0.28) : Color.white.opacity(0.78)
+  }
+
+  private var taxHeroChipBackground: Color {
+    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77).opacity(0.12) : Color.white.opacity(0.64)
+  }
+
+  private var taxHeroChipStroke: Color {
+    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77).opacity(0.24) : Color.white.opacity(0.86)
+  }
+
+  private var taxHeroShadow: Color {
+    colorScheme == .dark ? Color.black.opacity(0.34) : OkkleColor.brandDark.opacity(0.16)
   }
 
   // MARK: Recent
@@ -218,6 +253,34 @@ struct NativeHomeView: View {
     .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
     .padding(14)
     .background(Color(uiColor: .secondarySystemBackground).opacity(0.72), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+  }
+
+  private var progressSection: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      homeSectionHeader(symbol: "sparkles", title: "Progress")
+
+      NativeMedalPreviewCard(
+        achievements: NativeMedalEngine.achievements(store: store),
+        mileageBandMiles: store.yearMiles,
+        recordsLogged: store.history.count,
+        tripsTracked: store.trips.count,
+        cityDistanceMiles: allTimeMileage
+      ) {
+        showsMedals = true
+      }
+      .okkleLegacyCard()
+    }
+  }
+
+  private func homeSectionHeader(symbol: String, title: String) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: symbol)
+        .font(.system(size: 13, weight: .bold))
+        .foregroundStyle(OkkleColor.brand)
+      Text(title)
+        .font(.system(size: 15, weight: .heavy))
+        .foregroundStyle(OkkleColor.ink)
+    }
   }
 
   /// A live trip in progress takes over → tap goes to Trip. Otherwise the most
@@ -414,6 +477,15 @@ struct NativeHomeView: View {
     return "\(NativeGreeting.word(for: Date(), shortOnly: name.count > 8)), \(name)"
   }
 
+  private var allTimeMileage: Double {
+    let tripMiles = store.trips.reduce(0) { $0 + max(0, $1.miles) }
+    let manualMiles = store.records.reduce(0) { partial, record in
+      guard record.kind == .mileage else { return partial }
+      return partial + max(0, record.miles ?? 0)
+    }
+    return tripMiles + manualMiles
+  }
+
   private func openRecords(_ destination: RecordsDestination) {
     recordsDestination = destination
   }
@@ -600,6 +672,19 @@ private struct RecentPanelTopPreferenceKey: PreferenceKey {
     if next > 0 {
       value = next
     }
+  }
+}
+
+private extension View {
+  func okkleLegacyCard() -> some View {
+    self
+      .background(OkkleColor.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .stroke(OkkleColor.line.opacity(0.55), lineWidth: 1)
+      }
+      .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+      .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
   }
 }
 

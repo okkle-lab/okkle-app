@@ -114,8 +114,11 @@ struct NativeScreen<Content: View>: View {
           .accessibilityLabel("Settings")
         }
       }
-      .fullScreenCover(isPresented: $showSettings) {
+      .sheet(isPresented: $showSettings) {
         NativeSettingsView()
+          .presentationDetents([.large])
+          .presentationDragIndicator(.hidden)
+          .presentationCornerRadius(36)
       }
     }
   }

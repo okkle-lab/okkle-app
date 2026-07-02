@@ -30,7 +30,7 @@ private final class OkkleCarPlayTripController {
   private let session = NativeTripSession.shared
   private let tripTemplate = CPListTemplate(title: "Okkle Trip", sections: [])
   private var cancellable: AnyCancellable?
-  private var completedTrip: NativeTrip?
+  private var lastSavedSummary: String?
 
   init(interfaceController: CPInterfaceController) {
     self.interfaceController = interfaceController
@@ -48,7 +48,7 @@ private final class OkkleCarPlayTripController {
       return
     }
 
-    interfaceController?.setRootTemplate(tripTemplate, animated: true)
+    interfaceController?.setRootTemplate(tripTemplate, animated: true, completion: nil)
     updateTripTemplate()
   }
 
@@ -56,7 +56,7 @@ private final class OkkleCarPlayTripController {
     let item = CPListItem(text: "Finish setup on iPhone", detailText: "Open Okkle on your phone before using CarPlay trip tracking.")
     let section = CPListSection(items: [item])
     let template = CPListTemplate(title: "Okkle", sections: [section])
-    interfaceController?.setRootTemplate(template, animated: true)
+    interfaceController?.setRootTemplate(template, animated: true, completion: nil)
   }
 
   private func updateTripTemplate() {
@@ -69,27 +69,26 @@ private final class OkkleCarPlayTripController {
   }
 
   private func startTrip() {
-    completedTrip = nil
+    lastSavedSummary = nil
+    if session.phase == .summary {
+      session.discard()
+    }
     session.start(vehicle: store.settings.defaultVehicle)
     updateTripTemplate()
     showPermissionIfNeeded()
   }
 
-  private func pauseTrip() {
-    session.pause()
+  private func stopAndSaveTrip() {
+    guard let trip = session.end(store: store) else {
+      session.discard()
+      lastSavedSummary = nil
+      updateTripTemplate()
+      return
+    }
+    store.addTrip(trip)
+    lastSavedSummary = "Saved \(miles(trip.miles)) with \(gbp(trip.deduction, whole: true)) deduction."
+    session.discard()
     updateTripTemplate()
-  }
-
-  private func resumeTrip() {
-    session.resume()
-    updateTripTemplate()
-  }
-
-  private func endTrip() {
-    completedTrip = session.end(store: store)
-    updateTripTemplate()
-    guard completedTrip != nil else { return }
-    showEndTripConfirmation()
   }
 
   private func showPermissionIfNeeded() {
@@ -100,46 +99,7 @@ private final class OkkleCarPlayTripController {
         CPAlertAction(title: "OK", style: .cancel) { _ in }
       ]
     )
-    interfaceController?.presentTemplate(alert, animated: true)
-  }
-
-  private func showEndTripConfirmation() {
-    let alert = CPAlertTemplate(
-      titleVariants: ["Save this trip?", completedTripSummary],
-      actions: [
-        CPAlertAction(title: "Save", style: .default) { [weak self] _ in
-          self?.saveCompletedTrip()
-        },
-        CPAlertAction(title: "Continue", style: .cancel) { [weak self] _ in
-          self?.continueTrip()
-        },
-        CPAlertAction(title: "Discard", style: .destructive) { [weak self] _ in
-          self?.discardTrip()
-        }
-      ]
-    )
-    interfaceController?.presentTemplate(alert, animated: true)
-  }
-
-  private func saveCompletedTrip() {
-    if let completedTrip {
-      store.addTrip(completedTrip)
-    }
-    completedTrip = nil
-    session.discard()
-    updateTripTemplate()
-  }
-
-  private func continueTrip() {
-    completedTrip = nil
-    session.continueTrackingAfterEndReview()
-    updateTripTemplate()
-  }
-
-  private func discardTrip() {
-    completedTrip = nil
-    session.discard()
-    updateTripTemplate()
+    interfaceController?.presentTemplate(alert, animated: true, completion: nil)
   }
 
   private var templateTitle: String {
@@ -156,13 +116,16 @@ private final class OkkleCarPlayTripController {
   }
 
   private var tripSections: [CPListSection] {
-    let stats = [
+    var stats = [
       detailItem("Status", detail: templateTitle),
       detailItem("Miles", detail: miles(session.miles)),
       detailItem("Deduction", detail: gbp(store.calcDeduction(miles: session.miles, vehicle: session.vehicle), whole: true)),
       detailItem("Elapsed", detail: elapsedLabel(session.elapsed)),
       detailItem("Vehicle", detail: session.vehicle.label)
     ]
+    if let lastSavedSummary {
+      stats.insert(detailItem("Last trip", detail: lastSavedSummary), at: 1)
+    }
 
     return [
       CPListSection(items: stats, header: "Trip", sectionIndexTitle: nil),
@@ -174,26 +137,14 @@ private final class OkkleCarPlayTripController {
     switch session.phase {
     case .setup, .summary:
       return [
-        actionItem("Start Trip", detail: "Begin mileage tracking") { [weak self] in
+        actionItem("Start Trip", detail: "Use \(store.settings.defaultVehicle.label) and begin mileage tracking") { [weak self] in
           self?.startTrip()
         }
       ]
-    case .live:
+    case .live, .paused:
       return [
-        actionItem("Pause Trip", detail: "Keep this trip open") { [weak self] in
-          self?.pauseTrip()
-        },
-        actionItem("End Trip", detail: "Review before saving") { [weak self] in
-          self?.endTrip()
-        }
-      ]
-    case .paused:
-      return [
-        actionItem("Resume Trip", detail: "Continue tracking") { [weak self] in
-          self?.resumeTrip()
-        },
-        actionItem("End Trip", detail: "Review before saving") { [weak self] in
-          self?.endTrip()
+        actionItem("Stop & Save Trip", detail: "Save to Records") { [weak self] in
+          self?.stopAndSaveTrip()
         }
       ]
     }
@@ -215,11 +166,6 @@ private final class OkkleCarPlayTripController {
       }
     }
     return item
-  }
-
-  private var completedTripSummary: String {
-    guard let completedTrip else { return "No trip distance recorded." }
-    return "\(miles(completedTrip.miles)) with \(gbp(completedTrip.deduction, whole: true)) deduction."
   }
 
   private func elapsedLabel(_ seconds: TimeInterval) -> String {
