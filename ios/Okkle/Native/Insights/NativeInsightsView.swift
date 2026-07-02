@@ -1433,7 +1433,7 @@ struct NativeWeeklyInsightPanel: View {
       // there's an actual mix — a single platform isn't a "ranking".
       if shift.platformShares.count >= 2 {
         NativeAiCard {
-          section("PLATFORM MIX") {
+          section("PLATFORM MIX", subtitle: "Share of your logged earnings this period, by app.") {
             NativePlatformShareList(shares: shift.platformShares)
           }
         }
@@ -1441,18 +1441,26 @@ struct NativeWeeklyInsightPanel: View {
 
       // Card 5 — your top areas, with how much of your work each one carries.
       NativeAiCard {
-        section("YOUR TOP AREAS") {
+        section("YOUR TOP AREAS", subtitle: "Bar shows how busy each area is compared to your #1 spot.") {
           NativeTopAreasList(zones: shift.zones, limit: 4, showShareBar: true)
         }
       }
     }
   }
 
-  private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+  private func section<Content: View>(_ title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) -> some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text(title)
-        .font(.system(size: 12, weight: .heavy)).tracking(0.5)
-        .foregroundStyle(OkkleColor.muted)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.system(size: 12, weight: .heavy)).tracking(0.5)
+          .foregroundStyle(OkkleColor.muted)
+        if let subtitle {
+          Text(subtitle)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(OkkleColor.muted.opacity(0.8))
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
       content()
     }
   }
