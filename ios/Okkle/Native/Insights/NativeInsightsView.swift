@@ -824,9 +824,6 @@ struct NativeDailyInsightPanel: View {
     let hero = heroContent(plan)
     return VStack(alignment: .leading, spacing: 7) {
       HStack(spacing: 7) {
-        Image(systemName: hero.symbol)
-          .font(.system(size: 14, weight: .bold))
-          .foregroundStyle(hero.color)
         Text(plan.isToday ? "TODAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())"
                           : "NEXT: \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())")
           .font(.system(size: 12, weight: .heavy)).tracking(0.5)
@@ -1152,7 +1149,7 @@ struct NativeInsightsView: View {
 
   var body: some View {
     NativeScreen(title: "Insights", collapsedTitle: "Insights",
-                 subtitle: "Based on your trips, Okkle gives you insights and recommendations on when to head out and where to go. The more you drive, the more accurate they get.") {
+                 subtitle: "From your trips: when to head out and where to go. Sharper the more you drive.") {
       NativeShiftPatternsCard(
         shift: shift,
         trips: store.trips,
