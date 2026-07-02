@@ -756,11 +756,15 @@ struct NativeDailyInsightPanel: View {
 
         // Panel 2 — WHERE: your best patches and a live heat-map to explore.
         NativeAiCard {
-          VStack(alignment: .leading, spacing: 14) {
+          VStack(alignment: .leading, spacing: 12) {
             section("WHERE TO GO") {
               NativeTopAreasList(zones: shift.zones, limit: 3)
             }
             NativeZoneMiniMap(trips: trips, zones: shift.zones)
+            Text("Numbered pins are your busiest patches, ranked. Tap the map to explore them full-screen.")
+              .font(.system(size: 12, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
+              .fixedSize(horizontal: false, vertical: true)
           }
         }
       }
@@ -783,14 +787,23 @@ struct NativeDailyInsightPanel: View {
     }
   }
 
-  private var confidenceDots: some View {
-    HStack(spacing: 3) {
-      ForEach(0..<3, id: \.self) { i in
-        Circle()
-          .fill(i < shift.confidence.dots ? OkkleColor.brand : OkkleColor.muted.opacity(0.25))
-          .frame(width: 5, height: 5)
+  /// How sure Okkle is, as a labelled chip (not a menu) — signal bars + words so
+  /// it reads as "how much data is behind this", not a tappable control.
+  private var confidenceChip: some View {
+    HStack(spacing: 5) {
+      HStack(alignment: .bottom, spacing: 1.5) {
+        ForEach(0..<3, id: \.self) { i in
+          RoundedRectangle(cornerRadius: 0.5)
+            .fill(i < shift.confidence.dots ? OkkleColor.brand : OkkleColor.muted.opacity(0.25))
+            .frame(width: 3, height: 4 + CGFloat(i) * 3)
+        }
       }
+      Text(shift.confidence.tag)
+        .font(.system(size: 10, weight: .heavy)).tracking(0.3)
+        .foregroundStyle(OkkleColor.muted)
     }
+    .padding(.horizontal, 8).padding(.vertical, 4)
+    .background(OkkleColor.muted.opacity(0.08), in: Capsule())
     .accessibilityLabel("Confidence: \(shift.confidence.tag.lowercased())")
   }
 
@@ -808,7 +821,7 @@ struct NativeDailyInsightPanel: View {
           .font(.system(size: 12, weight: .heavy)).tracking(0.5)
           .foregroundStyle(hero.color)
         Spacer()
-        confidenceDots
+        confidenceChip
       }
       Text(hero.title)
         .font(.system(size: 27, weight: .bold, design: .rounded))
@@ -919,6 +932,32 @@ struct NativeWeeklyInsightPanel: View {
     [1, 2, 3, 4, 5, 6, 0].compactMap { wd in shift.weekdayStats.first { $0.weekday == wd } }
   }
 
+  /// The busiest patch and when it peaks — so the advice can name a real place
+  /// and time instead of a generic "wait nearer a pick-up zone".
+  private var topSpot: (area: String, time: String)? {
+    guard let zone = nativeTopZones(shift.zones, near: nil, limit: 1).first,
+          let area = areaNamer.name(for: zone.coordinate),
+          let time = zone.timeLabel else { return nil }
+    return (area, time)
+  }
+
+  /// One specific, actionable line — grounded in the driver's own busiest area
+  /// and time — that replaces the vague generic warning where we can.
+  private var specificAdvice: (symbol: String, color: Color, text: String)? {
+    if shift.deadMilePct >= 25, let spot = topSpot {
+      return ("exclamationmark.triangle.fill", OkkleColor.amber,
+              "You cover a lot of empty miles between orders. Sit tight around \(spot.area) at \(spot.time) — that's where most of your pickups start.")
+    }
+    if let spot = topSpot {
+      return ("mappin.and.ellipse", OkkleColor.brand,
+              "Your strongest patch is \(spot.area) at \(spot.time) — base yourself there and let the orders come to you.")
+    }
+    if let warning = shift.warning {
+      return ("exclamationmark.triangle.fill", OkkleColor.amber, warning)
+    }
+    return nil
+  }
+
   var body: some View {
     NativeAiCard {
     VStack(alignment: .leading, spacing: 22) {
@@ -957,8 +996,8 @@ struct NativeWeeklyInsightPanel: View {
               : line
           )
         }
-        if let warning = shift.warning {
-          insightLine(symbol: "exclamationmark.triangle.fill", color: OkkleColor.amber, text: warning)
+        if let advice = specificAdvice {
+          insightLine(symbol: advice.symbol, color: advice.color, text: advice.text)
         }
       }
 
