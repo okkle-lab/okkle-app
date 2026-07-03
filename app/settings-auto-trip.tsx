@@ -93,10 +93,9 @@ export default function AutoTripSettings() {
         <ModalHeader title="Trip nudges" />
 
         <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
-          <Feather name="navigation" size={22} color="#fff" />
           <Text style={s.heroTitle}>Never forget to track a trip</Text>
           <Text style={s.heroSub}>
-            Nudges you to start tracking when you drive, and to save once you’ve stopped. You decide each time.
+            Nudges you to start tracking when you drive, and to save once you’ve stopped and parked for a while. You decide each time — nothing is recorded automatically.
           </Text>
         </GradientCard>
 
