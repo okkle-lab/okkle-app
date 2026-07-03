@@ -1,13 +1,66 @@
 import React from 'react';
-import { View, Text, StyleSheet, Switch, Alert, Linking } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Switch, Alert, Linking } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
+import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, GradientCard, ModalHeader } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
+import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, type ExcludedPlace } from '../src/db';
 
 export default function AutoTripSettings() {
   const [on, setOn] = React.useState(isAutoTripEnabled());
   const [busy, setBusy] = React.useState(false);
+  const [places, setPlaces] = React.useState<ExcludedPlace[]>(getExcludedPlaces());
+  const [label, setLabel] = React.useState('');
+  const [address, setAddress] = React.useState('');
+  const [geocoding, setGeocoding] = React.useState(false);
+
+  async function addByAddress() {
+    const cleanLabel = label.trim();
+    const cleanAddress = address.trim();
+    if (!cleanLabel || !cleanAddress || geocoding) return;
+    setGeocoding(true);
+    try {
+      const results = await Location.geocodeAsync(cleanAddress);
+      const hit = results[0];
+      if (!hit) {
+        Alert.alert("Couldn't find that address", 'Try a more specific address.');
+        return;
+      }
+      addExcludedPlace({ label: cleanLabel, lat: hit.latitude, lng: hit.longitude });
+      setPlaces(getExcludedPlaces());
+      setLabel('');
+      setAddress('');
+    } catch {
+      Alert.alert("Couldn't find that address", 'Try a more specific address.');
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
+  async function addByCurrentLocation() {
+    const cleanLabel = label.trim();
+    if (!cleanLabel) return;
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        const req = await Location.requestForegroundPermissionsAsync();
+        if (req.status !== 'granted') return;
+      }
+      const pos = await Location.getCurrentPositionAsync({});
+      addExcludedPlace({ label: cleanLabel, lat: pos.coords.latitude, lng: pos.coords.longitude });
+      setPlaces(getExcludedPlaces());
+      setLabel('');
+      setAddress('');
+    } catch {
+      Alert.alert("Couldn't get your location", 'Try again in a moment.');
+    }
+  }
+
+  function remove(index: number) {
+    removeExcludedPlace(index);
+    setPlaces(getExcludedPlaces());
+  }
 
   async function toggle(next: boolean) {
     if (busy) return;
@@ -64,6 +117,47 @@ export default function AutoTripSettings() {
             Detection isn’t perfect — a bus or train ride might trigger a nudge. It’s a helpful prompt, not a replacement for starting a trip yourself, and nothing is logged until you confirm.
           </Text>
         </Card>
+
+        <Text style={s.sectionTitle}>Places to leave out</Text>
+        <Card style={s.placesCard}>
+          {places.length > 0 && (
+            <View style={s.placesList}>
+              {places.map((p, i) => (
+                <View key={`${p.label}-${i}`} style={s.placeRow}>
+                  <Text style={s.placeLabel}>{p.label}</Text>
+                  <Pressable onPress={() => remove(i)} hitSlop={10}>
+                    <Feather name="x" size={16} color={colors.textTertiary} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          )}
+          <TextInput
+            style={s.input}
+            value={label}
+            onChangeText={setLabel}
+            placeholder="Label, e.g. Home"
+            placeholderTextColor={colors.textTertiary}
+          />
+          <TextInput
+            style={s.input}
+            value={address}
+            onChangeText={setAddress}
+            placeholder="Address"
+            placeholderTextColor={colors.textTertiary}
+          />
+          <View style={s.placeActions}>
+            <Pressable onPress={addByAddress} disabled={!label.trim() || !address.trim() || geocoding}>
+              <Text style={[s.addAction, (!label.trim() || !address.trim() || geocoding) && s.addActionDisabled]}>Add</Text>
+            </Pressable>
+            <Pressable onPress={addByCurrentLocation} disabled={!label.trim()}>
+              <Text style={[s.addAction, !label.trim() && s.addActionDisabled]}>Use current location</Text>
+            </Pressable>
+          </View>
+        </Card>
+        <Text style={s.placesFooter}>
+          Add home or anywhere you stop often that isn’t work — they’ll never be suggested as a place to go and earn.
+        </Text>
       </View>
     </View>
   );
@@ -81,4 +175,14 @@ const s = StyleSheet.create({
   toggleState: { ...type.caption, marginTop: 6, fontWeight: font.semibold, color: colors.brandDeep },
   noteCard: { flexDirection: 'row', gap: 10, marginTop: spacing.lg, backgroundColor: colors.amberLight },
   noteText: { ...type.caption, color: colors.amberDark, lineHeight: 18, flex: 1 },
+  sectionTitle: { ...type.bodyMedium, fontSize: 16, marginTop: spacing.xl, marginBottom: spacing.sm },
+  placesCard: { gap: spacing.sm },
+  placesList: { gap: spacing.xs, marginBottom: spacing.xs },
+  placeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
+  placeLabel: { ...type.bodyMedium, fontSize: 15 },
+  input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 16, color: colors.textPrimary, backgroundColor: colors.bg },
+  placeActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  addAction: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
+  addActionDisabled: { color: colors.textTertiary },
+  placesFooter: { ...type.caption, marginTop: spacing.sm, lineHeight: 18 },
 });

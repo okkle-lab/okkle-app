@@ -15,7 +15,7 @@ import { PrimaryButton, SlideToConfirm, VehicleChip, IconBadge, GradientCard, Ro
 import { HEADER_TITLE_SIDE_CLEARANCE, headerActionTop, headerTitleTop } from '../../src/components/headerLayout';
 import { VEHICLES, fmtGbp, fmtMiles, fmtDuration, vehicleLabel } from '../../src/db/tax';
 import { useTrip, type LiveTrip } from '../../src/hooks/useTrip';
-import { saveTrip, getUser, getLastTrip, getTodayMiles, getLongestTrip, getStreak, getVehicleKeys } from '../../src/db';
+import { saveTrip, getUser, getLastTrip, getTodayMiles, getLongestTrip, getStreak, getVehicleKeys, pickZoneRepresentativePoint } from '../../src/db';
 
 // Circular "Start" hero — inspired by activity-ring fitness UIs: a large tappable
 // gradient disc inside a faint ring with a brand accent arc.
@@ -122,9 +122,12 @@ export default function TripScreen() {
 
     // Reverse-geocode a representative point to a friendly "zone" name, so the
     // Insights map can rank where you earn. One lookup per trip; best-effort.
+    // Skips home/excluded places — otherwise a shift that loops back through
+    // home mid-route could get named after home instead of where you worked.
     let zone: string | null = null;
-    if (pts.length > 0) {
-      const mid = pts[Math.floor(pts.length / 2)];
+    const repPoint = pickZoneRepresentativePoint(pts);
+    if (repPoint) {
+      const mid = repPoint;
       try {
         const places = await Location.reverseGeocodeAsync({ latitude: mid.lat, longitude: mid.lng });
         const p = places[0];

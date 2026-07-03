@@ -1234,6 +1234,95 @@ export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
   return out;
 }
 
+// ---- Home / excluded places -------------------------------------------------
+// Kept out of "where to go": places the driver manually flagged, plus an
+// auto-detected home guess when nothing's been set. Without this, home shows
+// up as the top "hotspot" — nearly every trip starts and ends there, so it
+// racks up more breadcrumb points than any real delivery zone ever could.
+
+export type ExcludedPlace = { label: string; lat: number; lng: number };
+
+export function getExcludedPlaces(): ExcludedPlace[] {
+  try { return JSON.parse(kvGet('excluded_places') || '[]'); } catch { return []; }
+}
+export function addExcludedPlace(place: ExcludedPlace) {
+  const list = getExcludedPlaces();
+  list.push(place);
+  kvSet('excluded_places', JSON.stringify(list));
+}
+export function removeExcludedPlace(index: number) {
+  const list = getExcludedPlaces();
+  list.splice(index, 1);
+  kvSet('excluded_places', JSON.stringify(list));
+}
+
+// Guesses "home" from where trips actually start and end — not raw dwell time
+// (route points are only recorded while a trip is actively tracked, so time
+// spent parked at home before a trip starts leaves no trace). The one grid
+// cell that keeps recurring as a trip's first or last point, across enough
+// trips to be confident, is almost always home.
+function detectHomeCell(): { lat: number; lng: number } | null {
+  const rows = db.getAllSync<{ route_json: string | null }>(
+    `SELECT route_json FROM trips WHERE route_json IS NOT NULL`);
+  const CELL = 0.004;
+  const agg = new Map<string, { latSum: number; lngSum: number; count: number }>();
+  let tripCount = 0;
+  for (const r of rows) {
+    let pts: { lat: number; lng: number }[] = [];
+    try { pts = JSON.parse(r.route_json as string); } catch { continue; }
+    if (!Array.isArray(pts) || pts.length === 0) continue;
+    tripCount += 1;
+    for (const p of [pts[0], pts[pts.length - 1]]) {
+      if (typeof p?.lat !== 'number' || typeof p?.lng !== 'number') continue;
+      const clat = Math.round(p.lat / CELL) * CELL;
+      const clng = Math.round(p.lng / CELL) * CELL;
+      const key = `${clat.toFixed(3)},${clng.toFixed(3)}`;
+      const a = agg.get(key) ?? { latSum: 0, lngSum: 0, count: 0 };
+      a.latSum += p.lat; a.lngSum += p.lng; a.count += 1;
+      agg.set(key, a);
+    }
+  }
+  // Need a handful of trips before trusting a "home" guess.
+  if (tripCount < 4) return null;
+  let best: { lat: number; lng: number; count: number } | null = null;
+  for (const a of agg.values()) {
+    if (!best || a.count > best.count) best = { lat: a.latSum / a.count, lng: a.lngSum / a.count, count: a.count };
+  }
+  // Should show up at the start/end of most trips to count as "home".
+  if (!best || best.count < tripCount * 0.6) return null;
+  return { lat: best.lat, lng: best.lng };
+}
+
+function excludedCoordinates(): { lat: number; lng: number }[] {
+  const coords = getExcludedPlaces().map(p => ({ lat: p.lat, lng: p.lng }));
+  const home = detectHomeCell();
+  if (home) coords.push(home);
+  return coords;
+}
+
+const EXCLUSION_RADIUS_DEG = 0.0018; // ~200m at UK latitudes
+function isNearExcluded(lat: number, lng: number, excluded: { lat: number; lng: number }[]): boolean {
+  return excluded.some(e => Math.hypot(lat - e.lat, lng - e.lng) <= EXCLUSION_RADIUS_DEG);
+}
+
+// Picks the point in a route best used to name its "zone" for ranking — the
+// midpoint by default, but if that lands on home/an excluded place (a trip
+// that loops back through home mid-shift), falls back to whichever point is
+// farthest from every excluded place instead.
+export function pickZoneRepresentativePoint(pts: { lat: number; lng: number }[]): { lat: number; lng: number } | null {
+  if (pts.length === 0) return null;
+  const excluded = excludedCoordinates();
+  const mid = pts[Math.floor(pts.length / 2)];
+  if (!excluded.length || !isNearExcluded(mid.lat, mid.lng, excluded)) return mid;
+  let best = pts[0];
+  let bestDist = -1;
+  for (const p of pts) {
+    const dist = Math.min(...excluded.map(e => Math.hypot(p.lat - e.lat, p.lng - e.lng)));
+    if (dist > bestDist) { bestDist = dist; best = p; }
+  }
+  return best;
+}
+
 // Grid-cell hotspots — rank the places you actually drive by clustering the GPS
 // breadcrumb into ~450m cells, weighted by apportioned earnings. Unlike the
 // per-trip `zone`, this works even when a whole shift is one long trip, because
@@ -1242,6 +1331,7 @@ export type HotspotCell = { key: string; lat: number; lng: number; visits: numbe
 
 export function getHotspotCells(filter: TimeFilter = 'all', limit = 6): HotspotCell[] {
   const est = estimatedTripEarnings();
+  const excluded = excludedCoordinates();
   const rows = db.getAllSync<{ id: number; route_json: string | null; started_at: string }>(
     `SELECT id, route_json, started_at FROM trips WHERE route_json IS NOT NULL`);
   const CELL = 0.004; // ~450m at UK latitudes
@@ -1255,6 +1345,7 @@ export function getHotspotCells(filter: TimeFilter = 'all', limit = 6): HotspotC
     const w = e > 0 ? e / pts.length : 0;
     for (const p of pts) {
       if (typeof p?.lat !== 'number' || typeof p?.lng !== 'number') continue;
+      if (isNearExcluded(p.lat, p.lng, excluded)) continue;
       const clat = Math.round(p.lat / CELL) * CELL;
       const clng = Math.round(p.lng / CELL) * CELL;
       const key = `${clat.toFixed(3)},${clng.toFixed(3)}`;
