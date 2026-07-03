@@ -52,6 +52,7 @@
 		D3A9F6319C794EBD7BF510E2 /* NativeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B488443B25BC5ED20A3CBD6C /* NativeComponents.swift */; };
 		F8F483635DF782492C3978B9 /* NativeHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */; };
 		5AD9A5A2C9E34D75A74B0101 /* NativeMedalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */; };
+		37E08F9D0CE14C3DB802356D /* NativeProgressSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37E08F9C0CE14C3DB802356C /* NativeProgressSummary.swift */; };
 		A231C60E0E6944FC916AB873 /* NativeMedalEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */; };
 		67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D16F24230562870410B37EC /* NativeLogView.swift */; };
 		6474E5759C7C4E63B1CD0202 /* NativeLogMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6474E5749C7C4E63B1CD0201 /* NativeLogMedia.swift */; };
@@ -60,6 +61,7 @@
 		CF15ED97A8AEDE5D3D61ABA2 /* NativeHistoryDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA931E53CF76B03966392C32 /* NativeHistoryDetails.swift */; };
 		209F3359ED511A0BC9D64DB7 /* NativeInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */; };
 		D30FD8D8D709421B8B1BD003 /* NativeAutoTrackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */; };
+		6D939B15DD214840A6C00DAE /* NativePreShiftNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */; };
 		14FC991062602F3F2D2D8B26 /* NativeRecordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD6F6C8E5CD65225A295942 /* NativeRecordsView.swift */; };
 		C70CF123C82959ECB53644BC /* NativeExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6EE03F6A4F4FDC01B37848 /* NativeExportService.swift */; };
 		8559784546AD4021B63E2C13 /* NativeAccountantPackPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */; };
@@ -95,6 +97,7 @@
 		B488443B25BC5ED20A3CBD6C /* NativeComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeComponents.swift; sourceTree = "<group>"; };
 		38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHomeView.swift; sourceTree = "<group>"; };
 		5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMedalsView.swift; sourceTree = "<group>"; };
+		37E08F9C0CE14C3DB802356C /* NativeProgressSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProgressSummary.swift; sourceTree = "<group>"; };
 		A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMedalEngine.swift; sourceTree = "<group>"; };
 		1D16F24230562870410B37EC /* NativeLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogView.swift; sourceTree = "<group>"; };
 		6474E5749C7C4E63B1CD0201 /* NativeLogMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogMedia.swift; sourceTree = "<group>"; };
@@ -103,6 +106,7 @@
 		CA931E53CF76B03966392C32 /* NativeHistoryDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryDetails.swift; sourceTree = "<group>"; };
 		7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightsView.swift; sourceTree = "<group>"; };
 		D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAutoTrackEngine.swift; sourceTree = "<group>"; };
+		6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePreShiftNotifier.swift; sourceTree = "<group>"; };
 		7AD6F6C8E5CD65225A295942 /* NativeRecordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRecordsView.swift; sourceTree = "<group>"; };
 		DD6EE03F6A4F4FDC01B37848 /* NativeExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeExportService.swift; sourceTree = "<group>"; };
 		8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccountantPackPdfRenderer.swift; sourceTree = "<group>"; };
@@ -228,6 +232,7 @@
 			children = (
 				38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */,
 				5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */,
+				37E08F9C0CE14C3DB802356C /* NativeProgressSummary.swift */,
 				A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */,
 			);
 			path = Home;
@@ -238,6 +243,7 @@
 			children = (
 				7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */,
 				D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */,
+				6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */,
 			);
 			path = Insights;
 			sourceTree = "<group>";
@@ -526,6 +532,7 @@
 				B5E90F322D5F4D43B37C9B02 /* NativeTripWidgetState.swift in Sources */,
 				F8F483635DF782492C3978B9 /* NativeHomeView.swift in Sources */,
 				5AD9A5A2C9E34D75A74B0101 /* NativeMedalsView.swift in Sources */,
+				37E08F9D0CE14C3DB802356D /* NativeProgressSummary.swift in Sources */,
 				A231C60E0E6944FC916AB873 /* NativeMedalEngine.swift in Sources */,
 				67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */,
 				6474E5759C7C4E63B1CD0202 /* NativeLogMedia.swift in Sources */,
@@ -534,6 +541,7 @@
 				CF15ED97A8AEDE5D3D61ABA2 /* NativeHistoryDetails.swift in Sources */,
 				209F3359ED511A0BC9D64DB7 /* NativeInsightsView.swift in Sources */,
 				D30FD8D8D709421B8B1BD003 /* NativeAutoTrackEngine.swift in Sources */,
+				6D939B15DD214840A6C00DAE /* NativePreShiftNotifier.swift in Sources */,
 				14FC991062602F3F2D2D8B26 /* NativeRecordsView.swift in Sources */,
 				C70CF123C82959ECB53644BC /* NativeExportService.swift in Sources */,
 				8559784546AD4021B63E2C13 /* NativeAccountantPackPdfRenderer.swift in Sources */,

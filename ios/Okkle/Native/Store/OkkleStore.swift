@@ -1,11 +1,5 @@
-import CoreLocation
-import EventKit
-import MapKit
-import PhotosUI
-import SQLite3
-import SwiftUI
-import UIKit
-import Vision
+import Combine
+import Foundation
 @MainActor
 final class OkkleStore: ObservableObject {
   static let shared = OkkleStore()
@@ -16,13 +10,15 @@ final class OkkleStore: ObservableObject {
     var vehicle: NativeVehicle
   }
 
-  @Published var settings = NativeSettings() { didSet { save() } }
-  @Published var records: [NativeRecord] = [] { didSet { save() } }
-  @Published var trips: [NativeTrip] = [] { didSet { save() } }
+  @Published var settings = NativeSettings() { didSet { scheduleSave() } }
+  @Published var records: [NativeRecord] = [] { didSet { scheduleSave() } }
+  @Published var trips: [NativeTrip] = [] { didSet { scheduleSave() } }
 
   private let key = "uk.okkle.native.swiftui.snapshot.v1"
   private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v3"
+  private let saveDebounceInterval: TimeInterval = 0.45
   private var isLoading = false
+  private var pendingSave: DispatchWorkItem?
 
   init() {
     load()
@@ -73,11 +69,33 @@ final class OkkleStore: ObservableObject {
 
   func save() {
     guard !isLoading else { return }
+    pendingSave?.cancel()
+    pendingSave = nil
+    persistSnapshot()
+  }
+
+  private func scheduleSave() {
+    guard !isLoading else { return }
+    pendingSave?.cancel()
+
+    let work = DispatchWorkItem { [weak self] in
+      Task { @MainActor in
+        self?.pendingSave = nil
+        self?.persistSnapshot()
+      }
+    }
+    pendingSave = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + saveDebounceInterval, execute: work)
+  }
+
+  private func persistSnapshot() {
     let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
     if let data = try? JSONEncoder().encode(snapshot) {
       UserDefaults.standard.set(data, forKey: key)
     }
-    NativeLegacySQLiteExporter.write(snapshot: snapshot)
+    DispatchQueue.global(qos: .utility).async {
+      NativeLegacySQLiteExporter.write(snapshot: snapshot)
+    }
   }
 
   var backupPayload: NativeBackupPayload {

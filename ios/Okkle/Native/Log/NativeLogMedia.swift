@@ -94,6 +94,30 @@ func nativeReceiptMerchant(from lines: [String]) -> String? {
   return nil
 }
 
+func nativeOptimizedReceiptData(image: UIImage?, data: Data?) -> Data? {
+  guard let image = image ?? data.flatMap(UIImage.init(data:)) else {
+    return data
+  }
+
+  let maxDimension: CGFloat = 1_600
+  let longestSide = max(image.size.width, image.size.height)
+  guard longestSide > 0 else { return data }
+
+  let scale = min(1, maxDimension / longestSide)
+  let outputImage: UIImage
+  if scale < 1 {
+    let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+    let renderer = UIGraphicsImageRenderer(size: newSize)
+    outputImage = renderer.image { _ in
+      image.draw(in: CGRect(origin: .zero, size: newSize))
+    }
+  } else {
+    outputImage = image
+  }
+
+  return outputImage.jpegData(compressionQuality: 0.78) ?? data
+}
+
 func uniqueStrings(_ values: [String]) -> [String] {
   var seen = Set<String>()
   return values.compactMap { value in

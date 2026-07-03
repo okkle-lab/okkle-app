@@ -1,11 +1,5 @@
 import CoreLocation
-import EventKit
-import MapKit
-import PhotosUI
-import SQLite3
-import SwiftUI
-import UIKit
-import Vision
+import Foundation
 enum NativeVehicle: String, CaseIterable, Identifiable, Codable {
   case car
   case motorbike

@@ -1,12 +1,10 @@
+import CoreMotion
 import CoreLocation
 import Foundation
 import MapKit
 import SwiftUI
-
-// MARK: - Passive auto-tracking engine
-
-import MapKit
-import SwiftUI
+import UIKit
+@preconcurrency import UserNotifications
 
 // MARK: - Model
 
@@ -50,15 +48,24 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   static let shared = NativeAutoTrackEngine()
 
   @Published private(set) var visits: [NativeVisit] = []
+  @Published private(set) var pendingStartPrompt = false
 
   private let manager = CLLocationManager()
+  private let motionManager = CMMotionActivityManager()
+  private let motionQueue = OperationQueue()
   private let storageKey = "uk.okkle.native.autotrack.visits.v1"
+  private let startPromptIdentifier = "uk.okkle.native.trip-start-prompt"
+  private let promptCooldown: TimeInterval = 12 * 60
   private weak var store: OkkleStore?
+  private var motionMonitoring = false
+  private var lastPromptedAt: Date?
 
   override init() {
     super.init()
     manager.delegate = self
     manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    motionQueue.name = "uk.okkle.native.auto-track-motion"
+    motionQueue.qualityOfService = .utility
     load()
   }
 
@@ -83,11 +90,13 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
 
   /// Start or stop passive monitoring to match the Automatic-tracking setting.
   func refresh() {
-    let on = store?.settings.autoTrackTrips ?? false
-    guard on else {
-      manager.stopMonitoringVisits()
+    guard let settings = store?.settings,
+          settings.autoTrackTrips,
+          nativeIsWorkingDay(Date(), settings: settings) else {
+      stopMonitoring()
       return
     }
+    startMotionMonitoring()
     switch manager.authorizationStatus {
     case .notDetermined:
       manager.requestAlwaysAuthorization()
@@ -98,6 +107,21 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       // While-in-use still lets us collect visits when the app is foreground.
       manager.startMonitoringVisits()
     }
+  }
+
+  private func stopMonitoring() {
+    manager.stopMonitoringVisits()
+    stopMotionMonitoring()
+    pendingStartPrompt = false
+  }
+
+  func dismissStartPrompt() {
+    pendingStartPrompt = false
+  }
+
+  func acceptStartPrompt() {
+    pendingStartPrompt = false
+    lastPromptedAt = Date()
   }
 
   nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -111,7 +135,9 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func record(_ clVisit: CLVisit) {
-    if let settings = store?.settings, !nativeIsWorkingDay(clVisit.departureDate, settings: settings) { return }
+    guard let settings = store?.settings,
+          settings.autoTrackTrips,
+          nativeIsWorkingDay(clVisit.departureDate, settings: settings) else { return }
     let arrival = clVisit.arrivalDate == Date.distantPast ? clVisit.departureDate : clVisit.arrivalDate
     var visit = NativeVisit(
       latitude: clVisit.coordinate.latitude,
@@ -126,6 +152,60 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     save()
     classifyWithMapKit(visit.id, coordinate: visit.coordinate)
     runBackgroundExploration(for: visit)
+  }
+
+  private func startMotionMonitoring() {
+    guard CMMotionActivityManager.isActivityAvailable(), !motionMonitoring else { return }
+    motionMonitoring = true
+    motionManager.startActivityUpdates(to: motionQueue) { [weak self] activity in
+      guard let activity else { return }
+      Task { @MainActor in
+        self?.handleMotionActivity(activity)
+      }
+    }
+  }
+
+  private func stopMotionMonitoring() {
+    guard motionMonitoring else { return }
+    motionManager.stopActivityUpdates()
+    motionMonitoring = false
+  }
+
+  private func handleMotionActivity(_ activity: CMMotionActivity) {
+    guard let settings = store?.settings,
+          settings.autoTrackTrips,
+          nativeIsWorkingDay(Date(), settings: settings) else { return }
+    guard NativeTripSession.shared.phase == .setup else { return }
+    guard activity.automotive, activity.confidence != .low else { return }
+    promptToStartTrip()
+  }
+
+  private func promptToStartTrip() {
+    let now = Date()
+    if let lastPromptedAt, now.timeIntervalSince(lastPromptedAt) < promptCooldown { return }
+    guard !pendingStartPrompt else { return }
+    lastPromptedAt = now
+    pendingStartPrompt = true
+
+    guard UIApplication.shared.applicationState != .active else { return }
+    sendStartTripNotification()
+  }
+
+  private func sendStartTripNotification() {
+    let center = UNUserNotificationCenter.current()
+    center.requestAuthorization(options: [.alert, .sound]) { [startPromptIdentifier] granted, _ in
+      guard granted else { return }
+      let content = UNMutableNotificationContent()
+      content.title = "Start tracking this trip?"
+      content.body = "Okkle detected you may be driving. Open the app to start recording miles."
+      content.sound = .default
+      let request = UNNotificationRequest(
+        identifier: startPromptIdentifier,
+        content: content,
+        trigger: nil
+      )
+      center.add(request)
+    }
   }
 
   /// The automatic feedback loop for "areas to try", entirely silent: log
@@ -241,4 +321,3 @@ func nativeDemoVisits() -> [NativeVisit] {
   }
   return out
 }
-

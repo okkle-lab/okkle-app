@@ -801,6 +801,7 @@ struct NativeLogView: View {
     let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanPlatform = platform.trimmingCharacters(in: .whitespacesAndNewlines)
+    let receiptPayload = nativeOptimizedReceiptData(image: receiptImage, data: receiptData)
     let bounds = store.periodBounds(for: date, period: period)
     let record: NativeRecord
     switch kind {
@@ -835,7 +836,7 @@ struct NativeLogView: View {
         period: period,
         periodStart: bounds.start,
         periodEnd: bounds.end,
-        receiptImageData: receiptData
+        receiptImageData: receiptPayload
       )
       store.settings.platforms = uniqueStrings(store.settings.platforms + [cleanPlatform])
     case .expense:
@@ -852,7 +853,7 @@ struct NativeLogView: View {
         period: period,
         periodStart: bounds.start,
         periodEnd: bounds.end,
-        receiptImageData: receiptData
+        receiptImageData: receiptPayload
       )
     }
     store.addRecord(record)

@@ -1,11 +1,6 @@
 import CoreLocation
-import EventKit
-import MapKit
-import PhotosUI
-import SQLite3
-import SwiftUI
-import UIKit
-import Vision
+import Combine
+import Foundation
 final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDelegate {
   static let shared = NativeTripSession()
 

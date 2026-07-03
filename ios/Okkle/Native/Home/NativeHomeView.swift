@@ -264,12 +264,12 @@ struct NativeProgressView: View {
       ) {
         showsMedals = true
       }
-      .okkleLegacyCard()
+      .okkleCard()
 
       NativeMedalPreviewPanel(achievements: NativeMedalEngine.achievements(store: store)) {
         showsMedals = true
       }
-      .okkleLegacyCard()
+      .okkleCard()
     }
   }
 
@@ -479,36 +479,15 @@ struct NativeProgressView: View {
   }
 
   private var weeklyProgressTotals: NativeProgressTotals {
-    let calendar = Calendar.current
-    let interval = calendar.dateInterval(of: .weekOfYear, for: Date()) ?? DateInterval(
-      start: calendar.startOfDay(for: Date()),
-      duration: 7 * 24 * 60 * 60
-    )
-    return progressTotals(
-      records: store.records.filter { interval.contains($0.date) },
-      trips: store.trips.filter { interval.contains($0.startedAt) }
-    )
+    NativeProgressSummary.weekly(store: store)
   }
 
   private var yearToDateProgressTotals: NativeProgressTotals {
-    progressTotals(records: store.yearRecords, trips: store.yearTrips)
+    NativeProgressSummary.yearToDate(store: store)
   }
 
   private var allTimeProgressTotals: NativeProgressTotals {
-    progressTotals(records: store.records, trips: store.trips)
-  }
-
-  private func progressTotals(records: [NativeRecord], trips: [NativeTrip]) -> NativeProgressTotals {
-    let tripMiles = trips.reduce(0) { $0 + max(0, $1.miles) }
-    let manualMiles = records.reduce(0) { partial, record in
-      guard record.kind == .mileage else { return partial }
-      return partial + max(0, record.miles ?? 0)
-    }
-    return NativeProgressTotals(
-      mileageMiles: tripMiles + manualMiles,
-      recordsLogged: records.count,
-      tripsTracked: trips.count
-    )
+    NativeProgressSummary.allTime(store: store)
   }
 
   private func openRecords(_ destination: RecordsDestination) {
@@ -697,19 +676,6 @@ private struct RecentPanelTopPreferenceKey: PreferenceKey {
     if next > 0 {
       value = next
     }
-  }
-}
-
-private extension View {
-  func okkleLegacyCard() -> some View {
-    self
-      .background(OkkleColor.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-          .stroke(OkkleColor.line.opacity(0.55), lineWidth: 1)
-      }
-      .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-      .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
   }
 }
 
