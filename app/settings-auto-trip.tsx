@@ -96,7 +96,7 @@ export default function AutoTripSettings() {
           <Feather name="navigation" size={22} color="#fff" />
           <Text style={s.heroTitle}>Never forget to track a trip</Text>
           <Text style={s.heroSub}>
-            Okkle watches both ends of your trip for you. When it senses you’ve started driving it nudges you to start tracking — and after you’ve been parked a while it nudges you to end and save your miles. You decide each time; nothing is recorded without your tap.
+            Nudges you to start tracking when you drive, and to save once you’ve stopped. You decide each time.
           </Text>
         </GradientCard>
 
@@ -104,7 +104,7 @@ export default function AutoTripSettings() {
           <View style={{ flex: 1 }}>
             <Text style={s.toggleTitle}>Trip nudges</Text>
             <Text style={s.toggleDesc}>
-              A two-way reminder: a “track this trip?” nudge when you start driving, and a “finished this trip?” nudge once you’ve stopped for a while. Tap either to act — ignore it on a personal drive.
+              “Track this trip?” when you drive, “finished?” once you stop. Ignore on a personal drive.
             </Text>
             <Text style={s.toggleState}>{on ? 'On' : 'Off'}</Text>
           </View>
@@ -114,7 +114,7 @@ export default function AutoTripSettings() {
         <Card style={s.noteCard}>
           <Feather name="alert-circle" size={18} color={colors.amberDark} />
           <Text style={s.noteText}>
-            Detection isn’t perfect — a bus or train ride might trigger a nudge. It’s a helpful prompt, not a replacement for starting a trip yourself, and nothing is logged until you confirm.
+            Not perfect — a bus or train might trigger it. Nothing logs until you confirm.
           </Text>
         </Card>
 
@@ -156,7 +156,7 @@ export default function AutoTripSettings() {
           </View>
         </Card>
         <Text style={s.placesFooter}>
-          Add home or anywhere you stop often that isn’t work — they’ll never be suggested as a place to go and earn.
+          Kept out of “where to go” suggestions.
         </Text>
       </ScrollView>
     </View>
