@@ -36,7 +36,13 @@ struct NativeLogView: View {
 
   var body: some View {
     ZStack {
-      NativeScreen(title: "Log", collapsedTitle: "Log", subtitle: "Add one record at a time.") {
+      NativeScreen(
+        title: "Log", collapsedTitle: "Log", subtitle: "Add one record at a time.",
+        onClose: {
+          resetEntry()
+          selectedTab = .trip
+        }
+      ) {
         VStack(alignment: .leading, spacing: 16) {
           stepProgress
           stepCard
