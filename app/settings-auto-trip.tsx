@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Switch, Alert, Linking } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Switch, Alert, Linking, ScrollView } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
 import { colors, font, spacing, radius, type } from '../src/theme';
@@ -89,7 +89,7 @@ export default function AutoTripSettings() {
 
   return (
     <View style={s.screen}>
-      <View style={s.content}>
+      <ScrollView style={s.content} contentContainerStyle={s.contentInner} keyboardShouldPersistTaps="handled">
         <ModalHeader title="Trip nudges" />
 
         <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
@@ -158,14 +158,15 @@ export default function AutoTripSettings() {
         <Text style={s.placesFooter}>
           Add home or anywhere you stop often that isn’t work — they’ll never be suggested as a place to go and earn.
         </Text>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { flex: 1, padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
+  content: { flex: 1 },
+  contentInner: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
   hero: { padding: spacing.lg, gap: 6 },
   heroTitle: { color: '#fff', fontSize: 20, fontWeight: font.bold, letterSpacing: -0.2, marginTop: 4 },
   heroSub: { color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 20 },
