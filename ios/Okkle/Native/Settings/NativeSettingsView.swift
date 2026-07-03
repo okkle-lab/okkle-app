@@ -312,10 +312,94 @@ struct NativeAutoTrackSettingsView: View {
         } footer: {
           Text("A notification about an hour before your busy window starts, telling you when and roughly where to head — plus a nudge on your classic big nights.")
         }
+
+        NativeExcludedPlacesSection()
       }
     }
     .navigationTitle("Automatic tracking")
     .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+/// Places the driver flags as not-work — home, a regular break spot — so
+/// automatic tracking never mistakes a place they simply visit often (rather
+/// than earn at) for a good "where to go" suggestion. Left empty, the app
+/// guesses a likely home location itself from dwell patterns.
+struct NativeExcludedPlacesSection: View {
+  @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var locator = NativeOneShotLocator.shared
+  @State private var label = ""
+  @State private var address = ""
+  @State private var isGeocoding = false
+  @State private var errorMessage: String?
+
+  var body: some View {
+    Section {
+      if !store.settings.excludedPlaces.isEmpty {
+        ForEach(store.settings.excludedPlaces) { place in
+          Text(place.label)
+        }
+        .onDelete { offsets in
+          store.settings.excludedPlaces.remove(atOffsets: offsets)
+        }
+      }
+
+      TextField("Label, e.g. Home", text: $label)
+        .textInputAutocapitalization(.words)
+      TextField("Address", text: $address)
+        .textInputAutocapitalization(.words)
+
+      if let errorMessage {
+        Text(errorMessage).font(.footnote).foregroundStyle(.red)
+      }
+
+      HStack {
+        Button("Add", action: addByAddress)
+          .disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || isGeocoding)
+        Spacer()
+        Button("Use current location", action: addByCurrentLocation)
+          .disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || locator.coordinate == nil)
+      }
+    } header: {
+      Text("Places to leave out")
+    } footer: {
+      Text("Add home or anywhere you stop often that isn't work — they'll never be suggested as a place to go and earn.")
+    }
+    .onAppear { locator.request() }
+  }
+
+  private func addByAddress() {
+    let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !cleanLabel.isEmpty, !cleanAddress.isEmpty else { return }
+    isGeocoding = true
+    errorMessage = nil
+    CLGeocoder().geocodeAddressString(cleanAddress) { placemarks, _ in
+      Task { @MainActor in
+        isGeocoding = false
+        guard let coordinate = placemarks?.first?.location?.coordinate else {
+          errorMessage = "Couldn't find that address."
+          return
+        }
+        save(label: cleanLabel, coordinate: coordinate)
+      }
+    }
+  }
+
+  private func addByCurrentLocation() {
+    let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !cleanLabel.isEmpty, let coordinate = locator.coordinate else { return }
+    save(label: cleanLabel, coordinate: coordinate)
+  }
+
+  private func save(label: String, coordinate: CLLocationCoordinate2D) {
+    store.settings.excludedPlaces.append(NativeExcludedPlace(
+      label: label, latitude: coordinate.latitude, longitude: coordinate.longitude
+    ))
+    self.label = ""
+    address = ""
   }
 }
 

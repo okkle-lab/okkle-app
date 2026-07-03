@@ -632,13 +632,11 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     mapView.removeOverlays(mapView.overlays)
     mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
 
-    var visibleRect = MKMapRect.null
     for trip in trips {
       let coordinates = trip.points.map(\.coordinate)
       guard coordinates.count > 1 else { continue }
       let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
       mapView.addOverlay(polyline)
-      visibleRect = visibleRect.isNull ? polyline.boundingMapRect : visibleRect.union(polyline.boundingMapRect)
     }
 
     // Zones layer gradually as stops accumulate — with none yet, nothing draws
@@ -647,9 +645,6 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       let circle = NativeZoneCircle(center: zone.coordinate, radius: 220)
       circle.weight = zone.weight
       mapView.addOverlay(circle)
-      let point = MKMapPoint(zone.coordinate)
-      let rect = MKMapRect(x: point.x - 400, y: point.y - 400, width: 800, height: 800)
-      visibleRect = visibleRect.isNull ? rect : visibleRect.union(rect)
     }
 
     // Numbered pins that line up with the "Where to go" list — pin 2 is list
@@ -663,21 +658,17 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       mapView.addAnnotation(pin)
     }
 
-    // The non-interactive preview centres on your busiest patch at a steady
-    // zoom — otherwise, when your areas are miles apart, fitting them all zooms
-    // out to the whole city and the pins become useless dots. The full,
-    // interactive map still fits everything so you can pan across the lot.
-    if !interactive, let focus = ranked.first?.coordinate ?? locator.coordinate {
+    // Both the mini preview and the full detail map centre on you — when your
+    // areas are spread miles apart, fitting them all zooms out to the whole
+    // city and the pins become useless dots. Staying anchored near your
+    // current spot keeps it readable; on the interactive map you can still
+    // pan out to see the rest.
+    if !interactive {
+      let focus = ranked.first?.coordinate ?? locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
       mapView.setRegion(MKCoordinateRegion(center: focus, span: MKCoordinateSpan(latitudeDelta: 0.055, longitudeDelta: 0.055)), animated: false)
-    } else if visibleRect.isNull {
-      let center = locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
-      mapView.setRegion(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.06, longitudeDelta: 0.06)), animated: false)
     } else {
-      mapView.setVisibleMapRect(
-        visibleRect,
-        edgePadding: UIEdgeInsets(top: 40, left: 30, bottom: 40, right: 30),
-        animated: false
-      )
+      let center = locator.coordinate ?? ranked.first?.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
+      mapView.setRegion(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)), animated: false)
     }
   }
 
@@ -1758,6 +1749,26 @@ struct NativeShiftWindow: Identifiable, Equatable {
   var label: String { "\(Calendar.current.shortWeekdaySymbols[weekday]) \(band.label.lowercased())" }
 }
 
+/// Guesses where "home" is from raw dwell time alone — every visit counts,
+/// regardless of pick-up/drop-off classification, because a courier is
+/// stationary at home for hours most days, far longer than any real delivery
+/// stop. Needs 4+ cumulative hours in one ~500m cell before it'll commit to a
+/// guess, so a new driver's first few days of real routes aren't mistaken
+/// for a homebound pattern.
+func nativeDetectedHomeCoordinate(_ visits: [NativeVisit]) -> CLLocationCoordinate2D? {
+  guard !visits.isEmpty else { return nil }
+  let cellSize = 0.006
+  var cells: [String: (coordinate: CLLocationCoordinate2D, totalDwell: TimeInterval)] = [:]
+  for visit in visits {
+    let key = "\(Int((visit.coordinate.latitude / cellSize).rounded())),\(Int((visit.coordinate.longitude / cellSize).rounded()))"
+    var cell = cells[key] ?? (visit.coordinate, 0)
+    cell.totalDwell += visit.dwell
+    cells[key] = cell
+  }
+  guard let top = cells.values.max(by: { $0.totalDwell < $1.totalDwell }), top.totalDwell >= 4 * 3600 else { return nil }
+  return top.coordinate
+}
+
 /// A clustered zone of pick-up/drop-off activity, for colouring the map by how
 /// busy each area has been — not a real-time heatmap, just your own history.
 struct NativeZonePoint: Identifiable, Equatable {
@@ -2071,7 +2082,23 @@ struct NativeShiftInsights {
 
   @MainActor
   static func build(visits: [NativeVisit], store: OkkleStore) -> NativeShiftInsights {
-    let sorted = visits.sorted { $0.arrival < $1.arrival }
+    // Kept out of every calculation below, not just "where to go": places the
+    // driver manually flagged, plus an auto-detected home guess when they
+    // haven't set anything themselves. Left in, a night at home next to a
+    // short gap before the morning's first stop reads as one continuous
+    // "active" chain — home's whole dwell gets counted as work time, which
+    // wrecks activeHours and therefore £/hr. Manual entries always apply too
+    // — labelling one spot doesn't turn off the auto-guess for a *different*
+    // long-dwell place (e.g. a partner's).
+    var notWorkCoordinates = store.settings.excludedPlaces.map(\.coordinate)
+    if let home = nativeDetectedHomeCoordinate(visits) { notWorkCoordinates.append(home) }
+    let exclusionRadiusMeters = 200.0
+    func isExcluded(_ coordinate: CLLocationCoordinate2D) -> Bool {
+      let point = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+      return notWorkCoordinates.contains { point.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= exclusionRadiusMeters }
+    }
+
+    let sorted = visits.sorted { $0.arrival < $1.arrival }.filter { !isExcluded($0.coordinate) }
     guard sorted.count > 1 else { return .empty }
 
     let roadFactor = 1.3
@@ -2138,7 +2165,8 @@ struct NativeShiftInsights {
     let quietWindow = ranked.count > 1 ? ranked.filter { $0.count >= 2 }.min { $0.count < $1.count } : nil
 
     // Cluster delivery start points into zones (~500m cells), tracking when each
-    // area is busiest so "where to go" can carry a "when to go".
+    // area is busiest so "where to go" can carry a "when to go". deliveryHits
+    // is already free of excluded places, since `sorted` was filtered above.
     var cells: [String: (coordinate: CLLocationCoordinate2D, count: Int, hours: [Int: Int])] = [:]
     let cellSize = 0.006
     for hit in deliveryHits {

@@ -163,6 +163,18 @@ enum NativeLogFrequency: String, CaseIterable, Identifiable, Codable {
   var label: String { rawValue.capitalized }
 }
 
+/// A place the driver has told us isn't a work stop — home, a regular break
+/// spot, a partner's address — so it never gets suggested back to them as
+/// somewhere to go and earn.
+struct NativeExcludedPlace: Codable, Identifiable, Equatable {
+  var id = UUID()
+  var label: String
+  var latitude: Double
+  var longitude: Double
+
+  var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
+}
+
 struct NativeSettings: Codable, Equatable {
   var name = ""
   var defaultVehicle: NativeVehicle = .car
@@ -186,6 +198,11 @@ struct NativeSettings: Codable, Equatable {
   // A heads-up before your busy window starts, on working days.
   var preShiftAlerts = true
   var hasCompletedOnboarding = false
+  // Places the driver has manually marked as not-work (home, a usual break
+  // spot) — kept out of the "where to go" earning suggestions. If this is
+  // empty, the app falls back to auto-detecting a likely home location from
+  // dwell patterns (see nativeDetectedHomeCoordinate).
+  var excludedPlaces: [NativeExcludedPlace] = []
 
   init() {}
 
@@ -208,6 +225,7 @@ struct NativeSettings: Codable, Equatable {
     case workingDays
     case preShiftAlerts
     case hasCompletedOnboarding
+    case excludedPlaces
   }
 
   init(from decoder: Decoder) throws {
@@ -230,6 +248,7 @@ struct NativeSettings: Codable, Equatable {
     workingDays = try container.decodeIfPresent([Int].self, forKey: .workingDays) ?? Array(0...6)
     preShiftAlerts = try container.decodeIfPresent(Bool.self, forKey: .preShiftAlerts) ?? true
     hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
+    excludedPlaces = try container.decodeIfPresent([NativeExcludedPlace].self, forKey: .excludedPlaces) ?? []
   }
 }
 
