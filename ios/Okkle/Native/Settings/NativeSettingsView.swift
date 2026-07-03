@@ -145,6 +145,7 @@ struct NativeSettingsView: View {
         Section {
           menuRow("Tax settings") { NativeTaxSettingsView() }
           menuRow("Automatic tracking") { NativeAutoTrackSettingsView() }
+          menuRow("Siri & Shortcuts") { NativeSiriSettingsView() }
           menuRow("Reminders") { NativeRemindersSettingsView() }
           menuRow("Export & share") { NativeExportSettingsView() }
         } header: {
@@ -400,6 +401,36 @@ struct NativeExcludedPlacesSection: View {
     ))
     self.label = ""
     address = ""
+  }
+}
+
+// MARK: Siri & Shortcuts
+
+struct NativeSiriSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    Form {
+      Section {
+        Toggle("Siri trip tracking", isOn: Binding(
+          get: { store.settings.siriTripTrackingEnabled },
+          set: { store.settings.siriTripTrackingEnabled = $0 }
+        ))
+      } header: {
+        Text("Voice automation")
+      } footer: {
+        Text("Allow Siri and Shortcuts to start or resume trip tracking with your default vehicle. Okkle opens when the shortcut runs and still needs location permission.")
+      }
+
+      Section {
+        Label("Hey Siri, track this trip with Okkle", systemImage: "quote.bubble")
+        Label("Hey Siri, start tracking this trip with Okkle", systemImage: "quote.bubble")
+      } header: {
+        Text("Example phrases")
+      }
+    }
+    .navigationTitle("Siri & Shortcuts")
+    .navigationBarTitleDisplayMode(.inline)
   }
 }
 

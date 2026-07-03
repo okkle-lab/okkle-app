@@ -8,6 +8,7 @@ final class OkkleStore: ObservableObject {
     var date: Date
     var miles: Double
     var vehicle: NativeVehicle
+    var interval: DateInterval? = nil
   }
 
   @Published var settings = NativeSettings() { didSet { scheduleSave() } }
@@ -233,6 +234,43 @@ final class OkkleStore: ObservableObject {
     yearMileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
   }
 
+  func mileageTaxSavings(for interval: DateInterval?) -> NativeMileageTaxSavings {
+    var miles = 0.0
+    var mileageDeduction = 0.0
+    var carAndVanMilesByTaxYear: [Date: Double] = [:]
+
+    for entry in allMileageEntries {
+      let selectedMiles = selectedMiles(for: entry, within: interval)
+      let taxYearStart = TaxCalculator.taxYearInterval(containing: entry.date).start
+
+      switch entry.vehicle {
+      case .car, .van:
+        let totalBefore = carAndVanMilesByTaxYear[taxYearStart] ?? 0
+        if selectedMiles > 0 {
+          miles += selectedMiles
+          mileageDeduction += calcDeduction(
+            miles: selectedMiles,
+            vehicle: entry.vehicle,
+            totalBefore: totalBefore,
+            date: entry.date
+          )
+        }
+        carAndVanMilesByTaxYear[taxYearStart] = totalBefore + entry.miles
+      case .motorbike, .bike:
+        if selectedMiles > 0 {
+          miles += selectedMiles
+          mileageDeduction += calcDeduction(miles: selectedMiles, vehicle: entry.vehicle, date: entry.date)
+        }
+      }
+    }
+
+    return NativeMileageTaxSavings(
+      miles: miles,
+      mileageDeduction: mileageDeduction,
+      taxSaved: mileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
+    )
+  }
+
   var taxPosition: NativeTaxPosition {
     TaxCalculator.estimate(
       turnover: yearIncome,
@@ -425,6 +463,46 @@ final class OkkleStore: ObservableObject {
       }
       return lhs.date < rhs.date
     }
+  }
+
+  private var allMileageEntries: [TaxYearMileageEntry] {
+    let tripEntries = trips.compactMap { trip -> TaxYearMileageEntry? in
+      let miles = max(0, trip.miles)
+      guard miles > 0 else { return nil }
+      return TaxYearMileageEntry(date: trip.startedAt, miles: miles, vehicle: trip.vehicle)
+    }
+
+    let recordEntries = records.compactMap { record -> TaxYearMileageEntry? in
+      guard record.kind == .mileage else { return nil }
+      let miles = max(0, record.miles ?? 0)
+      guard miles > 0 else { return nil }
+      return TaxYearMileageEntry(
+        date: record.date,
+        miles: miles,
+        vehicle: record.vehicle ?? settings.defaultVehicle,
+        interval: recordInterval(record)
+      )
+    }
+
+    return (tripEntries + recordEntries).sorted { lhs, rhs in
+      if lhs.date == rhs.date {
+        return lhs.vehicle.rawValue < rhs.vehicle.rawValue
+      }
+      return lhs.date < rhs.date
+    }
+  }
+
+  private func selectedMiles(for entry: TaxYearMileageEntry, within interval: DateInterval?) -> Double {
+    guard let interval else { return entry.miles }
+
+    if let entryInterval = entry.interval {
+      guard entryInterval.duration > 0, let overlap = entryInterval.intersection(with: interval) else {
+        return 0
+      }
+      return entry.miles * min(1, max(0, overlap.duration / entryInterval.duration))
+    }
+
+    return interval.contains(entry.date) ? entry.miles : 0
   }
 
   private func incomeForTaxYear(_ record: NativeRecord) -> Double {

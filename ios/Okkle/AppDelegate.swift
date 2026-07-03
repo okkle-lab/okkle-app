@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 import UIKit
 import UserNotifications
@@ -11,6 +12,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     UNUserNotificationCenter.current().delegate = NativeNotificationRouter.shared
+    OkkleTripShortcuts.updateAppShortcutParameters()
     return true
   }
 

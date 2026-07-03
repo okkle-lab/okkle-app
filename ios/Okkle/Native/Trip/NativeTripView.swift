@@ -190,10 +190,10 @@ struct NativeTripView: View {
           .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
         VStack(alignment: .leading, spacing: 3) {
-          Text("Missed a trip?")
+          Text("Log mileage")
             .font(.system(size: 17, weight: .bold, design: .rounded))
             .foregroundStyle(.white)
-          Text("Log a previous journey")
+          Text("From a previous journey")
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(.white.opacity(0.72))
         }
@@ -214,7 +214,7 @@ struct NativeTripView: View {
       .shadow(color: Color.black.opacity(0.18), radius: 22, y: 10)
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("Log a previous trip")
+    .accessibilityLabel("Log mileage from a previous journey")
   }
 
   @ViewBuilder
@@ -223,19 +223,7 @@ struct NativeTripView: View {
       Button {
         session.start(vehicle: selectedVehicle)
       } label: {
-        ZStack {
-          Circle()
-            .fill(startButtonFill)
-            .overlay {
-              Circle()
-                .stroke(Color.white.opacity(0.22), lineWidth: 0.35)
-            }
-          Image(systemName: "location.north.fill")
-            .font(.system(size: 76, weight: .heavy))
-            .foregroundStyle(.white)
-        }
-        .frame(width: 236, height: 236)
-        .contentShape(Circle())
+        nativeStartTripButtonFace
       }
       .buttonStyle(.plain)
       .shadow(color: Color.black.opacity(0.22), radius: 34, y: 18)
@@ -244,25 +232,44 @@ struct NativeTripView: View {
       Button {
         session.start(vehicle: selectedVehicle)
       } label: {
-        ZStack {
-          Circle()
-            .fill(startButtonFill)
-            .frame(width: 236, height: 236)
-            .overlay {
-              Circle().stroke(Color.white.opacity(0.22), lineWidth: 0.35)
-            }
-
-          Image(systemName: "location.north.fill")
-            .font(.system(size: 76, weight: .heavy))
-            .foregroundStyle(.white)
-        }
-        .frame(maxWidth: .infinity)
-        .contentShape(Circle())
+        startTripButtonFace
       }
       .buttonStyle(.plain)
       .shadow(color: Color.black.opacity(0.22), radius: 34, y: 18)
       .shadow(color: OkkleColor.brand.opacity(0.30), radius: 24)
     }
+  }
+
+  @available(iOS 26.0, *)
+  private var nativeStartTripButtonFace: some View {
+    startTripButtonFace
+      .glassEffect(.regular.tint(OkkleColor.brand.opacity(0.26)).interactive(), in: Circle())
+  }
+
+  private var startTripButtonFace: some View {
+    ZStack {
+      Circle()
+        .fill(startButtonFill)
+
+      Circle()
+        .fill(startButtonDepthGlow)
+        .blendMode(.screen)
+
+      Circle()
+        .stroke(startButtonRim, lineWidth: 1.6)
+
+      Circle()
+        .stroke(Color.white.opacity(0.34), lineWidth: 0.7)
+        .padding(7)
+
+      Image(systemName: "location.north.fill")
+        .font(.system(size: 76, weight: .heavy))
+        .foregroundStyle(.white)
+        .shadow(color: Color.black.opacity(0.18), radius: 8, y: 4)
+    }
+    .frame(width: 236, height: 236)
+    .clipShape(Circle())
+    .contentShape(Circle())
   }
 
   private var startButtonHighlight: Color {
@@ -275,6 +282,32 @@ struct NativeTripView: View {
         startButtonHighlight,
         OkkleColor.brand,
         Color(red: 0.02, green: 0.42, blue: 0.36),
+      ],
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+  }
+
+  private var startButtonDepthGlow: RadialGradient {
+    RadialGradient(
+      colors: [
+        Color.white.opacity(0.24),
+        Color.white.opacity(0.08),
+        Color.clear,
+        Color.black.opacity(0.22),
+      ],
+      center: .topLeading,
+      startRadius: 10,
+      endRadius: 230
+    )
+  }
+
+  private var startButtonRim: LinearGradient {
+    LinearGradient(
+      colors: [
+        Color.white.opacity(0.74),
+        Color.white.opacity(0.18),
+        Color.black.opacity(0.18),
       ],
       startPoint: .topLeading,
       endPoint: .bottomTrailing

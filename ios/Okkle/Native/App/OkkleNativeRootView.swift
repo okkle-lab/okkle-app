@@ -90,7 +90,18 @@ struct OkkleNativeRootView: View {
         }
       }
     )) {
-      NativeLogView(selectedTab: $selectedTab)
+      NativeLogView(
+        initialKind: .mileage,
+        allowedKinds: [.mileage],
+        title: "Log mileage",
+        subtitle: "Add mileage from a previous journey.",
+        onClose: {
+          selectedTab = .trip
+        },
+        onViewRecords: {
+          selectedTab = .records
+        }
+      )
         .environmentObject(store)
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)

@@ -6,52 +6,54 @@ struct NativeProgressTotals {
   var tripsTracked: Int
 }
 
+enum NativeProgressPeriod: String, CaseIterable, Identifiable {
+  case weekly
+  case yearToDate
+  case allTime
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .weekly:
+      return "Weekly"
+    case .yearToDate:
+      return "YTD"
+    case .allTime:
+      return "All time"
+    }
+  }
+
+  var medalScopeLabel: String {
+    switch self {
+    case .weekly:
+      return "this week"
+    case .yearToDate:
+      return "this year"
+    case .allTime:
+      return "all time"
+    }
+  }
+}
+
 struct NativeMedalPreviewCard: View {
+  @Environment(\.colorScheme) private var colorScheme
   let achievements: [NativeMedalAchievement]
+  var progressPeriod: NativeProgressPeriod
   var weeklyProgress: NativeProgressTotals
   var yearToDateProgress: NativeProgressTotals
   var allTimeProgress: NativeProgressTotals
   var showsMedalsSection = true
   let onOpen: () -> Void
-  @State private var progressPeriod: NativeProgressPeriod = .yearToDate
-
-  private enum NativeProgressPeriod: String, CaseIterable, Identifiable {
-    case weekly
-    case yearToDate
-    case allTime
-
-    var id: String { rawValue }
-
-    var label: String {
-      switch self {
-      case .weekly:
-        return "Weekly"
-      case .yearToDate:
-        return "YTD"
-      case .allTime:
-        return "All time"
-      }
-    }
-  }
 
   private var unlocked: [NativeMedalAchievement] {
     achievements.filter(\.unlocked)
   }
 
-  private var featured: [NativeMedalAchievement] {
-    let earned = unlocked.suffix(3)
-    let close = achievements
-      .filter { !$0.unlocked }
-      .sorted { $0.progress > $1.progress }
-      .prefix(max(0, 3 - earned.count))
-    return Array(earned) + Array(close)
-  }
-
-  private var nextUp: [NativeMedalAchievement] {
+  private var inProgress: [NativeMedalAchievement] {
     achievements
       .filter { !$0.unlocked && $0.progress > 0 }
       .sorted { $0.progress > $1.progress }
-      .prefix(2)
       .map { $0 }
   }
 
@@ -66,14 +68,27 @@ struct NativeMedalPreviewCard: View {
     }
   }
 
+  private var mileageHeaderAccent: Color {
+    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77) : OkkleColor.brandDark
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Picker("Progress period", selection: $progressPeriod) {
-        ForEach(NativeProgressPeriod.allCases) { period in
-          Text(period.label).tag(period)
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 6) {
+          Image(systemName: "road.lanes")
+            .font(.system(size: 14, weight: .bold))
+          Text("Mileage logged")
+            .font(.system(size: 13, weight: .semibold))
         }
+        .foregroundStyle(mileageHeaderAccent)
+
+        Text(miles(selectedProgress.mileageMiles))
+          .font(.system(size: 40, weight: .heavy, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.52)
       }
-      .pickerStyle(.segmented)
 
       VStack(spacing: 16) {
         NativeProgressMetricRow(
@@ -100,10 +115,9 @@ struct NativeMedalPreviewCard: View {
         Divider()
 
         NativeMedalPreviewPanelContent(
-          achievements: achievements,
           unlocked: unlocked,
-          featured: featured,
-          nextUp: nextUp,
+          inProgress: inProgress,
+          progressPeriod: progressPeriod,
           onOpen: onOpen
         )
       }
@@ -114,35 +128,25 @@ struct NativeMedalPreviewCard: View {
 
 struct NativeMedalPreviewPanel: View {
   let achievements: [NativeMedalAchievement]
+  var progressPeriod: NativeProgressPeriod = .allTime
   let onOpen: () -> Void
 
   private var unlocked: [NativeMedalAchievement] {
     achievements.filter(\.unlocked)
   }
 
-  private var featured: [NativeMedalAchievement] {
-    let earned = unlocked.suffix(3)
-    let close = achievements
-      .filter { !$0.unlocked }
-      .sorted { $0.progress > $1.progress }
-      .prefix(max(0, 3 - earned.count))
-    return Array(earned) + Array(close)
-  }
-
-  private var nextUp: [NativeMedalAchievement] {
+  private var inProgress: [NativeMedalAchievement] {
     achievements
       .filter { !$0.unlocked && $0.progress > 0 }
       .sorted { $0.progress > $1.progress }
-      .prefix(2)
       .map { $0 }
   }
 
   var body: some View {
     NativeMedalPreviewPanelContent(
-      achievements: achievements,
       unlocked: unlocked,
-      featured: featured,
-      nextUp: nextUp,
+      inProgress: inProgress,
+      progressPeriod: progressPeriod,
       onOpen: onOpen
     )
     .padding(16)
@@ -150,11 +154,18 @@ struct NativeMedalPreviewPanel: View {
 }
 
 private struct NativeMedalPreviewPanelContent: View {
-  let achievements: [NativeMedalAchievement]
   let unlocked: [NativeMedalAchievement]
-  let featured: [NativeMedalAchievement]
-  let nextUp: [NativeMedalAchievement]
+  let inProgress: [NativeMedalAchievement]
+  let progressPeriod: NativeProgressPeriod
   let onOpen: () -> Void
+
+  private var unlockedPreview: [NativeMedalAchievement] {
+    Array(unlocked.suffix(3))
+  }
+
+  private var inProgressPreview: [NativeMedalAchievement] {
+    Array(inProgress.prefix(3))
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -163,7 +174,7 @@ private struct NativeMedalPreviewPanelContent: View {
           Text("Medals")
             .font(.system(size: 18, weight: .heavy, design: .rounded))
             .foregroundStyle(OkkleColor.ink)
-          Text("\(unlocked.count) of \(achievements.count) unlocked")
+          Text("Unlocked and in progress \(progressPeriod.medalScopeLabel)")
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
         }
@@ -180,30 +191,78 @@ private struct NativeMedalPreviewPanelContent: View {
         .buttonStyle(.plain)
       }
 
-      HStack(alignment: .top, spacing: 14) {
-        ForEach(featured) { achievement in
-          VStack(spacing: 7) {
-            NativeMedalIcon(achievement: achievement, size: 56, rendering: .compact)
-            Text(achievement.label)
-              .font(.system(size: 11, weight: .heavy))
-              .foregroundStyle(achievement.unlocked ? OkkleColor.ink : OkkleColor.muted)
-              .multilineTextAlignment(.center)
-              .lineLimit(2)
-              .minimumScaleFactor(0.74)
-              .frame(height: 32, alignment: .top)
-          }
-          .frame(maxWidth: .infinity)
-        }
-      }
+      if unlockedPreview.isEmpty && inProgressPreview.isEmpty {
+        NativeMedalEmptyMessage(scope: progressPeriod.medalScopeLabel)
+      } else {
+        if !unlockedPreview.isEmpty {
+          VStack(alignment: .leading, spacing: 10) {
+            Text("Unlocked")
+              .font(.system(size: 13, weight: .heavy))
+              .foregroundStyle(OkkleColor.ink)
 
-      if !nextUp.isEmpty {
-        VStack(alignment: .leading, spacing: 14) {
-          ForEach(nextUp) { achievement in
-            NativeMedalProgressRow(achievement: achievement)
+            HStack(alignment: .top, spacing: 14) {
+              ForEach(unlockedPreview) { achievement in
+                NativeMedalMiniTile(achievement: achievement)
+              }
+            }
+          }
+        }
+
+        if !inProgressPreview.isEmpty {
+          VStack(alignment: .leading, spacing: 12) {
+            Text("In progress")
+              .font(.system(size: 13, weight: .heavy))
+              .foregroundStyle(OkkleColor.ink)
+
+            VStack(alignment: .leading, spacing: 14) {
+              ForEach(inProgressPreview) { achievement in
+                NativeMedalProgressRow(achievement: achievement)
+              }
+            }
           }
         }
       }
     }
+  }
+}
+
+private struct NativeMedalMiniTile: View {
+  let achievement: NativeMedalAchievement
+
+  var body: some View {
+    VStack(spacing: 7) {
+      NativeMedalIcon(achievement: achievement, size: 56, rendering: .compact)
+      Text(achievement.label)
+        .font(.system(size: 11, weight: .heavy))
+        .foregroundStyle(OkkleColor.ink)
+        .multilineTextAlignment(.center)
+        .lineLimit(2)
+        .minimumScaleFactor(0.74)
+        .frame(height: 32, alignment: .top)
+    }
+    .frame(maxWidth: .infinity)
+  }
+}
+
+private struct NativeMedalEmptyMessage: View {
+  let scope: String
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "sparkles")
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(OkkleColor.brandDark)
+        .frame(width: 30, height: 30)
+        .background(OkkleColor.brand.opacity(0.12), in: Circle())
+
+      Text("Track activity to unlock medals \(scope).")
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color(uiColor: .secondarySystemBackground).opacity(0.66), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
   }
 }
 
@@ -339,52 +398,46 @@ struct NativeMedalsView: View {
   @Environment(\.dismiss) private var dismiss
   var showsDoneButton = true
   @State private var selected: NativeMedalAchievement?
+  private let progressPeriod: NativeProgressPeriod
+
+  init(initialPeriod: NativeProgressPeriod = .allTime, showsDoneButton: Bool = true) {
+    self.showsDoneButton = showsDoneButton
+    self.progressPeriod = initialPeriod
+  }
 
   private var achievements: [NativeMedalAchievement] {
-    NativeMedalEngine.achievements(store: store)
+    NativeMedalEngine.achievements(store: store, period: progressPeriod)
   }
 
-  private var categories: [String] {
-    var seen = Set<String>()
-    return achievements.compactMap { achievement in
-      guard !seen.contains(achievement.category) else { return nil }
-      seen.insert(achievement.category)
-      return achievement.category
-    }
+  private var unlockedAchievements: [NativeMedalAchievement] {
+    achievements.filter(\.unlocked)
   }
 
-  private var earnedCount: Int {
-    achievements.filter(\.unlocked).count
-  }
-
-  private var completion: Double {
-    guard !achievements.isEmpty else { return 0 }
-    return Double(earnedCount) / Double(achievements.count)
+  private var inProgressAchievements: [NativeMedalAchievement] {
+    achievements
+      .filter { !$0.unlocked && $0.progress > 0 }
+      .sorted { $0.progress > $1.progress }
   }
 
   var body: some View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 22) {
-          NativeMedalSummaryCard(earned: earnedCount, total: achievements.count, completion: completion)
+          NativeMedalSummaryCard(progressPeriod: progressPeriod)
 
-          ForEach(categories, id: \.self) { category in
-            VStack(alignment: .leading, spacing: 12) {
-              Text(category)
-                .font(.system(size: 21, weight: .heavy, design: .rounded))
-                .foregroundStyle(OkkleColor.ink)
-              LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                ForEach(achievements.filter { $0.category == category }) { achievement in
-                  Button {
-                    selected = achievement
-                  } label: {
-                    NativeMedalTile(achievement: achievement)
-                  }
-                  .buttonStyle(.plain)
-                }
-              }
-            }
-          }
+          NativeMedalGridSection(
+            title: "Unlocked",
+            emptyMessage: "No medals unlocked \(progressPeriod.medalScopeLabel) yet.",
+            achievements: unlockedAchievements,
+            selected: $selected
+          )
+
+          NativeMedalGridSection(
+            title: "In progress",
+            emptyMessage: "No medals are in progress \(progressPeriod.medalScopeLabel) yet.",
+            achievements: inProgressAchievements,
+            selected: $selected
+          )
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 22)
@@ -460,49 +513,57 @@ struct NativeMedalUnlockedOverlay: View {
 }
 
 private struct NativeMedalSummaryCard: View {
-  let earned: Int
-  let total: Int
-  let completion: Double
+  let progressPeriod: NativeProgressPeriod
 
   var body: some View {
-    medalContent
+    VStack(alignment: .leading, spacing: 5) {
+      Text("Medal room")
+        .font(.system(size: 24, weight: .heavy, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+      Text("Unlocked and in progress \(progressPeriod.medalScopeLabel)")
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+        .fixedSize(horizontal: false, vertical: true)
+    }
       .padding(20)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(OkkleColor.card, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
       .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
   }
+}
 
-  private var medalContent: some View {
-      VStack(spacing: 14) {
-        HStack(spacing: 18) {
-          ZStack {
-            Circle()
-              .stroke(OkkleColor.muted.opacity(0.22), lineWidth: 9)
-            Circle()
-              .trim(from: 0, to: max(completion, 0.001))
-              .stroke(
-                AngularGradient(colors: [OkkleColor.brand, .green, .yellow, .purple, OkkleColor.brand], center: .center),
-                style: StrokeStyle(lineWidth: 9, lineCap: .round)
-              )
-              .rotationEffect(.degrees(-90))
-            Text("\(earned)")
-              .font(.system(size: 30, weight: .heavy, design: .rounded))
-          }
-          .frame(width: 82, height: 82)
+private struct NativeMedalGridSection: View {
+  let title: String
+  let emptyMessage: String
+  let achievements: [NativeMedalAchievement]
+  @Binding var selected: NativeMedalAchievement?
 
-          VStack(alignment: .leading, spacing: 4) {
-            Text("Medal room")
-              .font(.system(size: 24, weight: .heavy, design: .rounded))
-              .foregroundStyle(OkkleColor.ink)
-            Text("\(earned) of \(total) unlocked")
-              .font(.system(size: 15, weight: .semibold))
-              .foregroundStyle(OkkleColor.muted)
-              .lineLimit(1)
-              .minimumScaleFactor(0.8)
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(title)
+        .font(.system(size: 21, weight: .heavy, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+
+      if achievements.isEmpty {
+        Text(emptyMessage)
+          .font(.system(size: 14, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .padding(16)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(OkkleColor.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+      } else {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+          ForEach(achievements) { achievement in
+            Button {
+              selected = achievement
+            } label: {
+              NativeMedalTile(achievement: achievement)
+            }
+            .buttonStyle(.plain)
           }
         }
-
       }
+    }
   }
 }
 

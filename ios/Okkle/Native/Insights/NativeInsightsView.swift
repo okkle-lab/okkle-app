@@ -4,6 +4,8 @@ import MapKit
 import SwiftUI
 import UIKit
 
+private let nativeInsightPromptAnimation = Animation.spring(response: 0.46, dampingFraction: 0.72, blendDuration: 0.08)
+
 enum NativeTimeFilter: String, CaseIterable, Identifiable {
   case all
   case morning
@@ -858,8 +860,10 @@ struct NativeShiftPatternsCard: View {
   var body: some View {
     if !autoTrackTrips {
       NativeAiCard { offState }
+        .transition(.nativeInsightSetupCard)
     } else if !shift.hasData {
       NativeAiCard { buildingState }
+        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
     } else {
       VStack(alignment: .leading, spacing: 14) {
         Picker("", selection: $tab.animation(.easeInOut(duration: 0.2))) {
@@ -876,6 +880,7 @@ struct NativeShiftPatternsCard: View {
             .transition(.opacity)
         }
       }
+      .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
     }
   }
 
@@ -898,7 +903,7 @@ struct NativeShiftPatternsCard: View {
   /// something useful while their own pattern accrues. Clearly generic.
   private var buildingState: some View {
     VStack(alignment: .leading, spacing: 16) {
-      VStack(alignment: .leading, spacing: 4) {
+      VStack(alignment: .leading, spacing: 3) {
         Text("Learning your week")
           .font(.system(size: 22, weight: .bold, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
@@ -1069,7 +1074,7 @@ struct NativeDailyInsightPanel: View {
               "\(cond) on one of your strong days — \(peak.label)\(near) tends to pay best.")
     }
 
-    if plan.isToday, let peak {
+    if plan.isToday, peak != nil {
       let hour = Calendar.current.component(.hour, from: Date())
       // 2. In a busy window right now.
       if let current = plan.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
@@ -1452,13 +1457,22 @@ struct NativeInsightsView: View {
         trips: store.trips,
         autoTrackTrips: Binding(
           get: { store.settings.autoTrackTrips },
-          set: { store.settings.autoTrackTrips = $0 }
+          set: { value in
+            withAnimation(nativeInsightPromptAnimation) {
+              store.settings.autoTrackTrips = value
+            }
+          }
         )
       )
 
-      // These two cards are one-time set-up prompts: they only appear while
+      // These cards are one-time set-up prompts: they only appear while
       // the feature is off. Once you turn one on it disappears here — the on/off
       // switch then lives in Settings.
+      if !store.settings.siriTripTrackingEnabled {
+        NativeSiriTripTrackingPrompt()
+          .transition(.nativeInsightSetupCard)
+      }
+
       if !store.settings.loggingReminder {
         NativeAiCard(banner: "REMINDERS") {
           VStack(alignment: .leading, spacing: 16) {
@@ -1469,20 +1483,83 @@ struct NativeInsightsView: View {
               .foregroundStyle(OkkleColor.muted)
             Toggle("Logging reminder", isOn: Binding(
               get: { store.settings.loggingReminder },
-              set: { store.settings.loggingReminder = $0 }
+              set: { value in
+                withAnimation(nativeInsightPromptAnimation) {
+                  store.settings.loggingReminder = value
+                }
+              }
             ))
             .font(.system(size: 17, weight: .bold))
             .tint(OkkleColor.brand)
           }
         }
+        .transition(.nativeInsightSetupCard)
       }
 
       if !store.settings.taxDeadlineReminders {
         NativeKeyTaxDatesPanel()
+          .transition(.nativeInsightSetupCard)
       }
 
       if store.history.isEmpty {
         NativeEmptyState(symbol: "sparkles", title: "Insights will grow with your data", message: "Track trips and log pay to unlock best zones, hours, platform mix and tax-aware suggestions.")
+      }
+    }
+    .animation(nativeInsightPromptAnimation, value: store.settings.autoTrackTrips)
+    .animation(nativeInsightPromptAnimation, value: store.settings.siriTripTrackingEnabled)
+    .animation(nativeInsightPromptAnimation, value: store.settings.loggingReminder)
+    .animation(nativeInsightPromptAnimation, value: store.settings.taxDeadlineReminders)
+  }
+}
+
+private struct NativeInsightSetupCardTransition: ViewModifier {
+  let progress: CGFloat
+
+  func body(content: Content) -> some View {
+    content
+      .opacity(1 - progress)
+      .scaleEffect(1 - (0.12 * progress), anchor: .top)
+      .offset(y: -24 * progress)
+      .rotationEffect(.degrees(-2.5 * progress), anchor: .topTrailing)
+      .blur(radius: 8 * progress)
+  }
+}
+
+private extension AnyTransition {
+  static var nativeInsightSetupCard: AnyTransition {
+    .asymmetric(
+      insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)).combined(with: .move(edge: .top)),
+      removal: .modifier(
+        active: NativeInsightSetupCardTransition(progress: 1),
+        identity: NativeInsightSetupCardTransition(progress: 0)
+      )
+    )
+  }
+}
+
+struct NativeSiriTripTrackingPrompt: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    NativeAiCard(banner: "SIRI") {
+      VStack(alignment: .leading, spacing: 16) {
+        Text("Start trips by voice")
+          .font(.system(size: 26, weight: .bold, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+        Text("Let Siri and Shortcuts start or resume trip tracking with your default vehicle.")
+          .font(.system(size: 15, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+        Toggle("Siri trip tracking", isOn: Binding(
+          get: { store.settings.siriTripTrackingEnabled },
+          set: { value in
+            withAnimation(nativeInsightPromptAnimation) {
+              store.settings.siriTripTrackingEnabled = value
+            }
+          }
+        ))
+        .font(.system(size: 17, weight: .bold))
+        .tint(OkkleColor.brand)
       }
     }
   }
@@ -1578,7 +1655,11 @@ struct NativeKeyTaxDatesPanel: View {
           .foregroundStyle(OkkleColor.muted)
         Toggle("Tax deadline reminders", isOn: Binding(
           get: { store.settings.taxDeadlineReminders },
-          set: { store.settings.taxDeadlineReminders = $0 }
+          set: { value in
+            withAnimation(nativeInsightPromptAnimation) {
+              store.settings.taxDeadlineReminders = value
+            }
+          }
         ))
         .font(.system(size: 17, weight: .bold))
         .tint(OkkleColor.brand)

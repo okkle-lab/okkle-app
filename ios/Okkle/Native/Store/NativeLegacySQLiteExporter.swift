@@ -227,6 +227,7 @@ enum NativeLegacySQLiteExporter {
       ("ni_number", settings.accountantNINumber),
       ("address", settings.accountantAddress),
       ("business_desc", settings.accountantBusinessDescription),
+      ("siri_trip_tracking_enabled", settings.siriTripTrackingEnabled ? "1" : "0"),
     ]
 
     for (key, value) in values {

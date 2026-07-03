@@ -25,6 +25,7 @@
 		9F88AF1F7A4C49F6A7D0F841 /* NativeLegacySQLiteExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */; };
 		A1C4F9022D68000000000002 /* OkkleSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9012D68000000000001 /* OkkleSceneDelegate.swift */; };
 		A1C4F9052D68000000000005 /* OkkleCarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */; };
+		A1C4F9072D68000000000007 /* NativeTripSiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9062D68000000000006 /* NativeTripSiriIntents.swift */; };
 		A1CB806BF18308E2190819CF /* NativeAutoShiftReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF39469B146AB6A7CF2E14D /* NativeAutoShiftReview.swift */; };
 		A231C60E0E6944FC916AB873 /* NativeMedalEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */; };
 		A34D4BFD69A2170618621603 /* NativeTripSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */; };
@@ -105,6 +106,7 @@
 		9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacySQLiteExporter.swift; sourceTree = "<group>"; };
 		A1C4F9012D68000000000001 /* OkkleSceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleSceneDelegate.swift; sourceTree = "<group>"; };
 		A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleCarPlaySceneDelegate.swift; sourceTree = "<group>"; };
+		A1C4F9062D68000000000006 /* NativeTripSiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSiriIntents.swift; sourceTree = "<group>"; };
 		A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMedalEngine.swift; sourceTree = "<group>"; };
 		A518F044C9990A704AFED4C2 /* NativeTaxSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTaxSummaryView.swift; sourceTree = "<group>"; };
 		A99D2172005489541FC78A0C /* NativeLegacySQLiteImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacySQLiteImporter.swift; sourceTree = "<group>"; };
@@ -343,6 +345,7 @@
 			isa = PBXGroup;
 			children = (
 				9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */,
+				A1C4F9062D68000000000006 /* NativeTripSiriIntents.swift */,
 				1A407DAF5733F81FA8B3EFCD /* NativeTripView.swift */,
 			);
 			path = Trip;
@@ -535,6 +538,7 @@
 				67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */,
 				6474E5759C7C4E63B1CD0202 /* NativeLogMedia.swift in Sources */,
 				A34D4BFD69A2170618621603 /* NativeTripSession.swift in Sources */,
+				A1C4F9072D68000000000007 /* NativeTripSiriIntents.swift in Sources */,
 				FE6D4353236B1159D9C339DF /* NativeTripView.swift in Sources */,
 				CF15ED97A8AEDE5D3D61ABA2 /* NativeHistoryDetails.swift in Sources */,
 				209F3359ED511A0BC9D64DB7 /* NativeInsightsView.swift in Sources */,

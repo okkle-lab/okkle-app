@@ -5,8 +5,7 @@ import Vision
 
 struct NativeLogView: View {
   @EnvironmentObject private var store: OkkleStore
-  @Binding var selectedTab: NativeTab
-  @State private var kind: NativeLogKind = .income
+  @State private var kind: NativeLogKind
   @State private var amount = ""
   @State private var distance = ""
   @State private var category = ""
@@ -24,6 +23,12 @@ struct NativeLogView: View {
   @State private var savedRecord: NativeRecord?
   @State private var showSavedNotice = false
   @State private var stepIndex = 0
+  private let defaultKind: NativeLogKind
+  private let allowedKinds: [NativeLogKind]
+  private let screenTitle: String
+  private let screenSubtitle: String
+  private let onCloseAction: () -> Void
+  private let onViewRecordsAction: () -> Void
 
   private enum LogStep: String {
     case kind
@@ -34,13 +39,37 @@ struct NativeLogView: View {
     case review
   }
 
+  private static func normalizedKinds(_ kinds: [NativeLogKind]) -> [NativeLogKind] {
+    let orderedKinds = NativeLogKind.allCases.filter { kinds.contains($0) }
+    return orderedKinds.isEmpty ? [.income] : orderedKinds
+  }
+
+  init(
+    initialKind: NativeLogKind = .income,
+    allowedKinds: [NativeLogKind] = NativeLogKind.allCases,
+    title: String = "Log",
+    subtitle: String = "Add one record at a time.",
+    onClose: @escaping () -> Void,
+    onViewRecords: @escaping () -> Void
+  ) {
+    let normalizedKinds = NativeLogView.normalizedKinds(allowedKinds)
+    let startingKind = normalizedKinds.contains(initialKind) ? initialKind : normalizedKinds[0]
+    _kind = State(initialValue: startingKind)
+    self.defaultKind = startingKind
+    self.allowedKinds = normalizedKinds
+    self.screenTitle = title
+    self.screenSubtitle = subtitle
+    self.onCloseAction = onClose
+    self.onViewRecordsAction = onViewRecords
+  }
+
   var body: some View {
     ZStack {
       NativeScreen(
-        title: "Log", collapsedTitle: "Log", subtitle: "Add one record at a time.",
+        title: screenTitle, collapsedTitle: screenTitle, subtitle: screenSubtitle,
         onClose: {
           resetEntry()
-          selectedTab = .trip
+          onCloseAction()
         },
         showsProfileButton: false
       ) {
@@ -72,12 +101,14 @@ struct NativeLogView: View {
   }
 
   private var steps: [LogStep] {
+    let entrySteps: [LogStep]
     switch kind {
     case .income, .expense:
-      return [.kind, .receipt, .primary, .details, .date, .review]
+      entrySteps = [.receipt, .primary, .details, .date, .review]
     case .mileage:
-      return [.kind, .primary, .details, .date, .review]
+      entrySteps = [.primary, .details, .date, .review]
     }
+    return allowedKinds.count > 1 ? [.kind] + entrySteps : entrySteps
   }
 
   private var currentStep: LogStep {
@@ -156,7 +187,7 @@ struct NativeLogView: View {
 
   private var kindStep: some View {
     VStack(spacing: 12) {
-      ForEach(NativeLogKind.allCases) { item in
+      ForEach(allowedKinds) { item in
         nativeChoiceRow(
           title: item.label,
           subtitle: kindDescription(for: item),
@@ -575,7 +606,7 @@ struct NativeLogView: View {
         HStack(spacing: 12) {
           Button {
             resetEntry()
-            selectedTab = .trip
+            onCloseAction()
           } label: {
             Text("Done")
               .font(.system(size: 16, weight: .bold))
@@ -587,7 +618,7 @@ struct NativeLogView: View {
 
           Button {
             resetEntry()
-            selectedTab = .records
+            onViewRecordsAction()
           } label: {
             Text("View records")
               .font(.system(size: 16, weight: .bold))
@@ -868,7 +899,7 @@ struct NativeLogView: View {
   }
 
   private func resetEntry(keepKind: Bool = false) {
-    if !keepKind { kind = .income }
+    if !keepKind { kind = defaultKind }
     amount = ""
     distance = ""
     category = ""

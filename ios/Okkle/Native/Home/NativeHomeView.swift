@@ -9,10 +9,10 @@ import Vision
 
 struct NativeProgressView: View {
   @Environment(\.nativeViewportHeight) private var nativeViewportHeight
-  @Environment(\.colorScheme) private var colorScheme
   @EnvironmentObject private var store: OkkleStore
   @Binding var selectedTab: NativeTab
   @State private var recordsDestination: RecordsDestination?
+  @State private var showsTaxBreakdown = false
   @ObservedObject private var tripSession = NativeTripSession.shared
   @State private var showsMedals = false
   @State private var medalAlert: NativeMedalAchievement?
@@ -22,6 +22,7 @@ struct NativeProgressView: View {
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
   @State private var recentPanelContentY: CGFloat = 0
+  @State private var progressPeriod: NativeProgressPeriod = .yearToDate
 
   private enum RecordsDestination: String, Identifiable {
     case history
@@ -71,8 +72,14 @@ struct NativeProgressView: View {
       .environmentObject(store)
     }
     .fullScreenCover(isPresented: $showsMedals) {
-      NativeMedalsView()
+      NativeMedalsView(initialPeriod: progressPeriod)
         .environmentObject(store)
+    }
+    .fullScreenCover(isPresented: $showsTaxBreakdown) {
+      NativeTaxSavedBreakdownView(period: progressPeriod) {
+        showsTaxBreakdown = false
+      }
+      .environmentObject(store)
     }
     .alert("Delete this entry?", isPresented: Binding(
       get: { itemPendingDeletion != nil },
@@ -129,86 +136,79 @@ struct NativeProgressView: View {
   // MARK: Tax card
 
   private var taxCard: some View {
-    Button {
-      openRecords(.tax)
+    let taxSavings = selectedMileageTaxSavings
+    return Button {
+      showsTaxBreakdown = true
     } label: {
       VStack(alignment: .leading, spacing: 10) {
         HStack(spacing: 6) {
           Image(systemName: "chart.line.uptrend.xyaxis")
             .font(.system(size: 14, weight: .bold))
-          Text("Tax saved this year")
+          Text(taxCardTitle)
             .font(.system(size: 13, weight: .semibold))
         }
-        .foregroundStyle(taxHeroAccent)
+        .foregroundStyle(OkkleColor.muted)
 
-        Text(headlineGbp(store.taxSaved))
+        Text(headlineGbp(taxSavings.taxSaved))
           .font(.system(size: 40, weight: .heavy, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
           .lineLimit(1)
           .minimumScaleFactor(0.52)
 
-        Text("from \(miles(store.yearMiles)) · \(gbp(store.yearMileageDeduction)) mileage deduction")
+        Text("from \(miles(taxSavings.miles)) · \(gbp(taxSavings.mileageDeduction)) mileage deduction")
           .font(.system(size: 12, weight: .semibold))
           .foregroundStyle(OkkleColor.muted)
           .fixedSize(horizontal: false, vertical: true)
 
-        Text("Tax year \(taxYearLabel(for: store.taxYear)) · see breakdown")
+        Text("\(taxCardPeriodLabel) · see breakdown")
           .font(.system(size: 11, weight: .semibold))
-          .foregroundStyle(taxHeroAccent)
+          .foregroundStyle(OkkleColor.ink)
           .padding(.horizontal, 12)
           .padding(.vertical, 6)
-          .background(taxHeroChipBackground, in: Capsule())
+          .background(Color(uiColor: .secondarySystemBackground).opacity(0.76), in: Capsule())
           .overlay {
             Capsule()
-              .stroke(taxHeroChipStroke, lineWidth: 1)
+              .stroke(Color(uiColor: .separator).opacity(0.12), lineWidth: 1)
           }
           .padding(.top, 2)
       }
       .padding(20)
       .frame(maxWidth: .infinity, minHeight: 176, alignment: .leading)
-      .background(taxHeroGradient, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+      .background(OkkleColor.card, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
       .overlay {
         RoundedRectangle(cornerRadius: 26, style: .continuous)
-          .stroke(taxHeroStroke, lineWidth: 1)
+          .stroke(Color(uiColor: .separator).opacity(0.10), lineWidth: 1)
       }
-      .shadow(color: taxHeroShadow, radius: 24, y: 14)
+      .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+      .shadow(color: .black.opacity(0.10), radius: 16, y: 8)
     }
     .buttonStyle(.plain)
   }
 
-  private var taxHeroGradient: LinearGradient {
-    let colors = colorScheme == .dark
-      ? [
-        Color(red: 0.12, green: 0.22, blue: 0.19),
-        Color(red: 0.08, green: 0.31, blue: 0.26),
-        Color(red: 0.03, green: 0.14, blue: 0.12),
-      ]
-      : [
-        Color(red: 0.96, green: 1.00, blue: 0.98),
-        Color(red: 0.83, green: 0.97, blue: 0.94),
-        Color(red: 0.64, green: 0.89, blue: 0.83),
-      ]
-    return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+  private var selectedMileageTaxSavings: NativeMileageTaxSavings {
+    NativeProgressSummary.mileageTaxSavings(store: store, period: progressPeriod)
   }
 
-  private var taxHeroAccent: Color {
-    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77) : OkkleColor.brandDark
+  private var taxCardTitle: String {
+    switch progressPeriod {
+    case .weekly:
+      return "Tax saved this week"
+    case .yearToDate:
+      return "Tax saved this year"
+    case .allTime:
+      return "Tax saved all time"
+    }
   }
 
-  private var taxHeroStroke: Color {
-    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77).opacity(0.28) : Color.white.opacity(0.78)
-  }
-
-  private var taxHeroChipBackground: Color {
-    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77).opacity(0.12) : Color.white.opacity(0.64)
-  }
-
-  private var taxHeroChipStroke: Color {
-    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77).opacity(0.24) : Color.white.opacity(0.86)
-  }
-
-  private var taxHeroShadow: Color {
-    colorScheme == .dark ? Color.black.opacity(0.34) : OkkleColor.brandDark.opacity(0.16)
+  private var taxCardPeriodLabel: String {
+    switch progressPeriod {
+    case .weekly:
+      return "This week"
+    case .yearToDate:
+      return "Tax year \(taxYearLabel(for: store.taxYear))"
+    case .allTime:
+      return "All time"
+    }
   }
 
   // MARK: Recent
@@ -252,11 +252,14 @@ struct NativeProgressView: View {
   }
 
   private var progressSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      homeSectionHeader(symbol: "sparkles", title: "Progress")
+    VStack(alignment: .leading, spacing: 14) {
+      progressPeriodPicker
+
+      taxCard
 
       NativeMedalPreviewCard(
-        achievements: NativeMedalEngine.achievements(store: store),
+        achievements: selectedMedalAchievements,
+        progressPeriod: progressPeriod,
         weeklyProgress: weeklyProgressTotals,
         yearToDateProgress: yearToDateProgressTotals,
         allTimeProgress: allTimeProgressTotals,
@@ -264,24 +267,22 @@ struct NativeProgressView: View {
       ) {
         showsMedals = true
       }
-      .okkleCard()
+      .okkleCard(cornerRadius: 26)
 
-      NativeMedalPreviewPanel(achievements: NativeMedalEngine.achievements(store: store)) {
+      NativeMedalPreviewPanel(achievements: selectedMedalAchievements, progressPeriod: progressPeriod) {
         showsMedals = true
       }
       .okkleCard()
     }
   }
 
-  private func homeSectionHeader(symbol: String, title: String) -> some View {
-    HStack(spacing: 8) {
-      Image(systemName: symbol)
-        .font(.system(size: 13, weight: .bold))
-        .foregroundStyle(OkkleColor.brand)
-      Text(title)
-        .font(.system(size: 15, weight: .heavy))
-        .foregroundStyle(OkkleColor.ink)
+  private var progressPeriodPicker: some View {
+    Picker("Progress period", selection: $progressPeriod) {
+      ForEach(NativeProgressPeriod.allCases) { period in
+        Text(period.label).tag(period)
+      }
     }
+    .pickerStyle(.segmented)
   }
 
   /// A live trip in progress takes over → tap goes to Trip. Otherwise the most
@@ -433,8 +434,8 @@ struct NativeProgressView: View {
         recentEmptyAction("Track trip", symbol: "location.north.fill") {
           selectedTab = .trip
         }
-        recentEmptyAction("Log income", symbol: "plus.circle.fill") {
-          selectedTab = .log
+        recentEmptyAction("Records", symbol: "archivebox.fill") {
+          selectedTab = .records
         }
       }
     }
@@ -488,6 +489,10 @@ struct NativeProgressView: View {
 
   private var allTimeProgressTotals: NativeProgressTotals {
     NativeProgressSummary.allTime(store: store)
+  }
+
+  private var selectedMedalAchievements: [NativeMedalAchievement] {
+    NativeMedalEngine.achievements(store: store, period: progressPeriod)
   }
 
   private func openRecords(_ destination: RecordsDestination) {
@@ -665,6 +670,102 @@ struct NativeProgressView: View {
 
   private func saveSeenMedalKeys() {
     UserDefaults.standard.set(Array(seenMedalKeys).sorted(), forKey: nativeSeenMedalsKey)
+  }
+}
+
+private struct NativeTaxSavedBreakdownView: View {
+  @EnvironmentObject private var store: OkkleStore
+  let period: NativeProgressPeriod
+  let onClose: () -> Void
+
+  private var savings: NativeMileageTaxSavings {
+    NativeProgressSummary.mileageTaxSavings(store: store, period: period)
+  }
+
+  private var taxRate: Double {
+    store.settings.incomeBracket.marginalRate(region: store.settings.region)
+  }
+
+  var body: some View {
+    let savings = savings
+    NativeScreen(
+      title: "Tax breakdown",
+      collapsedTitle: "Tax",
+      subtitle: "How Okkle estimates tax saved from your logged mileage.",
+      onClose: onClose
+    ) {
+      VStack(alignment: .leading, spacing: 14) {
+        NativeGlassCard(cornerRadius: 30) {
+          VStack(alignment: .leading, spacing: 12) {
+            Label("Estimated tax saved", systemImage: "shield.lefthalf.filled")
+              .font(.system(size: 15, weight: .bold))
+              .foregroundStyle(OkkleColor.muted)
+
+            Text(headlineGbp(savings.taxSaved))
+              .font(.system(size: 48, weight: .heavy, design: .rounded))
+              .foregroundStyle(OkkleColor.ink)
+              .lineLimit(1)
+              .minimumScaleFactor(0.56)
+
+            Text(periodDetail)
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+          }
+        }
+
+        NativeGlassCard {
+          VStack(spacing: 12) {
+            breakdownRow("Period", periodDetail)
+            breakdownRow("Business miles", miles(savings.miles))
+            breakdownRow("Mileage deduction", headlineGbp(savings.mileageDeduction))
+            breakdownRow("Tax band", store.settings.incomeBracket.label)
+            breakdownRow("Tax rate used", taxRateLabel)
+            Divider()
+            breakdownRow("Estimated saving", headlineGbp(savings.taxSaved), emphasized: true)
+          }
+        }
+
+        Text("Estimate only, not tax advice. This uses your selected tax band and the mileage deduction for the selected period.")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.horizontal, 4)
+      }
+    }
+  }
+
+  private var periodDetail: String {
+    switch period {
+    case .weekly:
+      return "This week"
+    case .yearToDate:
+      return "Tax year \(nativeTaxYearLabel(for: store.taxYear))"
+    case .allTime:
+      return "All time"
+    }
+  }
+
+  private var taxRateLabel: String {
+    let percentage = taxRate * 100
+    if percentage.rounded() == percentage {
+      return "\(Int(percentage))%"
+    }
+    return String(format: "%.1f%%", percentage)
+  }
+
+  private func breakdownRow(_ label: String, _ value: String, emphasized: Bool = false) -> some View {
+    HStack(alignment: .firstTextBaseline) {
+      Text(label)
+        .font(.system(size: 15, weight: emphasized ? .bold : .semibold))
+        .foregroundStyle(emphasized ? OkkleColor.ink : OkkleColor.muted)
+      Spacer(minLength: 12)
+      Text(value)
+        .font(.system(size: emphasized ? 18 : 16, weight: .bold, design: .rounded))
+        .foregroundStyle(OkkleColor.ink)
+        .multilineTextAlignment(.trailing)
+        .lineLimit(2)
+        .minimumScaleFactor(0.74)
+    }
   }
 }
 
