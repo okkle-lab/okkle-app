@@ -41,7 +41,8 @@ struct NativeLogView: View {
         onClose: {
           resetEntry()
           selectedTab = .trip
-        }
+        },
+        showsProfileButton: false
       ) {
         VStack(alignment: .leading, spacing: 16) {
           stepProgress

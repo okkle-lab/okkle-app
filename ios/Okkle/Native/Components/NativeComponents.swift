@@ -43,6 +43,7 @@ struct NativeScreen<Content: View>: View {
   let style: NativeScreenStyle
   let onClose: (() -> Void)?
   let fillsViewport: Bool
+  let showsProfileButton: Bool
   let content: Content
   @State private var showSettings = false
 
@@ -53,6 +54,7 @@ struct NativeScreen<Content: View>: View {
     style: NativeScreenStyle = .standard,
     onClose: (() -> Void)? = nil,
     fillsViewport: Bool = false,
+    showsProfileButton: Bool = true,
     @ViewBuilder content: () -> Content
   ) {
     self.title = title
@@ -61,6 +63,7 @@ struct NativeScreen<Content: View>: View {
     self.style = style
     self.onClose = onClose
     self.fillsViewport = fillsViewport
+    self.showsProfileButton = showsProfileButton
     self.content = content()
   }
 
@@ -106,9 +109,11 @@ struct NativeScreen<Content: View>: View {
           }
         }
 
-        ToolbarItem(placement: .topBarTrailing) {
-          NativeProfileToolbarButton {
-            showSettings = true
+        if showsProfileButton {
+          ToolbarItem(placement: .topBarTrailing) {
+            NativeProfileToolbarButton {
+              showSettings = true
+            }
           }
         }
       }

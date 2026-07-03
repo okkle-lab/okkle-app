@@ -82,7 +82,7 @@ struct OkkleNativeRootView: View {
         .tag(NativeTab.progress)
     }
     .id("okkle-main-tabs-trip-log-insights-records-progress")
-    .fullScreenCover(isPresented: Binding(
+    .sheet(isPresented: Binding(
       get: { selectedTab == .log },
       set: { isPresented in
         if !isPresented, selectedTab == .log {
@@ -92,6 +92,9 @@ struct OkkleNativeRootView: View {
     )) {
       NativeLogView(selectedTab: $selectedTab)
         .environmentObject(store)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .presentationCornerRadius(36)
     }
   }
 
