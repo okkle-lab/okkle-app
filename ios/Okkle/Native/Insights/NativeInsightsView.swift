@@ -2104,14 +2104,18 @@ struct NativeShiftInsights {
     let roadFactor = 1.3
     let shiftGap: TimeInterval = 45 * 60   // a gap longer than this ends a shift
 
-    // Total distance + active time across legs within a shift.
+    // Total distance + active time across legs within a shift. Real route
+    // distance from a recorded trip's GPS points when one covers this leg —
+    // only falls back to the straight-line estimate when no trip data exists
+    // for it (older data, or a stop outside any recorded shift).
     var totalMeters = 0.0
     var activeSeconds = 0.0
     for k in 1..<sorted.count {
       let prev = sorted[k - 1], cur = sorted[k]
       let gap = cur.arrival.timeIntervalSince(prev.departure)
       if gap < shiftGap {
-        totalMeters += cur.location.distance(from: prev.location)
+        totalMeters += routeMeters(from: prev.departure, to: cur.arrival, trips: store.trips)
+          ?? cur.location.distance(from: prev.location)
         activeSeconds += max(0, gap) + prev.dwell
       }
     }
@@ -2128,8 +2132,10 @@ struct NativeShiftInsights {
         deliveries += 1
         // Paid = the active delivery leg (restaurant → customer). Everything
         // else (repositioning back out to the next pick-up, idle wandering) is
-        // unpaid mileage.
-        paidMeters += sorted[dropIndex].location.distance(from: sorted[index].location)
+        // unpaid mileage. Real route distance when a recorded trip covers this
+        // leg, otherwise a straight-line estimate.
+        paidMeters += routeMeters(from: sorted[index].departure, to: sorted[dropIndex].arrival, trips: store.trips)
+          ?? sorted[dropIndex].location.distance(from: sorted[index].location)
         let date = sorted[dropIndex].arrival
         let weekday = Calendar.current.component(.weekday, from: date) - 1
         let hour = Calendar.current.component(.hour, from: date)
@@ -2368,6 +2374,33 @@ struct NativeShiftInsights {
       finishedBeforePeak: finishedBeforePeak,
       peakLabel: peakBand.label
     )
+  }
+
+  /// Real driven distance (metres) between two timestamps, summed from the
+  /// actual recorded route points of any trip covering that window — not a
+  /// straight line between the two stops. Falls back to nil when no trip
+  /// data covers the window (older data, or a stop that wasn't part of a
+  /// recorded shift/trip) so callers can fall back to a straight-line
+  /// estimate instead.
+  private static func routeMeters(from start: Date, to end: Date, trips: [NativeTrip]) -> Double? {
+    guard end > start else { return nil }
+    var total = 0.0
+    var sawSegment = false
+    for trip in trips {
+      guard trip.startedAt < end, trip.endedAt > start else { continue }
+      let inWindow = trip.points.filter { point in
+        guard let t = point.timestamp else { return false }
+        return t >= start && t <= end
+      }
+      guard inWindow.count > 1 else { continue }
+      sawSegment = true
+      for i in 1..<inWindow.count {
+        let a = CLLocation(latitude: inWindow[i - 1].latitude, longitude: inWindow[i - 1].longitude)
+        let b = CLLocation(latitude: inWindow[i].latitude, longitude: inWindow[i].longitude)
+        total += b.distance(from: a)
+      }
+    }
+    return sawSegment ? total : nil
   }
 
   private static func recentActiveHours(_ sorted: [NativeVisit], since: Date, shiftGap: TimeInterval) -> Double {

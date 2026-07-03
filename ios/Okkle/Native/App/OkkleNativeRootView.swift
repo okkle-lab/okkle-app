@@ -16,7 +16,7 @@ enum NativeTab: String, CaseIterable, Hashable {
 
 struct OkkleNativeRootView: View {
   @StateObject private var store = OkkleStore.shared
-  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
+  @ObservedObject private var notificationRouter = NativeNotificationRouter.shared
   @State private var selectedTab: NativeTab = .trip
 
   var body: some View {
@@ -33,6 +33,17 @@ struct OkkleNativeRootView: View {
       NativeAutoTrackEngine.shared.configure(store: store)
       NativePreShiftNotifier.refresh(store: store)
       routeWidgetTripRequestIfNeeded()
+    }
+    .sheet(isPresented: Binding(
+      get: { notificationRouter.pendingAutoShiftReviewTripID != nil },
+      set: { isPresented in
+        if !isPresented { notificationRouter.pendingAutoShiftReviewTripID = nil }
+      }
+    )) {
+      if let tripID = notificationRouter.pendingAutoShiftReviewTripID {
+        NativeAutoShiftReviewView(tripID: tripID)
+          .environmentObject(store)
+      }
     }
     .onChange(of: store.settings.autoTrackTrips) { _ in
       NativeAutoTrackEngine.shared.refresh()
@@ -52,25 +63,6 @@ struct OkkleNativeRootView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       routeWidgetTripRequestIfNeeded()
-    }
-    .alert("Start tracking this trip?", isPresented: Binding(
-      get: { autoTrack.pendingStartPrompt },
-      set: { isPresented in
-        if !isPresented {
-          autoTrack.dismissStartPrompt()
-        }
-      }
-    )) {
-      Button("Not now", role: .cancel) {
-        autoTrack.dismissStartPrompt()
-      }
-      Button("Start trip") {
-        autoTrack.acceptStartPrompt()
-        selectedTab = .trip
-        NativeTripSession.shared.start(vehicle: store.settings.defaultVehicle)
-      }
-    } message: {
-      Text("Okkle detected that you may be driving. Do you want to start recording this trip?")
     }
   }
 

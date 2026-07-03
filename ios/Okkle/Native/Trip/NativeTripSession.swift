@@ -233,7 +233,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       let distance = location.distance(from: lastRoutePointLocation)
       guard force ? distance > 1 : distance >= routePointDistance else { return }
     }
-    points.append(RoutePoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude))
+    points.append(RoutePoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude, timestamp: location.timestamp))
     lastRoutePointLocation = location
   }
 }
