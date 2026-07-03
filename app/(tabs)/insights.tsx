@@ -39,7 +39,10 @@ export default function InsightsScreen() {
   React.useEffect(() => {
     setZones(getZoneStats(filter));
     setPoints(getHeatPoints(filter));
-    setHotspots(getHotspotCells(filter));
+    // Fetch a wider raw sample of GPS cells — several nearby cells often
+    // resolve to the same named area, so we need more than 5 before
+    // consolidating by name to still end up with 5 distinct areas.
+    setHotspots(getHotspotCells(filter, 24));
   }, [filter]);
 
   // Reverse-geocode each hotspot cell's centroid to a friendly name, cached in
@@ -116,6 +119,27 @@ export default function InsightsScreen() {
   const anyEarnings = zones.some(z => z.earnings > 0);
   const anyPerHour = zones.some(z => z.perHour > 0);
   const anyHotspotEarnings = hotspots.some(c => c.earnings > 0);
+
+  // Merge GPS cells that resolved to the same named area (e.g. several ~450m
+  // cells all landing in "Merton · SW19") into one row, so the list reads as
+  // distinct places rather than the same name repeated. Unresolved cells keep
+  // their own key so they don't get lumped together under "Finding area…"
+  // before geocoding catches up.
+  const consolidatedHotspots = React.useMemo(() => {
+    type Merged = { key: string; lat: number; lng: number; visits: number; earnings: number; name: string | null };
+    const groups = new Map<string, Merged>();
+    for (const c of hotspots) {
+      const name = cellNames[c.key] ?? null;
+      const mergeKey = name ?? `unresolved:${c.key}`;
+      const existing = groups.get(mergeKey);
+      if (existing) { existing.visits += c.visits; existing.earnings += c.earnings; }
+      else groups.set(mergeKey, { key: c.key, lat: c.lat, lng: c.lng, visits: c.visits, earnings: c.earnings, name });
+    }
+    const merged = Array.from(groups.values());
+    const anyE = merged.some(m => m.earnings > 0);
+    merged.sort((a, b) => (anyE ? b.earnings - a.earnings : b.visits - a.visits));
+    return merged.slice(0, 5);
+  }, [hotspots, cellNames]);
   const maxPer = Math.max(...buckets.map(b => b.perHour), 1);
   const anyBucketEarnings = buckets.some(b => b.earnings > 0);
   const hasData = zones.length > 0 || hotspots.length > 0 || buckets.some(b => b.trips > 0) || platforms.some(p => p.earnings > 0) || !!pnl?.hasData;
@@ -168,16 +192,16 @@ export default function InsightsScreen() {
                 ))}
               </ScrollView>
             )}
-            {hotspots.length > 0 && (
+            {consolidatedHotspots.length > 0 && (
               <>
                 <Card style={{ padding: 0, overflow: 'hidden' }}>
-                  {hotspots.map((c, i, arr) => (
+                  {consolidatedHotspots.map((c, i, arr) => (
                     <View key={c.key} style={[s.row, i < arr.length - 1 && s.rowBorder]}>
                       <View style={[s.rank, i === 0 && { backgroundColor: colors.brand }]}>
                         <Text style={[s.rankText, i === 0 && { color: '#fff' }]}>{i + 1}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={s.zoneName}>{cellNames[c.key] ?? 'Finding area…'}</Text>
+                        <Text style={s.zoneName}>{c.name ?? 'Finding area…'}</Text>
                         <Text style={s.zoneSub}>{anyHotspotEarnings ? 'estimated earnings here' : 'where you drive most'}</Text>
                       </View>
                       <Text style={s.zoneVal}>{anyHotspotEarnings ? fmtGbp(c.earnings) : `#${i + 1}`}</Text>

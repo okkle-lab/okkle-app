@@ -41,11 +41,19 @@ TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
   }
   if (!driving) return;
 
+  // Quiet hours: this fires the moment we detect driving speed, with no idea
+  // whether it's a work shift or a late drive home — don't interrupt sleep
+  // over it. Skip 22:00–07:00 local; the next daytime drive will still prompt.
+  const hour = new Date().getHours();
+  if (hour >= 22 || hour < 7) return;
+
   kvSet('auto_trip_last_prompt', Date.now());
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'On the move?',
-      body: 'Looks like you’re driving — track this trip and keep the tax-free miles.',
+      title: 'Looks like you’re driving',
+      // An observation, not an instruction — the user decides whether this
+      // drive is worth tracking, Okkle just flags that it noticed.
+      body: 'If this is a work trip, tracking it now keeps the tax-free miles.',
       data: { type: 'autotrip' },
     },
     trigger: null, // deliver now

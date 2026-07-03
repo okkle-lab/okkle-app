@@ -1167,13 +1167,20 @@ export function getZoneStats(filter: TimeFilter = 'all'): ZoneStat[] {
 // vsAverage = how much more £/hour this spot earns than your overall average.
 export type BestSpot = { zone: string; timeLabel: string; perHour: number; earnings: number; hours: number; trips: number; vsAverage: number };
 
-function bucketLabel(hour: number): string {
+export function bucketLabel(hour: number): string {
   if (hour >= 6 && hour < 11) return 'mornings';
   if (hour >= 11 && hour < 14) return 'lunchtimes';
   if (hour >= 14 && hour < 17) return 'afternoons';
   if (hour >= 17 && hour < 21) return 'evenings';
   return 'late nights';
 }
+
+// Clock hour each bucket starts at — used to schedule an insight-aligned
+// reminder right as the user's own best-paying window opens, rather than at
+// an arbitrary fixed time that may not actually be a good time for them.
+export const BUCKET_START_HOUR: { [k: string]: number } = {
+  mornings: 6, lunchtimes: 11, afternoons: 14, evenings: 17, 'late nights': 21,
+};
 
 export function getBestSpot(): BestSpot | null {
   const est = estimatedTripEarnings();

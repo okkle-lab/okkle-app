@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { initDb } from '../src/db';
 import '../src/autoTrip'; // registers the background trip-detection task at load
 import { clearStaleTripState } from '../src/hooks/useTrip';
 import { installGlobalErrorLogging } from '../src/diagnostics';
+import { trackScreen } from '../src/analytics';
 import { DeadlineAlert, AppErrorBoundary } from '../src/components';
 
 const glassSheetOptions = {
@@ -32,8 +33,10 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   const router = useRouter();
+  const pathname = usePathname();
   useEffect(() => { installGlobalErrorLogging(); }, []);
   useEffect(() => { initDb(); }, []);
+  useEffect(() => { trackScreen(pathname); }, [pathname]);
   // Cold launch = no trip is actually running (live state is in-memory only), so
   // clear any stale "tracking"/"finished this trip?" notifications and the
   // trip_active flag left behind if the app was killed mid-trip.

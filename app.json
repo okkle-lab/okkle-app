@@ -11,6 +11,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "okklelab.app",
       "icon": "./assets/okkle-icon.icon",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Okkle uses your location to track delivery trip distance for HMRC mileage records.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Okkle uses your location in the background to track delivery trips accurately.",
@@ -72,11 +73,15 @@
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "16.4"
+            "deploymentTarget": "16.4",
+            "useFrameworks": "static"
           }
         }
       ],
-      "./plugins/with-sdk56-ios-appdelegate.cjs"
+      "./plugins/with-sdk56-ios-appdelegate.cjs",
+      "@react-native-firebase/app",
+      "@react-native-firebase/analytics",
+      "@react-native-firebase/crashlytics"
     ],
     "extra": {
       "router": {},

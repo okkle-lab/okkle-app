@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { User } from './db';
-import { kvGet } from './db';
+import { kvGet, getBestSpot, BUCKET_START_HOUR } from './db';
 import { TAX_DEADLINES, getLeadDays, dateMinusDays } from './taxDeadlines';
 
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -10,17 +10,6 @@ const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const WEEKDAY_TO_NUM: { [k: string]: number } = {
   sun: 1, mon: 2, tue: 3, wed: 4, thu: 5, fri: 6, sat: 7,
 };
-
-// Playful, Duolingo-style nudges. One is picked at random each time we
-// (re)schedule, so the tone varies over time and never feels robotic.
-const STREAK_NUDGES: { title: string; body: string }[] = [
-  { title: 'Your streak misses you 🥺', body: 'One quick trip keeps it alive. Okkle is watching… in a friendly way.' },
-  { title: "Don't break the chain! 🔗", body: 'Log a trip today and keep that streak glowing.' },
-  { title: 'Psst… 🛵', body: 'Every mile you track is tax you keep. Open Okkle before bed?' },
-  { title: 'Tax-free miles await ✨', body: "You've come too far to drop the streak now. Tap to log today." },
-  { title: 'Your future self says thanks 🙏', body: 'Two taps to log today. January-you will be very grateful.' },
-  { title: 'Keep the engine warm 🔥', body: 'A quick log today keeps your streak — and your tax savings — rolling.' },
-];
 
 const WEEKLY_NUDGES: string[] = [
   'Payday soon? Log this week’s earnings so nothing slips through 🛵',
@@ -66,17 +55,27 @@ export async function syncReminders(user: User): Promise<void> {
       },
     });
 
-    // Daily streak-keeper — the Duolingo-style "don't lose your streak" nudge.
-    // (Only when logging weekly; monthly users don't get a daily ping.)
+    // Insight-aligned heads-up, not a guilt nudge: only schedule this when the
+    // user's own history shows a genuinely better-than-average window
+    // (getBestSpot, the same figure shown on the Insights screen) — fired
+    // right as that window opens. If there's no real signal yet, or their
+    // best window isn't meaningfully above average, stay silent rather than
+    // send a generic "go log something" ping at an arbitrary hour.
     if (!monthly) {
-      const nudge = pick(STREAK_NUDGES);
-      await Notifications.scheduleNotificationAsync({
-        content: { title: nudge.title, body: nudge.body },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DAILY,
-          hour: 19, minute: 30,
-        },
-      });
+      const best = getBestSpot();
+      if (best && best.vsAverage > 0 && best.hours >= 2) {
+        const hour = BUCKET_START_HOUR[best.timeLabel] ?? 17;
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Good time to head out',
+            body: `Your ${best.timeLabel} in ${best.zone} tend to pay above your average — worth it if you're free.`,
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour, minute: 0,
+          },
+        });
+      }
     }
   }
 

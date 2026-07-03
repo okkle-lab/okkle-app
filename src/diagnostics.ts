@@ -1,5 +1,6 @@
 import { kvGet, kvSet } from './db';
 import { sanitizeDiagnosticsText } from './diagnosticsPrivacy';
+import { recordError, logBreadcrumb } from './analytics';
 
 // Lightweight on-device diagnostics so bugs are easier to investigate.
 // Everything is logged to a capped, persisted list (kv) and can be included
@@ -24,6 +25,7 @@ export function logEvent(ctx: string, detail: string) {
     });
     kvSet(KEY, JSON.stringify(log.slice(0, MAX)));
   } catch { /* never let logging throw */ }
+  logBreadcrumb(`${ctx}: ${detail}`.slice(0, 200));
 }
 
 export function logError(ctx: string, err: unknown) {
@@ -33,6 +35,7 @@ export function logError(ctx: string, err: unknown) {
     (e?.stack ?? '').split('\n').slice(0, 8).join('\n'),
   ].filter(Boolean).join('\n');
   logEvent(ctx, detail);
+  recordError(e instanceof Error ? e : new Error(String(e?.message ?? e)), ctx);
 }
 
 // Catch otherwise-invisible fatal JS errors (release builds have no red box).

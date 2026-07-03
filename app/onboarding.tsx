@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, KeyboardAvoidingView,
-  Platform, Pressable, StyleSheet, ActivityIndicator,
+  Platform, Pressable, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import { colors, font, radius, spacing, type } from '../src/theme';
 import { VEHICLES, PLATFORMS, REGIONS, regionFromArea, regionRate, regionLabel } from '../src/db/tax';
 import { saveUser, getUser, kvSet } from '../src/db';
 import { syncReminders } from '../src/notifications';
+import { trackEvent } from '../src/analytics';
 import Feather from '@expo/vector-icons/Feather';
 import { PrimaryButton, Chip, VehicleChip } from '../src/components';
 
@@ -66,17 +67,33 @@ export default function Onboarding() {
   async function next() {
     if (step < STEPS.length - 1) { setStep(s => s + 1); return; }
     persist();
+    trackEvent('onboarding_complete');
     router.replace('/(tabs)');
   }
 
   // On the final step, "Start a trip" saves and jumps straight to the Trip tab.
   function finishToTrip() {
     persist();
+    trackEvent('onboarding_complete', { to: 'trip' });
     router.replace('/(tabs)/trip');
   }
 
   function togglePlatform(p: string) {
     setPlatforms(prev => (prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]));
+  }
+
+  // "Other" isn't a real platform to store — prompt for the actual name and
+  // add that instead, same pattern as the Settings > Profile platform picker.
+  function addCustomPlatform() {
+    Alert.prompt('Add platform', 'Name of the delivery platform you work for', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Add', onPress: (n?: string) => {
+        const clean = (n ?? '').trim();
+        if (clean && !platforms.some(p => p.toLowerCase() === clean.toLowerCase())) {
+          setPlatforms(prev => [...prev, clean]);
+        }
+      } },
+    ], 'plain-text');
   }
 
   async function detectRegion() {
@@ -191,7 +208,7 @@ export default function Onboarding() {
             <Text style={s.hero}>Who do you{'\n'}deliver for?</Text>
             <Text style={s.sub}>Pick all that apply. Okkle will show you which one actually pays you best per hour.</Text>
             <View style={s.chipGrid}>
-              {PLATFORMS.map(p => (
+              {Array.from(new Set([...PLATFORMS.filter(p => p !== 'Other'), ...platforms.filter(p => p !== 'Other')])).map(p => (
                 <Chip
                   key={p}
                   label={p}
@@ -201,6 +218,10 @@ export default function Onboarding() {
                   style={{ marginBottom: spacing.sm }}
                 />
               ))}
+              <Pressable onPress={addCustomPlatform} style={[s.addChip, { marginBottom: spacing.sm }]}>
+                <Feather name="plus" size={16} color={colors.brandDeep} />
+                <Text style={s.addChipText}>Add platform</Text>
+              </Pressable>
             </View>
           </View>
         )}
@@ -336,6 +357,12 @@ const s = StyleSheet.create({
     backgroundColor: colors.bgCard,
   },
   chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  addChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 18, paddingVertical: 14, borderRadius: radius.full,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.brandMid, backgroundColor: colors.bg,
+  },
+  addChipText: { ...type.bodyMedium, fontSize: 16, color: colors.brandDeep },
   detectBtn: {
     borderWidth: 1.5, borderColor: colors.brandMid, borderRadius: radius.md,
     paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,

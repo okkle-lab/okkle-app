@@ -4,6 +4,7 @@ import {
   trackerStart, trackerPause, trackerResume, trackerEnd,
   type LiveTrip, type TripState, type GeoPoint,
 } from '../tripTracker';
+import { trackEvent } from '../analytics';
 
 // Re-export types so existing consumers keep importing them from here.
 export type { LiveTrip, TripState, GeoPoint };
@@ -51,6 +52,7 @@ export function useTrip() {
     await trackerStart(vehicle);
     sync();
     startTimer();
+    trackEvent('trip_start', { vehicle });
   }
   async function pause() {
     await trackerPause();
@@ -69,6 +71,7 @@ export function useTrip() {
     if (live) final = { ...live, state: 'idle' };
     trackerEnd().catch(() => {});
     setTrip(INITIAL);
+    trackEvent('trip_end', { miles: final.miles, vehicle: final.vehicle });
     return final;
   }
 

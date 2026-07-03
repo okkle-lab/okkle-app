@@ -5,6 +5,7 @@ import { colors, font, spacing, radius, type, tabular } from '../src/theme';
 import { Card, Chip, IconBadge, GradientCard, DatePickerField, KeyboardDoneAccessory, numberKeyboardDoneProps, NativeGreenButton } from '../src/components';
 import { PLATFORMS, fmtGbp } from '../src/db/tax';
 import { saveRecord } from '../src/db';
+import { trackEvent } from '../src/analytics';
 
 // Confirm screen for the "screenshot → earnings" Shortcut. A Shortcut OCRs a
 // delivery-app earnings screenshot on-device and opens:
@@ -47,6 +48,7 @@ export default function LogEarnings() {
       miles: null, deduction: null, category: null,
       period_start: ps, period_end: pe, receipt_uri: null, notes: 'From screenshot',
     }, date.toISOString());
+    trackEvent('earnings_logged', { platform, period, source: 'shortcut' });
     router.replace('/(tabs)/records');
   }
 
