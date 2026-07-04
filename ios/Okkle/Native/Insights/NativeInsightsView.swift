@@ -1038,20 +1038,24 @@ struct NativeDailyInsightPanel: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OkkleColor.muted)
             }
+            VStack(alignment: .leading, spacing: 8) {
+              HStack {
+                Text("WHEN IT'S BUSY")
+                  .font(.system(size: 12, weight: .heavy)).tracking(0.5)
+                  .foregroundStyle(OkkleColor.muted)
+                Spacer()
+                NativeBusyLegend()
+              }
+              NativeHourStrip(hourCounts: plan.hourCounts)
+            }
           }
         }
 
-        // Panel 2 — WHERE: your best patches and a live heat-map to explore.
+        // Panel 2 — WHERE: your best patches for today (the heat map itself now
+        // lives on the Monthly/Yearly overviews).
         NativeAiCard {
-          VStack(alignment: .leading, spacing: 12) {
-            section("WHERE TO GO") {
-              NativeTopAreasList(zones: shift.zones, limit: 3)
-            }
-            NativeZoneMiniMap(trips: trips, zones: shift.zones)
-            Text("Each pin matches the list above — 1 is your busiest patch. Tap the map to explore full-screen.")
-              .font(.system(size: 12, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-              .fixedSize(horizontal: false, vertical: true)
+          section("WHERE TO GO") {
+            NativeTopAreasList(zones: shift.zones, limit: 3)
           }
         }
       }
@@ -1572,25 +1576,20 @@ private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View
   .frame(maxWidth: .infinity)
 }
 
-/// The "busiest hours" heat strip as a card — the time-of-day pattern reads
-/// far better aggregated over a month or year than over a single day, which is
-/// why it lives on the wider-window panels rather than Today.
+/// The geographic hotspot heat map as a card — the where-you-earn overview
+/// reads better across a whole month or year than a single day, so it lives on
+/// the wider-window panels. (Today keeps the where-to-go list + busiest hours.)
 @ViewBuilder
-private func nativeBusyHoursCard(hourCounts: [Int]) -> some View {
-  if hourCounts.contains(where: { $0 > 0 }) {
+private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint]) -> some View {
+  if !zones.isEmpty {
     NativeAiCard {
       VStack(alignment: .leading, spacing: 10) {
-        HStack {
-          VStack(alignment: .leading, spacing: 2) {
-            nativeInsightKicker("BUSIEST HOURS")
-            Text("Deliveries by time of day.")
-              .font(.system(size: 12, weight: .medium))
-              .foregroundStyle(OkkleColor.muted.opacity(0.8))
-          }
-          Spacer()
-          NativeBusyLegend()
-        }
-        NativeHourStrip(hourCounts: hourCounts)
+        nativeInsightKicker("WHERE YOU EARN")
+        NativeZoneMiniMap(trips: trips, zones: zones)
+        Text("Warmer patches are where you pick up and drop off most. Tap to explore full-screen.")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
@@ -1703,8 +1702,8 @@ struct NativeMonthlyInsightPanel: View {
         }
       }
 
-      // Card 3 — busiest hours over the last 30 days.
-      nativeBusyHoursCard(hourCounts: shift.hourCounts)
+      // Card 3 — where you earn, over the last 30 days.
+      nativeHotspotMapCard(trips: store.trips, zones: shift.zones)
     }
   }
 }
@@ -1818,8 +1817,8 @@ struct NativeYearlyInsightPanel: View {
         }
       }
 
-      // Card 4 — busiest hours across the year.
-      nativeBusyHoursCard(hourCounts: shift.hourCounts)
+      // Card 4 — where you earn, across the year.
+      nativeHotspotMapCard(trips: store.trips, zones: shift.zones)
     }
   }
 
