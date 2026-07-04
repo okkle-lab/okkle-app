@@ -1037,6 +1037,8 @@ struct NativeDailyInsightPanel: View {
               Label("Quiet \(brk.label) — a good window for your break.", systemImage: "cup.and.saucer.fill")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OkkleColor.muted)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 8) {
               HStack {
@@ -1547,7 +1549,7 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color
   VStack(alignment: .leading, spacing: 8) {
     nativeInsightKicker(kicker)
     Text(value)
-      .font(.system(size: 36, weight: .bold, design: .rounded))
+      .font(.system(size: 42, weight: .bold, design: .rounded))
       .foregroundStyle(valueColor)
       .lineLimit(1)
       .minimumScaleFactor(0.5)
@@ -1583,13 +1585,15 @@ private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View
 private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint]) -> some View {
   if !zones.isEmpty {
     NativeAiCard {
-      VStack(alignment: .leading, spacing: 10) {
+      VStack(alignment: .leading, spacing: 12) {
         nativeInsightKicker("WHERE YOU EARN")
         NativeZoneMiniMap(trips: trips, zones: zones)
-        Text("Warmer patches are where you pick up and drop off most. Tap to explore full-screen.")
+        Text("Numbered pins match the list below — 1 is your busiest patch. Tap the map to explore full-screen.")
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(OkkleColor.muted)
           .fixedSize(horizontal: false, vertical: true)
+        Divider()
+        NativeTopAreasList(zones: zones, limit: 4, showShareBar: true)
       }
     }
   }
@@ -1692,7 +1696,7 @@ struct NativeMonthlyInsightPanel: View {
         VStack(alignment: .leading, spacing: 6) {
           nativeInsightKicker("TAX RELIEF BANKED · 30 DAYS")
           Text(nativeWholeGbp(savings.taxSaved))
-            .font(.system(size: 36, weight: .bold, design: .rounded))
+            .font(.system(size: 42, weight: .bold, design: .rounded))
             .foregroundStyle(OkkleColor.brand)
             .lineLimit(1).minimumScaleFactor(0.5)
           Text("\(nativeWholeGbp(savings.mileageDeduction)) off your taxable profit, from \(miles(savings.miles)) of business driving.")
@@ -1764,7 +1768,7 @@ struct NativeYearlyInsightPanel: View {
         VStack(alignment: .leading, spacing: 6) {
           nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
           Text(nativeWholeGbp(store.taxSaved))
-            .font(.system(size: 36, weight: .bold, design: .rounded))
+            .font(.system(size: 42, weight: .bold, design: .rounded))
             .foregroundStyle(OkkleColor.brand)
             .lineLimit(1).minimumScaleFactor(0.5)
           Text("A \(nativeWholeGbp(store.yearMileageDeduction)) deduction off your Self Assessment profit, from \(miles(store.yearMiles)) driven. See the Tax tab.")
