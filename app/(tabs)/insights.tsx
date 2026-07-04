@@ -325,7 +325,7 @@ export default function InsightsScreen() {
                 />
               )}
             </Card>
-            <Text style={s.note}>Turn these on here, or fine-tune them anytime in Settings.</Text>
+            <Text style={s.note}>Turn these on here — pick working days or add places to leave out of the map anytime in Settings.</Text>
           </View>
         )}
     </CollapsingHeader>
