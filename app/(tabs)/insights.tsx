@@ -312,7 +312,7 @@ export default function InsightsScreen() {
               {!nudgesOn && (
                 <SetupPrompt
                   icon="navigation" tone="blue" title="Automatic tracking"
-                  sub="Starts tracking the moment you drive, so you never miss your miles."
+                  sub="Starts tracking the moment you drive. Pick your working days and places to leave out anytime in Settings."
                   busy={setupBusy} onEnable={enableNudges}
                 />
               )}
@@ -325,7 +325,7 @@ export default function InsightsScreen() {
                 />
               )}
             </Card>
-            <Text style={s.note}>Turn these on here — pick working days or add places to leave out of the map anytime in Settings.</Text>
+            <Text style={s.note}>Turn these on here, or manage them anytime in Settings.</Text>
           </View>
         )}
     </CollapsingHeader>
