@@ -74,6 +74,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private let motionQueue = OperationQueue()
   private let storageKey = "uk.okkle.native.autotrack.visits.v1"
   private let shiftNotificationIdentifier = "uk.okkle.native.shift-logged"
+  private let shiftStartNotificationIdentifier = "uk.okkle.native.shift-started"
+  private var shiftStartNotified = false
   private weak var store: OkkleStore?
   private var motionMonitoring = false
 
@@ -225,6 +227,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftPoints = []
     shiftMiles = 0
     shiftStartedAt = Date()
+    shiftStartNotified = false
     shiftLastLocation = nil
     shiftLastRoutePointLocation = nil
     liveShiftVehicle = store?.settings.defaultVehicle ?? .car
@@ -257,6 +260,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftPoints = []
     shiftMiles = 0
     shiftStartedAt = nil
+    shiftStartNotified = false
     shiftLastLocation = nil
     shiftLastRoutePointLocation = nil
     stationarySince = nil
@@ -276,6 +280,14 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       shiftLastLocation = location
       appendShiftRoutePoint(for: location)
       if shiftPhase == .stationaryPending { stationaryCoordinate = location.coordinate }
+    }
+    // Tell the driver recording has started — but only once the shift shows
+    // real recorded distance, not on the raw driving signal. A bus ride or a
+    // motion blip can open a shift that's discarded as near-zero noise; every
+    // "started" notification here is one that will end in a logged trip.
+    if !shiftStartNotified, shiftMiles >= 0.2 {
+      shiftStartNotified = true
+      sendShiftStartedNotification()
     }
     publishLiveShift()
   }
@@ -351,22 +363,34 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     sendShiftLoggedNotification(trip)
   }
 
+  private func sendShiftStartedNotification() {
+    sendAutoTrackNotification(
+      identifier: "\(shiftStartNotificationIdentifier)-\(Int((shiftStartedAt ?? Date()).timeIntervalSince1970))",
+      title: "Shift started",
+      body: "Looks like you're on the road — recording your route automatically. It'll be logged when your shift ends."
+    )
+  }
+
   private func sendShiftLoggedNotification(_ trip: NativeTrip) {
+    let miles = String(format: "%.1f", trip.miles)
+    sendAutoTrackNotification(
+      identifier: "\(shiftNotificationIdentifier)-\(trip.id.uuidString)",
+      title: "Shift ended",
+      body: "\(miles) miles logged automatically. Tap to check it's right.",
+      userInfo: ["type": "autoShiftReview", "tripID": trip.id.uuidString]
+    )
+  }
+
+  private func sendAutoTrackNotification(identifier: String, title: String, body: String, userInfo: [AnyHashable: Any] = [:]) {
     let center = UNUserNotificationCenter.current()
-    center.requestAuthorization(options: [.alert, .sound]) { [shiftNotificationIdentifier] granted, _ in
+    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
       guard granted else { return }
       let content = UNMutableNotificationContent()
-      content.title = "Shift logged"
-      let miles = String(format: "%.1f", trip.miles)
-      content.body = "\(miles) miles logged automatically. Tap to check it's right."
+      content.title = title
+      content.body = body
       content.sound = .default
-      content.userInfo = ["type": "autoShiftReview", "tripID": trip.id.uuidString]
-      let request = UNNotificationRequest(
-        identifier: "\(shiftNotificationIdentifier)-\(trip.id.uuidString)",
-        content: content,
-        trigger: nil
-      )
-      center.add(request)
+      content.userInfo = userInfo
+      center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
   }
 

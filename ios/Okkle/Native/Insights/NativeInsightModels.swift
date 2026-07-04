@@ -1,0 +1,833 @@
+import CoreLocation
+import Foundation
+
+enum NativeTimeFilter: String, CaseIterable, Identifiable {
+  case all
+  case morning
+  case lunch
+  case afternoon
+  case dinner
+  case late
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .all: return "All day"
+    case .morning: return "Morning"
+    case .lunch: return "Lunch"
+    case .afternoon: return "Afternoon"
+    case .dinner: return "Dinner"
+    case .late: return "Late"
+    }
+  }
+
+  var startHour: Int? {
+    switch self {
+    case .all: return nil
+    case .morning: return 6
+    case .lunch: return 11
+    case .afternoon: return 14
+    case .dinner: return 17
+    case .late: return 21
+    }
+  }
+
+  /// A clock range for the band — so the UI can show *when*, not a vague label.
+  var timeRange: String {
+    switch self {
+    case .all: return "All day"
+    case .morning: return "6–11am"
+    case .lunch: return "11am–2pm"
+    case .afternoon: return "2–5pm"
+    case .dinner: return "5–9pm"
+    case .late: return "9pm–late"
+    }
+  }
+
+  func includes(_ date: Date) -> Bool {
+    if self == .all { return true }
+    let hour = Calendar.current.component(.hour, from: date)
+    switch self {
+    case .all:
+      return true
+    case .morning:
+      return hour >= 6 && hour < 11
+    case .lunch:
+      return hour >= 11 && hour < 14
+    case .afternoon:
+      return hour >= 14 && hour < 17
+    case .dinner:
+      return hour >= 17 && hour < 21
+    case .late:
+      return hour >= 21 || hour < 6
+    }
+  }
+}
+
+// MARK: - Zone colour scale
+
+/// Quiet → busiest, in one clear ramp (cool blue → teal → green → amber → red)
+/// instead of a single colour at varying opacity, so a glance tells you which
+/// zones and times are actually worth being in.
+
+struct NativeShiftWindow: Identifiable, Equatable {
+  let weekday: Int   // 0 = Sunday … 6 = Saturday
+  let band: NativeTimeFilter
+  let count: Int
+  let sharePct: Int
+
+  var id: String { "\(weekday)|\(band.rawValue)" }
+  var label: String { "\(Calendar.current.shortWeekdaySymbols[weekday]) \(band.label.lowercased())" }
+}
+
+/// Guesses where "home" is from raw dwell time alone — every visit counts,
+/// regardless of pick-up/drop-off classification, because a courier is
+/// stationary at home for hours most days, far longer than any real delivery
+/// stop. Needs 4+ cumulative hours in one ~500m cell before it'll commit to a
+/// guess, so a new driver's first few days of real routes aren't mistaken
+/// for a homebound pattern.
+func nativeDetectedHomeCoordinate(_ visits: [NativeVisit]) -> CLLocationCoordinate2D? {
+  guard !visits.isEmpty else { return nil }
+  let cellSize = 0.006
+  var cells: [String: (coordinate: CLLocationCoordinate2D, totalDwell: TimeInterval)] = [:]
+  for visit in visits {
+    let key = "\(Int((visit.coordinate.latitude / cellSize).rounded())),\(Int((visit.coordinate.longitude / cellSize).rounded()))"
+    var cell = cells[key] ?? (visit.coordinate, 0)
+    cell.totalDwell += visit.dwell
+    cells[key] = cell
+  }
+  guard let top = cells.values.max(by: { $0.totalDwell < $1.totalDwell }), top.totalDwell >= 4 * 3600 else { return nil }
+  return top.coordinate
+}
+
+/// A clustered zone of pick-up/drop-off activity, for colouring the map by how
+/// busy each area has been — not a real-time heatmap, just your own history.
+struct NativeZonePoint: Identifiable, Equatable {
+  let id = UUID()
+  let coordinate: CLLocationCoordinate2D
+  let weight: Double   // 0 (quiet) ... 1 (your busiest zone)
+  var count: Int = 0   // raw deliveries in this cluster
+  var peakHour: Int? = nil   // the hour this area is busiest for you
+
+  /// A tight "when to go" window around the area's busiest hour.
+  var timeLabel: String? {
+    guard let h = peakHour else { return nil }
+    return "\(nativeHourLabel(h))–\(nativeHourLabel(h + 2))"
+  }
+
+  static func == (lhs: NativeZonePoint, rhs: NativeZonePoint) -> Bool {
+    lhs.id == rhs.id
+  }
+}
+
+/// Ranked, de-duplicated areas near the driver — the "where to go" shortlist.
+/// Keeps at most `limit`, prefers busier zones, drops anything absurdly far.
+func nativeTopZones(_ zones: [NativeZonePoint], near origin: CLLocationCoordinate2D?, limit: Int = 5, maxKm: Double = 12) -> [NativeZonePoint] {
+  var candidates = zones
+  if let origin {
+    let here = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+    candidates = zones.filter {
+      here.distance(from: CLLocation(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)) <= maxKm * 1000
+    }
+    if candidates.isEmpty { candidates = zones }   // never leave them with nothing
+  }
+  return Array(candidates.sorted { $0.weight > $1.weight }.prefix(limit))
+}
+
+/// One named, ranked area — the shared source of truth so the "where to go"
+/// list and the map pins carry the *same* number for the *same* place.
+struct NativeRankedArea: Identifiable {
+  let id = UUID()
+  let rank: Int
+  let name: String
+  let time: String?
+  let coordinate: CLLocationCoordinate2D
+  let weight: Double
+}
+
+/// Rank the busiest patches that have a resolved name, 1…limit. Both the list
+/// and the map build from this, so pin "2" and list row "2" are the same place.
+@MainActor
+func nativeRankedAreas(_ zones: [NativeZonePoint], near origin: CLLocationCoordinate2D?, namer: NativeAreaNamer, limit: Int) -> [NativeRankedArea] {
+  let top = nativeTopZones(zones, near: origin, limit: limit + 4)
+  var seen = Set<String>()
+  var out: [NativeRankedArea] = []
+  for zone in top {
+    guard let name = namer.name(for: zone.coordinate) else { continue }
+    if seen.insert(name).inserted {
+      out.append(NativeRankedArea(rank: out.count + 1, name: name, time: zone.timeLabel,
+                                  coordinate: zone.coordinate, weight: zone.weight))
+    }
+    if out.count >= limit { break }
+  }
+  return out
+}
+
+/// How many deliveries land on one weekday, for the weekly overview bar list.
+struct NativeWeekdayStat: Identifiable, Equatable {
+  let weekday: Int   // 0 = Sunday … 6 = Saturday
+  let count: Int
+  let sharePct: Int
+
+  var id: Int { weekday }
+  var symbol: String { Calendar.current.veryShortWeekdaySymbols[weekday] }
+  var name: String { Calendar.current.weekdaySymbols[weekday] }
+}
+
+/// "6pm", "12pm", "1am" — a compact clock label for one hour of the day.
+func nativeHourLabel(_ hour: Int) -> String {
+  let h = ((hour % 24) + 24) % 24
+  let suffix = h < 12 ? "am" : "pm"
+  var twelve = h % 12
+  if twelve == 0 { twelve = 12 }
+  return "\(twelve)\(suffix)"
+}
+
+/// A contiguous run of busy (or, for a break, quiet) hours: "6–9pm".
+struct NativeHourWindow: Identifiable, Equatable {
+  let startHour: Int
+  let endHour: Int   // inclusive last hour
+  let count: Int
+
+  var id: Int { startHour }
+  var label: String { "\(nativeHourLabel(startHour))–\(nativeHourLabel(endHour + 1))" }
+}
+
+/// Per-weekday summary for the weekly panel: best band, roughly where, and how
+/// busy — so "this week" can say *when and where* each day was good.
+struct NativeWeekdayDetail: Identifiable, Equatable {
+  let weekday: Int
+  let band: NativeTimeFilter
+  let count: Int
+  let coordinate: CLLocationCoordinate2D?
+  let deadMilePct: Int?   // unpaid miles as a % of this weekday's own driving
+
+  var id: Int { weekday }
+  var name: String { Calendar.current.weekdaySymbols[weekday] }
+  var shortName: String { Calendar.current.shortWeekdaySymbols[weekday] }
+
+  static func == (lhs: NativeWeekdayDetail, rhs: NativeWeekdayDetail) -> Bool {
+    lhs.weekday == rhs.weekday && lhs.band == rhs.band && lhs.count == rhs.count
+  }
+}
+
+/// A same-day plan: the best window to work, a natural lull worth treating as
+/// a break, and roughly where the work has been — built from your own history
+/// for that specific weekday, not the whole week averaged together.
+struct NativeDayPlan {
+  let weekday: Int
+  let isToday: Bool
+  let deliveries: Int
+  let bestBand: NativeTimeFilter?
+  let breakBand: NativeTimeFilter?
+  let zone: CLLocationCoordinate2D?
+  let hourCounts: [Int]              // 24 buckets of delivery counts for this day
+  let driveWindows: [NativeHourWindow]
+  let breakWindow: NativeHourWindow?
+
+  var dayLabel: String { isToday ? "Today" : Calendar.current.weekdaySymbols[weekday] }
+
+  /// The busiest drive window (most deliveries) — the one to anchor the day on.
+  var peakWindow: NativeHourWindow? { driveWindows.max { $0.count < $1.count } }
+}
+
+/// A short "how did that shift go" read on your most recent logged day: the
+/// day's £/hr versus your usual for that weekday, and whether you clocked off
+/// before your typical peak.
+struct NativeShiftDebrief {
+  let weekday: Int
+  let perHour: Double
+  let weekdayAvgPerHour: Double?
+  let finishedBeforePeak: Bool
+  let peakLabel: String?
+
+  var dayName: String { Calendar.current.shortWeekdaySymbols[weekday] }
+
+  /// Comparative read only — never exact accounting. The £/hr values behind
+  /// this are modelled from weekly pay spread over inferred hours.
+  var comparative: String? {
+    guard let avg = weekdayAvgPerHour, avg > 0 else { return nil }
+    let ratio = perHour / avg
+    switch ratio {
+    case 1.15...: return "Your last \(dayName) was well above your usual."
+    case 1.03..<1.15: return "Your last \(dayName) was a touch above your usual."
+    case 0.85..<1.03: return "Your last \(dayName) was around your usual."
+    default: return "Your last \(dayName) was below your usual."
+    }
+  }
+
+  var wasUp: Bool { (weekdayAvgPerHour ?? perHour) <= perHour }
+}
+
+/// Whether a weekday's volume looks the same week to week, or is dominated by
+/// occasional big/quiet weeks — the per-day counterpart to overall confidence.
+enum NativeDayReliability {
+  case reliable, erratic
+}
+
+/// One platform's real, logged share of income this period — the ranked
+/// counterpart to the single "top platform" line, only ever populated when
+/// there's an actual mix (2+ platforms) to rank.
+struct NativePlatformShare: Identifiable {
+  let id = UUID()
+  let platform: String
+  let sharePct: Int
+  let deltaPct: Int?   // vs the same platform's share last period, if meaningful
+}
+
+/// How much evidence sits behind a recommendation. The engine should know when
+/// not to make a strong claim — thin data gets soft language, never certainty.
+enum NativeConfidence {
+  case low, medium, high
+
+  var tag: String {
+    switch self {
+    case .low: return "EARLY READ"
+    case .medium: return "GOOD READ"
+    case .high: return "SOLID PATTERN"
+    }
+  }
+
+  var dots: Int {
+    switch self {
+    case .low: return 1
+    case .medium: return 2
+    case .high: return 3
+    }
+  }
+
+  /// Plain-words strength for the header chip — "Confidence: High".
+  var level: String {
+    switch self {
+    case .low: return "Low"
+    case .medium: return "Medium"
+    case .high: return "High"
+    }
+  }
+}
+
+/// Everything the passive engine can tell a driver, derived from the stops plus
+/// their (weekly) logged income. Aggregate totals stay exact; only the
+/// within-week distribution is modelled, so estimates are bounded.
+struct NativeShiftInsights {
+  let deliveries: Int
+  let activeHours: Double
+  let paidMiles: Double
+  let deadMiles: Double
+  let bestWindow: String?
+  let perHour: Double?
+  let windows: [NativeShiftWindow]
+  let quietWindow: NativeShiftWindow?
+  let zones: [NativeZonePoint]
+  let weekdayStats: [NativeWeekdayStat]
+  let weekdayDetails: [NativeWeekdayDetail]   // active days, busiest first
+  let todayPlan: NativeDayPlan?
+  let lastShift: NativeShiftDebrief?
+  let activeDays: Int                          // distinct days with tracked stops
+  let peakHitRate: Double?                     // how often "your peak" has actually paid off
+  let weekdayReliability: [Int: NativeDayReliability]   // per-weekday, week-to-week consistency
+  let platformShares: [NativePlatformShare]             // ranked, only populated with 2+ platforms logged
+  let hourCounts: [Int]                                 // 24 buckets: all deliveries in the period by hour of day
+
+  var hasData: Bool { deliveries > 0 }
+  var totalMiles: Double { paidMiles + deadMiles }
+  var deadMilePct: Int {
+    guard totalMiles > 0 else { return 0 }
+    return Int((deadMiles / totalMiles * 100).rounded())
+  }
+
+  /// Overall evidence level: enough deliveries across enough distinct days,
+  /// *and* those days actually look alike. Sample size alone can be
+  /// misleading — five visits that all landed near the same volume is a
+  /// genuinely repeatable pattern; five visits where one outlier day did most
+  /// of the work is really a single fluke wearing a big-sample-size costume.
+  /// The day-to-day spread (coefficient of variation across active weekdays)
+  /// catches that and caps confidence accordingly, even when the raw totals
+  /// look strong.
+  var confidence: NativeConfidence {
+    var level: NativeConfidence
+    if deliveries >= 20 && activeDays >= 6 { level = .high }
+    else if deliveries >= 8 && activeDays >= 3 { level = .medium }
+    else { level = .low }
+
+    if level != .low {
+      let counts = weekdayStats.filter { $0.count > 0 }.map { Double($0.count) }
+      if counts.count >= 2 {
+        let mean = counts.reduce(0, +) / Double(counts.count)
+        if mean > 0 {
+          let variance = counts.reduce(0) { $0 + pow($1 - mean, 2) } / Double(counts.count)
+          let coefficientOfVariation = sqrt(variance) / mean
+          // Roughly: one day carrying most of the volume (CV > ~1.1) downgrades
+          // two steps; a noticeably lopsided week (CV > ~0.75) downgrades one
+          // step from "high" only — a bit of natural variation shouldn't
+          // punish "medium".
+          if coefficientOfVariation > 1.1 { level = (level == .high) ? .medium : .low }
+          else if coefficientOfVariation > 0.75 && level == .high { level = .medium }
+        }
+      }
+    }
+
+    // Has "your peak" actually been paying off? Only ever downgrades — a
+    // good hit rate doesn't inflate confidence beyond what the sample size
+    // and consistency already earned, per the same restraint as elsewhere.
+    if let hitRate = peakHitRate, level != .low {
+      if hitRate < 0.35 { level = .low }
+      else if hitRate < 0.5 && level == .high { level = .medium }
+    }
+
+    return level
+  }
+
+  /// Rough shifts still needed before the pattern firms up (low confidence only).
+  var shiftsToSharpen: Int { max(1, 3 - min(activeDays, 3) + (deliveries < 8 ? 1 : 0)) }
+
+  /// £/hr as an honest range, never a fake-precise figure — the underlying
+  /// value is weekly pay spread over inferred active hours.
+  var perHourBand: String? {
+    guard let perHour, perHour > 0 else { return nil }
+    let lower = Int((perHour * 0.85 / 1).rounded(.down))
+    let upper = Int((perHour * 1.15 / 1).rounded(.up))
+    return "£\(lower)–\(upper)"
+  }
+
+  /// The single most useful warning — one only, per the "instruction beats
+  /// dashboards" principle.
+  var warning: String? {
+    if deadMilePct >= 25 {
+      return "About \(deadMilePct)% of your miles are unpaid roaming — wait nearer a pick-up zone between orders."
+    }
+    if let quiet = quietWindow, confidence != .low {
+      return "\(quiet.label.capitalized) is usually weak for you — worth resting or trying elsewhere."
+    }
+    if perHour == nil {
+      return "Log your pay after a shift to unlock an earnings-rate estimate."
+    }
+    return nil
+  }
+
+  static let empty = NativeShiftInsights(
+    deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
+    bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
+    weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
+    activeDays: 0, peakHitRate: nil, weekdayReliability: [:],
+    platformShares: [], hourCounts: Array(repeating: 0, count: 24)
+  )
+
+  @MainActor
+  static func build(visits: [NativeVisit], store: OkkleStore) -> NativeShiftInsights {
+    // Kept out of every calculation below, not just "where to go": places the
+    // driver manually flagged, plus an auto-detected home guess when they
+    // haven't set anything themselves. Left in, a night at home next to a
+    // short gap before the morning's first stop reads as one continuous
+    // "active" chain — home's whole dwell gets counted as work time, which
+    // wrecks activeHours and therefore £/hr. Manual entries always apply too
+    // — labelling one spot doesn't turn off the auto-guess for a *different*
+    // long-dwell place (e.g. a partner's).
+    var notWorkCoordinates = store.settings.excludedPlaces.map(\.coordinate)
+    if let home = nativeDetectedHomeCoordinate(visits) { notWorkCoordinates.append(home) }
+    let exclusionRadiusMeters = 200.0
+    func isExcluded(_ coordinate: CLLocationCoordinate2D) -> Bool {
+      let point = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+      return notWorkCoordinates.contains { point.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= exclusionRadiusMeters }
+    }
+
+    let sorted = visits.sorted { $0.arrival < $1.arrival }.filter { !isExcluded($0.coordinate) }
+    guard sorted.count > 1 else { return .empty }
+
+    let roadFactor = 1.3
+    let shiftGap: TimeInterval = 45 * 60   // a gap longer than this ends a shift
+
+    // Total distance + active time across legs within a shift. Real route
+    // distance from a recorded trip's GPS points when one covers this leg —
+    // only falls back to the straight-line estimate when no trip data exists
+    // for it (older data, or a stop outside any recorded shift).
+    var totalMeters = 0.0
+    var activeSeconds = 0.0
+    var totalMetersByWeekday: [Int: Double] = [:]
+    for k in 1..<sorted.count {
+      let prev = sorted[k - 1], cur = sorted[k]
+      let gap = cur.arrival.timeIntervalSince(prev.departure)
+      if gap < shiftGap {
+        let legMeters = routeMeters(from: prev.departure, to: cur.arrival, trips: store.trips)
+          ?? cur.location.distance(from: prev.location)
+        totalMeters += legMeters
+        let legWeekday = Calendar.current.component(.weekday, from: cur.arrival) - 1
+        totalMetersByWeekday[legWeekday, default: 0] += legMeters
+        activeSeconds += max(0, gap) + prev.dwell
+      }
+    }
+    activeSeconds += sorted.last?.dwell ?? 0
+
+    // Deliveries + paid distance: a pick-up drives to the next drop-off.
+    var deliveries = 0
+    var paidMeters = 0.0
+    var paidMetersByWeekday: [Int: Double] = [:]
+    var deliveryHits: [(weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date)] = []
+    var index = 0
+    while index < sorted.count {
+      if sorted[index].kind == .pickup,
+         let dropIndex = (index + 1..<sorted.count).first(where: { sorted[$0].kind == .dropoff }) {
+        deliveries += 1
+        // Paid = the active delivery leg (restaurant → customer). Everything
+        // else (repositioning back out to the next pick-up, idle wandering) is
+        // unpaid mileage. Real route distance when a recorded trip covers this
+        // leg, otherwise a straight-line estimate.
+        let legMeters = routeMeters(from: sorted[index].departure, to: sorted[dropIndex].arrival, trips: store.trips)
+          ?? sorted[dropIndex].location.distance(from: sorted[index].location)
+        paidMeters += legMeters
+        let date = sorted[dropIndex].arrival
+        let weekday = Calendar.current.component(.weekday, from: date) - 1
+        paidMetersByWeekday[weekday, default: 0] += legMeters
+        let hour = Calendar.current.component(.hour, from: date)
+        let band = NativeTimeFilter.allCases.first { $0 != .all && $0.includes(date) } ?? .afternoon
+        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date))
+        index = dropIndex + 1
+      } else {
+        index += 1
+      }
+    }
+
+    let paidMiles = paidMeters / 1609.34 * roadFactor
+    let totalMiles = max(totalMeters / 1609.34 * roadFactor, paidMiles)
+    let deadMiles = max(0, totalMiles - paidMiles)
+    let activeHours = activeSeconds / 3600
+
+    // Per-weekday unpaid-miles % — same maths as the overall deadMilePct,
+    // just scoped to one day, so the day breakdown can show its own figure
+    // instead of the whole period's aggregate.
+    func deadMilePct(forWeekday wd: Int) -> Int? {
+      let paidMi = (paidMetersByWeekday[wd] ?? 0) / 1609.34 * roadFactor
+      let totalMi = max((totalMetersByWeekday[wd] ?? 0) / 1609.34 * roadFactor, paidMi)
+      guard totalMi > 0 else { return nil }
+      return Int((max(0, totalMi - paidMi) / totalMi * 100).rounded())
+    }
+
+    // Busy-hours histogram across the whole period (every delivery by hour) —
+    // powers the "when you're busy" chart on the Monthly/Yearly panels.
+    var periodHourCounts = Array(repeating: 0, count: 24)
+    for hit in deliveryHits where hit.hour >= 0 && hit.hour < 24 {
+      periodHourCounts[hit.hour] += 1
+    }
+
+    // Rank every weekday + time-band bucket by delivery count.
+    var counts: [String: Int] = [:]
+    for hit in deliveryHits {
+      counts["\(hit.weekday)|\(hit.band.rawValue)", default: 0] += 1
+    }
+    let ranked: [NativeShiftWindow] = counts
+      .compactMap { key, count -> NativeShiftWindow? in
+        let parts = key.split(separator: "|")
+        guard parts.count == 2, let wd = Int(parts[0]), let band = NativeTimeFilter(rawValue: String(parts[1])) else { return nil }
+        let share = deliveries > 0 ? Int((Double(count) / Double(deliveries) * 100).rounded()) : 0
+        return NativeShiftWindow(weekday: wd, band: band, count: count, sharePct: share)
+      }
+      .sorted { $0.count > $1.count }
+    let bestWindow = ranked.first?.label
+    // The quietest bucket that still has a couple of data points — distinct
+    // from the best one, so "avoid this" is a real, different recommendation.
+    let quietWindow = ranked.count > 1 ? ranked.filter { $0.count >= 2 }.min { $0.count < $1.count } : nil
+
+    // Cluster delivery start points into zones (~500m cells), tracking when each
+    // area is busiest so "where to go" can carry a "when to go". deliveryHits
+    // is already free of excluded places, since `sorted` was filtered above.
+    var cells: [String: (coordinate: CLLocationCoordinate2D, count: Int, hours: [Int: Int])] = [:]
+    let cellSize = 0.006
+    for hit in deliveryHits {
+      let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
+      var cell = cells[key] ?? (hit.coordinate, 0, [:])
+      cell.count += 1
+      cell.hours[hit.hour, default: 0] += 1
+      cells[key] = cell
+    }
+    let maxCount = cells.values.map(\.count).max() ?? 1
+    let zones = cells.values.map { cell -> NativeZonePoint in
+      let peak = cell.hours.max { $0.value < $1.value }?.key
+      return NativeZonePoint(coordinate: cell.coordinate, weight: Double(cell.count) / Double(maxCount), count: cell.count, peakHour: peak)
+    }
+
+    // £/hr over the last 14 days: logged income ÷ active hours in the window.
+    let windowStart = Date().addingTimeInterval(-14 * 86_400)
+    let income = store.records
+      .filter { $0.kind == .income && $0.date >= windowStart }
+      .reduce(0.0) { $0 + ($1.amount ?? 0) }
+    let recentActive = recentActiveHours(sorted, since: windowStart, shiftGap: shiftGap)
+    // Only surface a rate we can stand behind. Passive hour-detection can be thin
+    // (a couple of short shifts), which inflates £/hr into nonsense — when the
+    // result lands outside a believable gig-delivery range, stay quiet rather than
+    // show a number that undermines trust.
+    let rawPerHour = (income > 0 && recentActive > 1) ? income / recentActive : nil
+    let perHour: Double? = rawPerHour.flatMap { (4...45).contains($0) ? $0 : nil }
+
+    let prevWindowStart = windowStart.addingTimeInterval(-14 * 86_400)
+
+    // Platform mix: a real, cross-platform ranking no single delivery app can
+    // offer — every platform's real, logged share of this period's income,
+    // and how each has shifted. Only worth showing once there's an actual mix
+    // (2+ platforms) — a single platform logged isn't a "mix" insight.
+    let currentPlatformIncome = store.records.filter { $0.kind == .income && $0.date >= windowStart }
+    let previousPlatformIncome = store.records.filter { $0.kind == .income && $0.date >= prevWindowStart && $0.date < windowStart }
+    func platformTotals(_ records: [NativeRecord]) -> [String: Double] {
+      var totals: [String: Double] = [:]
+      for r in records { totals[r.platform ?? "Other", default: 0] += r.amount ?? 0 }
+      return totals
+    }
+    let currentTotals = platformTotals(currentPlatformIncome)
+    let previousTotals = platformTotals(previousPlatformIncome)
+    let currentSum = currentTotals.values.reduce(0, +)
+    let previousSum = previousTotals.values.reduce(0, +)
+    var platformShares: [NativePlatformShare] = []
+    if currentSum > 0, currentTotals.count >= 2 {
+      for (platform, amount) in currentTotals.sorted(by: { $0.value > $1.value }) {
+        let sharePct = Int((amount / currentSum * 100).rounded())
+        var deltaPct: Int? = nil
+        if previousSum > 0, let prevAmount = previousTotals[platform] {
+          let prevSharePct = Int((prevAmount / previousSum * 100).rounded())
+          let delta = sharePct - prevSharePct
+          if abs(delta) >= 8 { deltaPct = delta }
+        }
+        platformShares.append(NativePlatformShare(platform: platform, sharePct: sharePct, deltaPct: deltaPct))
+      }
+    }
+
+    // Reliability: does this weekday look the same week to week, or is one
+    // outlier week doing all the work? The per-day counterpart to the
+    // consistency check already folded into overall confidence.
+    var weekByWeekday: [Int: [Date: Int]] = [:]
+    for hit in deliveryHits {
+      guard let weekStart = Calendar.current.dateInterval(of: .weekOfYear, for: hit.date)?.start else { continue }
+      weekByWeekday[hit.weekday, default: [:]][weekStart, default: 0] += 1
+    }
+    var weekdayReliability: [Int: NativeDayReliability] = [:]
+    for (wd, weeks) in weekByWeekday {
+      let counts = weeks.values.map(Double.init)
+      guard counts.count >= 3 else { continue }   // need a few distinct weeks to say anything
+      let mean = counts.reduce(0, +) / Double(counts.count)
+      guard mean > 0 else { continue }
+      let variance = counts.reduce(0) { $0 + pow($1 - mean, 2) } / Double(counts.count)
+      let cv = sqrt(variance) / mean
+      if cv <= 0.6 { weekdayReliability[wd] = .reliable }
+      else if cv > 1.0 { weekdayReliability[wd] = .erratic }
+    }
+
+    // Weekly overview: how deliveries split across the seven weekdays.
+    var weekdayCounts: [Int: Int] = [:]
+    for hit in deliveryHits { weekdayCounts[hit.weekday, default: 0] += 1 }
+    let weekdayStats = (0...6).map { wd -> NativeWeekdayStat in
+      let count = weekdayCounts[wd] ?? 0
+      let share = deliveries > 0 ? Int((Double(count) / Double(deliveries) * 100).rounded()) : 0
+      return NativeWeekdayStat(weekday: wd, count: count, sharePct: share)
+    }
+
+    // Per-weekday best band + zone (busiest first) — the "when & where" list.
+    let weekdayDetails: [NativeWeekdayDetail] = (0...6)
+      .filter { (weekdayCounts[$0] ?? 0) > 0 }
+      .map { wd -> NativeWeekdayDetail in
+        let (band, zone) = bestBandAndZone(for: wd, deliveryHits: deliveryHits, cellSize: cellSize)
+        return NativeWeekdayDetail(weekday: wd, band: band, count: weekdayCounts[wd] ?? 0, coordinate: zone,
+                                    deadMilePct: deadMilePct(forWeekday: wd))
+      }
+      .sorted { $0.count > $1.count }
+
+    // Today's plan: today if it has data, otherwise the next weekday (working
+    // day or not — we only ever have data on working days anyway) that does.
+    let todayWeekday = Calendar.current.component(.weekday, from: Date()) - 1
+    let planWeekday = (0..<7)
+      .map { (todayWeekday + $0) % 7 }
+      .first { weekdayCounts[$0, default: 0] > 0 }
+    let todayPlan: NativeDayPlan? = planWeekday.map { wd in
+      let (bestBand, topZone) = bestBandAndZone(for: wd, deliveryHits: deliveryHits, cellSize: cellSize)
+
+      // Hour-level shape for that weekday → concrete drive/break windows.
+      var hourCounts = Array(repeating: 0, count: 24)
+      for hit in deliveryHits where hit.weekday == wd { hourCounts[hit.hour] += 1 }
+      let drives = nativeHourWindows(from: hourCounts)
+      let breakWin = nativeBreakWindow(from: drives)
+
+      var bandCounts: [NativeTimeFilter: Int] = [:]
+      for hit in deliveryHits where hit.weekday == wd { bandCounts[hit.band, default: 0] += 1 }
+      let order: [NativeTimeFilter] = [.morning, .lunch, .afternoon, .dinner, .late]
+      let breakBand = order
+        .filter { $0 != bestBand && (bandCounts[$0] ?? 0) >= 1 }
+        .min { (bandCounts[$0] ?? 0) < (bandCounts[$1] ?? 0) }
+
+      return NativeDayPlan(
+        weekday: wd,
+        isToday: wd == todayWeekday,
+        deliveries: weekdayCounts[wd] ?? 0,
+        bestBand: bestBand,
+        breakBand: breakBand,
+        zone: topZone,
+        hourCounts: hourCounts,
+        driveWindows: drives,
+        breakWindow: breakWin
+      )
+    }
+
+    let lastShift = debrief(sorted: sorted, deliveryHits: deliveryHits, store: store, shiftGap: shiftGap, cellSize: cellSize)
+    let activeDays = Set(sorted.map { Calendar.current.startOfDay(for: $0.arrival) }).count
+
+    return NativeShiftInsights(
+      deliveries: deliveries,
+      activeHours: activeHours,
+      paidMiles: paidMiles,
+      deadMiles: deadMiles,
+      bestWindow: bestWindow,
+      perHour: perHour,
+      windows: Array(ranked.prefix(5)),
+      quietWindow: quietWindow,
+      zones: zones,
+      weekdayStats: weekdayStats,
+      weekdayDetails: weekdayDetails,
+      todayPlan: todayPlan,
+      lastShift: lastShift,
+      activeDays: activeDays,
+      peakHitRate: NativeOutcomeTracker.shared.peakHitRate,
+      weekdayReliability: weekdayReliability,
+      platformShares: platformShares,
+      hourCounts: periodHourCounts
+    )
+  }
+
+  /// Read on the most recent day (in the last fortnight) that has both stops
+  /// and logged income: that day's £/hr vs your usual for that weekday, and
+  /// whether you finished before your typical peak band.
+  @MainActor
+  private static func debrief(sorted: [NativeVisit], deliveryHits: [NativeDeliveryHit], store: OkkleStore, shiftGap: TimeInterval, cellSize: Double) -> NativeShiftDebrief? {
+    let cal = Calendar.current
+    // Income by calendar day (last 14 days).
+    let since = Date().addingTimeInterval(-14 * 86_400)
+    var incomeByDay: [Date: Double] = [:]
+    for r in store.records where r.kind == .income && r.date >= since {
+      incomeByDay[cal.startOfDay(for: r.date), default: 0] += r.amount ?? 0
+    }
+    guard !incomeByDay.isEmpty else { return nil }
+
+    // The most recent day that also has tracked stops.
+    let daysWithStops = Set(sorted.map { cal.startOfDay(for: $0.arrival) })
+    guard let day = incomeByDay.keys.filter({ daysWithStops.contains($0) }).max() else { return nil }
+
+    let dayVisits = sorted.filter { cal.isDate($0.arrival, inSameDayAs: day) }
+    let activeHours = recentActiveHours(dayVisits, since: day, shiftGap: shiftGap)
+    guard activeHours > 0.25, let income = incomeByDay[day], income > 0 else { return nil }
+    let perHour = income / activeHours
+    let weekday = cal.component(.weekday, from: day) - 1
+
+    // Average £/hr for that weekday across the fortnight.
+    var wdIncome = 0.0
+    for (d, inc) in incomeByDay where cal.component(.weekday, from: d) - 1 == weekday { wdIncome += inc }
+    var wdHours = 0.0
+    let grouped = Dictionary(grouping: sorted.filter { cal.component(.weekday, from: $0.arrival) - 1 == weekday }) { cal.startOfDay(for: $0.arrival) }
+    for (d, vs) in grouped { wdHours += recentActiveHours(vs, since: d, shiftGap: shiftGap) }
+    let weekdayAvg: Double? = wdHours > 0.25 ? wdIncome / wdHours : nil
+
+    // Did they finish before their usual peak band for that weekday?
+    let (peakBand, _) = bestBandAndZone(for: weekday, deliveryHits: deliveryHits, cellSize: cellSize)
+    let lastHour = dayVisits.map { cal.component(.hour, from: $0.arrival) }.max() ?? 0
+    let peakStart = peakBand.startHour
+    let finishedBeforePeak = peakStart != nil && lastHour < (peakStart ?? 0)
+
+    return NativeShiftDebrief(
+      weekday: weekday,
+      perHour: perHour,
+      weekdayAvgPerHour: weekdayAvg,
+      finishedBeforePeak: finishedBeforePeak,
+      peakLabel: peakBand.label
+    )
+  }
+
+  /// Real driven distance (metres) between two timestamps, summed from the
+  /// actual recorded route points of any trip covering that window — not a
+  /// straight line between the two stops. Falls back to nil when no trip
+  /// data covers the window (older data, or a stop that wasn't part of a
+  /// recorded shift/trip) so callers can fall back to a straight-line
+  /// estimate instead.
+  private static func routeMeters(from start: Date, to end: Date, trips: [NativeTrip]) -> Double? {
+    guard end > start else { return nil }
+    var total = 0.0
+    var sawSegment = false
+    for trip in trips {
+      guard trip.startedAt < end, trip.endedAt > start else { continue }
+      let inWindow = trip.points.filter { point in
+        guard let t = point.timestamp else { return false }
+        return t >= start && t <= end
+      }
+      guard inWindow.count > 1 else { continue }
+      sawSegment = true
+      for i in 1..<inWindow.count {
+        let a = CLLocation(latitude: inWindow[i - 1].latitude, longitude: inWindow[i - 1].longitude)
+        let b = CLLocation(latitude: inWindow[i].latitude, longitude: inWindow[i].longitude)
+        total += b.distance(from: a)
+      }
+    }
+    return sawSegment ? total : nil
+  }
+
+  private static func recentActiveHours(_ sorted: [NativeVisit], since: Date, shiftGap: TimeInterval) -> Double {
+    var seconds = 0.0
+    for k in 1..<max(sorted.count, 1) {
+      let prev = sorted[k - 1], cur = sorted[k]
+      guard cur.arrival >= since else { continue }
+      let gap = cur.arrival.timeIntervalSince(prev.departure)
+      if gap < shiftGap { seconds += max(0, gap) + prev.dwell }
+    }
+    return seconds / 3600
+  }
+}
+
+typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date)
+
+/// The busiest time-band and roughly-where for one weekday.
+func bestBandAndZone(for weekday: Int, deliveryHits: [NativeDeliveryHit], cellSize: Double) -> (band: NativeTimeFilter, zone: CLLocationCoordinate2D?) {
+  var bandCounts: [NativeTimeFilter: Int] = [:]
+  var cells: [String: (coordinate: CLLocationCoordinate2D, count: Int)] = [:]
+  for hit in deliveryHits where hit.weekday == weekday {
+    bandCounts[hit.band, default: 0] += 1
+    let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
+    if let existing = cells[key] {
+      cells[key] = (existing.coordinate, existing.count + 1)
+    } else {
+      cells[key] = (hit.coordinate, 1)
+    }
+  }
+  let band = bandCounts.max { $0.value < $1.value }?.key ?? .afternoon
+  let zone = cells.values.max { $0.count < $1.count }?.coordinate
+  return (band, zone)
+}
+
+/// Contiguous runs of "busy" hours (≥ 40% of the day's peak), each a drive window.
+func nativeHourWindows(from hourCounts: [Int]) -> [NativeHourWindow] {
+  let peak = hourCounts.max() ?? 0
+  guard peak > 0 else { return [] }
+  let threshold = max(1, Int((Double(peak) * 0.4).rounded(.up)))
+  var windows: [NativeHourWindow] = []
+  var start: Int?
+  var runCount = 0
+  for h in 0..<24 {
+    if hourCounts[h] >= threshold {
+      if start == nil { start = h; runCount = 0 }
+      runCount += hourCounts[h]
+    } else if let s = start {
+      windows.append(NativeHourWindow(startHour: s, endHour: h - 1, count: runCount))
+      start = nil
+    }
+  }
+  if let s = start { windows.append(NativeHourWindow(startHour: s, endHour: 23, count: runCount)) }
+  return windows
+}
+
+/// The widest quiet gap between two drive windows — the natural break.
+func nativeBreakWindow(from drives: [NativeHourWindow]) -> NativeHourWindow? {
+  guard drives.count >= 2 else { return nil }
+  var best: NativeHourWindow?
+  for i in 1..<drives.count {
+    let gapStart = drives[i - 1].endHour + 1
+    let gapEnd = drives[i].startHour - 1
+    guard gapEnd >= gapStart else { continue }
+    let length = gapEnd - gapStart + 1
+    if best == nil || length > (best!.endHour - best!.startHour + 1) {
+      best = NativeHourWindow(startHour: gapStart, endHour: gapEnd, count: 0)
+    }
+  }
+  return best
+}

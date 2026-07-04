@@ -1,11 +1,7 @@
 import CoreLocation
-import EventKit
 import MapKit
-import PhotosUI
-import SQLite3
 import SwiftUI
 import UIKit
-import Vision
 struct NativeHistoryDetailSheet: View {
   let item: NativeHistoryItem
   let onEdit: () -> Void

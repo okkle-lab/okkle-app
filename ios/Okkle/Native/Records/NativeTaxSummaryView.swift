@@ -1,11 +1,4 @@
-import CoreLocation
-import EventKit
-import MapKit
-import PhotosUI
-import SQLite3
 import SwiftUI
-import UIKit
-import Vision
 
 struct NativeTaxDetailView: View {
   var onClose: (() -> Void)? = nil
@@ -46,7 +39,7 @@ struct NativeTaxDetailView: View {
             icon: "chart.line.uptrend.xyaxis",
             title: "Tax saved this year",
             subtitle: "From \(miles(savings.miles)) of mileage",
-            value: headlineGbp(savings.taxSaved)
+            value: gbp(savings.taxSaved)
           ) {
             detail = .saved
           }
@@ -57,7 +50,7 @@ struct NativeTaxDetailView: View {
             icon: "briefcase.fill",
             title: "This year",
             subtitle: "Turnover, expenses & profit",
-            value: headlineGbp(tax.profit)
+            value: gbp(tax.profit)
           ) {
             detail = .year
           }
@@ -167,7 +160,7 @@ private struct NativeTaxSetAsideCard: View {
             .foregroundStyle(OkkleColor.muted)
         }
 
-        Text(headlineGbp(tax.totalDue))
+        Text(gbp(tax.totalDue))
           .font(.system(size: 54, weight: .heavy, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
           .lineLimit(1)
@@ -361,11 +354,11 @@ private struct NativeTaxBillBreakdown: View {
     let tax = store.taxPosition
     NativeGlassCard {
       VStack(spacing: 12) {
-        NativeTaxBreakdownHeader(title: "Set aside", value: headlineGbp(tax.totalDue), symbol: "shield.lefthalf.filled")
-        NativeTaxDetailRow("Income tax", headlineGbp(tax.incomeTax))
-        NativeTaxDetailRow("Class 4 NIC", headlineGbp(tax.class4))
-        NativeTaxDetailRow("Payment on account", headlineGbp(tax.paymentOnAccount))
-        NativeTaxDetailRow("Taxable profit", headlineGbp(tax.profit))
+        NativeTaxBreakdownHeader(title: "Set aside", value: gbp(tax.totalDue), symbol: "shield.lefthalf.filled")
+        NativeTaxDetailRow("Income tax", gbp(tax.incomeTax))
+        NativeTaxDetailRow("Class 4 NIC", gbp(tax.class4))
+        NativeTaxDetailRow("Payment on account", gbp(tax.paymentOnAccount))
+        NativeTaxDetailRow("Taxable profit", gbp(tax.profit))
         NativeTaxDetailRow("Income tax band", store.settings.incomeBracket.label)
       }
     }
@@ -379,11 +372,11 @@ private struct NativeTaxSavedBreakdown: View {
     let savings = NativeProgressSummary.mileageTaxSavings(store: store, period: .yearToDate)
     NativeGlassCard {
       VStack(spacing: 12) {
-        NativeTaxBreakdownHeader(title: "Tax saved this year", value: headlineGbp(savings.taxSaved), symbol: "chart.line.uptrend.xyaxis")
+        NativeTaxBreakdownHeader(title: "Tax saved this year", value: gbp(savings.taxSaved), symbol: "chart.line.uptrend.xyaxis")
         NativeTaxDetailRow("Business miles", miles(savings.miles))
-        NativeTaxDetailRow("Mileage deduction", headlineGbp(savings.mileageDeduction))
+        NativeTaxDetailRow("Mileage deduction", gbp(savings.mileageDeduction))
         NativeTaxDetailRow("Income tax band", store.settings.incomeBracket.label)
-        NativeTaxDetailRow("Estimated saving", headlineGbp(savings.taxSaved), emphasized: true)
+        NativeTaxDetailRow("Estimated saving", gbp(savings.taxSaved), emphasized: true)
       }
     }
   }
@@ -396,11 +389,11 @@ private struct NativeTaxYearBreakdown: View {
     let tax = store.taxPosition
     NativeGlassCard {
       VStack(spacing: 12) {
-        NativeTaxBreakdownHeader(title: "This year", value: headlineGbp(tax.profit), symbol: "briefcase.fill")
-        NativeTaxDetailRow("Turnover", headlineGbp(tax.turnover))
-        NativeTaxDetailRow("Logged expenses", headlineGbp(tax.expenses))
-        NativeTaxDetailRow("Business profit", headlineGbp(tax.businessProfit))
-        NativeTaxDetailRow("Deduction applied", headlineGbp(tax.deductionApplied))
+        NativeTaxBreakdownHeader(title: "This year", value: gbp(tax.profit), symbol: "briefcase.fill")
+        NativeTaxDetailRow("Turnover", gbp(tax.turnover))
+        NativeTaxDetailRow("Logged expenses", gbp(tax.expenses))
+        NativeTaxDetailRow("Business profit", gbp(tax.businessProfit))
+        NativeTaxDetailRow("Deduction applied", gbp(tax.deductionApplied))
         NativeTaxDetailRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
       }
     }
@@ -472,7 +465,7 @@ struct NativeTaxSavedPanel: View {
       }
       .foregroundStyle(OkkleColor.muted)
 
-      Text(headlineGbp(savings.taxSaved))
+      Text(gbp(savings.taxSaved))
         .font(.system(size: 40, weight: .heavy, design: .rounded))
         .foregroundStyle(OkkleColor.ink)
         .lineLimit(1)
@@ -536,7 +529,7 @@ struct NativeTaxSummaryView: View {
           Label("Estimated tax due", systemImage: "shield.lefthalf.filled")
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(OkkleColor.brandDark)
-          Text(headlineGbp(tax.totalDue))
+          Text(gbp(tax.totalDue))
             .font(.system(size: 52, weight: .heavy, design: .rounded))
           Text("Estimate only, not tax advice. Built from your logged earnings, expenses, mileage and selected tax band.")
             .font(.system(size: 14, weight: .medium))
@@ -545,20 +538,20 @@ struct NativeTaxSummaryView: View {
       }
 
       HStack(spacing: 12) {
-        taxMetricPanel(title: "Turnover", value: headlineGbp(tax.turnover), symbol: "sterlingsign.circle.fill", color: .green)
-        taxMetricPanel(title: "Logged expenses", value: headlineGbp(tax.expenses), symbol: "minus.circle.fill", color: OkkleColor.amber)
+        taxMetricPanel(title: "Turnover", value: gbp(tax.turnover), symbol: "sterlingsign.circle.fill", color: .green)
+        taxMetricPanel(title: "Logged expenses", value: gbp(tax.expenses), symbol: "minus.circle.fill", color: OkkleColor.amber)
       }
 
       NativeGlassCard {
         VStack(spacing: 12) {
-          taxRow("Business profit", headlineGbp(tax.businessProfit))
-          taxRow("Deduction applied", headlineGbp(tax.deductionApplied))
-          taxRow("Taxable profit", headlineGbp(tax.profit))
+          taxRow("Business profit", gbp(tax.businessProfit))
+          taxRow("Deduction applied", gbp(tax.deductionApplied))
+          taxRow("Taxable profit", gbp(tax.profit))
           taxRow("Income tax band", store.settings.incomeBracket.label)
-          taxRow("Other income", headlineGbp(store.settings.otherIncome))
-          taxRow("Income tax", headlineGbp(tax.incomeTax))
-          taxRow("Class 4 NIC", headlineGbp(tax.class4))
-          taxRow("Payment on account", headlineGbp(tax.paymentOnAccount))
+          taxRow("Other income", gbp(store.settings.otherIncome))
+          taxRow("Income tax", gbp(tax.incomeTax))
+          taxRow("Class 4 NIC", gbp(tax.class4))
+          taxRow("Payment on account", gbp(tax.paymentOnAccount))
           taxRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
         }
       }

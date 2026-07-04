@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import UIKit
 @MainActor
 final class OkkleStore: ObservableObject {
   static let shared = OkkleStore()
@@ -12,18 +13,35 @@ final class OkkleStore: ObservableObject {
   }
 
   @Published var settings = NativeSettings() { didSet { scheduleSave() } }
-  @Published var records: [NativeRecord] = [] { didSet { scheduleSave() } }
-  @Published var trips: [NativeTrip] = [] { didSet { scheduleSave() } }
+  @Published var records: [NativeRecord] = [] { didSet { cachedHistory = nil; scheduleSave() } }
+  @Published var trips: [NativeTrip] = [] { didSet { cachedHistory = nil; scheduleSave() } }
 
   private let key = "uk.okkle.native.swiftui.snapshot.v1"
   private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v3"
   private let saveDebounceInterval: TimeInterval = 0.45
   private var isLoading = false
   private var pendingSave: DispatchWorkItem?
+  private var cachedHistory: [NativeHistoryItem]?
+  // The legacy SQLite mirror only exists so an older build can recover the
+  // data; rebuilding it on every save is wasted work, so it's deferred to
+  // the next trip into the background.
+  private var legacyExportNeeded = false
+  private let persistenceQueue = DispatchQueue(label: "uk.okkle.native.snapshot-persist", qos: .utility)
+
+  private static let snapshotFileURL: URL = {
+    let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    return base.appendingPathComponent("Okkle", isDirectory: true).appendingPathComponent("snapshot.json")
+  }()
 
   init() {
     load()
     scheduleLegacyImport()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appDidEnterBackground),
+      name: UIApplication.didEnterBackgroundNotification,
+      object: nil
+    )
   }
 
   func load() {
@@ -34,19 +52,32 @@ final class OkkleStore: ObservableObject {
       if shouldPersist { save() }
     }
 
-    if let data = UserDefaults.standard.data(forKey: key) {
+    // Snapshots moved from UserDefaults to a file in Application Support;
+    // the defaults read is the migration path, cleaned up on the next save.
+    if let data = (try? Data(contentsOf: Self.snapshotFileURL)) ?? UserDefaults.standard.data(forKey: key) {
       do {
         let snapshot = try JSONDecoder().decode(NativeSnapshot.self, from: data)
         settings = snapshot.settings
         records = snapshot.records
         trips = snapshot.trips
       } catch {
+        try? FileManager.default.removeItem(at: Self.snapshotFileURL)
         UserDefaults.standard.removeObject(forKey: key)
       }
     }
 
     if normalizeOnboardingState() {
       shouldPersist = true
+    }
+  }
+
+  @objc private func appDidEnterBackground() {
+    if pendingSave != nil { save() }
+    guard legacyExportNeeded else { return }
+    legacyExportNeeded = false
+    let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
+    persistenceQueue.async {
+      NativeLegacySQLiteExporter.write(snapshot: snapshot)
     }
   }
 
@@ -91,11 +122,21 @@ final class OkkleStore: ObservableObject {
 
   private func persistSnapshot() {
     let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
-    if let data = try? JSONEncoder().encode(snapshot) {
-      UserDefaults.standard.set(data, forKey: key)
-    }
-    DispatchQueue.global(qos: .utility).async {
-      NativeLegacySQLiteExporter.write(snapshot: snapshot)
+    legacyExportNeeded = true
+    let url = Self.snapshotFileURL
+    let defaultsKey = key
+    persistenceQueue.async {
+      guard let data = try? JSONEncoder().encode(snapshot) else { return }
+      try? FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      do {
+        try data.write(to: url, options: .atomic)
+        // Only drop the old UserDefaults copy once the file write succeeded,
+        // so a migration interrupted mid-flight loses nothing.
+        UserDefaults.standard.removeObject(forKey: defaultsKey)
+      } catch {}
     }
   }
 
@@ -282,9 +323,12 @@ final class OkkleStore: ObservableObject {
   }
 
   var history: [NativeHistoryItem] {
+    if let cachedHistory { return cachedHistory }
     let tripItems = trips.map(NativeHistoryItem.trip)
     let recordItems = records.map(NativeHistoryItem.record)
-    return (tripItems + recordItems).sorted { $0.date > $1.date }
+    let items = (tripItems + recordItems).sorted { $0.date > $1.date }
+    cachedHistory = items
+    return items
   }
 
   func periodBounds(for date: Date, period: NativePayPeriod) -> (start: Date, end: Date) {

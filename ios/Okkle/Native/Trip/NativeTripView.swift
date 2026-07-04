@@ -1,11 +1,6 @@
-import CoreLocation
-import EventKit
 import MapKit
-import PhotosUI
-import SQLite3
 import SwiftUI
 import UIKit
-import Vision
 
 private struct NativeTopRoundedRectangle: Shape {
   let radius: CGFloat

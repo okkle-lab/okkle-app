@@ -1,12 +1,6 @@
 import CoreLocation
-import EventKit
 import MapKit
-import PhotosUI
-import SQLite3
 import SwiftUI
-import UIKit
-import UniformTypeIdentifiers
-import Vision
 enum NativeOnboardingStep: Int, CaseIterable {
   case welcome
   case name

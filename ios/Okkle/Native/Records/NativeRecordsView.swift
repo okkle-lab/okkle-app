@@ -1,12 +1,6 @@
-import CoreLocation
-import EventKit
-import MapKit
-import PhotosUI
-import SQLite3
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
-import Vision
 struct NativeRecordsView: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var mode: RecordsMode

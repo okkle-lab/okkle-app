@@ -1,11 +1,4 @@
-import CoreLocation
-import EventKit
-import MapKit
-import PhotosUI
-import SQLite3
 import SwiftUI
-import UIKit
-import Vision
 
 struct NativeProgressView: View {
   @Environment(\.nativeViewportHeight) private var nativeViewportHeight
@@ -149,7 +142,7 @@ struct NativeProgressView: View {
         }
         .foregroundStyle(OkkleColor.muted)
 
-        Text(headlineGbp(taxSavings.taxSaved))
+        Text(gbp(taxSavings.taxSaved))
           .font(.system(size: 40, weight: .heavy, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
           .lineLimit(1)
@@ -701,7 +694,7 @@ private struct NativeTaxSavedBreakdownView: View {
               .font(.system(size: 15, weight: .bold))
               .foregroundStyle(OkkleColor.muted)
 
-            Text(headlineGbp(savings.taxSaved))
+            Text(gbp(savings.taxSaved))
               .font(.system(size: 48, weight: .heavy, design: .rounded))
               .foregroundStyle(OkkleColor.ink)
               .lineLimit(1)
@@ -717,11 +710,11 @@ private struct NativeTaxSavedBreakdownView: View {
           VStack(spacing: 12) {
             breakdownRow("Period", periodDetail)
             breakdownRow("Business miles", miles(savings.miles))
-            breakdownRow("Mileage deduction", headlineGbp(savings.mileageDeduction))
+            breakdownRow("Mileage deduction", gbp(savings.mileageDeduction))
             breakdownRow("Tax band", store.settings.incomeBracket.label)
             breakdownRow("Tax rate used", taxRateLabel)
             Divider()
-            breakdownRow("Estimated saving", headlineGbp(savings.taxSaved), emphasized: true)
+            breakdownRow("Estimated saving", gbp(savings.taxSaved), emphasized: true)
           }
         }
 
