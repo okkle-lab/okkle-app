@@ -1522,7 +1522,7 @@ struct NativeWeeklyInsightPanel: View {
 
   private func stat(_ title: String, _ value: String) -> some View {
     VStack(alignment: .leading, spacing: 3) {
-      nativeStatValue(value)
+      nativeStatValue(value, size: .secondary)
       Text(title)
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(OkkleColor.muted)
@@ -1567,18 +1567,25 @@ private func nativeInsightKicker(_ text: String) -> some View {
     .foregroundStyle(OkkleColor.muted)
 }
 
-/// The one and only number style for every Insights headline figure — earned,
-/// tax relief, est. rate, unpaid miles. Every one of them routes through this
-/// single Text so there is no way for them to drift out of sync again.
-private func nativeStatValue(_ value: String, color: Color = OkkleColor.ink) -> some View {
+/// The one number style every Insights figure routes through — same font,
+/// weight and no-shrink behaviour everywhere, just two sizes: `.hero` for the
+/// one headline figure a card leads with (Earned, Tax relief), `.secondary`
+/// for supporting stats underneath it (Est. rate, Unpaid miles) — a deliberate
+/// hierarchy, not the accidental kind this used to have.
+private enum NativeStatSize {
+  case hero, secondary
+  var points: CGFloat { self == .hero ? 42 : 30 }
+}
+
+private func nativeStatValue(_ value: String, size: NativeStatSize = .hero, color: Color = OkkleColor.ink) -> some View {
   Text(value)
-    .font(.system(size: 42, weight: .bold, design: .rounded))
+    .font(.system(size: size.points, weight: .bold, design: .rounded))
     .foregroundStyle(color)
     .lineLimit(1)
     // No minimumScaleFactor: that let this shrink under width pressure while
     // sibling stats elsewhere didn't need to, which is exactly what made
-    // supposedly-identical 42pt figures render at different sizes. This one
-    // always renders at its true, fixed intrinsic size — never auto-shrunk.
+    // supposedly-identical figures render at different sizes. This always
+    // renders at its true, fixed intrinsic size — never auto-shrunk.
     .fixedSize(horizontal: true, vertical: false)
 }
 
@@ -1604,7 +1611,7 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color
 /// than the headline figures above them despite requesting the same size.
 private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View {
   VStack(alignment: .leading, spacing: 3) {
-    nativeStatValue(value)
+    nativeStatValue(value, size: .secondary)
     Text(title)
       .font(.system(size: 12, weight: .medium))
       .foregroundStyle(OkkleColor.muted)
