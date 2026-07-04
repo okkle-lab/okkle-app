@@ -64,6 +64,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   @Published private(set) var visits: [NativeVisit] = []
   @Published private(set) var shiftPhase: NativeAutoShiftPhase = .idle
   @Published private(set) var lastAutoShiftID: UUID?
+  @Published private(set) var liveShiftVehicle: NativeVehicle = .car
+  @Published private(set) var liveShiftMiles: Double = 0
+  @Published private(set) var liveShiftStartedAt: Date?
+  @Published private(set) var liveShiftPoints: [RoutePoint] = []
 
   private let manager = CLLocationManager()
   private let motionManager = CMMotionActivityManager()
@@ -223,6 +227,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftStartedAt = Date()
     shiftLastLocation = nil
     shiftLastRoutePointLocation = nil
+    liveShiftVehicle = store?.settings.defaultVehicle ?? .car
+    publishLiveShift()
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
   }
@@ -255,6 +261,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftLastRoutePointLocation = nil
     stationarySince = nil
     stationaryCoordinate = nil
+    publishLiveShift()
   }
 
   // MARK: Continuous route recording (mirrors NativeTripSession's approach)
@@ -270,6 +277,13 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       appendShiftRoutePoint(for: location)
       if shiftPhase == .stationaryPending { stationaryCoordinate = location.coordinate }
     }
+    publishLiveShift()
+  }
+
+  private func publishLiveShift() {
+    liveShiftMiles = shiftMiles
+    liveShiftStartedAt = shiftStartedAt
+    liveShiftPoints = shiftPoints
   }
 
   private func shouldUseShiftLocation(_ location: CLLocation) -> Bool {

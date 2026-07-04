@@ -17,6 +17,7 @@ enum NativeTab: String, CaseIterable, Hashable {
 struct OkkleNativeRootView: View {
   @StateObject private var store = OkkleStore.shared
   @ObservedObject private var notificationRouter = NativeNotificationRouter.shared
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var selectedTab: NativeTab = .trip
 
   var body: some View {
@@ -33,6 +34,7 @@ struct OkkleNativeRootView: View {
       NativeAutoTrackEngine.shared.configure(store: store)
       NativePreShiftNotifier.refresh(store: store)
       routeWidgetTripRequestIfNeeded()
+      routeAutomaticTripIfNeeded()
     }
     .sheet(isPresented: Binding(
       get: { notificationRouter.pendingAutoShiftReviewTripID != nil },
@@ -58,11 +60,15 @@ struct OkkleNativeRootView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
+      routeAutomaticTripIfNeeded()
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       routeWidgetTripRequestIfNeeded()
+    }
+    .onChange(of: autoTrack.shiftPhase) { _ in
+      routeAutomaticTripIfNeeded()
     }
   }
 
@@ -104,8 +110,7 @@ struct OkkleNativeRootView: View {
       )
         .environmentObject(store)
         .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
-        .presentationCornerRadius(36)
+        .presentationDragIndicator(.visible)
     }
   }
 
@@ -114,6 +119,12 @@ struct OkkleNativeRootView: View {
     if NativeTripWidgetStore.hasPendingAction {
       selectedTab = .trip
     }
+  }
+
+  private func routeAutomaticTripIfNeeded() {
+    guard store.settings.hasCompletedOnboarding,
+          autoTrack.shiftPhase != .idle else { return }
+    selectedTab = .trip
   }
 }
 

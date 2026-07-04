@@ -177,38 +177,25 @@ private struct NativeMedalPreviewPanelContent: View {
     Array(inProgress.prefix(3))
   }
 
+  private var unlockedTitle: String {
+    "Unlocked \(progressPeriod.medalScopeLabel)"
+  }
+
+  private var inProgressTitle: String {
+    "In progress \(progressPeriod.medalScopeLabel)"
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      HStack(alignment: .center) {
-        VStack(alignment: .leading, spacing: 3) {
-          Text("Medals")
-            .font(.system(size: 18, weight: .heavy, design: .rounded))
-            .foregroundStyle(OkkleColor.ink)
-          Text("Unlocked and in progress \(progressPeriod.medalScopeLabel)")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-        }
-        Spacer()
-        Button(action: onOpen) {
-          HStack(spacing: 6) {
-            Image(systemName: "chevron.right")
-              .font(.system(size: 16, weight: .heavy))
-            Text("See all")
-              .font(.system(size: 14, weight: .heavy))
-          }
-          .foregroundStyle(OkkleColor.brandDark)
-        }
-        .buttonStyle(.plain)
-      }
-
       if unlockedPreview.isEmpty && inProgressPreview.isEmpty {
         NativeMedalEmptyMessage(scope: progressPeriod.medalScopeLabel)
       } else {
         if !unlockedPreview.isEmpty {
           VStack(alignment: .leading, spacing: 10) {
-            Text("Unlocked")
-              .font(.system(size: 13, weight: .heavy))
-              .foregroundStyle(OkkleColor.ink)
+            Text(unlockedTitle)
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(.secondary)
+              .textCase(.uppercase)
 
             HStack(alignment: .top, spacing: 14) {
               ForEach(unlockedPreview) { achievement in
@@ -220,9 +207,10 @@ private struct NativeMedalPreviewPanelContent: View {
 
         if !inProgressPreview.isEmpty {
           VStack(alignment: .leading, spacing: 12) {
-            Text("In progress")
-              .font(.system(size: 13, weight: .heavy))
-              .foregroundStyle(OkkleColor.ink)
+            Text(inProgressTitle)
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(.secondary)
+              .textCase(.uppercase)
 
             VStack(alignment: .leading, spacing: 14) {
               ForEach(inProgressPreview) { achievement in
@@ -232,6 +220,22 @@ private struct NativeMedalPreviewPanelContent: View {
           }
         }
       }
+
+      Divider()
+
+      Button(action: onOpen) {
+        HStack(spacing: 12) {
+          Text("See all medals")
+            .font(.body)
+            .foregroundStyle(.primary)
+          Spacer()
+          Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
     }
   }
 }
@@ -243,8 +247,8 @@ private struct NativeMedalMiniTile: View {
     VStack(spacing: 7) {
       NativeMedalIcon(achievement: achievement, size: 56, rendering: .compact)
       Text(achievement.label)
-        .font(.system(size: 11, weight: .heavy))
-        .foregroundStyle(OkkleColor.ink)
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.primary)
         .multilineTextAlignment(.center)
         .lineLimit(2)
         .minimumScaleFactor(0.74)
@@ -412,7 +416,7 @@ struct NativeAchievementsView: View {
   }
 
   private var achievements: [NativeMedalAchievement] {
-    NativeMedalEngine.achievements(store: store, period: .allTime)
+    NativeMedalEngine.achievements(store: store, period: .weekly)
   }
 
   var body: some View {
@@ -426,14 +430,14 @@ struct NativeAchievementsView: View {
           .padding(16)
           .okkleCard(cornerRadius: 26)
 
-        NativeMedalPreviewPanel(achievements: achievements, progressPeriod: .allTime) {
+        NativeMedalPreviewPanel(achievements: achievements, progressPeriod: .weekly) {
           showsMedalRoom = true
         }
         .okkleCard(cornerRadius: 26)
       }
     }
     .fullScreenCover(isPresented: $showsMedalRoom) {
-      NativeMedalsView(initialPeriod: .allTime)
+      NativeMedalsView(initialPeriod: .weekly)
         .environmentObject(store)
     }
   }
@@ -643,11 +647,12 @@ private struct NativeMedalProgressRow: View {
       VStack(alignment: .leading, spacing: 5) {
         HStack {
           Text(achievement.label)
-            .font(.system(size: 13, weight: .heavy))
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
           Spacer()
           Text(progressText)
-            .font(.system(size: 13, weight: .heavy))
-            .foregroundStyle(OkkleColor.muted)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
         }
         NativeThinProgressBar(progress: achievement.progress, tint: OkkleColor.muted.opacity(0.78))
       }

@@ -24,11 +24,13 @@ struct NativeTripView: View {
   @Environment(\.colorScheme) private var colorScheme
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var session: NativeTripSession
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @Binding private var selectedTab: NativeTab
   @State private var selectedVehicle: NativeVehicle = .car
   @State private var completedTrip: NativeTrip?
   @State private var infoCard = 0
   @State private var showProfile = false
+  @State private var now = Date()
 
   init(session: NativeTripSession = .shared, selectedTab: Binding<NativeTab> = .constant(.trip)) {
     self.session = session
@@ -75,6 +77,7 @@ struct NativeTripView: View {
     }
     .onAppear {
       selectedVehicle = store.settings.defaultVehicle
+      now = Date()
       applyWidgetRequestIfNeeded()
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
@@ -82,6 +85,10 @@ struct NativeTripView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       applyWidgetRequestIfNeeded()
+    }
+    .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { tick in
+      guard shouldShowTrackingMap else { return }
+      now = tick
     }
     // The live trip map owns the screen while recording or reviewing the end
     // state; bring the tab bar back on the normal start screen.
@@ -329,7 +336,7 @@ struct NativeTripView: View {
   private var trackingMapScreen: some View {
     GeometryReader { proxy in
       ZStack(alignment: .bottom) {
-        NativeRouteMapView(points: session.points, showsEndMarker: completedTrip != nil)
+        NativeRouteMapView(points: trackingPoints, showsEndMarker: completedTrip != nil)
           .ignoresSafeArea()
           .overlay(alignment: .top) {
             LinearGradient(
@@ -363,7 +370,7 @@ struct NativeTripView: View {
       Label(trackingStatusTitle, systemImage: trackingStatusSymbol)
         .font(.system(size: 14, weight: .bold))
       Spacer()
-      Text(session.vehicle.label)
+      Text(trackingVehicle.label)
         .font(.system(size: 13, weight: .semibold))
     }
     .foregroundStyle(trackingPrimaryText)
@@ -381,7 +388,13 @@ struct NativeTripView: View {
           Text(trackingStatusTitle)
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(trackingStatusColor)
-          Text(miles(session.miles))
+          if isAutomaticTrackingVisible {
+            Text("Based on movement and work schedule.")
+              .font(.system(size: 12, weight: .semibold))
+              .foregroundStyle(trackingSecondaryText)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          Text(miles(trackingMiles))
             .font(.system(size: 42, weight: .heavy, design: .rounded))
             .foregroundStyle(trackingPrimaryText)
             .minimumScaleFactor(0.62)
@@ -391,7 +404,7 @@ struct NativeTripView: View {
           Text("Elapsed")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(trackingSecondaryText)
-          Text(elapsedLabel(session.elapsed))
+          Text(elapsedLabel(trackingElapsed))
             .font(.system(size: 24, weight: .bold, design: .rounded))
             .foregroundStyle(trackingPrimaryText)
         }
@@ -399,13 +412,13 @@ struct NativeTripView: View {
 
       trackingInfoCarousel
 
-      if session.points.isEmpty {
+      if trackingPoints.isEmpty {
         Label("Waiting for GPS signal. Your route will draw here once location points arrive.", systemImage: "location.magnifyingglass")
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(trackingSecondaryText)
       }
 
-      if let message = session.permissionMessage {
+      if let message = trackingPermissionMessage {
         Label(message, systemImage: "location.slash")
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(OkkleColor.red)
@@ -413,7 +426,7 @@ struct NativeTripView: View {
           .background(OkkleColor.red.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
       }
 
-      if completedTrip == nil {
+      if completedTrip == nil && !isAutomaticTrackingVisible {
         trackingActionButtons
       }
     }
@@ -521,7 +534,12 @@ struct NativeTripView: View {
 
   private func liveCoachTip() -> (symbol: String, color: Color, title: String, detail: String) {
     let hour = Calendar.current.component(.hour, from: Date())
-    let elapsedHours = session.elapsed / 3600
+    if isAutomaticTrackingVisible {
+      return ("location.north.line.fill", OkkleColor.brand, "Automatically tracking",
+              "Based on movement and work schedule.")
+    }
+
+    let elapsedHours = trackingElapsed / 3600
     let shift = NativeShiftInsights.build(visits: NativeAutoTrackEngine.shared.visits, store: store)
     let plan = shift.todayPlan
     let area = plan?.zone.flatMap { NativeAreaNamer.shared.name(for: $0) }
@@ -584,7 +602,7 @@ struct NativeTripView: View {
 
         Spacer(minLength: 12)
 
-        Text(gbp(store.calcDeduction(miles: session.miles, vehicle: session.vehicle), whole: true))
+        Text(gbp(store.calcDeduction(miles: trackingMiles, vehicle: trackingVehicle), whole: true))
           .font(.system(size: 20, weight: .bold, design: .rounded))
           .foregroundStyle(trackingPrimaryText)
       }
@@ -592,6 +610,9 @@ struct NativeTripView: View {
   }
 
   private var trackingStatusTitle: String {
+    if isAutomaticTrackingVisible {
+      return "Automatically tracking"
+    }
     switch session.phase {
     case .live:
       return "Tracking trip"
@@ -603,6 +624,9 @@ struct NativeTripView: View {
   }
 
   private var trackingStatusSymbol: String {
+    if isAutomaticTrackingVisible {
+      return autoTrack.shiftPhase == .stationaryPending ? "pause.circle.fill" : "location.north.line.fill"
+    }
     switch session.phase {
     case .live:
       return "location.north.fill"
@@ -614,7 +638,10 @@ struct NativeTripView: View {
   }
 
   private var trackingStatusColor: Color {
-    session.phase == .paused ? OkkleColor.blue : OkkleColor.brand
+    if isAutomaticTrackingVisible {
+      return OkkleColor.brand
+    }
+    return session.phase == .paused ? OkkleColor.blue : OkkleColor.brand
   }
 
   private var trackingGlassMaterial: Material {
@@ -659,7 +686,35 @@ struct NativeTripView: View {
   }
 
   private var shouldShowTrackingMap: Bool {
-    isTracking || completedTrip != nil
+    isTracking || isAutomaticTrackingVisible || completedTrip != nil
+  }
+
+  private var isAutomaticTrackingVisible: Bool {
+    completedTrip == nil && session.phase == .setup && autoTrack.shiftPhase != .idle
+  }
+
+  private var trackingPoints: [RoutePoint] {
+    isAutomaticTrackingVisible ? autoTrack.liveShiftPoints : session.points
+  }
+
+  private var trackingMiles: Double {
+    isAutomaticTrackingVisible ? autoTrack.liveShiftMiles : session.miles
+  }
+
+  private var trackingVehicle: NativeVehicle {
+    isAutomaticTrackingVisible ? autoTrack.liveShiftVehicle : session.vehicle
+  }
+
+  private var trackingElapsed: TimeInterval {
+    if isAutomaticTrackingVisible {
+      guard let startedAt = autoTrack.liveShiftStartedAt else { return 0 }
+      return max(0, now.timeIntervalSince(startedAt))
+    }
+    return session.elapsed
+  }
+
+  private var trackingPermissionMessage: String? {
+    isAutomaticTrackingVisible ? nil : session.permissionMessage
   }
 
   private func finishTripForReview() {

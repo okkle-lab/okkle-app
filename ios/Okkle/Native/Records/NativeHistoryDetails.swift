@@ -671,9 +671,26 @@ struct NativeTripEditSheet: View {
   }
 }
 
+struct NativeRouteMapStop: Identifiable {
+  enum Kind {
+    case pickup
+    case dropoff
+    case other
+  }
+
+  let id: UUID
+  let coordinate: CLLocationCoordinate2D
+  let title: String
+  let subtitle: String?
+  let kind: Kind
+  let glyphText: String?
+}
+
 struct NativeRouteMapView: UIViewRepresentable {
   let points: [RoutePoint]
+  var stops: [NativeRouteMapStop] = []
   var showsEndMarker = true
+  var isInteractive = false
 
   func makeCoordinator() -> Coordinator {
     Coordinator()
@@ -682,13 +699,16 @@ struct NativeRouteMapView: UIViewRepresentable {
   func makeUIView(context: Context) -> MKMapView {
     let mapView = MKMapView()
     mapView.delegate = context.coordinator
-    mapView.isUserInteractionEnabled = false
+    mapView.isUserInteractionEnabled = isInteractive
     mapView.pointOfInterestFilter = .excludingAll
     mapView.showsCompass = false
+    mapView.showsScale = isInteractive
     return mapView
   }
 
   func updateUIView(_ mapView: MKMapView, context: Context) {
+    mapView.isUserInteractionEnabled = isInteractive
+    mapView.showsScale = isInteractive
     mapView.removeOverlays(mapView.overlays)
     mapView.removeAnnotations(mapView.annotations)
 
@@ -701,28 +721,53 @@ struct NativeRouteMapView: UIViewRepresentable {
       return
     }
 
-    let startAnnotation = MKPointAnnotation()
-    startAnnotation.coordinate = first
-    startAnnotation.title = "Start"
-    mapView.addAnnotation(startAnnotation)
+    mapView.addAnnotation(NativeRouteMapAnnotation(
+      coordinate: first,
+      title: "Start",
+      subtitle: nil,
+      kind: .start,
+      glyphText: nil
+    ))
+
+    stops.forEach { stop in
+      mapView.addAnnotation(NativeRouteMapAnnotation(
+        coordinate: stop.coordinate,
+        title: stop.title,
+        subtitle: stop.subtitle,
+        kind: NativeRouteMapAnnotation.Kind(stop.kind),
+        glyphText: stop.glyphText
+      ))
+    }
 
     if let last = coordinates.last, coordinates.count > 1 {
-      let endAnnotation = MKPointAnnotation()
-      endAnnotation.coordinate = last
-      endAnnotation.title = "End"
       if showsEndMarker {
-        mapView.addAnnotation(endAnnotation)
+        mapView.addAnnotation(NativeRouteMapAnnotation(
+          coordinate: last,
+          title: "End",
+          subtitle: nil,
+          kind: .end,
+          glyphText: nil
+        ))
       }
 
       let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
       mapView.addOverlay(polyline)
       mapView.setVisibleMapRect(
-        polyline.boundingMapRect,
+        visibleMapRect(routeCoordinates: coordinates, stopCoordinates: stops.map(\.coordinate)),
         edgePadding: UIEdgeInsets(top: 38, left: 30, bottom: 38, right: 30),
         animated: false
       )
     } else {
       mapView.setRegion(MKCoordinateRegion(center: first, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)), animated: false)
+    }
+  }
+
+  private func visibleMapRect(routeCoordinates: [CLLocationCoordinate2D], stopCoordinates: [CLLocationCoordinate2D]) -> MKMapRect {
+    let coordinates = routeCoordinates + stopCoordinates
+    return coordinates.reduce(MKMapRect.null) { rect, coordinate in
+      let point = MKMapPoint(coordinate)
+      let pointRect = MKMapRect(x: point.x, y: point.y, width: 1, height: 1)
+      return rect.union(pointRect)
     }
   }
 
@@ -737,6 +782,96 @@ struct NativeRouteMapView: UIViewRepresentable {
       renderer.lineCap = .round
       renderer.lineJoin = .round
       return renderer
+    }
+
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+      guard let annotation = annotation as? NativeRouteMapAnnotation else { return nil }
+      let identifier = "NativeRouteMapAnnotation"
+      let view = (mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView)
+        ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+      view.annotation = annotation
+      view.canShowCallout = true
+      view.markerTintColor = annotation.markerTintColor
+      view.glyphTintColor = .white
+      view.glyphText = annotation.glyphText
+      view.glyphImage = annotation.glyphImage
+      view.displayPriority = annotation.displayPriority
+      return view
+    }
+  }
+}
+
+private final class NativeRouteMapAnnotation: NSObject, MKAnnotation {
+  enum Kind {
+    case start
+    case end
+    case pickup
+    case dropoff
+    case other
+
+    init(_ stopKind: NativeRouteMapStop.Kind) {
+      switch stopKind {
+      case .pickup:
+        self = .pickup
+      case .dropoff:
+        self = .dropoff
+      case .other:
+        self = .other
+      }
+    }
+  }
+
+  let coordinate: CLLocationCoordinate2D
+  let title: String?
+  let subtitle: String?
+  let kind: Kind
+  let glyphText: String?
+
+  init(coordinate: CLLocationCoordinate2D, title: String?, subtitle: String?, kind: Kind, glyphText: String?) {
+    self.coordinate = coordinate
+    self.title = title
+    self.subtitle = subtitle
+    self.kind = kind
+    self.glyphText = glyphText
+  }
+
+  var markerTintColor: UIColor {
+    switch kind {
+    case .start:
+      return UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 1)
+    case .end:
+      return UIColor.systemRed
+    case .pickup:
+      return UIColor.systemIndigo
+    case .dropoff:
+      return UIColor.systemOrange
+    case .other:
+      return UIColor.systemGray
+    }
+  }
+
+  var glyphImage: UIImage? {
+    guard glyphText == nil else { return nil }
+    switch kind {
+    case .start:
+      return UIImage(systemName: "play.fill")
+    case .end:
+      return UIImage(systemName: "stop.fill")
+    case .pickup:
+      return UIImage(systemName: "bag.fill")
+    case .dropoff:
+      return UIImage(systemName: "mappin")
+    case .other:
+      return UIImage(systemName: "circle.fill")
+    }
+  }
+
+  var displayPriority: MKFeatureDisplayPriority {
+    switch kind {
+    case .start, .end:
+      return .required
+    case .pickup, .dropoff, .other:
+      return .defaultHigh
     }
   }
 }

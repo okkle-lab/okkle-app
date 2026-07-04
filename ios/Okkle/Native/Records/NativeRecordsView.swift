@@ -15,7 +15,7 @@ struct NativeRecordsView: View {
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
-  @State private var logKind: NativeLogKind?
+  @State private var showsAddRecordPanel = false
   var onClose: (() -> Void)? = nil
 
   enum RecordsMode: String, CaseIterable, Identifiable {
@@ -93,23 +93,17 @@ struct NativeRecordsView: View {
         recordPendingEdit = nil
       }
     }
-    .sheet(item: $logKind) { kind in
-      NativeLogView(
-        initialKind: kind,
-        allowedKinds: [kind],
-        title: logTitle(for: kind),
-        subtitle: logSubtitle(for: kind),
-        onClose: {
-          logKind = nil
-        },
+    .sheet(isPresented: $showsAddRecordPanel) {
+      NativeAddRecordPanel(
+        title: { logTitle(for: $0) },
+        subtitle: { logSubtitle(for: $0) },
         onViewRecords: {
-          logKind = nil
+          showsAddRecordPanel = false
         }
       )
       .environmentObject(store)
-      .presentationDetents([.large])
-      .presentationDragIndicator(.hidden)
-      .presentationCornerRadius(36)
+      .presentationDetents([.medium])
+      .presentationDragIndicator(.visible)
     }
   }
 
@@ -117,32 +111,23 @@ struct NativeRecordsView: View {
     historyContent
   }
 
-  private var addRecordMenu: some View {
-    Menu {
-      Button {
-        logKind = .income
-      } label: {
-        Label("Earnings", systemImage: NativeLogKind.income.symbol)
-      }
-
-      Button {
-        logKind = .expense
-      } label: {
-        Label("Expense", systemImage: NativeLogKind.expense.symbol)
-      }
+  private var addRecordButton: some View {
+    Button {
+      showsAddRecordPanel = true
     } label: {
       Label("Add record", systemImage: "plus")
         .font(.system(size: 17, weight: .heavy))
         .lineLimit(1)
         .minimumScaleFactor(0.82)
     }
+    .buttonStyle(.plain)
     .accessibilityLabel("Add record")
   }
 
   private var bottomAddRecordMenu: some View {
     HStack {
       Spacer()
-      addRecordMenu
+      addRecordButton
         .labelStyle(.titleAndIcon)
         .foregroundStyle(.white)
         .padding(.horizontal, 22)
@@ -299,6 +284,120 @@ struct NativeRecordsView: View {
       return "This trip, route and mileage deduction will be removed from Records. This cannot be undone."
     case .record(let record):
       return "This \(record.kind.label.lowercased()) entry will be removed from Records and tax totals. This cannot be undone."
+    }
+  }
+}
+
+private struct NativeAddRecordPanel: View {
+  @Environment(\.dismiss) private var dismiss
+  @EnvironmentObject private var store: OkkleStore
+  @State private var logKind: NativeLogKind?
+  let title: (NativeLogKind) -> String
+  let subtitle: (NativeLogKind) -> String
+  let onViewRecords: () -> Void
+
+  private let options: [NativeLogKind] = [.income, .expense, .mileage]
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          ForEach(options) { kind in
+            Button {
+              logKind = kind
+            } label: {
+              HStack(spacing: 14) {
+                Image(systemName: kind.symbol)
+                  .font(.system(size: 18, weight: .bold))
+                  .foregroundStyle(optionTint(for: kind))
+                  .frame(width: 36, height: 36)
+                  .background(optionTint(for: kind).opacity(0.13), in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(optionTitle(for: kind))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(OkkleColor.ink)
+                  Text(optionSubtitle(for: kind))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                  .font(.system(size: 13, weight: .semibold))
+                  .foregroundStyle(.tertiary)
+              }
+              .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+          }
+        }
+      }
+      .listStyle(.insetGrouped)
+      .scrollContentBackground(.visible)
+      .navigationTitle("Add record")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") {
+            dismiss()
+          }
+          .fontWeight(.semibold)
+        }
+      }
+      .sheet(item: $logKind) { kind in
+        NativeLogView(
+          initialKind: kind,
+          allowedKinds: [kind],
+          title: title(kind),
+          subtitle: subtitle(kind),
+          onClose: {
+            logKind = nil
+          },
+          onViewRecords: {
+            logKind = nil
+            onViewRecords()
+          }
+        )
+        .environmentObject(store)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+      }
+    }
+  }
+
+  private func optionTitle(for kind: NativeLogKind) -> String {
+    switch kind {
+    case .income:
+      return "Earnings"
+    case .expense:
+      return "Expense"
+    case .mileage:
+      return "Mileage"
+    }
+  }
+
+  private func optionSubtitle(for kind: NativeLogKind) -> String {
+    switch kind {
+    case .income:
+      return "Pay, tips or bonuses"
+    case .expense:
+      return "Deductible cost"
+    case .mileage:
+      return "Previous journey"
+    }
+  }
+
+  private func optionTint(for kind: NativeLogKind) -> Color {
+    switch kind {
+    case .income:
+      return .green
+    case .expense:
+      return OkkleColor.amber
+    case .mileage:
+      return OkkleColor.brand
     }
   }
 }

@@ -176,14 +176,9 @@ struct NativeSettingsView: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
-          Button { dismiss() } label: {
-            Image(systemName: "xmark")
-              .font(.system(size: 15, weight: .bold))
-              .foregroundStyle(OkkleColor.ink)
-              .frame(width: 44, height: 44)
-              .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
+          NativeSettingsCloseButton {
+            dismiss()
           }
-          .accessibilityLabel("Close")
         }
       }
     }
@@ -195,6 +190,18 @@ struct NativeSettingsView: View {
     } label: {
       Text(title)
     }
+  }
+}
+
+private struct NativeSettingsCloseButton: View {
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "xmark")
+        .font(.system(size: 15, weight: .bold))
+    }
+    .accessibilityLabel("Close")
   }
 }
 
@@ -273,13 +280,13 @@ struct NativeMedalSummarySettingsView: View {
   @State private var showsAllMedals = false
 
   private var achievements: [NativeMedalAchievement] {
-    NativeMedalEngine.achievements(store: store, period: .allTime)
+    NativeMedalEngine.achievements(store: store, period: .weekly)
   }
 
   var body: some View {
     List {
       Section {
-        NativeMedalPreviewPanel(achievements: achievements, progressPeriod: .allTime) {
+        NativeMedalPreviewPanel(achievements: achievements, progressPeriod: .weekly) {
           showsAllMedals = true
         }
       } header: {
@@ -291,7 +298,7 @@ struct NativeMedalSummarySettingsView: View {
     .navigationTitle("Medals")
     .navigationBarTitleDisplayMode(.inline)
     .fullScreenCover(isPresented: $showsAllMedals) {
-      NativeMedalsView(initialPeriod: .allTime)
+      NativeMedalsView(initialPeriod: .weekly)
         .environmentObject(store)
     }
   }

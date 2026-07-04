@@ -72,7 +72,7 @@ struct NativeProgressView: View {
       .environmentObject(store)
     }
     .fullScreenCover(isPresented: $showsMedals) {
-      NativeMedalsView(initialPeriod: progressPeriod)
+      NativeMedalsView(initialPeriod: .weekly)
         .environmentObject(store)
     }
     .fullScreenCover(isPresented: $showsTaxBreakdown) {
@@ -269,7 +269,7 @@ struct NativeProgressView: View {
       }
       .okkleCard(cornerRadius: 26)
 
-      NativeMedalPreviewPanel(achievements: selectedMedalAchievements, progressPeriod: progressPeriod) {
+      NativeMedalPreviewPanel(achievements: selectedMedalAchievements, progressPeriod: .weekly) {
         showsMedals = true
       }
       .okkleCard()
@@ -492,7 +492,7 @@ struct NativeProgressView: View {
   }
 
   private var selectedMedalAchievements: [NativeMedalAchievement] {
-    NativeMedalEngine.achievements(store: store, period: progressPeriod)
+    NativeMedalEngine.achievements(store: store, period: .weekly)
   }
 
   private func openRecords(_ destination: RecordsDestination) {

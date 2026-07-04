@@ -1,6 +1,13 @@
 import SwiftUI
 import UserNotifications
 
+private struct NativeAutoShiftReviewStop: Identifiable {
+  let number: Int
+  let visit: NativeVisit
+
+  var id: UUID { visit.id }
+}
+
 /// Routes a tapped "Shift logged" notification to the review screen. No
 /// UNUserNotificationCenterDelegate existed anywhere in the app before this —
 /// set as the centre's delegate once, in AppDelegate.
@@ -58,11 +65,51 @@ struct NativeAutoShiftReviewView: View {
       .sorted { $0.arrival < $1.arrival }
   }
 
+  private var numberedStops: [NativeAutoShiftReviewStop] {
+    stops.enumerated().map { index, visit in
+      NativeAutoShiftReviewStop(number: index + 1, visit: visit)
+    }
+  }
+
+  private var routeStops: [NativeRouteMapStop] {
+    numberedStops.map { stop in
+      NativeRouteMapStop(
+        id: stop.visit.id,
+        coordinate: stop.visit.coordinate,
+        title: "\(stop.number). \(stopTitle(for: stop.visit))",
+        subtitle: stopSubtitle(for: stop.visit),
+        kind: routeStopKind(for: stop.visit),
+        glyphText: "\(stop.number)"
+      )
+    }
+  }
+
   var body: some View {
     NavigationStack {
       Group {
         if let trip {
           List {
+            Section {
+              NativeRouteMapView(
+                points: trip.points,
+                stops: routeStops,
+                showsEndMarker: true,
+                isInteractive: true
+              )
+              .frame(height: 260)
+              .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+              .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                  .stroke(Color.white.opacity(0.16), lineWidth: 1)
+              }
+            } header: {
+              Text("Route")
+            } footer: {
+              Text("Numbered pins are the detected stops. Remove any stop that does not belong; the map and future insights update straight away.")
+            }
+            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+            .listRowBackground(Color.clear)
+
             Section {
               LabeledContent("Miles", value: miles(trip.miles))
               LabeledContent("Started", value: shortTime(trip.startedAt))
@@ -75,25 +122,46 @@ struct NativeAutoShiftReviewView: View {
 
             if !stops.isEmpty {
               Section {
-                ForEach(stops) { visit in
-                  HStack {
+                ForEach(numberedStops) { stop in
+                  HStack(spacing: 12) {
+                    Text("\(stop.number)")
+                      .font(.system(size: 13, weight: .heavy, design: .rounded))
+                      .foregroundStyle(.white)
+                      .frame(width: 30, height: 30)
+                      .background(stopTint(for: stop.visit), in: Circle())
+
                     VStack(alignment: .leading, spacing: 2) {
-                      Text(visit.kind == .pickup ? "Pick-up" : "Drop-off")
+                      Text(stopTitle(for: stop.visit))
                         .font(.system(size: 15, weight: .bold))
-                      Text(stopSubtitle(for: visit))
+                      Text(stopSubtitle(for: stop.visit))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
                     }
                     Spacer()
+
+                    Button(role: .destructive) {
+                      removeStop(stop.visit)
+                    } label: {
+                      Image(systemName: "trash")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.red)
+                        .frame(width: 34, height: 34)
+                        .background(Color.red.opacity(0.10), in: Circle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Remove \(stopTitle(for: stop.visit))")
                   }
                 }
                 .onDelete { offsets in
-                  for index in offsets { autoTrack.discardVisit(stops[index].id) }
+                  let currentStops = numberedStops
+                  for index in offsets {
+                    removeStop(currentStops[index].visit)
+                  }
                 }
               } header: {
                 Text("Detected stops (\(stops.count))")
               } footer: {
-                Text("Swipe to remove a stop that isn't actually work.")
+                Text("Use the remove button or swipe left to remove a stop that is not actually work.")
               }
             }
           }
@@ -134,8 +202,23 @@ struct NativeAutoShiftReviewView: View {
     store.updateTrip(trip)
   }
 
+  private func removeStop(_ visit: NativeVisit) {
+    autoTrack.discardVisit(visit.id)
+  }
+
   private func shortTime(_ date: Date) -> String {
     date.formatted(date: .omitted, time: .shortened)
+  }
+
+  private func stopTitle(for visit: NativeVisit) -> String {
+    switch visit.kind {
+    case .pickup:
+      return "Pick-up"
+    case .dropoff:
+      return "Drop-off"
+    case .other:
+      return "Stop"
+    }
   }
 
   private func stopSubtitle(for visit: NativeVisit) -> String {
@@ -144,5 +227,27 @@ struct NativeAutoShiftReviewView: View {
       text += " · \(placeName)"
     }
     return text
+  }
+
+  private func routeStopKind(for visit: NativeVisit) -> NativeRouteMapStop.Kind {
+    switch visit.kind {
+    case .pickup:
+      return .pickup
+    case .dropoff:
+      return .dropoff
+    case .other:
+      return .other
+    }
+  }
+
+  private func stopTint(for visit: NativeVisit) -> Color {
+    switch visit.kind {
+    case .pickup:
+      return .indigo
+    case .dropoff:
+      return .orange
+    case .other:
+      return .secondary
+    }
   }
 }
