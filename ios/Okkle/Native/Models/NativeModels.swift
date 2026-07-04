@@ -175,6 +175,7 @@ struct NativeExcludedPlace: Codable, Identifiable, Equatable {
   var label: String
   var latitude: Double
   var longitude: Double
+  var address: String?
 
   var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
 }

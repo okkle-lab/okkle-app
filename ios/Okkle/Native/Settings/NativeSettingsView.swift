@@ -337,7 +337,20 @@ struct NativeExcludedPlacesSection: View {
     Section {
       if !store.settings.excludedPlaces.isEmpty {
         ForEach(store.settings.excludedPlaces) { place in
-          Text(place.label)
+          VStack(alignment: .leading, spacing: 6) {
+            NativeExcludedPlaceMapRepresentable(
+              coordinate: place.coordinate,
+              onDragEnd: { moved(place.id, to: $0) }
+            )
+            .frame(height: 140)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            Text(place.label).font(.subheadline.weight(.semibold))
+            if let address = place.address {
+              Text(address).font(.footnote).foregroundStyle(.secondary)
+            }
+          }
+          .padding(.vertical, 4)
         }
         .onDelete { offsets in
           store.settings.excludedPlaces.remove(atOffsets: offsets)
@@ -365,7 +378,7 @@ struct NativeExcludedPlacesSection: View {
     } header: {
       Text("Places to leave out")
     } footer: {
-      Text("Add home or anywhere you stop often that isn't work — they'll never be suggested as a place to go and earn.")
+      Text("Add home or anywhere you stop often that isn't work — they'll never be suggested as a place to go and earn. Drag the pin if it lands somewhere off.")
     }
     .onAppear { locator.request() }
   }
@@ -379,11 +392,11 @@ struct NativeExcludedPlacesSection: View {
     CLGeocoder().geocodeAddressString(cleanAddress) { placemarks, _ in
       Task { @MainActor in
         isGeocoding = false
-        guard let coordinate = placemarks?.first?.location?.coordinate else {
+        guard let placemark = placemarks?.first, let coordinate = placemark.location?.coordinate else {
           errorMessage = "Couldn't find that address."
           return
         }
-        save(label: cleanLabel, coordinate: coordinate)
+        save(label: cleanLabel, coordinate: coordinate, address: Self.formattedAddress(placemark))
       }
     }
   }
@@ -391,15 +404,99 @@ struct NativeExcludedPlacesSection: View {
   private func addByCurrentLocation() {
     let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !cleanLabel.isEmpty, let coordinate = locator.coordinate else { return }
-    save(label: cleanLabel, coordinate: coordinate)
+    save(label: cleanLabel, coordinate: coordinate, address: nil)
+    resolveAddress(for: coordinate) { resolved in
+      guard let resolved, let index = store.settings.excludedPlaces.lastIndex(where: { $0.label == cleanLabel }) else { return }
+      store.settings.excludedPlaces[index].address = resolved
+    }
   }
 
-  private func save(label: String, coordinate: CLLocationCoordinate2D) {
+  private func save(label: String, coordinate: CLLocationCoordinate2D, address: String?) {
     store.settings.excludedPlaces.append(NativeExcludedPlace(
-      label: label, latitude: coordinate.latitude, longitude: coordinate.longitude
+      label: label, latitude: coordinate.latitude, longitude: coordinate.longitude, address: address
     ))
     self.label = ""
-    address = ""
+    self.address = ""
+  }
+
+  /// Dragging the pin corrects the coordinate directly — geocoding can land a
+  /// little off, and re-resolving the address confirms the new spot matched.
+  private func moved(_ id: UUID, to coordinate: CLLocationCoordinate2D) {
+    guard let index = store.settings.excludedPlaces.firstIndex(where: { $0.id == id }) else { return }
+    store.settings.excludedPlaces[index].latitude = coordinate.latitude
+    store.settings.excludedPlaces[index].longitude = coordinate.longitude
+    resolveAddress(for: coordinate) { resolved in
+      guard let resolved, let index = store.settings.excludedPlaces.firstIndex(where: { $0.id == id }) else { return }
+      store.settings.excludedPlaces[index].address = resolved
+    }
+  }
+
+  private func resolveAddress(for coordinate: CLLocationCoordinate2D, completion: @escaping (String?) -> Void) {
+    CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
+      Task { @MainActor in completion(placemarks?.first.flatMap(Self.formattedAddress)) }
+    }
+  }
+
+  private static func formattedAddress(_ placemark: CLPlacemark) -> String? {
+    let line1 = [placemark.subThoroughfare, placemark.thoroughfare].compactMap { $0 }.joined(separator: " ")
+    let line2 = [placemark.locality ?? placemark.subLocality, placemark.postalCode].compactMap { $0 }.joined(separator: " ")
+    let combined = [line1, line2].filter { !$0.isEmpty }.joined(separator: ", ")
+    return combined.isEmpty ? nil : combined
+  }
+}
+
+/// A small draggable-pin map for correcting an excluded place's coordinate —
+/// geocoding (from a typed address, or the device's current fix) can land a
+/// little off, so the driver can drag it right rather than re-typing.
+struct NativeExcludedPlaceMapRepresentable: UIViewRepresentable {
+  var coordinate: CLLocationCoordinate2D
+  var onDragEnd: (CLLocationCoordinate2D) -> Void
+
+  func makeCoordinator() -> Coordinator { Coordinator(onDragEnd: onDragEnd) }
+
+  func makeUIView(context: Context) -> MKMapView {
+    let mapView = MKMapView()
+    mapView.delegate = context.coordinator
+    mapView.isPitchEnabled = false
+    mapView.showsCompass = false
+    mapView.showsScale = false
+    let annotation = MKPointAnnotation()
+    annotation.coordinate = coordinate
+    mapView.addAnnotation(annotation)
+    mapView.setRegion(MKCoordinateRegion(center: coordinate, span: MKCoordinateSpan(latitudeDelta: 0.006, longitudeDelta: 0.006)), animated: false)
+    context.coordinator.annotation = annotation
+    return mapView
+  }
+
+  func updateUIView(_ mapView: MKMapView, context: Context) {
+    // Only move the pin from an external coordinate change (e.g. switching
+    // rows) — not after a drag, which already updated the model to match.
+    guard let annotation = context.coordinator.annotation,
+          annotation.coordinate.latitude != coordinate.latitude || annotation.coordinate.longitude != coordinate.longitude else { return }
+    annotation.coordinate = coordinate
+  }
+
+  final class Coordinator: NSObject, MKMapViewDelegate {
+    let onDragEnd: (CLLocationCoordinate2D) -> Void
+    weak var annotation: MKPointAnnotation?
+
+    init(onDragEnd: @escaping (CLLocationCoordinate2D) -> Void) { self.onDragEnd = onDragEnd }
+
+    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+      guard !(annotation is MKUserLocation) else { return nil }
+      let identifier = "excludedPlacePin"
+      let view = (mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView)
+        ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+      view.annotation = annotation
+      view.isDraggable = true
+      view.markerTintColor = .systemGreen
+      return view
+    }
+
+    func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, didChange newState: MKAnnotationView.DragState, fromOldState oldState: MKAnnotationView.DragState) {
+      guard newState == .ending, let coordinate = view.annotation?.coordinate else { return }
+      onDragEnd(coordinate)
+    }
   }
 }
 
