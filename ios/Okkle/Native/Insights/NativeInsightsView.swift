@@ -1500,17 +1500,13 @@ struct NativeWeeklyInsightPanel: View {
   }
 
   private func stat(_ title: String, _ value: String) -> some View {
-    VStack(spacing: 3) {
-      Text(value)
-        .font(.system(size: 42, weight: .bold, design: .rounded))
-        .foregroundStyle(OkkleColor.ink)
-        .lineLimit(1)
-        .minimumScaleFactor(0.4)
+    VStack(alignment: .leading, spacing: 3) {
+      nativeStatValue(value)
       Text(title)
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(OkkleColor.muted)
     }
-    .frame(maxWidth: .infinity)
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private func insightLine(symbol: String, color: Color, text: String) -> some View {
@@ -1550,15 +1546,22 @@ private func nativeInsightKicker(_ text: String) -> some View {
     .foregroundStyle(OkkleColor.muted)
 }
 
+/// The one and only number style for every Insights headline figure — earned,
+/// tax relief, est. rate, unpaid miles. Every one of them routes through this
+/// single Text so there is no way for them to drift out of sync again.
+private func nativeStatValue(_ value: String, color: Color = OkkleColor.ink) -> some View {
+  Text(value)
+    .font(.system(size: 42, weight: .bold, design: .rounded))
+    .foregroundStyle(color)
+    .lineLimit(1)
+    .minimumScaleFactor(0.5)
+}
+
 private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color = OkkleColor.ink,
                                 sub: (symbol: String, color: Color, text: String)?) -> some View {
   VStack(alignment: .leading, spacing: 8) {
     nativeInsightKicker(kicker)
-    Text(value)
-      .font(.system(size: 42, weight: .bold, design: .rounded))
-      .foregroundStyle(valueColor)
-      .lineLimit(1)
-      .minimumScaleFactor(0.5)
+    nativeStatValue(value, color: valueColor)
     if let sub {
       HStack(spacing: 6) {
         Image(systemName: sub.symbol).font(.system(size: 13, weight: .bold))
@@ -1571,17 +1574,17 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color
   .frame(maxWidth: .infinity, alignment: .leading)
 }
 
+/// Always full card width, one per row — never squeezed into a side-by-side
+/// column, which is what let "Est. rate" and "Unpaid miles" render smaller
+/// than the headline figures above them despite requesting the same size.
 private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View {
-  VStack(spacing: 3) {
-    Text(value)
-      .font(.system(size: 42, weight: .bold, design: .rounded))
-      .foregroundStyle(OkkleColor.ink)
-      .lineLimit(1).minimumScaleFactor(0.4)
+  VStack(alignment: .leading, spacing: 3) {
+    nativeStatValue(value)
     Text(title)
       .font(.system(size: 12, weight: .medium))
       .foregroundStyle(OkkleColor.muted)
   }
-  .frame(maxWidth: .infinity)
+  .frame(maxWidth: .infinity, alignment: .leading)
 }
 
 /// The geographic hotspot heat map as a card — the where-you-earn overview
@@ -1599,6 +1602,10 @@ private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint])
           .foregroundStyle(OkkleColor.muted)
           .fixedSize(horizontal: false, vertical: true)
         Divider()
+        Text("Bar shows how busy each area is compared to your #1 spot.")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(OkkleColor.muted.opacity(0.8))
+          .fixedSize(horizontal: false, vertical: true)
         NativeTopAreasList(zones: zones, limit: 4, showShareBar: true)
       }
     }
@@ -1674,10 +1681,9 @@ struct NativeMonthlyInsightPanel: View {
           )
           if nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) != nil || shift.deadMilePct > 0 {
             Divider()
-            HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
               if let band = nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) {
                 nativeEfficiencyStat("Est. rate", "\(band)/hr")
-                Divider().frame(height: 34)
               }
               nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
             }
@@ -1701,10 +1707,7 @@ struct NativeMonthlyInsightPanel: View {
       NativeAiCard {
         VStack(alignment: .leading, spacing: 6) {
           nativeInsightKicker("TAX RELIEF BANKED · 30 DAYS")
-          Text(nativeWholeGbp(savings.taxSaved))
-            .font(.system(size: 42, weight: .bold, design: .rounded))
-            .foregroundStyle(OkkleColor.brand)
-            .lineLimit(1).minimumScaleFactor(0.5)
+          nativeStatValue(nativeWholeGbp(savings.taxSaved), color: OkkleColor.brand)
           Text("\(nativeWholeGbp(savings.mileageDeduction)) off your taxable profit, from \(miles(savings.miles)) of business driving.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
@@ -1773,10 +1776,7 @@ struct NativeYearlyInsightPanel: View {
       NativeAiCard {
         VStack(alignment: .leading, spacing: 6) {
           nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
-          Text(nativeWholeGbp(store.taxSaved))
-            .font(.system(size: 42, weight: .bold, design: .rounded))
-            .foregroundStyle(OkkleColor.brand)
-            .lineLimit(1).minimumScaleFactor(0.5)
+          nativeStatValue(nativeWholeGbp(store.taxSaved), color: OkkleColor.brand)
           Text("A \(nativeWholeGbp(store.yearMileageDeduction)) deduction off your Self Assessment profit, from \(miles(store.yearMiles)) driven. See the Tax tab.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(OkkleColor.muted)

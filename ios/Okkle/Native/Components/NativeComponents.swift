@@ -229,7 +229,6 @@ struct NativeAiCard<Content: View>: View {
   var banner: String? = nil
   var bannerTrailing: String? = nil
   let content: Content
-  @Environment(\.colorScheme) private var colorScheme
 
   init(banner: String? = nil, bannerTrailing: String? = nil, @ViewBuilder content: () -> Content) {
     self.banner = banner
@@ -237,13 +236,16 @@ struct NativeAiCard<Content: View>: View {
     self.content = content()
   }
 
+  // Deliberately NOT built on NativeGlassCard: that shared component carries
+  // its own shadow (used by Records/Tax/Log/Home), and layering another
+  // shadow on top of it is exactly what kept reading as a "halo" around every
+  // Insights card. This is a flat card — material fill only, no drop shadow —
+  // so there's nothing left to bleed out around the edges.
   var body: some View {
-    NativeGlassCard(cornerRadius: 30) {
-      cardBody
-    }
-    // A plain, calm card — one soft neutral shadow for depth, no coloured
-    // glow/halo bleeding out around the edges.
-    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.34 : 0.06), radius: 12, x: 0, y: 6)
+    cardBody
+      .padding(20)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
   }
 
   @ViewBuilder private var cardBody: some View {
