@@ -895,22 +895,14 @@ struct NativeInsightPeriodTabs: View {
   @Binding var period: NativeInsightPeriod
 
   var body: some View {
-    HStack(spacing: 8) {
+    // The original native segmented control — swiping the carousel below still
+    // moves the selection, since both read and write the same binding.
+    Picker("", selection: $period.animation(.easeInOut(duration: 0.2))) {
       ForEach(NativeInsightPeriod.allCases) { p in
-        let selected = p == period
-        Text(p.label)
-          .font(.system(size: 13, weight: .bold))
-          .foregroundStyle(selected ? Color.white : OkkleColor.ink)
-          .padding(.horizontal, 14)
-          .padding(.vertical, 7)
-          .background(selected ? OkkleColor.brand : OkkleColor.muted.opacity(0.12), in: Capsule())
-          .contentShape(Capsule())
-          .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.2)) { period = p }
-          }
+        Text(p.label).tag(p)
       }
-      Spacer(minLength: 0)
     }
+    .pickerStyle(.segmented)
   }
 }
 
@@ -1407,7 +1399,12 @@ struct NativeWeeklyInsightPanel: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
                   Capsule()
-                    .fill(stat.count == 0 ? OkkleColor.muted.opacity(0.18) : nativeHeatColor(Double(stat.sharePct) / Double(maxShare)))
+                    // One brand colour, deepening with how busy the day is —
+                    // your best day reads as your strongest green, not an alarm
+                    // red (which the heat ramp used to give the busiest bar).
+                    .fill(stat.count == 0
+                          ? OkkleColor.muted.opacity(0.18)
+                          : OkkleColor.brand.opacity(0.4 + 0.6 * (Double(stat.sharePct) / Double(maxShare))))
                     .frame(width: 12, height: max(5, CGFloat(stat.sharePct) / CGFloat(maxShare) * 60))
                   Text(stat.symbol)
                     .font(.system(size: 12, weight: selected ? .heavy : .semibold))
