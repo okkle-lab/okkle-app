@@ -395,8 +395,9 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   // MARK: Persistence
 
   private func trim() {
-    // Keep the last 60 days of stops — plenty for pattern insights.
-    let cutoff = Date().addingTimeInterval(-60 * 86_400)
+    // Keep just over a year of stops — the Insights carousel's Yearly period
+    // needs real history to show, not just whatever a 60-day window left.
+    let cutoff = Date().addingTimeInterval(-370 * 86_400)
     visits.removeAll { $0.departure < cutoff }
   }
 

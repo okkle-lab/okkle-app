@@ -849,13 +849,89 @@ struct NativeShiftMapDetailView: View {
   }
 }
 
-// MARK: - The main card: your shift plan (Today / This week)
+// MARK: - The main card: your shift plan (Today / This week / Monthly / Yearly)
+
+/// Which window the shift panel reflects. "Today" reads the existing
+/// day-plan logic unchanged; the other three re-run the same weekly-panel
+/// metrics over a wider or narrower slice of the same visit history, so the
+/// numbers are always directly comparable across periods.
+enum NativeInsightPeriod: Int, CaseIterable, Identifiable {
+  case today, week, month, year
+
+  var id: Int { rawValue }
+
+  var label: String {
+    switch self {
+    case .today: return "Today"
+    case .week: return "This week"
+    case .month: return "Monthly"
+    case .year: return "Yearly"
+    }
+  }
+
+  /// Rolling lookback in days — nil for "Today", which doesn't rebuild the
+  /// shift model at all, it just reads todayPlan off the full history.
+  var lookbackDays: Int? {
+    switch self {
+    case .today: return nil
+    case .week: return 7
+    case .month: return 30
+    case .year: return 365
+    }
+  }
+}
+
+/// Reports each carousel page's natural height, since a paged TabView
+/// doesn't size itself to content — the card resizes to whichever page is
+/// currently showing instead of leaving blank space or clipping.
+private struct NativeInsightPageHeightKey: PreferenceKey {
+  static var defaultValue: [NativeInsightPeriod: CGFloat] = [:]
+  static func reduce(value: inout [NativeInsightPeriod: CGFloat], nextValue: () -> [NativeInsightPeriod: CGFloat]) {
+    value.merge(nextValue()) { _, new in new }
+  }
+}
+
+struct NativeInsightPeriodTabs: View {
+  @Binding var period: NativeInsightPeriod
+
+  var body: some View {
+    HStack(spacing: 8) {
+      ForEach(NativeInsightPeriod.allCases) { p in
+        let selected = p == period
+        Text(p.label)
+          .font(.system(size: 13, weight: .bold))
+          .foregroundStyle(selected ? Color.white : OkkleColor.ink)
+          .padding(.horizontal, 14)
+          .padding(.vertical, 7)
+          .background(selected ? OkkleColor.brand : OkkleColor.muted.opacity(0.12), in: Capsule())
+          .contentShape(Capsule())
+          .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) { period = p }
+          }
+      }
+      Spacer(minLength: 0)
+    }
+  }
+}
 
 struct NativeShiftPatternsCard: View {
   let shift: NativeShiftInsights
+  let visits: [NativeVisit]
   let trips: [NativeTrip]
   @Binding var autoTrackTrips: Bool
-  @State private var tab = 0   // 0 = today, 1 = week
+  @EnvironmentObject private var store: OkkleStore
+  @State private var period: NativeInsightPeriod = .today
+  @State private var pageHeights: [NativeInsightPeriod: CGFloat] = [:]
+
+  /// Same metrics as "This week" for every non-today period — just fed a
+  /// wider or narrower slice of the same visit history before re-running
+  /// NativeShiftInsights.build, so month/year are directly comparable.
+  private func shift(for period: NativeInsightPeriod) -> NativeShiftInsights {
+    guard let days = period.lookbackDays else { return shift }
+    let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+    let scoped = visits.filter { $0.arrival >= cutoff }
+    return NativeShiftInsights.build(visits: scoped, store: store)
+  }
 
   var body: some View {
     if !autoTrackTrips {
@@ -866,19 +942,27 @@ struct NativeShiftPatternsCard: View {
         .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
     } else {
       VStack(alignment: .leading, spacing: 14) {
-        Picker("", selection: $tab.animation(.easeInOut(duration: 0.2))) {
-          Text("Today").tag(0)
-          Text("This week").tag(1)
-        }
-        .pickerStyle(.segmented)
+        NativeInsightPeriodTabs(period: $period)
 
-        if tab == 0 {
-          NativeDailyInsightPanel(shift: shift, trips: trips)
-            .transition(.opacity)
-        } else {
-          NativeWeeklyInsightPanel(shift: shift)
-            .transition(.opacity)
+        TabView(selection: $period) {
+          ForEach(NativeInsightPeriod.allCases) { p in
+            Group {
+              if p == .today {
+                NativeDailyInsightPanel(shift: shift, trips: trips)
+              } else {
+                NativeWeeklyInsightPanel(shift: shift(for: p))
+              }
+            }
+            .background(GeometryReader { geo in
+              Color.clear.preference(key: NativeInsightPageHeightKey.self, value: [p: geo.size.height])
+            })
+            .tag(p)
+          }
         }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(height: pageHeights[period] ?? 200)
+        .onPreferenceChange(NativeInsightPageHeightKey.self) { pageHeights = $0 }
+        .animation(.easeInOut(duration: 0.2), value: pageHeights[period])
       }
       .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
     }
@@ -1454,6 +1538,7 @@ struct NativeInsightsView: View {
                  subtitle: "From your trips: when to head out and where to go. Sharper the more you drive.") {
       NativeShiftPatternsCard(
         shift: shift,
+        visits: autoTrack.visits,
         trips: store.trips,
         autoTrackTrips: Binding(
           get: { store.settings.autoTrackTrips },
