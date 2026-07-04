@@ -789,13 +789,21 @@ struct NativeTopAreasList: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OkkleColor.muted)
               if showShareBar {
-                GeometryReader { geo in
-                  ZStack(alignment: .leading) {
-                    Capsule().fill(OkkleColor.muted.opacity(0.12)).frame(height: 4)
-                    Capsule().fill(OkkleColor.brand).frame(width: max(6, geo.size.width * area.weight), height: 4)
+                HStack(spacing: 8) {
+                  GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                      Capsule().fill(OkkleColor.muted.opacity(0.12)).frame(height: 4)
+                      Capsule().fill(OkkleColor.brand).frame(width: max(6, geo.size.width * area.weight), height: 4)
+                    }
                   }
+                  .frame(height: 4)
+                  // The bar alone can't say whether it means 90% or 20% — put
+                  // the actual number on it, same as Platform Mix does.
+                  Text("\(Int((area.weight * 100).rounded()))%")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(OkkleColor.muted)
+                    .frame(width: 32, alignment: .trailing)
                 }
-                .frame(height: 4)
                 .padding(.top, 1)
               }
             }
@@ -918,9 +926,22 @@ struct NativeShiftPatternsCard: View {
   /// Same metrics as "This week" for every non-today period — just fed a
   /// wider or narrower slice of the same visit history before re-running
   /// NativeShiftInsights.build, so month/year are directly comparable.
+  ///
+  /// Year is scoped to the actual UK tax year (store.taxYear), not a rolling
+  /// 365 days — it must line up with store.yearIncome/yearMiles/taxSaved,
+  /// which are themselves tax-year figures. Mixing a rolling window for
+  /// activeHours against a tax-year window for income is exactly what made
+  /// an earlier "Est. rate" on this tab silently wrong, which is why it had
+  /// been removed rather than fixed properly.
   private func shift(for period: NativeInsightPeriod) -> NativeShiftInsights {
-    guard let days = period.lookbackDays else { return shift }
-    let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+    let cutoff: Date
+    switch period {
+    case .today: return shift
+    case .year: cutoff = store.taxYear.start
+    default:
+      guard let days = period.lookbackDays else { return shift }
+      cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+    }
     let scoped = visits.filter { $0.arrival >= cutoff }
     return NativeShiftInsights.build(visits: scoped, store: store)
   }
@@ -1554,7 +1575,11 @@ private func nativeStatValue(_ value: String, color: Color = OkkleColor.ink) -> 
     .font(.system(size: 42, weight: .bold, design: .rounded))
     .foregroundStyle(color)
     .lineLimit(1)
-    .minimumScaleFactor(0.5)
+    // No minimumScaleFactor: that let this shrink under width pressure while
+    // sibling stats elsewhere didn't need to, which is exactly what made
+    // supposedly-identical 42pt figures render at different sizes. This one
+    // always renders at its true, fixed intrinsic size — never auto-shrunk.
+    .fixedSize(horizontal: true, vertical: false)
 }
 
 private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color = OkkleColor.ink,
@@ -1761,15 +1786,28 @@ struct NativeYearlyInsightPanel: View {
   var body: some View {
     let stats = monthlyStats
     VStack(alignment: .leading, spacing: 10) {
-      // Card 1 — earned this tax year.
+      // Card 1 — earned this tax year, plus the same efficiency stats Monthly
+      // shows (now that shift is scoped to store.taxYear, income and active
+      // hours share the same window, so the rate is actually trustworthy).
       NativeAiCard {
-        nativeHeadlineStat(
-          kicker: "EARNED · THIS TAX YEAR",
-          value: nativeWholeGbp(store.yearIncome),
-          sub: store.yearIncome == 0
-            ? ("square.and.pencil", OkkleColor.muted, "Log your pay to total your year")
-            : nil
-        )
+        VStack(alignment: .leading, spacing: 12) {
+          nativeHeadlineStat(
+            kicker: "EARNED · THIS TAX YEAR",
+            value: nativeWholeGbp(store.yearIncome),
+            sub: store.yearIncome == 0
+              ? ("square.and.pencil", OkkleColor.muted, "Log your pay to total your year")
+              : nil
+          )
+          if nativePerHourBand(income: store.yearIncome, activeHours: shift.activeHours) != nil || shift.deadMilePct > 0 {
+            Divider()
+            VStack(alignment: .leading, spacing: 14) {
+              if let band = nativePerHourBand(income: store.yearIncome, activeHours: shift.activeHours) {
+                nativeEfficiencyStat("Est. rate", "\(band)/hr")
+              }
+              nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
+            }
+          }
+        }
       }
 
       // Card 2 — tax relief (same treatment as Monthly, for consistency).
