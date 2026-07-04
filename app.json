@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "okklelab.app",
+      "appleTeamId": "22S8J5SFT8",
       "icon": "./assets/okkle-icon.icon",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
