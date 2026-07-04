@@ -943,7 +943,7 @@ struct NativeShiftPatternsCard: View {
               case .today: NativeDailyInsightPanel(shift: shift, trips: trips)
               case .week:  NativeWeeklyInsightPanel(shift: shift(for: p))
               case .month: NativeMonthlyInsightPanel(shift: shift(for: p))
-              case .year:  NativeYearlyInsightPanel(shift: shift(for: p))
+              case .year:  NativeYearlyInsightPanel()
               }
             }
             .background(GeometryReader { geo in
@@ -1697,7 +1697,6 @@ struct NativeMonthlyInsightPanel: View {
 // MARK: - Yearly panel: tax-year totals, Self Assessment deduction, seasonal shape
 
 struct NativeYearlyInsightPanel: View {
-  let shift: NativeShiftInsights
   @EnvironmentObject private var store: OkkleStore
 
   /// Income by calendar month across the last 12 months, oldest → newest.
@@ -1729,12 +1728,12 @@ struct NativeYearlyInsightPanel: View {
 
       NativeAiCard {
         VStack(alignment: .leading, spacing: 8) {
-          nativeInsightKicker("TAX DEDUCTION · SELF ASSESSMENT")
+          nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
           Text(nativeWholeGbp(store.taxSaved))
             .font(.system(size: 34, weight: .bold, design: .rounded))
             .foregroundStyle(OkkleColor.brand)
             .lineLimit(1).minimumScaleFactor(0.5)
-          Text("Estimated tax saved from \(miles(store.yearMiles)) of business driving — \(nativeWholeGbp(store.yearMileageDeduction)) off your taxable profit. See the Tax tab for the full picture.")
+          Text("Estimated tax saved from \(miles(store.yearMiles)) of business driving — a \(nativeWholeGbp(store.yearMileageDeduction)) deduction off your Self Assessment profit. See the Tax tab for the full picture.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)
@@ -1767,16 +1766,6 @@ struct NativeYearlyInsightPanel: View {
               }
             }
             .frame(height: 92, alignment: .bottom)
-          }
-        }
-      }
-
-      if let band = nativePerHourBand(income: store.yearIncome, activeHours: shift.activeHours) {
-        NativeAiCard {
-          HStack(spacing: 0) {
-            nativeEfficiencyStat("Est. rate", "\(band)/hr")
-            Divider().frame(height: 34)
-            nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
           }
         }
       }
