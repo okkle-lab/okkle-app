@@ -1243,7 +1243,7 @@ export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
 // up as the top "hotspot" — nearly every trip starts and ends there, so it
 // racks up more breadcrumb points than any real delivery zone ever could.
 
-export type ExcludedPlace = { label: string; lat: number; lng: number };
+export type ExcludedPlace = { label: string; lat: number; lng: number; address?: string };
 
 export function getExcludedPlaces(): ExcludedPlace[] {
   try { return JSON.parse(kvGet('excluded_places') || '[]'); } catch { return []; }

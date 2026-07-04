@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Switch, Alert, Linking, ScrollView } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
+import MapView, { Marker } from 'react-native-maps';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, GradientCard, ModalHeader } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
@@ -15,6 +16,22 @@ export default function AutoTripSettings() {
   const [address, setAddress] = React.useState('');
   const [geocoding, setGeocoding] = React.useState(false);
 
+  // Reverse-geocodes the coordinate we actually resolved (not just echoing
+  // back what the user typed) — so the saved place shows exactly where it
+  // was matched, and it's obvious if geocoding got it wrong.
+  async function resolveAddress(lat: number, lng: number): Promise<string | undefined> {
+    try {
+      const places = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      const p = places[0];
+      if (!p) return undefined;
+      const line1 = [p.streetNumber, p.street].filter(Boolean).join(' ');
+      const line2 = [p.city ?? p.district ?? p.subregion, p.postalCode].filter(Boolean).join(' ');
+      return [line1, line2].filter(Boolean).join(', ') || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   async function addByAddress() {
     const cleanLabel = label.trim();
     const cleanAddress = address.trim();
@@ -27,7 +44,8 @@ export default function AutoTripSettings() {
         Alert.alert("Couldn't find that address", 'Try a more specific address.');
         return;
       }
-      addExcludedPlace({ label: cleanLabel, lat: hit.latitude, lng: hit.longitude });
+      const resolved = await resolveAddress(hit.latitude, hit.longitude);
+      addExcludedPlace({ label: cleanLabel, lat: hit.latitude, lng: hit.longitude, address: resolved ?? cleanAddress });
       setPlaces(getExcludedPlaces());
       setLabel('');
       setAddress('');
@@ -48,7 +66,8 @@ export default function AutoTripSettings() {
         if (req.status !== 'granted') return;
       }
       const pos = await Location.getCurrentPositionAsync({});
-      addExcludedPlace({ label: cleanLabel, lat: pos.coords.latitude, lng: pos.coords.longitude });
+      const resolved = await resolveAddress(pos.coords.latitude, pos.coords.longitude);
+      addExcludedPlace({ label: cleanLabel, lat: pos.coords.latitude, lng: pos.coords.longitude, address: resolved });
       setPlaces(getExcludedPlaces());
       setLabel('');
       setAddress('');
@@ -125,13 +144,31 @@ export default function AutoTripSettings() {
         {places.length > 0 && (
           <View style={s.placesList}>
             {places.map((p, i) => (
-              <View key={`${p.label}-${i}`} style={s.placeChip}>
-                <Feather name="map-pin" size={13} color={colors.brandDeep} />
-                <Text style={s.placeLabel}>{p.label}</Text>
-                <Pressable onPress={() => remove(i)} hitSlop={10}>
-                  <Feather name="x" size={14} color={colors.textTertiary} />
-                </Pressable>
-              </View>
+              <Card key={`${p.label}-${i}`} style={s.placeCard}>
+                <View style={s.placeMap}>
+                  <MapView
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                    initialRegion={{ latitude: p.lat, longitude: p.lng, latitudeDelta: 0.006, longitudeDelta: 0.006 }}
+                    rotateEnabled={false}
+                    pitchEnabled={false}
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                    showsCompass={false}
+                  >
+                    <Marker coordinate={{ latitude: p.lat, longitude: p.lng }} />
+                  </MapView>
+                </View>
+                <View style={s.placeInfo}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.placeLabel}>{p.label}</Text>
+                    {!!p.address && <Text style={s.placeAddress}>{p.address}</Text>}
+                  </View>
+                  <Pressable onPress={() => remove(i)} hitSlop={10}>
+                    <Feather name="x" size={16} color={colors.textTertiary} />
+                  </Pressable>
+                </View>
+              </Card>
             ))}
           </View>
         )}
@@ -181,13 +218,12 @@ const s = StyleSheet.create({
   noteText: { ...type.caption, color: colors.amberDark, lineHeight: 18, flex: 1 },
   sectionTitle: { ...type.bodyMedium, fontSize: 16, marginTop: spacing.xl, marginBottom: 2 },
   placesFooter: { ...type.caption, lineHeight: 18 },
-  placesList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.md },
-  placeChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.full,
-    backgroundColor: colors.brandLight,
-  },
-  placeLabel: { ...type.bodyMedium, fontSize: 14 },
+  placesList: { gap: spacing.sm, marginTop: spacing.md },
+  placeCard: { padding: 0, overflow: 'hidden' },
+  placeMap: { height: 100, width: '100%' },
+  placeInfo: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: spacing.md },
+  placeLabel: { ...type.bodyMedium, fontSize: 15 },
+  placeAddress: { ...type.caption, marginTop: 2 },
   addTitle: { ...type.caption, fontWeight: font.semibold, marginTop: spacing.lg, marginBottom: spacing.xs },
   placesCard: { gap: spacing.sm },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 16, color: colors.textPrimary, backgroundColor: colors.bg },
