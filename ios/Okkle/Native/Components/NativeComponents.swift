@@ -43,6 +43,7 @@ struct NativeScreen<Content: View>: View {
   let style: NativeScreenStyle
   let onClose: (() -> Void)?
   let fillsViewport: Bool
+  let showsProfileButton: Bool
   let content: Content
   @State private var showSettings = false
 
@@ -53,6 +54,7 @@ struct NativeScreen<Content: View>: View {
     style: NativeScreenStyle = .standard,
     onClose: (() -> Void)? = nil,
     fillsViewport: Bool = false,
+    showsProfileButton: Bool = true,
     @ViewBuilder content: () -> Content
   ) {
     self.title = title
@@ -61,6 +63,7 @@ struct NativeScreen<Content: View>: View {
     self.style = style
     self.onClose = onClose
     self.fillsViewport = fillsViewport
+    self.showsProfileButton = showsProfileButton
     self.content = content()
   }
 
@@ -106,9 +109,11 @@ struct NativeScreen<Content: View>: View {
           }
         }
 
-        ToolbarItem(placement: .topBarTrailing) {
-          NativeProfileToolbarButton {
-            showSettings = true
+        if showsProfileButton {
+          ToolbarItem(placement: .topBarTrailing) {
+            NativeProfileToolbarButton {
+              showSettings = true
+            }
           }
         }
       }
@@ -224,6 +229,7 @@ struct NativeAiCard<Content: View>: View {
   var banner: String? = nil
   var bannerTrailing: String? = nil
   let content: Content
+  @Environment(\.colorScheme) private var colorScheme
 
   init(banner: String? = nil, bannerTrailing: String? = nil, @ViewBuilder content: () -> Content) {
     self.banner = banner
@@ -235,6 +241,48 @@ struct NativeAiCard<Content: View>: View {
     NativeGlassCard(cornerRadius: 30) {
       cardBody
     }
+    .background {
+      RoundedRectangle(cornerRadius: 30, style: .continuous)
+        .fill(
+          LinearGradient(
+            colors: [
+              Color(red: 0.63, green: 0.35, blue: 0.98).opacity(glowOpacity),
+              Color(red: 0.27, green: 0.35, blue: 1.0).opacity(glowOpacity * 0.58),
+              OkkleColor.brand.opacity(glowOpacity * 0.28)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          )
+        )
+        .blur(radius: 36)
+        .offset(y: 16)
+        .padding(-22)
+    }
+    .overlay {
+      RoundedRectangle(cornerRadius: 30, style: .continuous)
+        .stroke(
+          LinearGradient(
+            colors: [
+              Color(red: 0.72, green: 0.45, blue: 1.0).opacity(rimOpacity),
+              Color.white.opacity(rimOpacity * 0.45),
+              OkkleColor.brand.opacity(rimOpacity * 0.35)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ),
+          lineWidth: 1
+        )
+    }
+    .shadow(color: Color(red: 0.54, green: 0.28, blue: 0.95).opacity(glowOpacity * 0.42), radius: 34, x: -4, y: 16)
+    .shadow(color: Color(red: 0.25, green: 0.34, blue: 1.0).opacity(glowOpacity * 0.24), radius: 30, x: 8, y: 18)
+  }
+
+  private var glowOpacity: Double {
+    colorScheme == .dark ? 0.14 : 0.075
+  }
+
+  private var rimOpacity: Double {
+    colorScheme == .dark ? 0.18 : 0.11
   }
 
   @ViewBuilder private var cardBody: some View {

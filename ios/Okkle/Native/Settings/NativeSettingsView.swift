@@ -143,12 +143,20 @@ struct NativeSettingsView: View {
         }
 
         Section {
+          menuRow("Logged Mileage") { NativeLoggedMileageSettingsView() }
+          menuRow("Medals") { NativeMedalSummarySettingsView() }
+        } header: {
+          Text("Achievements")
+        }
+
+        Section {
           menuRow("Tax settings") { NativeTaxSettingsView() }
           menuRow("Automatic tracking") { NativeAutoTrackSettingsView() }
+          menuRow("Siri & Shortcuts") { NativeSiriSettingsView() }
           menuRow("Reminders") { NativeRemindersSettingsView() }
           menuRow("Export & share") { NativeExportSettingsView() }
         } header: {
-          Text("Features")
+          Text("Settings")
         }
 
         Section {
@@ -213,6 +221,79 @@ struct NativeSettingsProfileHeader: View {
     }
     .frame(maxWidth: .infinity)
     .padding(.vertical, 6)
+  }
+}
+
+// MARK: Achievements
+
+struct NativeLoggedMileageSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+  @State private var period: NativeProgressPeriod = .yearToDate
+
+  private var totals: NativeProgressTotals {
+    switch period {
+    case .weekly:
+      return NativeProgressSummary.weekly(store: store)
+    case .yearToDate:
+      return NativeProgressSummary.yearToDate(store: store)
+    case .allTime:
+      return NativeProgressSummary.allTime(store: store)
+    }
+  }
+
+  var body: some View {
+    List {
+      Section {
+        VStack(alignment: .leading, spacing: 16) {
+          Picker("Period", selection: $period) {
+            ForEach(NativeProgressPeriod.allCases) { period in
+              Text(period.label).tag(period)
+            }
+          }
+          .pickerStyle(.segmented)
+
+          Divider()
+
+          NativeMileageLoggedPanel(totals: totals)
+        }
+        .padding(.vertical, 6)
+      } header: {
+        Text("Summary")
+      }
+    }
+    .listStyle(.insetGrouped)
+    .scrollContentBackground(.visible)
+    .navigationTitle("Logged Mileage")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+struct NativeMedalSummarySettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+  @State private var showsAllMedals = false
+
+  private var achievements: [NativeMedalAchievement] {
+    NativeMedalEngine.achievements(store: store, period: .allTime)
+  }
+
+  var body: some View {
+    List {
+      Section {
+        NativeMedalPreviewPanel(achievements: achievements, progressPeriod: .allTime) {
+          showsAllMedals = true
+        }
+      } header: {
+        Text("Summary")
+      }
+    }
+    .listStyle(.insetGrouped)
+    .scrollContentBackground(.visible)
+    .navigationTitle("Medals")
+    .navigationBarTitleDisplayMode(.inline)
+    .fullScreenCover(isPresented: $showsAllMedals) {
+      NativeMedalsView(initialPeriod: .allTime)
+        .environmentObject(store)
+    }
   }
 }
 
@@ -497,6 +578,36 @@ struct NativeExcludedPlaceMapRepresentable: UIViewRepresentable {
       guard newState == .ending, let coordinate = view.annotation?.coordinate else { return }
       onDragEnd(coordinate)
     }
+  }
+}
+
+// MARK: Siri & Shortcuts
+
+struct NativeSiriSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    Form {
+      Section {
+        Toggle("Siri trip tracking", isOn: Binding(
+          get: { store.settings.siriTripTrackingEnabled },
+          set: { store.settings.siriTripTrackingEnabled = $0 }
+        ))
+      } header: {
+        Text("Voice automation")
+      } footer: {
+        Text("Allow Siri and Shortcuts to start or resume trip tracking with your default vehicle. Okkle opens when the shortcut runs and still needs location permission.")
+      }
+
+      Section {
+        Label("Hey Siri, track this trip with Okkle", systemImage: "quote.bubble")
+        Label("Hey Siri, start tracking this trip with Okkle", systemImage: "quote.bubble")
+      } header: {
+        Text("Example phrases")
+      }
+    }
+    .navigationTitle("Siri & Shortcuts")
+    .navigationBarTitleDisplayMode(.inline)
   }
 }
 

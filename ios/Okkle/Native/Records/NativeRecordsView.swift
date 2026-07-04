@@ -15,6 +15,7 @@ struct NativeRecordsView: View {
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
+  @State private var logKind: NativeLogKind?
   var onClose: (() -> Void)? = nil
 
   enum RecordsMode: String, CaseIterable, Identifiable {
@@ -27,7 +28,7 @@ struct NativeRecordsView: View {
 
   enum RecordsFilter: String, CaseIterable, Identifiable {
     case all
-    case trips
+    case journeys
     case income
     case expense
 
@@ -41,17 +42,20 @@ struct NativeRecordsView: View {
   }
 
   var body: some View {
-    NativeScreen(title: "Records", collapsedTitle: "Records", subtitle: "Your logs, tax estimate and export-ready history.", onClose: onClose) {
-      Picker("Records", selection: $mode) {
-        ForEach(RecordsMode.allCases) { Text($0.label).tag($0) }
-      }
-      .pickerStyle(.segmented)
-
+    NativeScreen(
+      title: "Records",
+      collapsedTitle: "Records",
+      subtitle: "Mileage, recent activity and export-ready history.",
+      onClose: onClose
+    ) {
       if mode == .tax {
         NativeTaxSummaryView()
       } else {
-        historyContent
+        recordsOverview
       }
+    }
+    .safeAreaInset(edge: .bottom, spacing: 0) {
+      bottomAddRecordMenu
     }
     .alert("Delete this entry?", isPresented: Binding(
       get: { itemPendingDeletion != nil },
@@ -89,6 +93,93 @@ struct NativeRecordsView: View {
         recordPendingEdit = nil
       }
     }
+    .sheet(item: $logKind) { kind in
+      NativeLogView(
+        initialKind: kind,
+        allowedKinds: [kind],
+        title: logTitle(for: kind),
+        subtitle: logSubtitle(for: kind),
+        onClose: {
+          logKind = nil
+        },
+        onViewRecords: {
+          logKind = nil
+        }
+      )
+      .environmentObject(store)
+      .presentationDetents([.large])
+      .presentationDragIndicator(.hidden)
+      .presentationCornerRadius(36)
+    }
+  }
+
+  private var recordsOverview: some View {
+    historyContent
+  }
+
+  private var addRecordMenu: some View {
+    Menu {
+      Button {
+        logKind = .income
+      } label: {
+        Label("Earnings", systemImage: NativeLogKind.income.symbol)
+      }
+
+      Button {
+        logKind = .expense
+      } label: {
+        Label("Expense", systemImage: NativeLogKind.expense.symbol)
+      }
+    } label: {
+      Label("Add record", systemImage: "plus")
+        .font(.system(size: 17, weight: .heavy))
+        .lineLimit(1)
+        .minimumScaleFactor(0.82)
+    }
+    .accessibilityLabel("Add record")
+  }
+
+  private var bottomAddRecordMenu: some View {
+    HStack {
+      Spacer()
+      addRecordMenu
+        .labelStyle(.titleAndIcon)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 14)
+        .background(OkkleColor.brand, in: Capsule())
+        .overlay {
+          Capsule()
+            .stroke(.white.opacity(0.22), lineWidth: 0.8)
+        }
+        .shadow(color: OkkleColor.brand.opacity(0.32), radius: 22, y: 10)
+        .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
+    }
+    .padding(.horizontal, 20)
+    .padding(.top, 8)
+    .padding(.bottom, 10)
+  }
+
+  private func logTitle(for kind: NativeLogKind) -> String {
+    switch kind {
+    case .income:
+      return "Log earnings"
+    case .expense:
+      return "Log expense"
+    case .mileage:
+      return "Log mileage"
+    }
+  }
+
+  private func logSubtitle(for kind: NativeLogKind) -> String {
+    switch kind {
+    case .income:
+      return "Add delivery pay, tips or bonuses."
+    case .expense:
+      return "Add a deductible cost."
+    case .mileage:
+      return "Add mileage from a previous journey."
+    }
   }
 
   private var historyContent: some View {
@@ -99,14 +190,14 @@ struct NativeRecordsView: View {
       .pickerStyle(.segmented)
 
       if filteredHistory.isEmpty {
-        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Trips, earnings and expenses appear here after you save them.")
+        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Journeys, earnings and expenses appear here after you save them.")
       } else {
         NativeGlassCard {
           VStack(spacing: 0) {
             ForEach(filteredHistory) { item in
               NativeSelectableHistoryRow(
                 item: item,
-                onSelect: { selectedHistoryItem = item }
+                onSelect: { selectFromAllHistory(item) }
               )
               if item.id != filteredHistory.last?.id {
                 Divider().padding(.leading, 52)
@@ -118,12 +209,16 @@ struct NativeRecordsView: View {
     }
   }
 
+  private func selectFromAllHistory(_ item: NativeHistoryItem) {
+    selectedHistoryItem = currentItem(matching: item) ?? item
+  }
+
   private var filteredHistory: [NativeHistoryItem] {
     store.history.filter { item in
       switch filter {
       case .all:
         return true
-      case .trips:
+      case .journeys:
         if case .trip = item { return true }
         if case .record(let record) = item { return record.kind == .mileage }
         return false
@@ -280,7 +375,7 @@ struct NativeHistoryRow: View {
 
   private var title: String {
     switch item {
-    case .trip(let trip): return "Trip - \(trip.vehicle.label)"
+    case .trip(let trip): return "Journey - \(trip.vehicle.label)"
     case .record(let record):
       switch record.kind {
       case .income: return record.platform ?? "Earnings"
@@ -450,7 +545,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .freeAgent: return "Income and expenses for bank import"
     case .selfAssessment: return "Turnover, expenses, profit and tax estimate"
     case .mileageLog: return "GPS and manual mileage claims"
-    case .allData: return "Trips, earnings, mileage and expenses"
+    case .allData: return "Journeys, earnings and expenses"
     }
   }
 

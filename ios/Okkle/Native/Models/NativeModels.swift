@@ -239,6 +239,9 @@ struct NativeSettings: Codable, Equatable {
   // holds the weekdays (0 = Sunday … 6 = Saturday, matching Calendar's symbol
   // index) on which trips auto-start; default is every day.
   var autoTrackTrips = true
+  // Opt-in voice automation: lets Siri and Shortcuts start or resume tracking
+  // with the driver's default vehicle.
+  var siriTripTrackingEnabled = false
   var workingDays: [Int] = Array(0...6)
   // A heads-up before your busy window starts, on working days.
   var preShiftAlerts = true
@@ -269,6 +272,7 @@ struct NativeSettings: Codable, Equatable {
     case logFrequency
     case taxDeadlineReminders
     case autoTrackTrips
+    case siriTripTrackingEnabled
     case workingDays
     case preShiftAlerts
     case hasCompletedOnboarding
@@ -293,6 +297,7 @@ struct NativeSettings: Codable, Equatable {
     logFrequency = try container.decodeIfPresent(NativeLogFrequency.self, forKey: .logFrequency) ?? .weekly
     taxDeadlineReminders = try container.decodeIfPresent(Bool.self, forKey: .taxDeadlineReminders) ?? true
     autoTrackTrips = try container.decodeIfPresent(Bool.self, forKey: .autoTrackTrips) ?? true
+    siriTripTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .siriTripTrackingEnabled) ?? false
     workingDays = try container.decodeIfPresent([Int].self, forKey: .workingDays) ?? Array(0...6)
     preShiftAlerts = try container.decodeIfPresent(Bool.self, forKey: .preShiftAlerts) ?? true
     hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
