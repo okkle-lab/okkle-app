@@ -1217,6 +1217,7 @@ export type HeatPoint = { lat: number; lng: number; w: number };
 // weighted (earnings/point when known, else 1). Feeds the location heatmap.
 export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
   const est = estimatedTripEarnings(); // £-weight the map by apportioned earnings
+  const excluded = excludedCoordinates();
   const rows = db.getAllSync<{ id: number; route_json: string | null; started_at: string }>(
     `SELECT id, route_json, started_at FROM trips WHERE route_json IS NOT NULL`);
   const out: HeatPoint[] = [];
@@ -1228,7 +1229,9 @@ export function getHeatPoints(filter: TimeFilter = 'all'): HeatPoint[] {
     const e = est.get(r.id) ?? 0;
     const w = e > 0 ? e / pts.length : 1;
     for (const p of pts) {
-      if (typeof p?.lat === 'number' && typeof p?.lng === 'number') out.push({ lat: p.lat, lng: p.lng, w });
+      if (typeof p?.lat !== 'number' || typeof p?.lng !== 'number') continue;
+      if (isNearExcluded(p.lat, p.lng, excluded)) continue;
+      out.push({ lat: p.lat, lng: p.lng, w });
     }
   }
   return out;

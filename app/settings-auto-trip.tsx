@@ -118,19 +118,26 @@ export default function AutoTripSettings() {
         </Card>
 
         <Text style={s.sectionTitle}>Places to leave out</Text>
+        <Text style={s.placesFooter}>
+          Kept out of “where to go” suggestions.
+        </Text>
+
+        {places.length > 0 && (
+          <View style={s.placesList}>
+            {places.map((p, i) => (
+              <View key={`${p.label}-${i}`} style={s.placeChip}>
+                <Feather name="map-pin" size={13} color={colors.brandDeep} />
+                <Text style={s.placeLabel}>{p.label}</Text>
+                <Pressable onPress={() => remove(i)} hitSlop={10}>
+                  <Feather name="x" size={14} color={colors.textTertiary} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <Text style={s.addTitle}>Add a place</Text>
         <Card style={s.placesCard}>
-          {places.length > 0 && (
-            <View style={s.placesList}>
-              {places.map((p, i) => (
-                <View key={`${p.label}-${i}`} style={s.placeRow}>
-                  <Text style={s.placeLabel}>{p.label}</Text>
-                  <Pressable onPress={() => remove(i)} hitSlop={10}>
-                    <Feather name="x" size={16} color={colors.textTertiary} />
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          )}
           <TextInput
             style={s.input}
             value={label}
@@ -154,9 +161,6 @@ export default function AutoTripSettings() {
             </Pressable>
           </View>
         </Card>
-        <Text style={s.placesFooter}>
-          Kept out of “where to go” suggestions.
-        </Text>
       </ScrollView>
     </View>
   );
@@ -175,14 +179,19 @@ const s = StyleSheet.create({
   toggleState: { ...type.caption, marginTop: 6, fontWeight: font.semibold, color: colors.brandDeep },
   noteCard: { flexDirection: 'row', gap: 10, marginTop: spacing.lg, backgroundColor: colors.amberLight },
   noteText: { ...type.caption, color: colors.amberDark, lineHeight: 18, flex: 1 },
-  sectionTitle: { ...type.bodyMedium, fontSize: 16, marginTop: spacing.xl, marginBottom: spacing.sm },
+  sectionTitle: { ...type.bodyMedium, fontSize: 16, marginTop: spacing.xl, marginBottom: 2 },
+  placesFooter: { ...type.caption, lineHeight: 18 },
+  placesList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.md },
+  placeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.full,
+    backgroundColor: colors.brandLight,
+  },
+  placeLabel: { ...type.bodyMedium, fontSize: 14 },
+  addTitle: { ...type.caption, fontWeight: font.semibold, marginTop: spacing.lg, marginBottom: spacing.xs },
   placesCard: { gap: spacing.sm },
-  placesList: { gap: spacing.xs, marginBottom: spacing.xs },
-  placeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
-  placeLabel: { ...type.bodyMedium, fontSize: 15 },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 16, color: colors.textPrimary, backgroundColor: colors.bg },
   placeActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
   addAction: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
   addActionDisabled: { color: colors.textTertiary },
-  placesFooter: { ...type.caption, marginTop: spacing.sm, lineHeight: 18 },
 });
