@@ -1,16 +1,15 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import * as Notifications from 'expo-notifications';
-import { kvGet, kvGetNum, kvSet } from './db';
+import { kvGet, kvGetNum, kvSet, getUser, getLastTrip, getVehicleKeys, isWorkingDay } from './db';
 import { recentActivity, hasMotionModule, type MotionActivity } from '../modules/okkle-motion';
+import { trackerStart } from './tripTracker';
 
-// Movement-based trip *suggestion* (Feature 1).
+// Automatic trip tracking (Feature 1).
 //
 // On a dev/TestFlight build with "Always" location, iOS wakes the app on big
-// location changes. When we see you moving at driving speed and you're not
-// already tracking, we fire a gentle "On the move — track this trip?" prompt.
-// We never auto-record: tapping the prompt opens the Trip screen where the user
-// confirms by hitting Start. This keeps the user in control.
+// location changes. When we see you moving at driving speed, aren't already
+// tracking, and it's a working day, we start tracking straight away — no tap
+// needed. If the user hasn't set any working days, every day counts.
 //
 // NOTE: true automotive/cycling classification needs CMMotionActivityManager
 // (native). This v1 uses a GPS speed heuristic via expo-location only — see
@@ -18,7 +17,14 @@ import { recentActivity, hasMotionModule, type MotionActivity } from '../modules
 
 export const AUTO_TRIP_TASK = 'okkle-auto-trip-detect';
 const DRIVING_MPS = 6.7;          // ~15 mph — clearly moving, not walking
-const PROMPT_COOLDOWN_MS = 30 * 60 * 1000; // don't nag more than every 30 min
+const START_COOLDOWN_MS = 5 * 60 * 1000; // guard against a burst of duplicate starts
+
+function pickVehicle(): string {
+  const keys = getVehicleKeys();
+  const last = getLastTrip();
+  const user = getUser();
+  return last?.vehicle ?? user?.vehicle ?? keys[0] ?? 'car';
+}
 
 // Defined at module load so the headless background context can run it too.
 TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
@@ -28,7 +34,8 @@ TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
 
   if (kvGet('trip_active') === '1') return;           // already tracking a trip
   if (kvGet('auto_trip') !== '1') return;             // feature turned off
-  if (Date.now() - kvGetNum('auto_trip_last_prompt', 0) < PROMPT_COOLDOWN_MS) return;
+  if (!isWorkingDay()) return;                        // not one of the chosen days
+  if (Date.now() - kvGetNum('auto_trip_last_start', 0) < START_COOLDOWN_MS) return;
 
   // Decide if this is really a *drive*. Prefer Core Motion (accurate — won't fire
   // for a bus/train/passenger); fall back to a GPS-speed heuristic when the native
@@ -41,23 +48,8 @@ TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
   }
   if (!driving) return;
 
-  // Quiet hours: this fires the moment we detect driving speed, with no idea
-  // whether it's a work shift or a late drive home — don't interrupt sleep
-  // over it. Skip 22:00–07:00 local; the next daytime drive will still prompt.
-  const hour = new Date().getHours();
-  if (hour >= 22 || hour < 7) return;
-
-  kvSet('auto_trip_last_prompt', Date.now());
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Looks like you’re driving',
-      // An observation, not an instruction — the user decides whether this
-      // drive is worth tracking, Okkle just flags that it noticed.
-      body: 'If this is a work trip, tracking it now keeps the tax-free miles.',
-      data: { type: 'autotrip' },
-    },
-    trigger: null, // deliver now
-  }).catch(() => {});
+  kvSet('auto_trip_last_start', Date.now());
+  await trackerStart(pickVehicle()).catch(() => {});
 });
 
 // Low-power background updates that watch for the *start* of a drive.

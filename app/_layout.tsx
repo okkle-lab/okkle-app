@@ -42,16 +42,13 @@ export default function RootLayout() {
   // trip_active flag left behind if the app was killed mid-trip.
   useEffect(() => { clearStaleTripState(); }, []);
 
-  // Tapping the "On the move — track this trip?" suggestion opens the Trip tab,
-  // where the user confirms by hitting Start (we never auto-record).
+  // The sticky "tracking" notification opens the live Trip tab; "Shift logged"
+  // (sent once a drive has auto-ended and saved) opens Records to see it.
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(res => {
       const type = (res.notification.request.content.data as any)?.type;
-      // Start nudge ("track this trip?"), the sticky "tracking" notification, and
-      // the end nudge ("finished this trip?") all open the Trip tab.
-      if (type === 'autotrip' || type === 'tripActive' || type === 'tripEnd') {
-        router.push('/(tabs)/trip');
-      }
+      if (type === 'tripActive') router.push('/(tabs)/trip');
+      if (type === 'tripEnd') router.push('/(tabs)/records');
     });
     return () => sub.remove();
   }, []);

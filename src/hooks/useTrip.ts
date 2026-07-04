@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  readLiveTrip, ensureUpdatesRunning, hasActiveTrip,
+  readLiveTrip, ensureUpdatesRunning, hasActiveTrip, checkAutoEnd,
   trackerStart, trackerPause, trackerResume, trackerEnd,
   type LiveTrip, type TripState, type GeoPoint,
 } from '../tripTracker';
@@ -22,6 +22,7 @@ const INITIAL: LiveTrip = {
 export function useTrip() {
   const [trip, setTrip] = useState<LiveTrip>(INITIAL);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoEndRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function sync() {
     const live = readLiveTrip();
@@ -30,9 +31,16 @@ export function useTrip() {
   function startTimer() {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(sync, 1000);
+    // Foreground safety net: while this screen is open, keep checking whether
+    // a trip should've auto-ended even if no GPS update happened to trigger it.
+    if (autoEndRef.current) clearInterval(autoEndRef.current);
+    autoEndRef.current = setInterval(() => {
+      checkAutoEnd().then(ended => { if (ended) { stopTimer(); sync(); } });
+    }, 30_000);
   }
   function stopTimer() {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (autoEndRef.current) { clearInterval(autoEndRef.current); autoEndRef.current = null; }
   }
 
   // On mount: if a trip is already in progress (returned to the screen, reopened

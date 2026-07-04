@@ -850,6 +850,19 @@ export function kvSet(key: string, value: string | number) {
   db.runSync('INSERT OR REPLACE INTO kv (key, value) VALUES (?,?)', key, String(value));
 }
 
+// Days the user actually works, as JS Date.getDay() indices (0=Sun..6=Sat).
+// Empty/unset means no preference was given — track every day.
+export function getWorkingDays(): number[] {
+  try { return JSON.parse(kvGet('working_days') || '[]'); } catch { return []; }
+}
+export function setWorkingDays(days: number[]) {
+  kvSet('working_days', JSON.stringify(days));
+}
+export function isWorkingDay(date: Date = new Date()): boolean {
+  const days = getWorkingDays();
+  return days.length === 0 || days.includes(date.getDay());
+}
+
 // Non-vehicle expense total this tax year (counts toward Self Assessment).
 export function getTaxYearExpenses(): number {
   const start = taxYearStart(), end = taxYearEnd();

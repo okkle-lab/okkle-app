@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import { calcDeduction, fmtGbp } from './db/tax';
-import { kvGet, kvSet } from './db';
+import { kvGet, kvSet, saveTrip, pickZoneRepresentativePoint } from './db';
 import { setTripActive, suspendAutoTripUpdates, resumeAutoTripUpdates } from './autoTrip';
 
 // ---------------------------------------------------------------------------
@@ -19,8 +19,8 @@ export const TRIP_TRACK_TASK = 'okkle-trip-track';
 const ACTIVE_TRIP_KEY = 'active_trip';
 
 const TRIP_NOTIF_ID = 'okkle-trip-active';
-const TRIP_END_NUDGE_ID = 'okkle-trip-end-nudge';
-const END_NUDGE_AFTER_S = 18 * 60; // ask "finished?" ~18 min after last movement
+const AUTO_END_AFTER_S = 18 * 60; // auto-finish ~18 min after last movement
+const MIN_AUTO_SAVE_MILES = 0.1;  // drop obvious false-positive blips rather than log them
 
 const MAX_GPS_ACCURACY_M = 45;
 const MAX_REASONABLE_SPEED_MPS = 45; // ~100mph; above this is almost certainly a GPS jump
@@ -137,10 +137,10 @@ TaskManager.defineTask(TRIP_TRACK_TASK, async ({ data, error }: any) => {
   if (!locations.length) return;
   const t = readActive();
   if (!t || t.state !== 'running') return;
-  const { moved } = ingest(t, locations);
+  ingest(t, locations);
   maybeRefreshNotification(t); // keep the live-miles notification current
   writeActive(t);
-  if (moved) armEndNudge(); // push the "finished?" nudge back on movement
+  await checkAutoEnd(); // opportunistic — catches most stops since GPS drift alone usually nudges a fix through
 });
 
 // --- lock-screen notification + end nudge ----------------------------------
@@ -172,20 +172,64 @@ function clearTripNotification() {
   Notifications.dismissNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
   Notifications.cancelScheduledNotificationAsync(TRIP_NOTIF_ID).catch(() => {});
 }
-function armEndNudge() {
-  Notifications.cancelScheduledNotificationAsync(TRIP_END_NUDGE_ID).catch(() => {});
+
+// Reverse-geocode a representative point to a friendly "zone" name, so the
+// Insights map can rank where you earn. Skips home/excluded places — otherwise
+// a shift that loops back through home mid-route could get named after home.
+async function resolveZone(points: GeoPoint[]): Promise<string | null> {
+  const repPoint = pickZoneRepresentativePoint(points);
+  if (!repPoint) return null;
+  try {
+    const places = await Location.reverseGeocodeAsync({ latitude: repPoint.lat, longitude: repPoint.lng });
+    const p = places[0];
+    const outward = p?.postalCode ? p.postalCode.split(' ')[0].trim() : null;
+    const local = p?.street ?? p?.district ?? p?.subregion ?? p?.city ?? null;
+    return [local, outward].filter(Boolean).join(' · ') || null;
+  } catch {
+    return null;
+  }
+}
+
+// No user is necessarily present to review a summary screen, so a trip that's
+// been sitting stationary long enough gets ended and written straight to
+// records — the same shape the manual "Save" flow on the Trip screen produces.
+async function autoFinishTrip(): Promise<void> {
+  const live = readLiveTrip();
+  if (!live) { await trackerEnd(); return; }
+  const points = live.points ?? [];
+  if (live.miles < MIN_AUTO_SAVE_MILES) { await trackerEnd(); return; }
+  const zone = await resolveZone(points);
+  await trackerEnd();
+  saveTrip({
+    platform: '',
+    vehicle: live.vehicle,
+    miles: parseFloat(live.miles.toFixed(2)),
+    deduction: parseFloat(live.deduction.toFixed(2)),
+    earnings: null,
+    started_at: live.startedAt!.toISOString(),
+    ended_at: new Date().toISOString(),
+    route_json: points.length > 0 ? JSON.stringify(points) : null,
+    zone,
+  });
   Notifications.scheduleNotificationAsync({
-    identifier: TRIP_END_NUDGE_ID,
     content: {
-      title: 'Finished this trip?',
-      body: 'You’ve been parked a while — tap to end and save your miles.',
+      title: 'Shift logged',
+      body: `${live.miles.toFixed(1)} mi · ${fmtGbp(live.deduction)} saved automatically.`,
       data: { type: 'tripEnd' },
     },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: END_NUDGE_AFTER_S },
+    trigger: null,
   }).catch(() => {});
 }
-function cancelEndNudge() {
-  Notifications.cancelScheduledNotificationAsync(TRIP_END_NUDGE_ID).catch(() => {});
+
+// There's no reliable iOS callback for "time has passed while parked" — we
+// piggyback this check on whatever already wakes the app (a GPS update from
+// the trip task, or the user reopening it) rather than depending on one.
+export async function checkAutoEnd(): Promise<boolean> {
+  const t = readActive();
+  if (!t || t.state !== 'running') return false;
+  if ((Date.now() - t.lastMoveAt) / 1000 < AUTO_END_AFTER_S) return false;
+  await autoFinishTrip();
+  return true;
 }
 
 // --- location updates lifecycle --------------------------------------------
@@ -234,7 +278,6 @@ export async function trackerStart(vehicle: string): Promise<void> {
   setTripActive(true); // pause auto-trip suggestions while we track
   await startUpdates();
   showTripNotification();
-  armEndNudge();
 }
 
 export async function trackerPause(): Promise<void> {
@@ -246,7 +289,6 @@ export async function trackerPause(): Promise<void> {
   t.lastPos = null; // so resume doesn't count the parked gap as distance
   writeActive(t);
   await stopUpdates();
-  cancelEndNudge();
 }
 
 export async function trackerResume(): Promise<void> {
@@ -254,9 +296,9 @@ export async function trackerResume(): Promise<void> {
   if (!t) return;
   if (t.pausedAt) { t.pausedMs += Date.now() - t.pausedAt; t.pausedAt = null; }
   t.state = 'running';
+  t.lastMoveAt = Date.now(); // resuming counts as fresh movement, not still-parked
   writeActive(t);
   await startUpdates();
-  armEndNudge();
 }
 
 // Read the live trip for rendering. Returns null when nothing is tracking.
@@ -282,16 +324,19 @@ export async function trackerEnd(): Promise<LiveTrip | null> {
   clearActive();
   setTripActive(false);
   clearTripNotification();
-  cancelEndNudge();
   await resumeAutoTripUpdates(); // bring auto-detection back if it was on
   return live ? { ...live, state: 'idle' } : null;
 }
 
-// Called once on cold launch. Only clears stale notifications/flags when nothing
-// is actually tracking — a genuinely in-progress trip is kept and resumed.
+// Called once on cold launch. A genuinely in-progress trip is either resumed,
+// or — if it's been stationary long enough while the app was closed — auto-
+// finished right here, so reopening the app is one more chance to catch it.
 export async function clearStaleTripState(): Promise<void> {
-  if (hasActiveTrip()) { await ensureUpdatesRunning(); return; }
+  if (hasActiveTrip()) {
+    const ended = await checkAutoEnd();
+    if (!ended) await ensureUpdatesRunning();
+    return;
+  }
   setTripActive(false);
   clearTripNotification();
-  cancelEndNudge();
 }

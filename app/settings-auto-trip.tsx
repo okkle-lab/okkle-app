@@ -6,15 +6,29 @@ import MapView, { Marker, type LatLng } from 'react-native-maps';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, GradientCard, ModalHeader } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
-import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, updateExcludedPlace, type ExcludedPlace } from '../src/db';
+import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, updateExcludedPlace, getWorkingDays, setWorkingDays, type ExcludedPlace } from '../src/db';
+
+// Monday-first, matching how couriers think about a work week; values are the
+// JS Date.getDay() index each chip represents (0=Sun..6=Sat).
+const DAY_CHIPS: { label: string; day: number }[] = [
+  { label: 'M', day: 1 }, { label: 'T', day: 2 }, { label: 'W', day: 3 },
+  { label: 'T', day: 4 }, { label: 'F', day: 5 }, { label: 'S', day: 6 }, { label: 'S', day: 0 },
+];
 
 export default function AutoTripSettings() {
   const [on, setOn] = React.useState(isAutoTripEnabled());
   const [busy, setBusy] = React.useState(false);
+  const [workingDays, setWorkingDaysState] = React.useState<number[]>(getWorkingDays());
   const [places, setPlaces] = React.useState<ExcludedPlace[]>(getExcludedPlaces());
   const [label, setLabel] = React.useState('');
   const [address, setAddress] = React.useState('');
   const [geocoding, setGeocoding] = React.useState(false);
+
+  function toggleDay(day: number) {
+    const next = workingDays.includes(day) ? workingDays.filter(d => d !== day) : [...workingDays, day];
+    setWorkingDaysState(next);
+    setWorkingDays(next);
+  }
 
   // Reverse-geocodes the coordinate we actually resolved (not just echoing
   // back what the user typed) — so the saved place shows exactly where it
@@ -122,20 +136,20 @@ export default function AutoTripSettings() {
   return (
     <View style={s.screen}>
       <ScrollView style={s.content} contentContainerStyle={s.contentInner} keyboardShouldPersistTaps="handled">
-        <ModalHeader title="Trip nudges" />
+        <ModalHeader title="Automatic tracking" />
 
         <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
           <Text style={s.heroTitle}>Never forget to track a trip</Text>
           <Text style={s.heroSub}>
-            Nudges you to start tracking when you drive, and to save once you’ve stopped and parked for a while. You decide each time — nothing is recorded automatically.
+            Starts tracking the moment you drive, and saves it once you’ve stopped and parked for a while — nothing to tap, nothing to confirm.
           </Text>
         </GradientCard>
 
         <Card style={s.toggleCard}>
           <View style={{ flex: 1 }}>
-            <Text style={s.toggleTitle}>Trip nudges</Text>
+            <Text style={s.toggleTitle}>Automatic tracking</Text>
             <Text style={s.toggleDesc}>
-              “Track this trip?” when you drive, “finished?” once you stop. Ignore on a personal drive.
+              Logs GPS miles as soon as you start driving. Turn off if you'd rather track manually.
             </Text>
             <Text style={s.toggleState}>{on ? 'On' : 'Off'}</Text>
           </View>
@@ -145,9 +159,24 @@ export default function AutoTripSettings() {
         <Card style={s.noteCard}>
           <Feather name="alert-circle" size={18} color={colors.amberDark} />
           <Text style={s.noteText}>
-            Not perfect — a bus or train might trigger it. Nothing logs until you confirm.
+            Not perfect — a bus or train might trigger it. You can always delete a trip afterwards.
           </Text>
         </Card>
+
+        <Text style={s.sectionTitle}>Working days</Text>
+        <Text style={s.placesFooter}>
+          Only auto-track on these days. Leave none selected to track every day.
+        </Text>
+        <View style={s.dayRow}>
+          {DAY_CHIPS.map((c, i) => {
+            const selected = workingDays.includes(c.day);
+            return (
+              <Pressable key={i} onPress={() => toggleDay(c.day)} style={[s.dayChip, selected && s.dayChipSelected]}>
+                <Text style={[s.dayChipText, selected && s.dayChipTextSelected]}>{c.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <Text style={s.sectionTitle}>Places to leave out</Text>
         <Text style={s.placesFooter}>
@@ -238,6 +267,14 @@ const s = StyleSheet.create({
   noteText: { ...type.caption, color: colors.amberDark, lineHeight: 18, flex: 1 },
   sectionTitle: { ...type.bodyMedium, fontSize: 16, marginTop: spacing.xl, marginBottom: 2 },
   placesFooter: { ...type.caption, lineHeight: 18 },
+  dayRow: { flexDirection: 'row', gap: 8, marginTop: spacing.md },
+  dayChip: {
+    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.bg, borderWidth: 1.5, borderColor: colors.border,
+  },
+  dayChipSelected: { backgroundColor: colors.brandDeep, borderColor: colors.brandDeep },
+  dayChipText: { ...type.bodyMedium, fontSize: 14, color: colors.textSecondary },
+  dayChipTextSelected: { color: '#fff' },
   placesList: { gap: spacing.sm, marginTop: spacing.md },
   placeCard: { padding: 0, overflow: 'hidden' },
   placeMap: { height: 280, width: '100%' },
