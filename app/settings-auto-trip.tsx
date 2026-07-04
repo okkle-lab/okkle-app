@@ -7,6 +7,7 @@ import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, ModalHeader } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
 import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, updateExcludedPlace, getWorkingDays, setWorkingDays, type ExcludedPlace } from '../src/db';
+import { trackEvent } from '../src/analytics';
 
 // Monday-first, matching how couriers think about a work week; values are the
 // JS Date.getDay() index each chip represents (0=Sun..6=Sat).
@@ -28,6 +29,7 @@ export default function AutoTripSettings() {
     const next = workingDays.includes(day) ? workingDays.filter(d => d !== day) : [...workingDays, day];
     setWorkingDaysState(next);
     setWorkingDays(next);
+    trackEvent('working_days_set', { days: next.join(','), count: next.length });
   }
 
   // Reverse-geocodes the coordinate we actually resolved (not just echoing
@@ -115,6 +117,7 @@ export default function AutoTripSettings() {
       const res = await enableAutoTrip();
       if (res.ok) {
         setOn(true);
+        trackEvent('auto_trip_enabled', { source: 'settings' });
       } else if (res.reason === 'background') {
         Alert.alert(
           'Allow “Always”',
@@ -129,6 +132,7 @@ export default function AutoTripSettings() {
     } else {
       await disableAutoTrip();
       setOn(false);
+      trackEvent('auto_trip_disabled', { source: 'settings' });
     }
     setBusy(false);
   }

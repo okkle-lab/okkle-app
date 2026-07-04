@@ -9,6 +9,7 @@ import { getZoneStats, getHeatPoints, getEarningsByTimeOfDay, getBestSpot, getYe
 import { fmtGbp, fmtMiles, fmtPerHour, fmtPerMile, fmtHours, fmtPct } from '../../src/db/tax';
 import { enableAutoTrip, isAutoTripEnabled } from '../../src/autoTrip';
 import { syncReminders } from '../../src/notifications';
+import { trackEvent } from '../../src/analytics';
 
 type InsightsTab = 'where' | 'when' | 'money';
 const TABS: { key: InsightsTab; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
@@ -88,6 +89,7 @@ export default function InsightsScreen() {
     const res = await enableAutoTrip();
     if (res.ok) {
       setNudgesOn(true);
+      trackEvent('auto_trip_enabled', { source: 'insights' });
     } else if (res.reason === 'background') {
       Alert.alert(
         'Allow “Always”',
