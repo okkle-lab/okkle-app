@@ -1553,7 +1553,7 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color
   VStack(alignment: .leading, spacing: 8) {
     nativeInsightKicker(kicker)
     Text(value)
-      .font(.system(size: 46, weight: .bold, design: .rounded))
+      .font(.system(size: 36, weight: .bold, design: .rounded))
       .foregroundStyle(valueColor)
       .lineLimit(1)
       .minimumScaleFactor(0.5)
@@ -1638,58 +1638,54 @@ struct NativeMonthlyInsightPanel: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 10) {
+      // Card 1 — the money: earned this month, its trend, efficiency, pattern.
       NativeAiCard {
-        nativeHeadlineStat(
-          kicker: "EARNED · LAST 30 DAYS",
-          value: nativeWholeGbp(incomeThis),
-          sub: incomeThis == 0
-            ? ("square.and.pencil", OkkleColor.muted, "Log your pay to track your month")
-            : incomeTrend
-        )
-      }
-
-      NativeAiCard {
-        VStack(alignment: .leading, spacing: 8) {
-          nativeInsightKicker("TAX RELIEF BANKED · 30 DAYS")
-          Text(nativeWholeGbp(savings.taxSaved))
-            .font(.system(size: 46, weight: .bold, design: .rounded))
-            .foregroundStyle(OkkleColor.brand)
-            .lineLimit(1).minimumScaleFactor(0.5)
-          Text("Money back at your tax rate, from \(miles(savings.miles)) of business driving — \(nativeWholeGbp(savings.mileageDeduction)) off your taxable profit.")
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
-
-      if nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) != nil || shift.deadMilePct > 0 {
-        NativeAiCard {
-          HStack(spacing: 0) {
-            if let band = nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) {
-              nativeEfficiencyStat("Est. rate", "\(band)/hr")
-              Divider().frame(height: 34)
+        VStack(alignment: .leading, spacing: 12) {
+          nativeHeadlineStat(
+            kicker: "EARNED · LAST 30 DAYS",
+            value: nativeWholeGbp(incomeThis),
+            sub: incomeThis == 0
+              ? ("square.and.pencil", OkkleColor.muted, "Log your pay to track your month")
+              : incomeTrend
+          )
+          if nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) != nil || shift.deadMilePct > 0 {
+            Divider()
+            HStack(spacing: 0) {
+              if let band = nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) {
+                nativeEfficiencyStat("Est. rate", "\(band)/hr")
+                Divider().frame(height: 34)
+              }
+              nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
             }
-            nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
           }
-        }
-      }
-
-      if let line = bestDayLine {
-        NativeAiCard {
-          VStack(alignment: .leading, spacing: 10) {
-            nativeInsightKicker("YOUR PATTERN")
-            HStack(alignment: .top, spacing: 10) {
+          if let line = bestDayLine {
+            HStack(alignment: .top, spacing: 8) {
               Image(systemName: "calendar")
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(OkkleColor.brand)
               Text(line)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(OkkleColor.ink)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(OkkleColor.muted)
                 .fixedSize(horizontal: false, vertical: true)
               Spacer(minLength: 0)
             }
           }
+        }
+      }
+
+      // Card 2 — tax relief banked this month.
+      NativeAiCard {
+        VStack(alignment: .leading, spacing: 6) {
+          nativeInsightKicker("TAX RELIEF BANKED · 30 DAYS")
+          Text(nativeWholeGbp(savings.taxSaved))
+            .font(.system(size: 36, weight: .bold, design: .rounded))
+            .foregroundStyle(OkkleColor.brand)
+            .lineLimit(1).minimumScaleFactor(0.5)
+          Text("\(nativeWholeGbp(savings.mileageDeduction)) off your taxable profit, from \(miles(savings.miles)) of business driving.")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
@@ -1717,31 +1713,33 @@ struct NativeYearlyInsightPanel: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 10) {
+      // Card 1 — the year's money: earned and the tax relief it generated.
       NativeAiCard {
-        nativeHeadlineStat(
-          kicker: "EARNED · THIS TAX YEAR",
-          value: nativeWholeGbp(store.yearIncome),
-          sub: store.yearIncome == 0
-            ? ("square.and.pencil", OkkleColor.muted, "Log your pay to total your year")
-            : nil
-        )
-      }
-
-      NativeAiCard {
-        VStack(alignment: .leading, spacing: 8) {
-          nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
-          Text(nativeWholeGbp(store.taxSaved))
-            .font(.system(size: 46, weight: .bold, design: .rounded))
-            .foregroundStyle(OkkleColor.brand)
-            .lineLimit(1).minimumScaleFactor(0.5)
-          Text("Estimated tax saved from \(miles(store.yearMiles)) of business driving — a \(nativeWholeGbp(store.yearMileageDeduction)) deduction off your Self Assessment profit. See the Tax tab for the full picture.")
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
-            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 14) {
+          nativeHeadlineStat(
+            kicker: "EARNED · THIS TAX YEAR",
+            value: nativeWholeGbp(store.yearIncome),
+            sub: store.yearIncome == 0
+              ? ("square.and.pencil", OkkleColor.muted, "Log your pay to total your year")
+              : nil
+          )
+          Divider()
+          VStack(alignment: .leading, spacing: 6) {
+            nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
+            Text(nativeWholeGbp(store.taxSaved))
+              .font(.system(size: 36, weight: .bold, design: .rounded))
+              .foregroundStyle(OkkleColor.brand)
+              .lineLimit(1).minimumScaleFactor(0.5)
+            Text("A \(nativeWholeGbp(store.yearMileageDeduction)) deduction off your Self Assessment profit, from \(miles(store.yearMiles)) driven. See the Tax tab.")
+              .font(.system(size: 13, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
       }
 
+      // Card 2 — seasonal earnings by month.
       if monthlyIncome.contains(where: { $0.total > 0 }) {
         NativeAiCard {
           VStack(alignment: .leading, spacing: 12) {
