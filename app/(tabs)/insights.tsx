@@ -91,7 +91,7 @@ export default function InsightsScreen() {
     } else if (res.reason === 'background') {
       Alert.alert(
         'Allow “Always”',
-        'To nudge you while Okkle is closed, iOS needs location set to “Always”. Open Settings to change it.',
+        'To track a trip with Okkle closed, iOS needs Location set to “Always”. Tap Open Settings, then Location → Always.',
         [{ text: 'Not now' }, { text: 'Open Settings', onPress: () => Linking.openSettings() }],
       );
     } else if (res.reason === 'foreground') {
