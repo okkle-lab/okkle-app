@@ -2,11 +2,11 @@ import React from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Switch, Alert, Linking, ScrollView } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, type LatLng } from 'react-native-maps';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, GradientCard, ModalHeader } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
-import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, type ExcludedPlace } from '../src/db';
+import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, updateExcludedPlace, type ExcludedPlace } from '../src/db';
 
 export default function AutoTripSettings() {
   const [on, setOn] = React.useState(isAutoTripEnabled());
@@ -81,6 +81,19 @@ export default function AutoTripSettings() {
     setPlaces(getExcludedPlaces());
   }
 
+  // Geocoding can land a little off — dragging the pin corrects it directly
+  // rather than fighting with a re-typed address.
+  async function movePin(index: number, coordinate: LatLng) {
+    const { latitude: lat, longitude: lng } = coordinate;
+    updateExcludedPlace(index, { lat, lng });
+    setPlaces(getExcludedPlaces());
+    const resolved = await resolveAddress(lat, lng);
+    if (resolved) {
+      updateExcludedPlace(index, { address: resolved });
+      setPlaces(getExcludedPlaces());
+    }
+  }
+
   async function toggle(next: boolean) {
     if (busy) return;
     setBusy(true);
@@ -148,16 +161,18 @@ export default function AutoTripSettings() {
                 <View style={s.placeMap}>
                   <MapView
                     style={StyleSheet.absoluteFill}
-                    pointerEvents="none"
                     initialRegion={{ latitude: p.lat, longitude: p.lng, latitudeDelta: 0.006, longitudeDelta: 0.006 }}
                     rotateEnabled={false}
                     pitchEnabled={false}
-                    scrollEnabled={false}
-                    zoomEnabled={false}
                     showsCompass={false}
                   >
-                    <Marker coordinate={{ latitude: p.lat, longitude: p.lng }} />
+                    <Marker
+                      coordinate={{ latitude: p.lat, longitude: p.lng }}
+                      draggable
+                      onDragEnd={e => movePin(i, e.nativeEvent.coordinate)}
+                    />
                   </MapView>
+                  <Text style={s.placeMapHint}>Drag the pin if it's off</Text>
                 </View>
                 <View style={s.placeInfo}>
                   <View style={{ flex: 1 }}>
@@ -220,7 +235,13 @@ const s = StyleSheet.create({
   placesFooter: { ...type.caption, lineHeight: 18 },
   placesList: { gap: spacing.sm, marginTop: spacing.md },
   placeCard: { padding: 0, overflow: 'hidden' },
-  placeMap: { height: 100, width: '100%' },
+  placeMap: { height: 150, width: '100%' },
+  placeMapHint: {
+    position: 'absolute', top: 8, left: 8,
+    ...type.caption, fontSize: 11, color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.sm,
+    overflow: 'hidden',
+  },
   placeInfo: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: spacing.md },
   placeLabel: { ...type.bodyMedium, fontSize: 15 },
   placeAddress: { ...type.caption, marginTop: 2 },

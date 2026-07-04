@@ -1258,6 +1258,12 @@ export function removeExcludedPlace(index: number) {
   list.splice(index, 1);
   kvSet('excluded_places', JSON.stringify(list));
 }
+export function updateExcludedPlace(index: number, updates: Partial<ExcludedPlace>) {
+  const list = getExcludedPlaces();
+  if (!list[index]) return;
+  list[index] = { ...list[index], ...updates };
+  kvSet('excluded_places', JSON.stringify(list));
+}
 
 // Guesses "home" from where trips actually start and end — not raw dwell time
 // (route points are only recorded while a trip is actively tracked, so time
