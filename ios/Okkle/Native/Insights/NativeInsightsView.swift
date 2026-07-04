@@ -943,7 +943,7 @@ struct NativeShiftPatternsCard: View {
               case .today: NativeDailyInsightPanel(shift: shift, trips: trips)
               case .week:  NativeWeeklyInsightPanel(shift: shift(for: p))
               case .month: NativeMonthlyInsightPanel(shift: shift(for: p))
-              case .year:  NativeYearlyInsightPanel()
+              case .year:  NativeYearlyInsightPanel(shift: shift(for: p))
               }
             }
             .background(GeometryReader { geo in
@@ -1037,16 +1037,6 @@ struct NativeDailyInsightPanel: View {
               Label("Quiet \(brk.label) — a good window for your break.", systemImage: "cup.and.saucer.fill")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OkkleColor.muted)
-            }
-            VStack(alignment: .leading, spacing: 8) {
-              HStack {
-                Text("WHEN IT'S BUSY")
-                  .font(.system(size: 12, weight: .heavy)).tracking(0.5)
-                  .foregroundStyle(OkkleColor.muted)
-                Spacer()
-                NativeBusyLegend()
-              }
-              NativeHourStrip(hourCounts: plan.hourCounts)
             }
           }
         }
@@ -1582,6 +1572,30 @@ private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View
   .frame(maxWidth: .infinity)
 }
 
+/// The "busiest hours" heat strip as a card — the time-of-day pattern reads
+/// far better aggregated over a month or year than over a single day, which is
+/// why it lives on the wider-window panels rather than Today.
+@ViewBuilder
+private func nativeBusyHoursCard(hourCounts: [Int]) -> some View {
+  if hourCounts.contains(where: { $0 > 0 }) {
+    NativeAiCard {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack {
+          VStack(alignment: .leading, spacing: 2) {
+            nativeInsightKicker("BUSIEST HOURS")
+            Text("Deliveries by time of day.")
+              .font(.system(size: 12, weight: .medium))
+              .foregroundStyle(OkkleColor.muted.opacity(0.8))
+          }
+          Spacer()
+          NativeBusyLegend()
+        }
+        NativeHourStrip(hourCounts: hourCounts)
+      }
+    }
+  }
+}
+
 /// £/hr as an honest range (matching NativeShiftInsights.perHourBand), for the
 /// wider windows where the built-in 14-day figure doesn't apply.
 private func nativePerHourBand(income: Double, activeHours: Double) -> String? {
@@ -1688,6 +1702,9 @@ struct NativeMonthlyInsightPanel: View {
             .fixedSize(horizontal: false, vertical: true)
         }
       }
+
+      // Card 3 — busiest hours over the last 30 days.
+      nativeBusyHoursCard(hourCounts: shift.hourCounts)
     }
   }
 }
@@ -1695,80 +1712,157 @@ struct NativeMonthlyInsightPanel: View {
 // MARK: - Yearly panel: tax-year totals, Self Assessment deduction, seasonal shape
 
 struct NativeYearlyInsightPanel: View {
+  let shift: NativeShiftInsights
   @EnvironmentObject private var store: OkkleStore
+  @State private var selectedMonth: Int?
+
+  private struct MonthStat: Identifiable {
+    let index: Int
+    let name: String        // full month name, e.g. "June"
+    let interval: DateInterval
+    let income: Double
+    var id: Int { index }
+  }
 
   /// Income by calendar month across the last 12 months, oldest → newest.
-  private var monthlyIncome: [(label: String, total: Double)] {
+  private var monthlyStats: [MonthStat] {
     let cal = Calendar.current
     let now = Date()
-    return (0..<12).reversed().compactMap { back in
+    return (0..<12).reversed().enumerated().compactMap { position, back in
       guard let monthDate = cal.date(byAdding: .month, value: -back, to: now),
             let interval = cal.dateInterval(of: .month, for: monthDate) else { return nil }
-      let total = store.records
+      let income = store.records
         .filter { $0.kind == .income && interval.contains($0.date) }
         .reduce(0.0) { $0 + ($1.amount ?? 0) }
-      let symbol = cal.shortMonthSymbols[cal.component(.month, from: monthDate) - 1]
-      return (symbol, total)
+      let name = cal.monthSymbols[cal.component(.month, from: monthDate) - 1]
+      return MonthStat(index: position, name: name, interval: interval, income: income)
     }
   }
 
+  /// Tapped month, else the current month if it has earnings, else the best.
+  private func activeIndex(_ stats: [MonthStat]) -> Int {
+    if let selectedMonth, stats.indices.contains(selectedMonth) { return selectedMonth }
+    if let last = stats.last, last.income > 0 { return last.index }
+    return stats.max(by: { $0.income < $1.income })?.index ?? (stats.count - 1)
+  }
+
   var body: some View {
+    let stats = monthlyStats
     VStack(alignment: .leading, spacing: 10) {
-      // Card 1 — the year's money: earned and the tax relief it generated.
+      // Card 1 — earned this tax year.
       NativeAiCard {
-        VStack(alignment: .leading, spacing: 14) {
-          nativeHeadlineStat(
-            kicker: "EARNED · THIS TAX YEAR",
-            value: nativeWholeGbp(store.yearIncome),
-            sub: store.yearIncome == 0
-              ? ("square.and.pencil", OkkleColor.muted, "Log your pay to total your year")
-              : nil
-          )
-          Divider()
-          VStack(alignment: .leading, spacing: 6) {
-            nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
-            Text(nativeWholeGbp(store.taxSaved))
-              .font(.system(size: 36, weight: .bold, design: .rounded))
-              .foregroundStyle(OkkleColor.brand)
-              .lineLimit(1).minimumScaleFactor(0.5)
-            Text("A \(nativeWholeGbp(store.yearMileageDeduction)) deduction off your Self Assessment profit, from \(miles(store.yearMiles)) driven. See the Tax tab.")
-              .font(.system(size: 13, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-              .fixedSize(horizontal: false, vertical: true)
-          }
+        nativeHeadlineStat(
+          kicker: "EARNED · THIS TAX YEAR",
+          value: nativeWholeGbp(store.yearIncome),
+          sub: store.yearIncome == 0
+            ? ("square.and.pencil", OkkleColor.muted, "Log your pay to total your year")
+            : nil
+        )
+      }
+
+      // Card 2 — tax relief (same treatment as Monthly, for consistency).
+      NativeAiCard {
+        VStack(alignment: .leading, spacing: 6) {
+          nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
+          Text(nativeWholeGbp(store.taxSaved))
+            .font(.system(size: 36, weight: .bold, design: .rounded))
+            .foregroundStyle(OkkleColor.brand)
+            .lineLimit(1).minimumScaleFactor(0.5)
+          Text("A \(nativeWholeGbp(store.yearMileageDeduction)) deduction off your Self Assessment profit, from \(miles(store.yearMiles)) driven. See the Tax tab.")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
 
-      // Card 2 — seasonal earnings by month.
-      if monthlyIncome.contains(where: { $0.total > 0 }) {
+      // Card 3 — seasonal earnings by month; tap a bar for that month's stats.
+      if stats.contains(where: { $0.income > 0 }) {
         NativeAiCard {
           VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
               nativeInsightKicker("BUSIEST MONTHS")
-              Text("Your earnings across the last 12 months.")
+              Text("Earnings each month — tap a bar for the detail.")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(OkkleColor.muted.opacity(0.8))
             }
-            let maxTotal = max(1, monthlyIncome.map(\.total).max() ?? 1)
+            let maxTotal = max(1, stats.map(\.income).max() ?? 1)
+            let active = activeIndex(stats)
             HStack(alignment: .bottom, spacing: 5) {
-              ForEach(Array(monthlyIncome.enumerated()), id: \.offset) { _, month in
+              ForEach(stats) { month in
+                let selected = month.index == active
                 VStack(spacing: 5) {
                   Capsule()
-                    .fill(month.total == 0
+                    .fill(month.income == 0
                           ? OkkleColor.muted.opacity(0.18)
-                          : OkkleColor.brand.opacity(0.4 + 0.6 * (month.total / maxTotal)))
-                    .frame(width: 9, height: max(5, CGFloat(month.total / maxTotal) * 64))
-                  Text(month.label.prefix(1))
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(OkkleColor.muted)
+                          : OkkleColor.brand.opacity(0.4 + 0.6 * (month.income / maxTotal)))
+                    .frame(width: 9, height: max(5, CGFloat(month.income / maxTotal) * 64))
+                  Text(month.name.prefix(1))
+                    .font(.system(size: 10, weight: selected ? .heavy : .semibold))
+                    .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(selected ? OkkleColor.muted.opacity(0.10) : .clear,
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                  withAnimation(.easeInOut(duration: 0.15)) { selectedMonth = month.index }
+                }
               }
             }
-            .frame(height: 92, alignment: .bottom)
+            .frame(height: 104, alignment: .bottom)
+
+            Divider()
+            monthBreakdown(stats[active])
           }
         }
       }
+
+      // Card 4 — busiest hours across the year.
+      nativeBusyHoursCard(hourCounts: shift.hourCounts)
+    }
+  }
+
+  /// One month, expanded: what you earned, drove and saved that month.
+  private func monthBreakdown(_ month: MonthStat) -> some View {
+    let savings = store.mileageTaxSavings(for: month.interval)
+    let year = Calendar.current.component(.year, from: month.interval.start)
+    return VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .firstTextBaseline) {
+        Text("\(month.name) \(String(year))")
+          .font(.system(size: 18, weight: .bold))
+          .foregroundStyle(OkkleColor.ink)
+        Spacer()
+        Text(nativeWholeGbp(month.income))
+          .font(.system(size: 18, weight: .bold, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+      }
+      if month.income > 0 || savings.miles > 0 {
+        breakdownRow("map.fill", "Business miles", miles(savings.miles))
+        breakdownRow("sterlingsign.circle.fill", "Tax relief", nativeWholeGbp(savings.taxSaved))
+        breakdownRow("percent", "Deduction", nativeWholeGbp(savings.mileageDeduction))
+      } else {
+        Text("Nothing logged for \(month.name).")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func breakdownRow(_ symbol: String, _ label: String, _ value: String) -> some View {
+    HStack(spacing: 10) {
+      Image(systemName: symbol)
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(OkkleColor.brand)
+        .frame(width: 20)
+      Text(label)
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(OkkleColor.muted)
+      Spacer(minLength: 8)
+      Text(value)
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(OkkleColor.ink)
     }
   }
 }
@@ -2408,6 +2502,7 @@ struct NativeShiftInsights {
   let peakHitRate: Double?                     // how often "your peak" has actually paid off
   let weekdayReliability: [Int: NativeDayReliability]   // per-weekday, week-to-week consistency
   let platformShares: [NativePlatformShare]             // ranked, only populated with 2+ platforms logged
+  let hourCounts: [Int]                                 // 24 buckets: all deliveries in the period by hour of day
 
   var hasData: Bool { deliveries > 0 }
   var totalMiles: Double { paidMiles + deadMiles }
@@ -2490,7 +2585,7 @@ struct NativeShiftInsights {
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
     weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
     activeDays: 0, peakHitRate: nil, weekdayReliability: [:],
-    platformShares: []
+    platformShares: [], hourCounts: Array(repeating: 0, count: 24)
   )
 
   @MainActor
@@ -2564,6 +2659,13 @@ struct NativeShiftInsights {
     let totalMiles = max(totalMeters / 1609.34 * roadFactor, paidMiles)
     let deadMiles = max(0, totalMiles - paidMiles)
     let activeHours = activeSeconds / 3600
+
+    // Busy-hours histogram across the whole period (every delivery by hour) —
+    // powers the "when you're busy" chart on the Monthly/Yearly panels.
+    var periodHourCounts = Array(repeating: 0, count: 24)
+    for hit in deliveryHits where hit.hour >= 0 && hit.hour < 24 {
+      periodHourCounts[hit.hour] += 1
+    }
 
     // Rank every weekday + time-band bucket by delivery count.
     var counts: [String: Int] = [:]
@@ -2738,7 +2840,8 @@ struct NativeShiftInsights {
       activeDays: activeDays,
       peakHitRate: NativeOutcomeTracker.shared.peakHitRate,
       weekdayReliability: weekdayReliability,
-      platformShares: platformShares
+      platformShares: platformShares,
+      hourCounts: periodHourCounts
     )
   }
 
