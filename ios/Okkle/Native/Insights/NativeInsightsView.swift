@@ -939,10 +939,11 @@ struct NativeShiftPatternsCard: View {
         TabView(selection: $period) {
           ForEach(NativeInsightPeriod.allCases) { p in
             Group {
-              if p == .today {
-                NativeDailyInsightPanel(shift: shift, trips: trips)
-              } else {
-                NativeWeeklyInsightPanel(shift: shift(for: p))
+              switch p {
+              case .today: NativeDailyInsightPanel(shift: shift, trips: trips)
+              case .week:  NativeWeeklyInsightPanel(shift: shift(for: p))
+              case .month: NativeMonthlyInsightPanel(shift: shift(for: p))
+              case .year:  NativeYearlyInsightPanel(shift: shift(for: p))
               }
             }
             .background(GeometryReader { geo in
@@ -1519,6 +1520,266 @@ struct NativeWeeklyInsightPanel: View {
         .foregroundStyle(OkkleColor.ink)
         .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 0)
+    }
+  }
+}
+
+// MARK: - Shared bits for the wider-window (Monthly / Yearly) panels
+
+private let nativeWholeGbpFormatter: NumberFormatter = {
+  let f = NumberFormatter()
+  f.numberStyle = .currency
+  f.currencyCode = "GBP"
+  f.maximumFractionDigits = 0
+  return f
+}()
+
+/// Whole-pound currency for headline figures. The shared gbp(whole:) helper
+/// currently ignores its flag, so format locally rather than depend on it.
+private func nativeWholeGbp(_ value: Double) -> String {
+  nativeWholeGbpFormatter.string(from: NSNumber(value: max(0, value))) ?? "£\(Int(max(0, value).rounded()))"
+}
+
+private func nativeInsightKicker(_ text: String) -> some View {
+  Text(text)
+    .font(.system(size: 12, weight: .heavy)).tracking(0.5)
+    .foregroundStyle(OkkleColor.muted)
+}
+
+private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color = OkkleColor.ink,
+                                sub: (symbol: String, color: Color, text: String)?) -> some View {
+  VStack(alignment: .leading, spacing: 8) {
+    nativeInsightKicker(kicker)
+    Text(value)
+      .font(.system(size: 34, weight: .bold, design: .rounded))
+      .foregroundStyle(valueColor)
+      .lineLimit(1)
+      .minimumScaleFactor(0.5)
+    if let sub {
+      HStack(spacing: 6) {
+        Image(systemName: sub.symbol).font(.system(size: 13, weight: .bold))
+        Text(sub.text).font(.system(size: 13, weight: .semibold))
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .foregroundStyle(sub.color)
+    }
+  }
+  .frame(maxWidth: .infinity, alignment: .leading)
+}
+
+private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View {
+  VStack(spacing: 3) {
+    Text(value)
+      .font(.system(size: 19, weight: .bold, design: .rounded))
+      .foregroundStyle(OkkleColor.ink)
+      .lineLimit(1).minimumScaleFactor(0.6)
+    Text(title)
+      .font(.system(size: 12, weight: .medium))
+      .foregroundStyle(OkkleColor.muted)
+  }
+  .frame(maxWidth: .infinity)
+}
+
+/// £/hr as an honest range (matching NativeShiftInsights.perHourBand), for the
+/// wider windows where the built-in 14-day figure doesn't apply.
+private func nativePerHourBand(income: Double, activeHours: Double) -> String? {
+  guard income > 0, activeHours > 1 else { return nil }
+  let rate = income / activeHours
+  guard (4.0...45.0).contains(rate) else { return nil }
+  return "£\(Int((rate * 0.85).rounded(.down)))–\(Int((rate * 1.15).rounded(.up)))"
+}
+
+// MARK: - Monthly panel: earnings + tax relief + efficiency, over 30 days
+
+struct NativeMonthlyInsightPanel: View {
+  let shift: NativeShiftInsights
+  @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var areaNamer = NativeAreaNamer.shared
+
+  private let day: TimeInterval = 86_400
+
+  private func windowIncome(fromDaysAgo: Int, toDaysAgo: Int) -> Double {
+    let now = Date()
+    let start = now.addingTimeInterval(-Double(fromDaysAgo) * day)
+    let end = now.addingTimeInterval(-Double(toDaysAgo) * day)
+    return store.records
+      .filter { $0.kind == .income && $0.date >= start && $0.date < end }
+      .reduce(0) { $0 + ($1.amount ?? 0) }
+  }
+
+  private var incomeThis: Double { windowIncome(fromDaysAgo: 30, toDaysAgo: 0) }
+  private var incomePrev: Double { windowIncome(fromDaysAgo: 60, toDaysAgo: 30) }
+
+  private var savings: NativeMileageTaxSavings {
+    store.mileageTaxSavings(for: DateInterval(start: Date().addingTimeInterval(-30 * day), end: Date()))
+  }
+
+  private var incomeTrend: (symbol: String, color: Color, text: String)? {
+    guard incomePrev > 0 else { return nil }
+    let delta = (incomeThis - incomePrev) / incomePrev
+    if abs(delta) < 0.05 {
+      return ("equal", OkkleColor.muted, "About the same as the 30 days before")
+    }
+    let pct = Int((abs(delta) * 100).rounded())
+    return delta > 0
+      ? ("arrow.up.right", OkkleColor.brand, "\(pct)% more than the 30 days before")
+      : ("arrow.down.right", OkkleColor.amber, "\(pct)% less than the 30 days before")
+  }
+
+  private var bestDayLine: String? {
+    guard let detail = shift.weekdayDetails.first else { return nil }
+    let name = Calendar.current.weekdaySymbols[detail.weekday]
+    if let coordinate = detail.coordinate, let area = areaNamer.name(for: coordinate) {
+      return "\(name)s are your strongest day, busiest around \(area)."
+    }
+    return "\(name)s are your strongest day."
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      NativeAiCard {
+        nativeHeadlineStat(
+          kicker: "EARNED · LAST 30 DAYS",
+          value: nativeWholeGbp(incomeThis),
+          sub: incomeThis == 0
+            ? ("square.and.pencil", OkkleColor.muted, "Log your pay to track your month")
+            : incomeTrend
+        )
+      }
+
+      NativeAiCard {
+        VStack(alignment: .leading, spacing: 8) {
+          nativeInsightKicker("TAX RELIEF BANKED · 30 DAYS")
+          Text(nativeWholeGbp(savings.taxSaved))
+            .font(.system(size: 34, weight: .bold, design: .rounded))
+            .foregroundStyle(OkkleColor.brand)
+            .lineLimit(1).minimumScaleFactor(0.5)
+          Text("Money back at your tax rate, from \(miles(savings.miles)) of business driving — \(nativeWholeGbp(savings.mileageDeduction)) off your taxable profit.")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+
+      if nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) != nil || shift.deadMilePct > 0 {
+        NativeAiCard {
+          HStack(spacing: 0) {
+            if let band = nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) {
+              nativeEfficiencyStat("Est. rate", "\(band)/hr")
+              Divider().frame(height: 34)
+            }
+            nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
+          }
+        }
+      }
+
+      if let line = bestDayLine {
+        NativeAiCard {
+          VStack(alignment: .leading, spacing: 10) {
+            nativeInsightKicker("YOUR PATTERN")
+            HStack(alignment: .top, spacing: 10) {
+              Image(systemName: "calendar")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(OkkleColor.brand)
+              Text(line)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(OkkleColor.ink)
+                .fixedSize(horizontal: false, vertical: true)
+              Spacer(minLength: 0)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// MARK: - Yearly panel: tax-year totals, Self Assessment deduction, seasonal shape
+
+struct NativeYearlyInsightPanel: View {
+  let shift: NativeShiftInsights
+  @EnvironmentObject private var store: OkkleStore
+
+  /// Income by calendar month across the last 12 months, oldest → newest.
+  private var monthlyIncome: [(label: String, total: Double)] {
+    let cal = Calendar.current
+    let now = Date()
+    return (0..<12).reversed().compactMap { back in
+      guard let monthDate = cal.date(byAdding: .month, value: -back, to: now),
+            let interval = cal.dateInterval(of: .month, for: monthDate) else { return nil }
+      let total = store.records
+        .filter { $0.kind == .income && interval.contains($0.date) }
+        .reduce(0.0) { $0 + ($1.amount ?? 0) }
+      let symbol = cal.shortMonthSymbols[cal.component(.month, from: monthDate) - 1]
+      return (symbol, total)
+    }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      NativeAiCard {
+        nativeHeadlineStat(
+          kicker: "EARNED · THIS TAX YEAR",
+          value: nativeWholeGbp(store.yearIncome),
+          sub: store.yearIncome == 0
+            ? ("square.and.pencil", OkkleColor.muted, "Log your pay to total your year")
+            : nil
+        )
+      }
+
+      NativeAiCard {
+        VStack(alignment: .leading, spacing: 8) {
+          nativeInsightKicker("TAX DEDUCTION · SELF ASSESSMENT")
+          Text(nativeWholeGbp(store.taxSaved))
+            .font(.system(size: 34, weight: .bold, design: .rounded))
+            .foregroundStyle(OkkleColor.brand)
+            .lineLimit(1).minimumScaleFactor(0.5)
+          Text("Estimated tax saved from \(miles(store.yearMiles)) of business driving — \(nativeWholeGbp(store.yearMileageDeduction)) off your taxable profit. See the Tax tab for the full picture.")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+
+      if monthlyIncome.contains(where: { $0.total > 0 }) {
+        NativeAiCard {
+          VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+              nativeInsightKicker("BUSIEST MONTHS")
+              Text("Your earnings across the last 12 months.")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(OkkleColor.muted.opacity(0.8))
+            }
+            let maxTotal = max(1, monthlyIncome.map(\.total).max() ?? 1)
+            HStack(alignment: .bottom, spacing: 5) {
+              ForEach(Array(monthlyIncome.enumerated()), id: \.offset) { _, month in
+                VStack(spacing: 5) {
+                  Capsule()
+                    .fill(month.total == 0
+                          ? OkkleColor.muted.opacity(0.18)
+                          : OkkleColor.brand.opacity(0.4 + 0.6 * (month.total / maxTotal)))
+                    .frame(width: 9, height: max(5, CGFloat(month.total / maxTotal) * 64))
+                  Text(month.label.prefix(1))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                }
+                .frame(maxWidth: .infinity)
+              }
+            }
+            .frame(height: 92, alignment: .bottom)
+          }
+        }
+      }
+
+      if let band = nativePerHourBand(income: store.yearIncome, activeHours: shift.activeHours) {
+        NativeAiCard {
+          HStack(spacing: 0) {
+            nativeEfficiencyStat("Est. rate", "\(band)/hr")
+            Divider().frame(height: 34)
+            nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
+          }
+        }
+      }
     }
   }
 }
