@@ -11,7 +11,7 @@ enum NativeTab: String, CaseIterable, Hashable {
   case log
   case insights
   case records
-  case progress
+  case tax
 }
 
 struct OkkleNativeRootView: View {
@@ -77,11 +77,11 @@ struct OkkleNativeRootView: View {
       NativeRecordsView()
         .tabItem { Label("Records", systemImage: "archivebox") }
         .tag(NativeTab.records)
-      NativeProgressView(selectedTab: $selectedTab)
-        .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
-        .tag(NativeTab.progress)
+      NativeTaxDetailView()
+        .tabItem { Label("Tax", systemImage: "sterlingsign.circle") }
+        .tag(NativeTab.tax)
     }
-    .id("okkle-main-tabs-trip-log-insights-records-progress")
+    .id("okkle-main-tabs-trip-log-insights-records-tax")
     .sheet(isPresented: Binding(
       get: { selectedTab == .log },
       set: { isPresented in

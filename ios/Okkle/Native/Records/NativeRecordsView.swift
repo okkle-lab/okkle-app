@@ -45,18 +45,13 @@ struct NativeRecordsView: View {
     NativeScreen(
       title: "Records",
       collapsedTitle: "Records",
-      subtitle: "Your logs, tax estimate and export-ready history.",
+      subtitle: "Mileage, recent activity and export-ready history.",
       onClose: onClose
     ) {
-      Picker("Records", selection: $mode) {
-        ForEach(RecordsMode.allCases) { Text($0.label).tag($0) }
-      }
-      .pickerStyle(.segmented)
-
       if mode == .tax {
         NativeTaxSummaryView()
       } else {
-        historyContent
+        recordsOverview
       }
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -116,6 +111,10 @@ struct NativeRecordsView: View {
       .presentationDragIndicator(.hidden)
       .presentationCornerRadius(36)
     }
+  }
+
+  private var recordsOverview: some View {
+    historyContent
   }
 
   private var addRecordMenu: some View {
@@ -198,7 +197,7 @@ struct NativeRecordsView: View {
             ForEach(filteredHistory) { item in
               NativeSelectableHistoryRow(
                 item: item,
-                onSelect: { selectedHistoryItem = item }
+                onSelect: { selectFromAllHistory(item) }
               )
               if item.id != filteredHistory.last?.id {
                 Divider().padding(.leading, 52)
@@ -208,6 +207,10 @@ struct NativeRecordsView: View {
         }
       }
     }
+  }
+
+  private func selectFromAllHistory(_ item: NativeHistoryItem) {
+    selectedHistoryItem = currentItem(matching: item) ?? item
   }
 
   private var filteredHistory: [NativeHistoryItem] {

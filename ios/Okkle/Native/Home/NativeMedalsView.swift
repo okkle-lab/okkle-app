@@ -36,8 +36,57 @@ enum NativeProgressPeriod: String, CaseIterable, Identifiable {
   }
 }
 
-struct NativeMedalPreviewCard: View {
+struct NativeMileageLoggedPanel: View {
   @Environment(\.colorScheme) private var colorScheme
+  let totals: NativeProgressTotals
+
+  private var mileageHeaderAccent: Color {
+    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77) : OkkleColor.brandDark
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 6) {
+          Image(systemName: "road.lanes")
+            .font(.system(size: 14, weight: .bold))
+          Text("Mileage logged")
+            .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(mileageHeaderAccent)
+
+        Text(miles(totals.mileageMiles))
+          .font(.system(size: 40, weight: .heavy, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.52)
+      }
+
+      VStack(spacing: 16) {
+        NativeProgressMetricRow(
+          title: "First 10K mileage band",
+          value: "\(Int(totals.mileageMiles.rounded()).formatted()) / 10,000 mi",
+          progress: totals.mileageMiles / 10_000
+        )
+
+        NativeCityDistanceDetail(totalMiles: totals.mileageMiles)
+
+        NativeProgressMetricRow(
+          title: "Records logged",
+          value: "\(totals.recordsLogged.formatted()) \(totals.recordsLogged == 1 ? "entry" : "entries")",
+          progress: Double(totals.recordsLogged) / 25
+        )
+        NativeProgressMetricRow(
+          title: "Trips tracked",
+          value: "\(totals.tripsTracked.formatted()) \(totals.tripsTracked == 1 ? "trip" : "trips")",
+          progress: Double(totals.tripsTracked) / 20
+        )
+      }
+    }
+  }
+}
+
+struct NativeMedalPreviewCard: View {
   let achievements: [NativeMedalAchievement]
   var progressPeriod: NativeProgressPeriod
   var weeklyProgress: NativeProgressTotals
@@ -68,48 +117,9 @@ struct NativeMedalPreviewCard: View {
     }
   }
 
-  private var mileageHeaderAccent: Color {
-    colorScheme == .dark ? Color(red: 0.50, green: 0.84, blue: 0.77) : OkkleColor.brandDark
-  }
-
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(spacing: 6) {
-          Image(systemName: "road.lanes")
-            .font(.system(size: 14, weight: .bold))
-          Text("Mileage logged")
-            .font(.system(size: 13, weight: .semibold))
-        }
-        .foregroundStyle(mileageHeaderAccent)
-
-        Text(miles(selectedProgress.mileageMiles))
-          .font(.system(size: 40, weight: .heavy, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
-          .lineLimit(1)
-          .minimumScaleFactor(0.52)
-      }
-
-      VStack(spacing: 16) {
-        NativeProgressMetricRow(
-          title: "First 10K mileage band",
-          value: "\(Int(selectedProgress.mileageMiles.rounded()).formatted()) / 10,000 mi",
-          progress: selectedProgress.mileageMiles / 10_000
-        )
-
-        NativeCityDistanceDetail(totalMiles: selectedProgress.mileageMiles)
-
-        NativeProgressMetricRow(
-          title: "Records logged",
-          value: "\(selectedProgress.recordsLogged.formatted()) \(selectedProgress.recordsLogged == 1 ? "entry" : "entries")",
-          progress: Double(selectedProgress.recordsLogged) / 25
-        )
-        NativeProgressMetricRow(
-          title: "Trips tracked",
-          value: "\(selectedProgress.tripsTracked.formatted()) \(selectedProgress.tripsTracked == 1 ? "trip" : "trips")",
-          progress: Double(selectedProgress.tripsTracked) / 20
-        )
-      }
+      NativeMileageLoggedPanel(totals: selectedProgress)
 
       if showsMedalsSection {
         Divider()
@@ -393,6 +403,42 @@ private struct NativeCityDistanceDetail: View {
   }
 }
 
+struct NativeAchievementsView: View {
+  @EnvironmentObject private var store: OkkleStore
+  @State private var showsMedalRoom = false
+
+  private var progress: NativeProgressTotals {
+    NativeProgressSummary.yearToDate(store: store)
+  }
+
+  private var achievements: [NativeMedalAchievement] {
+    NativeMedalEngine.achievements(store: store, period: .allTime)
+  }
+
+  var body: some View {
+    NativeScreen(
+      title: "Achievements",
+      collapsedTitle: "Achievements",
+      subtitle: "Mileage milestones and medal progress."
+    ) {
+      VStack(alignment: .leading, spacing: 18) {
+        NativeMileageLoggedPanel(totals: progress)
+          .padding(16)
+          .okkleCard(cornerRadius: 26)
+
+        NativeMedalPreviewPanel(achievements: achievements, progressPeriod: .allTime) {
+          showsMedalRoom = true
+        }
+        .okkleCard(cornerRadius: 26)
+      }
+    }
+    .fullScreenCover(isPresented: $showsMedalRoom) {
+      NativeMedalsView(initialPeriod: .allTime)
+        .environmentObject(store)
+    }
+  }
+}
+
 struct NativeMedalsView: View {
   @EnvironmentObject private var store: OkkleStore
   @Environment(\.dismiss) private var dismiss
@@ -423,8 +469,6 @@ struct NativeMedalsView: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 22) {
-          NativeMedalSummaryCard(progressPeriod: progressPeriod)
-
           NativeMedalGridSection(
             title: "Unlocked",
             emptyMessage: "No medals unlocked \(progressPeriod.medalScopeLabel) yet.",
@@ -443,7 +487,7 @@ struct NativeMedalsView: View {
         .padding(.vertical, 22)
       }
       .background { NativeBackground() }
-      .navigationTitle("Medals")
+      .navigationTitle("All medals")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         if showsDoneButton {
