@@ -4,7 +4,7 @@ import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
 import MapView, { Marker, type LatLng } from 'react-native-maps';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, GradientCard, ModalHeader } from '../src/components';
+import { Card, ModalHeader } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
 import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, updateExcludedPlace, getWorkingDays, setWorkingDays, type ExcludedPlace } from '../src/db';
 
@@ -138,13 +138,6 @@ export default function AutoTripSettings() {
       <ScrollView style={s.content} contentContainerStyle={s.contentInner} keyboardShouldPersistTaps="handled">
         <ModalHeader title="Automatic tracking" />
 
-        <GradientCard colors={[colors.brand, colors.brandDeep, colors.dark]} radius={radius.xl} style={s.hero}>
-          <Text style={s.heroTitle}>Never forget to track a trip</Text>
-          <Text style={s.heroSub}>
-            Starts tracking the moment you drive, and saves it once you’ve stopped and parked for a while — nothing to tap, nothing to confirm.
-          </Text>
-        </GradientCard>
-
         <Card style={s.toggleCard}>
           <View style={{ flex: 1 }}>
             <Text style={s.toggleTitle}>Automatic tracking</Text>
@@ -256,10 +249,7 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { flex: 1 },
   contentInner: { padding: spacing.xl, paddingTop: 60, paddingBottom: 40 },
-  hero: { padding: spacing.lg, gap: 6 },
-  heroTitle: { color: '#fff', fontSize: 20, fontWeight: font.bold, letterSpacing: -0.2, marginTop: 4 },
-  heroSub: { color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 20 },
-  toggleCard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: spacing.lg },
+  toggleCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   toggleTitle: { ...type.bodyMedium, fontSize: 16 },
   toggleDesc: { ...type.caption, marginTop: 4, lineHeight: 18 },
   toggleState: { ...type.caption, marginTop: 6, fontWeight: font.semibold, color: colors.brandDeep },

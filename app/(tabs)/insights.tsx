@@ -311,8 +311,8 @@ export default function InsightsScreen() {
             <Card style={{ gap: 0 }}>
               {!nudgesOn && (
                 <SetupPrompt
-                  icon="navigation" tone="blue" title="Trip nudges"
-                  sub="Get a tap-to-track reminder when you start driving, so you never miss your miles."
+                  icon="navigation" tone="blue" title="Automatic tracking"
+                  sub="Starts tracking the moment you drive, so you never miss your miles."
                   busy={setupBusy} onEnable={enableNudges}
                 />
               )}

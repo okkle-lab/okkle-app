@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { Alert } from 'react-native';
 import { kvGet, kvGetNum, kvSet, getUser, getLastTrip, getVehicleKeys, isWorkingDay } from './db';
 import { recentActivity, hasMotionModule, type MotionActivity } from '../modules/okkle-motion';
 import { trackerStart } from './tripTracker';
@@ -89,6 +90,22 @@ export async function resumeAutoTripUpdates(): Promise<void> {
 // Request Always location + start low-power background updates.
 export async function enableAutoTrip(): Promise<{ ok: boolean; reason?: 'foreground' | 'background' | 'error' }> {
   try {
+    // iOS only ever offers "Always Allow" the first time it's asked — once
+    // someone picks "While Using" or "Don't Allow", the system won't re-offer
+    // it and only Settings can change it. So prime them right before the real
+    // prompts appear, while there's still a system dialog to answer.
+    const fgBefore = await Location.getForegroundPermissionsAsync();
+    const bgBefore = await Location.getBackgroundPermissionsAsync();
+    if (fgBefore.status === 'undetermined' || bgBefore.status === 'undetermined') {
+      await new Promise<void>(resolve => {
+        Alert.alert(
+          'One more step',
+          'iOS will ask for location access twice — choose “Allow While Using App”, then “Change to Always Allow” — so a drive still gets tracked with Okkle closed.',
+          [{ text: 'Continue', onPress: () => resolve() }],
+        );
+      });
+    }
+
     const fg = await Location.requestForegroundPermissionsAsync();
     if (fg.status !== 'granted') return { ok: false, reason: 'foreground' };
     const bg = await Location.requestBackgroundPermissionsAsync();
