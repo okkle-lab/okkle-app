@@ -1390,14 +1390,16 @@ struct NativeWeeklyInsightPanel: View {
       // Card 1 — a reflection on how your week actually went.
       NativeAiCard {
         VStack(alignment: .leading, spacing: 18) {
-          section("BUSIEST DAYS") {
-            let maxShare = max(1, shift.weekdayStats.map(\.sharePct).max() ?? 1)
+          section("BUSIEST DAYS", subtitle: "Deliveries you made on each day.") {
+            let maxCount = max(1, shift.weekdayStats.map(\.count).max() ?? 1)
             HStack(alignment: .bottom, spacing: 8) {
               ForEach(orderedWeekdayStats) { stat in
                 let selected = stat.weekday == activeWeekday
                 VStack(spacing: 6) {
-                  Text(stat.count > 0 ? "\(stat.sharePct)%" : "")
-                    .font(.system(size: 10, weight: .bold))
+                  // The concrete count of drops that day — more use than an
+                  // abstract "% of your week".
+                  Text(stat.count > 0 ? "\(stat.count)" : "")
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
                   Capsule()
                     // One brand colour, deepening with how busy the day is —
@@ -1405,8 +1407,8 @@ struct NativeWeeklyInsightPanel: View {
                     // red (which the heat ramp used to give the busiest bar).
                     .fill(stat.count == 0
                           ? OkkleColor.muted.opacity(0.18)
-                          : OkkleColor.brand.opacity(0.4 + 0.6 * (Double(stat.sharePct) / Double(maxShare))))
-                    .frame(width: 12, height: max(5, CGFloat(stat.sharePct) / CGFloat(maxShare) * 60))
+                          : OkkleColor.brand.opacity(0.4 + 0.6 * (Double(stat.count) / Double(maxCount))))
+                    .frame(width: 12, height: max(5, CGFloat(stat.count) / CGFloat(maxCount) * 60))
                   Text(stat.symbol)
                     .font(.system(size: 12, weight: selected ? .heavy : .semibold))
                     .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
@@ -1498,7 +1500,7 @@ struct NativeWeeklyInsightPanel: View {
   private func stat(_ title: String, _ value: String) -> some View {
     VStack(spacing: 3) {
       Text(value)
-        .font(.system(size: 19, weight: .bold, design: .rounded))
+        .font(.system(size: 27, weight: .bold, design: .rounded))
         .foregroundStyle(OkkleColor.ink)
         .lineLimit(1)
         .minimumScaleFactor(0.6)
@@ -1551,7 +1553,7 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color
   VStack(alignment: .leading, spacing: 8) {
     nativeInsightKicker(kicker)
     Text(value)
-      .font(.system(size: 34, weight: .bold, design: .rounded))
+      .font(.system(size: 46, weight: .bold, design: .rounded))
       .foregroundStyle(valueColor)
       .lineLimit(1)
       .minimumScaleFactor(0.5)
@@ -1570,7 +1572,7 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color
 private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View {
   VStack(spacing: 3) {
     Text(value)
-      .font(.system(size: 19, weight: .bold, design: .rounded))
+      .font(.system(size: 27, weight: .bold, design: .rounded))
       .foregroundStyle(OkkleColor.ink)
       .lineLimit(1).minimumScaleFactor(0.6)
     Text(title)
@@ -1651,7 +1653,7 @@ struct NativeMonthlyInsightPanel: View {
         VStack(alignment: .leading, spacing: 8) {
           nativeInsightKicker("TAX RELIEF BANKED · 30 DAYS")
           Text(nativeWholeGbp(savings.taxSaved))
-            .font(.system(size: 34, weight: .bold, design: .rounded))
+            .font(.system(size: 46, weight: .bold, design: .rounded))
             .foregroundStyle(OkkleColor.brand)
             .lineLimit(1).minimumScaleFactor(0.5)
           Text("Money back at your tax rate, from \(miles(savings.miles)) of business driving — \(nativeWholeGbp(savings.mileageDeduction)) off your taxable profit.")
@@ -1730,7 +1732,7 @@ struct NativeYearlyInsightPanel: View {
         VStack(alignment: .leading, spacing: 8) {
           nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
           Text(nativeWholeGbp(store.taxSaved))
-            .font(.system(size: 34, weight: .bold, design: .rounded))
+            .font(.system(size: 46, weight: .bold, design: .rounded))
             .foregroundStyle(OkkleColor.brand)
             .lineLimit(1).minimumScaleFactor(0.5)
           Text("Estimated tax saved from \(miles(store.yearMiles)) of business driving — a \(nativeWholeGbp(store.yearMileageDeduction)) deduction off your Self Assessment profit. See the Tax tab for the full picture.")
