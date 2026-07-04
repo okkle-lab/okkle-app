@@ -170,7 +170,13 @@ export default function AutoTripSettings() {
                       coordinate={{ latitude: p.lat, longitude: p.lng }}
                       draggable
                       onDragEnd={e => movePin(i, e.nativeEvent.coordinate)}
-                    />
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
+                    >
+                      <View style={s.pinTouchTarget}>
+                        <View style={s.pinDot} />
+                      </View>
+                    </Marker>
                   </MapView>
                   <Text style={s.placeMapHint}>Drag the pin if it's off</Text>
                 </View>
@@ -235,12 +241,17 @@ const s = StyleSheet.create({
   placesFooter: { ...type.caption, lineHeight: 18 },
   placesList: { gap: spacing.sm, marginTop: spacing.md },
   placeCard: { padding: 0, overflow: 'hidden' },
-  placeMap: { height: 150, width: '100%' },
+  placeMap: { height: 280, width: '100%' },
   placeMapHint: {
     position: 'absolute', top: 8, left: 8,
     ...type.caption, fontSize: 11, color: '#fff',
     backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.sm,
     overflow: 'hidden',
+  },
+  pinTouchTarget: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  pinDot: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: colors.brandDeep, borderWidth: 3, borderColor: '#fff',
   },
   placeInfo: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: spacing.md },
   placeLabel: { ...type.bodyMedium, fontSize: 15 },
