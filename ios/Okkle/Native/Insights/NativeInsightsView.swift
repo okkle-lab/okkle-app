@@ -1318,6 +1318,9 @@ struct NativeWeeklyInsightPanel: View {
           breakdownRow("mappin.circle.fill", "Busiest area", area)
         }
         breakdownRow("shippingbox.fill", "Deliveries", "about \(detail.count)")
+        if let pct = detail.deadMilePct {
+          breakdownRow("fuelpump.fill", "Unpaid miles", "\(pct)%")
+        }
       } else {
         Text("You don't usually work \(name)s — nothing tracked yet.")
           .font(.system(size: 14, weight: .medium))
@@ -1383,7 +1386,17 @@ struct NativeWeeklyInsightPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      // Card 1 — a reflection on how your week actually went.
+      // Card 1 — a suggestion, clearly set apart as advice (not a stat) — the
+      // one thing to act on, so it leads rather than trailing behind stats.
+      if let advice = specificAdvice {
+        NativeAiCard {
+          section("SUGGESTION") {
+            insightLine(symbol: advice.symbol, color: advice.color, text: advice.text)
+          }
+        }
+      }
+
+      // Card 2 — a reflection on how your week actually went.
       NativeAiCard {
         VStack(alignment: .leading, spacing: 18) {
           section("BUSIEST DAYS", subtitle: "Deliveries you made on each day.") {
@@ -1424,8 +1437,11 @@ struct NativeWeeklyInsightPanel: View {
 
           Divider()
           dayBreakdown
-          Divider()
-          statsStrip
+
+          if shift.perHourBand != nil {
+            Divider()
+            statsStrip
+          }
 
           // Surfaces the self-correcting confidence loop — only appears once
           // there's genuinely enough evidence, so a newer account sees nothing.
@@ -1436,16 +1452,7 @@ struct NativeWeeklyInsightPanel: View {
         }
       }
 
-      // Card 3 — a suggestion, clearly set apart as advice (not a stat).
-      if let advice = specificAdvice {
-        NativeAiCard {
-          section("SUGGESTION") {
-            insightLine(symbol: advice.symbol, color: advice.color, text: advice.text)
-          }
-        }
-      }
-
-      // Card 4 — real, logged platform ranking. Only worth showing once
+      // Card 3 — real, logged platform ranking. Only worth showing once
       // there's an actual mix — a single platform isn't a "ranking".
       if shift.platformShares.count >= 2 {
         NativeAiCard {
@@ -1455,7 +1462,7 @@ struct NativeWeeklyInsightPanel: View {
         }
       }
 
-      // Card 5 — your top areas, with how much of your work each one carries.
+      // Card 4 — your top areas, with how much of your work each one carries.
       NativeAiCard {
         section("YOUR TOP AREAS", subtitle: "Bar shows how busy each area is compared to your #1 spot.") {
           NativeTopAreasList(zones: shift.zones, limit: 4, showShareBar: true)
@@ -1481,14 +1488,13 @@ struct NativeWeeklyInsightPanel: View {
     }
   }
 
-  // Your fortnight in two numbers — rate only when the passive signal is solid.
+  // Est. rate only, when the passive signal is solid — unpaid miles now shows
+  // per-day in the breakdown above instead of as a whole-week aggregate here.
   private var statsStrip: some View {
     HStack(spacing: 0) {
       if let band = shift.perHourBand {
         stat("Est. rate", "\(band)/hr")
-        Divider().frame(height: 30)
       }
-      stat("Unpaid miles", "\(shift.deadMilePct)%")
     }
     .padding(.vertical, 4)
   }
@@ -1496,10 +1502,10 @@ struct NativeWeeklyInsightPanel: View {
   private func stat(_ title: String, _ value: String) -> some View {
     VStack(spacing: 3) {
       Text(value)
-        .font(.system(size: 27, weight: .bold, design: .rounded))
+        .font(.system(size: 42, weight: .bold, design: .rounded))
         .foregroundStyle(OkkleColor.ink)
         .lineLimit(1)
-        .minimumScaleFactor(0.6)
+        .minimumScaleFactor(0.4)
       Text(title)
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(OkkleColor.muted)
@@ -1568,9 +1574,9 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color
 private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View {
   VStack(spacing: 3) {
     Text(value)
-      .font(.system(size: 27, weight: .bold, design: .rounded))
+      .font(.system(size: 42, weight: .bold, design: .rounded))
       .foregroundStyle(OkkleColor.ink)
-      .lineLimit(1).minimumScaleFactor(0.6)
+      .lineLimit(1).minimumScaleFactor(0.4)
     Text(title)
       .font(.system(size: 12, weight: .medium))
       .foregroundStyle(OkkleColor.muted)
@@ -2379,6 +2385,7 @@ struct NativeWeekdayDetail: Identifiable, Equatable {
   let band: NativeTimeFilter
   let count: Int
   let coordinate: CLLocationCoordinate2D?
+  let deadMilePct: Int?   // unpaid miles as a % of this weekday's own driving
 
   var id: Int { weekday }
   var name: String { Calendar.current.weekdaySymbols[weekday] }
@@ -2621,12 +2628,16 @@ struct NativeShiftInsights {
     // for it (older data, or a stop outside any recorded shift).
     var totalMeters = 0.0
     var activeSeconds = 0.0
+    var totalMetersByWeekday: [Int: Double] = [:]
     for k in 1..<sorted.count {
       let prev = sorted[k - 1], cur = sorted[k]
       let gap = cur.arrival.timeIntervalSince(prev.departure)
       if gap < shiftGap {
-        totalMeters += routeMeters(from: prev.departure, to: cur.arrival, trips: store.trips)
+        let legMeters = routeMeters(from: prev.departure, to: cur.arrival, trips: store.trips)
           ?? cur.location.distance(from: prev.location)
+        totalMeters += legMeters
+        let legWeekday = Calendar.current.component(.weekday, from: cur.arrival) - 1
+        totalMetersByWeekday[legWeekday, default: 0] += legMeters
         activeSeconds += max(0, gap) + prev.dwell
       }
     }
@@ -2635,6 +2646,7 @@ struct NativeShiftInsights {
     // Deliveries + paid distance: a pick-up drives to the next drop-off.
     var deliveries = 0
     var paidMeters = 0.0
+    var paidMetersByWeekday: [Int: Double] = [:]
     var deliveryHits: [(weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date)] = []
     var index = 0
     while index < sorted.count {
@@ -2645,10 +2657,12 @@ struct NativeShiftInsights {
         // else (repositioning back out to the next pick-up, idle wandering) is
         // unpaid mileage. Real route distance when a recorded trip covers this
         // leg, otherwise a straight-line estimate.
-        paidMeters += routeMeters(from: sorted[index].departure, to: sorted[dropIndex].arrival, trips: store.trips)
+        let legMeters = routeMeters(from: sorted[index].departure, to: sorted[dropIndex].arrival, trips: store.trips)
           ?? sorted[dropIndex].location.distance(from: sorted[index].location)
+        paidMeters += legMeters
         let date = sorted[dropIndex].arrival
         let weekday = Calendar.current.component(.weekday, from: date) - 1
+        paidMetersByWeekday[weekday, default: 0] += legMeters
         let hour = Calendar.current.component(.hour, from: date)
         let band = NativeTimeFilter.allCases.first { $0 != .all && $0.includes(date) } ?? .afternoon
         deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date))
@@ -2662,6 +2676,16 @@ struct NativeShiftInsights {
     let totalMiles = max(totalMeters / 1609.34 * roadFactor, paidMiles)
     let deadMiles = max(0, totalMiles - paidMiles)
     let activeHours = activeSeconds / 3600
+
+    // Per-weekday unpaid-miles % — same maths as the overall deadMilePct,
+    // just scoped to one day, so the day breakdown can show its own figure
+    // instead of the whole period's aggregate.
+    func deadMilePct(forWeekday wd: Int) -> Int? {
+      let paidMi = (paidMetersByWeekday[wd] ?? 0) / 1609.34 * roadFactor
+      let totalMi = max((totalMetersByWeekday[wd] ?? 0) / 1609.34 * roadFactor, paidMi)
+      guard totalMi > 0 else { return nil }
+      return Int((max(0, totalMi - paidMi) / totalMi * 100).rounded())
+    }
 
     // Busy-hours histogram across the whole period (every delivery by hour) —
     // powers the "when you're busy" chart on the Monthly/Yearly panels.
@@ -2784,7 +2808,8 @@ struct NativeShiftInsights {
       .filter { (weekdayCounts[$0] ?? 0) > 0 }
       .map { wd -> NativeWeekdayDetail in
         let (band, zone) = bestBandAndZone(for: wd, deliveryHits: deliveryHits, cellSize: cellSize)
-        return NativeWeekdayDetail(weekday: wd, band: band, count: weekdayCounts[wd] ?? 0, coordinate: zone)
+        return NativeWeekdayDetail(weekday: wd, band: band, count: weekdayCounts[wd] ?? 0, coordinate: zone,
+                                    deadMilePct: deadMilePct(forWeekday: wd))
       }
       .sorted { $0.count > $1.count }
 
