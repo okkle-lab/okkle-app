@@ -171,7 +171,6 @@ export default function AutoTripSettings() {
                       draggable
                       onDragEnd={e => movePin(i, e.nativeEvent.coordinate)}
                       anchor={{ x: 0.5, y: 0.5 }}
-                      tracksViewChanges={false}
                     >
                       <View style={s.pinTouchTarget}>
                         <View style={s.pinDot} />
