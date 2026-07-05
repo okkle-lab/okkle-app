@@ -22,60 +22,123 @@ struct NativeTripDetailSheet: View {
   let onEdit: () -> Void
   let onDelete: () -> Void
   @Environment(\.dismiss) private var dismiss
+  @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
+  @State private var startAddress: String?
+  @State private var endAddress: String?
+  @State private var homeCandidate: NativeTripHomeCandidate?
+  @State private var didResolveRoute = false
 
   var body: some View {
-    NavigationStack {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 18) {
-          if hasMapDetails {
-            NativeRouteMapView(points: trip.points)
-              .frame(height: 280)
-              .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-          }
-
-          HStack(spacing: 12) {
-            NativeMetricTile(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
-            NativeMetricTile(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
-          }
-
-          NativeGlassCard {
-            VStack(alignment: .leading, spacing: 14) {
-              tripDetailRow("Vehicle", value: trip.vehicle.label, symbol: trip.vehicle.symbol)
-              Divider()
-              tripDetailRow("Started", value: trip.startedAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()), symbol: "play.circle")
-              tripDetailRow("Ended", value: trip.endedAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()), symbol: "stop.circle")
-              tripDetailRow("Duration", value: nativeDurationLabel(trip.endedAt.timeIntervalSince(trip.startedAt)), symbol: "timer")
+    ZStack {
+      NavigationStack {
+        ScrollView {
+          VStack(alignment: .leading, spacing: 18) {
+            if hasMapDetails {
+              routeSection
             }
-          }
 
-          if hasMapDetails {
+            HStack(spacing: 12) {
+              NativeMetricTile(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
+              NativeMetricTile(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
+            }
+
             NativeGlassCard {
               VStack(alignment: .leading, spacing: 14) {
-                Label("Map details", systemImage: "map.fill")
-                  .font(.system(size: 16, weight: .bold))
-                  .foregroundStyle(OkkleColor.ink)
-                if let startPoint {
-                  tripDetailRow("Start location", value: coordinateLabel(startPoint), symbol: "location.circle")
-                }
-                if let endPoint {
-                  tripDetailRow("End location", value: coordinateLabel(endPoint), symbol: "mappin.circle")
-                }
-                tripDetailRow("Route points", value: "\(trip.points.count)", symbol: "point.3.connected.trianglepath.dotted")
+                tripDetailRow("Vehicle", value: trip.vehicle.label, symbol: trip.vehicle.symbol)
+                Divider()
+                tripDetailRow("Started", value: trip.startedAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()), symbol: "play.circle")
+                tripDetailRow("Ended", value: trip.endedAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()), symbol: "stop.circle")
+                tripDetailRow("Duration", value: nativeDurationLabel(trip.endedAt.timeIntervalSince(trip.startedAt)), symbol: "timer")
               }
             }
-          }
 
-          NativeDetailActionButtons(onEdit: onEdit, onDelete: onDelete)
+            NativeDetailActionButtons(onEdit: onEdit, onDelete: onDelete)
+          }
+          .padding(22)
         }
-        .padding(22)
+        .background(NativeBackground())
+        .navigationTitle("Trip details")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItem(placement: .topBarTrailing) {
+            Button("Done") { dismiss() }
+              .fontWeight(.bold)
+          }
+        }
       }
-      .background(NativeBackground())
-      .navigationTitle("Trip details")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Done") { dismiss() }
-            .fontWeight(.bold)
+
+      if let homeCandidate {
+        NativeTripHomePrompt(
+          candidate: homeCandidate,
+          onConfirm: saveHomeCandidate,
+          onDismiss: dismissHomeCandidate
+        )
+        .transition(.scale(scale: 0.94).combined(with: .opacity))
+        .zIndex(2)
+      }
+    }
+    .animation(.spring(response: 0.34, dampingFraction: 0.86), value: homeCandidate != nil)
+    .task(id: trip.id) {
+      await resolveRouteDetails()
+    }
+  }
+
+  private var routeSection: some View {
+    NativeGlassCard {
+      VStack(alignment: .leading, spacing: 14) {
+        Label("Route", systemImage: "map.fill")
+          .font(.system(size: 16, weight: .bold))
+          .foregroundStyle(OkkleColor.ink)
+
+        NativeRouteMapView(points: trip.points, stops: routeStops)
+          .frame(height: 250)
+          .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+        if let startPoint {
+          routeEndpointRow(
+            "Start",
+            value: startAddress ?? coordinateLabel(startPoint),
+            point: startPoint,
+            symbol: "location.circle",
+            isHome: isKnownHome(startPoint.coordinate)
+          )
+        }
+        if let endPoint {
+          routeEndpointRow(
+            "End",
+            value: endAddress ?? coordinateLabel(endPoint),
+            point: endPoint,
+            symbol: "mappin.circle",
+            isHome: isKnownHome(endPoint.coordinate)
+          )
+        }
+
+        tripDetailRow("Route points", value: "\(trip.points.count)", symbol: "point.3.connected.trianglepath.dotted")
+
+        if !numberedStops.isEmpty {
+          Divider()
+          Text("Detected stops")
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+          ForEach(numberedStops) { stop in
+            HStack(spacing: 12) {
+              Text("\(stop.number)")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(stopTint(for: stop.visit), in: Circle())
+              VStack(alignment: .leading, spacing: 2) {
+                Text(stopTitle(for: stop.visit))
+                  .font(.system(size: 14, weight: .bold))
+                  .foregroundStyle(OkkleColor.ink)
+                Text(stopSubtitle(for: stop.visit))
+                  .font(.system(size: 12, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+              Spacer()
+            }
+          }
         }
       }
     }
@@ -93,8 +156,60 @@ struct NativeTripDetailSheet: View {
     trip.points.last
   }
 
+  private var stops: [NativeVisit] {
+    autoTrack.visits
+      .filter { $0.arrival >= trip.startedAt && $0.departure <= trip.endedAt }
+      .sorted { $0.arrival < $1.arrival }
+  }
+
+  private var numberedStops: [NativeTripDetailStop] {
+    stops.enumerated().map { index, visit in
+      NativeTripDetailStop(number: index + 1, visit: visit)
+    }
+  }
+
+  private var routeStops: [NativeRouteMapStop] {
+    numberedStops.map { stop in
+      NativeRouteMapStop(
+        id: stop.visit.id,
+        coordinate: stop.visit.coordinate,
+        title: "\(stop.number). \(stopTitle(for: stop.visit))",
+        subtitle: stopSubtitle(for: stop.visit),
+        kind: routeStopKind(for: stop.visit),
+        glyphText: "\(stop.number)"
+      )
+    }
+  }
+
   private func coordinateLabel(_ point: RoutePoint) -> String {
     String(format: "%.5f, %.5f", point.latitude, point.longitude)
+  }
+
+  private func routeEndpointRow(_ title: String, value: String, point: RoutePoint, symbol: String, isHome: Bool) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: symbol)
+        .font(.system(size: 16, weight: .bold))
+        .foregroundStyle(isHome ? OkkleColor.brand : OkkleColor.blue)
+        .frame(width: 34, height: 34)
+        .background((isHome ? OkkleColor.brand : OkkleColor.blue).opacity(0.13), in: Circle())
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 6) {
+          Text(title)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+          if isHome {
+            Label("Home", systemImage: "house.fill")
+              .font(.system(size: 11, weight: .bold))
+              .foregroundStyle(OkkleColor.brand)
+          }
+        }
+        Text(value)
+          .font(.system(size: 15, weight: .bold))
+          .foregroundStyle(OkkleColor.ink)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 10)
+    }
   }
 
   private func tripDetailRow(_ title: String, value: String, symbol: String) -> some View {
@@ -114,6 +229,270 @@ struct NativeTripDetailSheet: View {
         .multilineTextAlignment(.trailing)
     }
   }
+
+  private func stopTitle(for visit: NativeVisit) -> String {
+    switch visit.kind {
+    case .pickup:
+      return "Pick-up"
+    case .dropoff:
+      return "Drop-off"
+    case .other:
+      return "Stop"
+    }
+  }
+
+  private func stopSubtitle(for visit: NativeVisit) -> String {
+    let place = visit.placeName ?? "Detected from movement"
+    let dwellMinutes = max(1, Int((visit.dwell / 60).rounded()))
+    return "\(place) • \(dwellMinutes)m"
+  }
+
+  private func stopTint(for visit: NativeVisit) -> Color {
+    switch visit.kind {
+    case .pickup:
+      return OkkleColor.brand
+    case .dropoff:
+      return OkkleColor.blue
+    case .other:
+      return OkkleColor.amber
+    }
+  }
+
+  private func routeStopKind(for visit: NativeVisit) -> NativeRouteMapStop.Kind {
+    switch visit.kind {
+    case .pickup:
+      return .pickup
+    case .dropoff:
+      return .dropoff
+    case .other:
+      return .other
+    }
+  }
+
+  @MainActor
+  private func resolveRouteDetails() async {
+    guard !didResolveRoute else { return }
+    didResolveRoute = true
+    var startResolved: String?
+    var endResolved: String?
+    if let startPoint {
+      startResolved = await Self.address(for: startPoint.coordinate)
+      startAddress = startResolved
+    }
+    if let endPoint {
+      endResolved = await Self.address(for: endPoint.coordinate)
+      endAddress = endResolved
+    }
+    detectHomeCandidate(startAddress: startResolved, endAddress: endResolved)
+  }
+
+  @MainActor
+  private func detectHomeCandidate(startAddress: String?, endAddress: String?) {
+    guard homeCandidate == nil else { return }
+    let candidates = [
+      startPoint.map { ("Start", $0, startAddress) },
+      endPoint.map { ("End", $0, endAddress) }
+    ].compactMap { $0 }
+    for candidate in candidates where shouldSuggestHome(for: candidate.1) {
+      let suggestion = NativeTripHomeCandidate(
+        title: candidate.0,
+        point: candidate.1,
+        address: candidate.2,
+        dismissalKey: homeDismissalKey(for: candidate.1.coordinate)
+      )
+      guard !UserDefaults.standard.bool(forKey: suggestion.dismissalKey) else { continue }
+      homeCandidate = suggestion
+      return
+    }
+  }
+
+  private func shouldSuggestHome(for point: RoutePoint) -> Bool {
+    guard !isKnownHome(point.coordinate) else { return false }
+    let coordinate = point.coordinate
+    let nearbyEndpointCount = store.trips.reduce(0) { count, trip in
+      var count = count
+      if let first = trip.points.first, distance(from: first.coordinate, to: coordinate) <= 180 {
+        count += 1
+      }
+      if let last = trip.points.last, distance(from: last.coordinate, to: coordinate) <= 180 {
+        count += 1
+      }
+      return count
+    }
+    let hour = Calendar.current.component(.hour, from: point.timestamp ?? trip.startedAt)
+    let edgeOfDay = hour <= 10 || hour >= 20
+    return nearbyEndpointCount >= 3 || (nearbyEndpointCount >= 2 && edgeOfDay)
+  }
+
+  private func isKnownHome(_ coordinate: CLLocationCoordinate2D) -> Bool {
+    store.settings.excludedPlaces.contains { place in
+      distance(from: place.coordinate, to: coordinate) <= 200
+    }
+  }
+
+  private func saveHomeCandidate() {
+    guard let homeCandidate else { return }
+    if !isKnownHome(homeCandidate.point.coordinate) {
+      store.settings.excludedPlaces.append(NativeExcludedPlace(
+        label: "Home",
+        latitude: homeCandidate.point.latitude,
+        longitude: homeCandidate.point.longitude,
+        address: homeCandidate.address
+      ))
+    }
+    UserDefaults.standard.set(true, forKey: homeCandidate.dismissalKey)
+    self.homeCandidate = nil
+  }
+
+  private func rememberDismissedHomeCandidate() {
+    guard let homeCandidate else { return }
+    UserDefaults.standard.set(true, forKey: homeCandidate.dismissalKey)
+  }
+
+  private func dismissHomeCandidate() {
+    rememberDismissedHomeCandidate()
+    homeCandidate = nil
+  }
+
+  private func homeDismissalKey(for coordinate: CLLocationCoordinate2D) -> String {
+    let lat = Int((coordinate.latitude * 10_000).rounded())
+    let lon = Int((coordinate.longitude * 10_000).rounded())
+    return "uk.okkle.native.homeCandidateDismissed.\(lat).\(lon)"
+  }
+
+  private func distance(from lhs: CLLocationCoordinate2D, to rhs: CLLocationCoordinate2D) -> CLLocationDistance {
+    CLLocation(latitude: lhs.latitude, longitude: lhs.longitude)
+      .distance(from: CLLocation(latitude: rhs.latitude, longitude: rhs.longitude))
+  }
+
+  private static func address(for coordinate: CLLocationCoordinate2D) async -> String? {
+    await withCheckedContinuation { continuation in
+      CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
+        continuation.resume(returning: placemarks?.first.flatMap(formattedAddress))
+      }
+    }
+  }
+
+  private static func formattedAddress(_ placemark: CLPlacemark) -> String? {
+    let line1 = [placemark.subThoroughfare, placemark.thoroughfare].compactMap { $0 }.joined(separator: " ")
+    let line2 = [placemark.locality ?? placemark.subLocality, placemark.postalCode].compactMap { $0 }.joined(separator: " ")
+    let combined = [line1, line2].filter { !$0.isEmpty }.joined(separator: ", ")
+    return combined.isEmpty ? nil : combined
+  }
+}
+
+private struct NativeTripHomeCandidate {
+  let title: String
+  let point: RoutePoint
+  let address: String?
+  let dismissalKey: String
+}
+
+private struct NativeTripHomePrompt: View {
+  let candidate: NativeTripHomeCandidate
+  let onConfirm: () -> Void
+  let onDismiss: () -> Void
+
+  private let rainbow = [
+    Color(red: 1.00, green: 0.23, blue: 0.39),
+    Color(red: 1.00, green: 0.67, blue: 0.20),
+    Color(red: 0.32, green: 0.82, blue: 0.39),
+    Color(red: 0.16, green: 0.72, blue: 1.00),
+    Color(red: 0.52, green: 0.35, blue: 1.00),
+    Color(red: 1.00, green: 0.24, blue: 0.76),
+    Color(red: 1.00, green: 0.23, blue: 0.39)
+  ]
+
+  var body: some View {
+    ZStack {
+      Color.black.opacity(0.18)
+        .ignoresSafeArea()
+        .onTapGesture(perform: onDismiss)
+
+      VStack(spacing: 16) {
+        ZStack {
+          Circle()
+            .fill(AngularGradient(colors: rainbow, center: .center))
+            .frame(width: 92, height: 92)
+            .blur(radius: 18)
+            .opacity(0.45)
+
+          Circle()
+            .stroke(AngularGradient(colors: rainbow, center: .center), lineWidth: 2)
+            .frame(width: 62, height: 62)
+            .opacity(0.72)
+
+          Image(systemName: "sparkles")
+            .font(.system(size: 24, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 54, height: 54)
+            .background(OkkleColor.brand, in: Circle())
+            .shadow(color: OkkleColor.brand.opacity(0.22), radius: 14, y: 8)
+        }
+        .padding(.top, 2)
+
+        VStack(spacing: 8) {
+          Text("Maybe home?")
+            .font(.system(size: 26, weight: .bold, design: .rounded))
+            .foregroundStyle(OkkleColor.ink)
+
+          Text("\(candidate.title) looks like a regular home location. Save it so Okkle can leave it out of future work suggestions?")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if let address = candidate.address {
+          Text(address)
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(OkkleColor.brandDark)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(OkkleColor.mint.opacity(0.55), in: Capsule())
+        }
+
+        HStack(spacing: 10) {
+          Button(action: onDismiss) {
+            Text("Not now")
+              .font(.system(size: 16, weight: .bold))
+              .foregroundStyle(OkkleColor.muted)
+              .frame(maxWidth: .infinity)
+              .padding(.vertical, 13)
+              .background(Color.black.opacity(0.06), in: Capsule())
+          }
+
+          Button(action: onConfirm) {
+            Text("Yes")
+              .font(.system(size: 16, weight: .bold))
+              .foregroundStyle(.white)
+              .frame(maxWidth: .infinity)
+              .padding(.vertical, 13)
+              .background(OkkleColor.brand, in: Capsule())
+          }
+        }
+        .padding(.top, 2)
+      }
+      .padding(20)
+      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 30, style: .continuous)
+          .stroke(AngularGradient(colors: rainbow, center: .center), lineWidth: 1.2)
+          .opacity(0.62)
+      }
+      .shadow(color: Color(red: 0.58, green: 0.36, blue: 1.0).opacity(0.18), radius: 34, y: 16)
+      .padding(.horizontal, 28)
+    }
+  }
+}
+
+private struct NativeTripDetailStop: Identifiable {
+  let number: Int
+  let visit: NativeVisit
+
+  var id: UUID { visit.id }
 }
 
 struct NativeRecordDetailSheet: View {

@@ -75,10 +75,10 @@ struct OkkleNativeRootView: View {
         .tabItem { Label("Insights", systemImage: "sparkles") }
         .tag(NativeTab.insights)
       NativeRecordsView()
-        .tabItem { Label("Records", systemImage: "archivebox") }
+        .tabItem { Label("Data", systemImage: "archivebox") }
         .tag(NativeTab.records)
       NativeTaxDetailView()
-        .tabItem { Label("Tax", systemImage: "sterlingsign.circle") }
+        .tabItem { Label("Reports", systemImage: "doc.text.magnifyingglass") }
         .tag(NativeTab.tax)
     }
     .id("okkle-main-tabs-trip-log-insights-records-tax")

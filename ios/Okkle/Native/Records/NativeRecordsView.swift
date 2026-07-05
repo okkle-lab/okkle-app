@@ -37,8 +37,8 @@ struct NativeRecordsView: View {
 
   var body: some View {
     NativeScreen(
-      title: "Records",
-      collapsedTitle: "Records",
+      title: "Data",
+      collapsedTitle: "Data",
       subtitle: "Mileage, recent activity and export-ready history.",
       onClose: onClose
     ) {

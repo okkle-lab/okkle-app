@@ -7,7 +7,7 @@ struct NativeTaxDetailView: View {
   @State private var showsDeadlines = false
 
   var body: some View {
-    NativeScreen(title: "Tax", collapsedTitle: "Tax", subtitle: "Your estimate, deductions and accountant exports.", onClose: onClose) {
+    NativeScreen(title: "Reports", collapsedTitle: "Reports", subtitle: "Your estimate, deductions and accountant exports.", onClose: onClose) {
       let tax = store.taxPosition
       let savings = NativeProgressSummary.mileageTaxSavings(store: store, period: .yearToDate)
 
@@ -19,9 +19,9 @@ struct NativeTaxDetailView: View {
         }
 
         Button {
-          detail = .bill
+          detail = .saved
         } label: {
-          NativeTaxSetAsideCard(tax: tax, taxYear: nativeTaxYearLabel(for: store.taxYear))
+          NativeTaxSavedCard(miles: savings.miles, taxSaved: savings.taxSaved)
         }
         .buttonStyle(.plain)
 
@@ -36,12 +36,12 @@ struct NativeTaxDetailView: View {
 
         NativeTaxOverviewGroup {
           NativeTaxOverviewRow(
-            icon: "chart.line.uptrend.xyaxis",
-            title: "Tax saved this year",
-            subtitle: "From \(miles(savings.miles)) of mileage",
-            value: gbp(savings.taxSaved)
+            icon: "shield.lefthalf.filled",
+            title: "Set aside for tax",
+            subtitle: nativeTaxYearLabel(for: store.taxYear),
+            value: gbp(tax.totalDue)
           ) {
-            detail = .saved
+            detail = .bill
           }
 
           NativeTaxOverviewDivider()
@@ -176,6 +176,38 @@ private struct NativeTaxSetAsideCard: View {
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(OkkleColor.muted)
         }
+      }
+    }
+  }
+}
+
+private struct NativeTaxSavedCard: View {
+  let miles: Double
+  let taxSaved: Double
+
+  var body: some View {
+    NativeGlassCard(cornerRadius: 32) {
+      VStack(alignment: .leading, spacing: 14) {
+        HStack(alignment: .center) {
+          Label("Tax saved this year", systemImage: "chart.line.uptrend.xyaxis")
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(OkkleColor.brandDark)
+          Spacer()
+          Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+
+        Text(gbp(taxSaved))
+          .font(.system(size: 54, weight: .heavy, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.58)
+
+        Text("From \(Okkle.miles(miles)) of mileage logged this year")
+          .font(.system(size: 14, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }

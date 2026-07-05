@@ -34,6 +34,11 @@
 		A1CB806BF18308E2190819CF /* NativeAutoShiftReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF39469B146AB6A7CF2E14D /* NativeAutoShiftReview.swift */; };
 		A231C60E0E6944FC916AB873 /* NativeMedalEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */; };
 		A34D4BFD69A2170618621603 /* NativeTripSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */; };
+		A7C000000000000000000001 /* NativeWatchTripConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C000000000000000000011 /* NativeWatchTripConnector.swift */; };
+		A7C000000000000000000002 /* OkkleWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C000000000000000000012 /* OkkleWatchApp.swift */; };
+		A7C000000000000000000003 /* WatchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C000000000000000000013 /* WatchContentView.swift */; };
+		A7C000000000000000000004 /* WatchTripConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C000000000000000000014 /* WatchTripConnector.swift */; };
+		A7C000000000000000000052 /* Okkle Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = A7C000000000000000000010 /* Okkle Watch App.app */; };
 		B5E90F322D5F4D43B37C9B02 /* NativeTripWidgetState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E90F312D5F4D43B37C9B01 /* NativeTripWidgetState.swift */; };
 		B5E90F332D5F4D43B37C9B03 /* NativeTripWidgetState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E90F312D5F4D43B37C9B01 /* NativeTripWidgetState.swift */; };
 		B5E90F382D5F4D43B37C9B08 /* OkkleWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E90F352D5F4D43B37C9B05 /* OkkleWidget.swift */; };
@@ -70,9 +75,27 @@
 			remoteGlobalIDString = B5E90F452D5F4D43B37C9B15;
 			remoteInfo = OkkleWidget;
 		};
+		A7C000000000000000000050 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A7C000000000000000000030;
+			remoteInfo = "Okkle Watch App";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		A7C000000000000000000053 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+				A7C000000000000000000052 /* Okkle Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B5E90F432D5F4D43B37C9B13 /* Embed App Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -119,6 +142,11 @@
 		A1C4F9062D68000000000006 /* NativeTripSiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSiriIntents.swift; sourceTree = "<group>"; };
 		A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMedalEngine.swift; sourceTree = "<group>"; };
 		A518F044C9990A704AFED4C2 /* NativeTaxSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTaxSummaryView.swift; sourceTree = "<group>"; };
+		A7C000000000000000000010 /* Okkle Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Okkle Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A7C000000000000000000011 /* NativeWatchTripConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWatchTripConnector.swift; sourceTree = "<group>"; };
+		A7C000000000000000000012 /* OkkleWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleWatchApp.swift; sourceTree = "<group>"; };
+		A7C000000000000000000013 /* WatchContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchContentView.swift; sourceTree = "<group>"; };
+		A7C000000000000000000014 /* WatchTripConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTripConnector.swift; sourceTree = "<group>"; };
 		A99D2172005489541FC78A0C /* NativeLegacySQLiteImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacySQLiteImporter.swift; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Okkle/SplashScreen.storyboard; sourceTree = "<group>"; };
 		B190E1D6D6B546898FFD440D /* okkle-icon.icon */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = "okkle-icon.icon"; path = "Okkle/okkle-icon.icon"; sourceTree = "<group>"; };
@@ -148,6 +176,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B5E90F402D5F4D43B37C9B10 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A7C000000000000000000021 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -336,6 +371,7 @@
 			children = (
 				13B07FAE1A68108700A75B9A /* Okkle */,
 				B5E90F442D5F4D43B37C9B14 /* OkkleWidget */,
+				A7C000000000000000000060 /* OkkleWatch */,
 				080B01B0987B0E9D4936E2E4 /* OkkleTests */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
@@ -351,6 +387,7 @@
 			children = (
 				13B07F961A680F5B00A75B9A /* Okkle.app */,
 				B5E90F342D5F4D43B37C9B04 /* OkkleWidget.appex */,
+				A7C000000000000000000010 /* Okkle Watch App.app */,
 				7912EDAE45D308E45EABFAB8 /* OkkleTests.xctest */,
 			);
 			name = Products;
@@ -361,9 +398,20 @@
 			children = (
 				9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */,
 				A1C4F9062D68000000000006 /* NativeTripSiriIntents.swift */,
+				A7C000000000000000000011 /* NativeWatchTripConnector.swift */,
 				1A407DAF5733F81FA8B3EFCD /* NativeTripView.swift */,
 			);
 			path = Trip;
+			sourceTree = "<group>";
+		};
+		A7C000000000000000000060 /* OkkleWatch */ = {
+			isa = PBXGroup;
+			children = (
+				A7C000000000000000000012 /* OkkleWatchApp.swift */,
+				A7C000000000000000000013 /* WatchContentView.swift */,
+				A7C000000000000000000014 /* WatchTripConnector.swift */,
+			);
+			path = OkkleWatch;
 			sourceTree = "<group>";
 		};
 		A1C4F9032D68000000000003 /* CarPlay */ = {
@@ -428,12 +476,14 @@
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
+				A7C000000000000000000053 /* Embed Watch Content */,
 				B5E90F432D5F4D43B37C9B13 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				B5E90F502D5F4D43B37C9B20 /* PBXTargetDependency */,
+				A7C000000000000000000051 /* PBXTargetDependency */,
 			);
 			name = Okkle;
 			productName = Okkle;
@@ -457,6 +507,23 @@
 			productReference = B5E90F342D5F4D43B37C9B04 /* OkkleWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		A7C000000000000000000030 /* Okkle Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A7C000000000000000000042 /* Build configuration list for PBXNativeTarget "Okkle Watch App" */;
+			buildPhases = (
+				A7C000000000000000000020 /* Sources */,
+				A7C000000000000000000021 /* Frameworks */,
+				A7C000000000000000000022 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Okkle Watch App";
+			productName = "Okkle Watch App";
+			productReference = A7C000000000000000000010 /* Okkle Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -477,6 +544,10 @@
 						CreatedOnToolsVersion = 17.0;
 						DevelopmentTeam = 22S8J5SFT8;
 					};
+					A7C000000000000000000030 = {
+						CreatedOnToolsVersion = 17.0;
+						DevelopmentTeam = 22S8J5SFT8;
+					};
 				};
 			};
 			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "Okkle" */;
@@ -494,6 +565,7 @@
 			targets = (
 				13B07F861A680F5B00A75B9A /* Okkle */,
 				B5E90F452D5F4D43B37C9B15 /* OkkleWidget */,
+				A7C000000000000000000030 /* Okkle Watch App */,
 				00E356ED1AD99517003FC87E /* OkkleTests */,
 			);
 		};
@@ -518,6 +590,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B5E90F422D5F4D43B37C9B12 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A7C000000000000000000022 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -554,6 +633,7 @@
 				6474E5759C7C4E63B1CD0202 /* NativeLogMedia.swift in Sources */,
 				A34D4BFD69A2170618621603 /* NativeTripSession.swift in Sources */,
 				A1C4F9072D68000000000007 /* NativeTripSiriIntents.swift in Sources */,
+				A7C000000000000000000001 /* NativeWatchTripConnector.swift in Sources */,
 				FE6D4353236B1159D9C339DF /* NativeTripView.swift in Sources */,
 				CF15ED97A8AEDE5D3D61ABA2 /* NativeHistoryDetails.swift in Sources */,
 				209F3359ED511A0BC9D64DB7 /* NativeInsightsView.swift in Sources */,
@@ -582,6 +662,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A7C000000000000000000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7C000000000000000000002 /* OkkleWatchApp.swift in Sources */,
+				A7C000000000000000000003 /* WatchContentView.swift in Sources */,
+				A7C000000000000000000004 /* WatchTripConnector.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E7AD883D3F7397E548F1F1C4 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -602,6 +692,11 @@
 			isa = PBXTargetDependency;
 			target = B5E90F452D5F4D43B37C9B15 /* OkkleWidget */;
 			targetProxy = B5E90F492D5F4D43B37C9B19 /* PBXContainerItemProxy */;
+		};
+		A7C000000000000000000051 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A7C000000000000000000030 /* Okkle Watch App */;
+			targetProxy = A7C000000000000000000050 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -806,6 +901,59 @@
 			};
 			name = Release;
 		};
+		A7C000000000000000000040 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 30;
+				DEVELOPMENT_TEAM = 22S8J5SFT8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Okkle;
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = okklelab.app;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VERSIONING_SYSTEM = "apple-generic";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		A7C000000000000000000041 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 30;
+				DEVELOPMENT_TEAM = 22S8J5SFT8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Okkle;
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = okklelab.app;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VERSIONING_SYSTEM = "apple-generic";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 		BBA26D41B614640289CA71A3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -877,6 +1025,15 @@
 			buildConfigurations = (
 				B5E90F472D5F4D43B37C9B17 /* Debug */,
 				B5E90F482D5F4D43B37C9B18 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A7C000000000000000000042 /* Build configuration list for PBXNativeTarget "Okkle Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A7C000000000000000000040 /* Debug */,
+				A7C000000000000000000041 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
