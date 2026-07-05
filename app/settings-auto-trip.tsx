@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Switch, Alert, Linking, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Switch, Alert, Linking, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
 import MapView, { Marker, type LatLng } from 'react-native-maps';
 import { colors, font, spacing, radius, type } from '../src/theme';
-import { Card, ModalHeader } from '../src/components';
+import { Card, ModalHeader, KeyboardDoneAccessory } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
 import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, updateExcludedPlace, getWorkingDays, setWorkingDays, type ExcludedPlace } from '../src/db';
 import { trackEvent } from '../src/analytics';
@@ -156,7 +156,7 @@ export default function AutoTripSettings() {
   }
 
   return (
-    <View style={s.screen}>
+    <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={s.content} contentContainerStyle={s.contentInner} keyboardShouldPersistTaps="handled">
         <ModalHeader title="Automatic tracking" />
 
@@ -282,16 +282,30 @@ export default function AutoTripSettings() {
             placeholderTextColor={colors.textTertiary}
           />
           <View style={s.placeActions}>
-            <Pressable onPress={addByAddress} disabled={!label.trim() || !address.trim() || geocoding}>
-              <Text style={[s.addAction, (!label.trim() || !address.trim() || geocoding) && s.addActionDisabled]}>Add</Text>
+            <Pressable
+              onPress={addByCurrentLocation}
+              disabled={!label.trim()}
+              style={({ pressed }) => [s.actionBtn, s.actionBtnSecondary, !label.trim() && s.actionBtnDisabled, pressed && !!label.trim() && s.actionBtnPressed]}
+            >
+              <Feather name="crosshair" size={16} color={label.trim() ? colors.brandDeep : colors.textTertiary} />
+              <Text style={[s.actionBtnSecondaryText, !label.trim() && s.actionBtnTextDisabled]}>Use current location</Text>
             </Pressable>
-            <Pressable onPress={addByCurrentLocation} disabled={!label.trim()}>
-              <Text style={[s.addAction, !label.trim() && s.addActionDisabled]}>Use current location</Text>
+            <Pressable
+              onPress={addByAddress}
+              disabled={!label.trim() || !address.trim() || geocoding}
+              style={({ pressed }) => [
+                s.actionBtn, s.actionBtnPrimary,
+                (!label.trim() || !address.trim() || geocoding) && s.actionBtnPrimaryDisabled,
+                pressed && !!label.trim() && !!address.trim() && !geocoding && s.actionBtnPressed,
+              ]}
+            >
+              <Text style={[s.actionBtnPrimaryText, (!label.trim() || !address.trim() || geocoding) && s.actionBtnPrimaryTextDisabled]}>Add</Text>
             </Pressable>
           </View>
         </Card>
       </ScrollView>
-    </View>
+      <KeyboardDoneAccessory />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -344,7 +358,18 @@ const s = StyleSheet.create({
   addTitle: { ...type.caption, fontWeight: font.semibold, marginTop: spacing.lg, marginBottom: spacing.xs },
   placesCard: { gap: spacing.sm },
   input: { borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: 16, color: colors.textPrimary, backgroundColor: colors.bg },
-  placeActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  addAction: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
-  addActionDisabled: { color: colors.textTertiary },
+  placeActions: { flexDirection: 'row', alignItems: 'stretch', gap: spacing.sm, marginTop: 4 },
+  actionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radius.full,
+  },
+  actionBtnPressed: { opacity: 0.75 },
+  actionBtnSecondary: { flex: 1, borderWidth: 1.5, borderColor: colors.brandMid, backgroundColor: colors.brandLight },
+  actionBtnSecondaryText: { ...type.bodyMedium, fontSize: 15, color: colors.brandDeep },
+  actionBtnDisabled: { borderColor: colors.border, backgroundColor: colors.bg },
+  actionBtnTextDisabled: { color: colors.textTertiary },
+  actionBtnPrimary: { backgroundColor: colors.brandDeep, paddingHorizontal: spacing.xl },
+  actionBtnPrimaryText: { ...type.bodyMedium, fontSize: 15, color: '#fff', fontWeight: font.semibold },
+  actionBtnPrimaryDisabled: { backgroundColor: colors.border },
+  actionBtnPrimaryTextDisabled: { color: colors.textTertiary },
 });
