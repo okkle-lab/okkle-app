@@ -27,6 +27,7 @@ struct OkkleNativeRootView: View {
     .onAppear {
       NativeAutoTrackEngine.shared.configure(store: store)
       NativePreShiftNotifier.refresh(store: store)
+      NativeLoggingReminder.refresh(store: store)
       routeWidgetTripRequestIfNeeded()
       routeAutomaticTripIfNeeded()
     }
@@ -44,6 +45,7 @@ struct OkkleNativeRootView: View {
     .onChange(of: store.settings.autoTrackTrips) { _ in
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
+      NativeLoggingReminder.refresh(store: store)
     }
     .onChange(of: store.settings.workingDays) { _ in
       NativeAutoTrackEngine.shared.refresh()
@@ -52,17 +54,28 @@ struct OkkleNativeRootView: View {
     .onChange(of: store.settings.preShiftAlerts) { _ in
       NativePreShiftNotifier.refresh(store: store)
     }
+    .onChange(of: store.settings.loggingReminder) { _ in
+      NativeLoggingReminder.refresh(store: store)
+    }
+    .onChange(of: store.settings.logFrequency) { _ in
+      NativeLoggingReminder.refresh(store: store)
+    }
+    .onChange(of: store.settings.reminderDay) { _ in
+      NativeLoggingReminder.refresh(store: store)
+    }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
       routeAutomaticTripIfNeeded()
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
+      NativeLoggingReminder.refresh(store: store)
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       routeWidgetTripRequestIfNeeded()
     }
     .onChange(of: autoTrack.shiftPhase) { _ in
       routeAutomaticTripIfNeeded()
+      NativePreShiftNotifier.refresh(store: store)
     }
   }
 

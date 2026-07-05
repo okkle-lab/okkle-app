@@ -350,17 +350,46 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     // stationary again without covering real distance).
     guard shiftMiles > 0.1 || shiftPoints.count > 2 else { return }
     let vehicle = store.settings.defaultVehicle
+    let endedAt = Date()
     let trip = NativeTrip(
       vehicle: vehicle,
       miles: shiftMiles,
       deduction: store.calcDeduction(miles: shiftMiles, vehicle: vehicle, date: shiftStartedAt),
       startedAt: shiftStartedAt,
-      endedAt: Date(),
+      endedAt: endedAt,
       points: shiftPoints
     )
     store.addTrip(trip)
     lastAutoShiftID = trip.id
+    ensureShiftHasVisitPair(shiftStart: shiftStartedAt, shiftEnd: endedAt)
     sendShiftLoggedNotification(trip)
+    // Push the logging reminder off today if it was about to fire today —
+    // don't wait for the app to be reopened to notice a shift just logged.
+    NativeLoggingReminder.refresh(store: store)
+  }
+
+  // Insights (NativeShiftInsights) treats a pickup→dropoff visit pair as the
+  // signal that there's real delivery data — a plain point-to-point drive
+  // with no recognized intermediate stop never produces one, even though it
+  // just got saved as a real, GPS-tracked trip above. Without this, a driver
+  // who never has a classifiable mid-shift stop would see the "Learning your
+  // week" cold-start card forever, no matter how much they actually drive.
+  // Only synthesize when the shift genuinely produced zero real stops —
+  // leave any real (if imperfectly paired) classification alone.
+  private func ensureShiftHasVisitPair(shiftStart: Date, shiftEnd: Date) {
+    guard !visits.contains(where: { $0.arrival >= shiftStart }) else { return }
+    let startCoordinate = shiftPoints.first.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+      ?? shiftLastLocation?.coordinate
+    let endCoordinate = shiftPoints.last.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+      ?? shiftLastLocation?.coordinate
+    guard let start = startCoordinate, let end = endCoordinate else { return }
+    var pickup = NativeVisit(latitude: start.latitude, longitude: start.longitude, arrival: shiftStart, departure: shiftStart)
+    pickup.kind = .pickup
+    var dropoff = NativeVisit(latitude: end.latitude, longitude: end.longitude, arrival: shiftEnd, departure: shiftEnd)
+    dropoff.kind = .dropoff
+    visits.append(contentsOf: [pickup, dropoff])
+    trim()
+    save()
   }
 
   private func sendShiftStartedNotification() {
@@ -375,7 +404,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     let miles = String(format: "%.1f", trip.miles)
     sendAutoTrackNotification(
       identifier: "\(shiftNotificationIdentifier)-\(trip.id.uuidString)",
-      title: "Shift ended",
+      title: "Shift logged automatically",
       body: "\(miles) miles logged automatically. Tap to check it's right.",
       userInfo: ["type": "autoShiftReview", "tripID": trip.id.uuidString]
     )
