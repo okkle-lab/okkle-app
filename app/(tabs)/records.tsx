@@ -19,7 +19,9 @@ export default function RecordsScreen() {
   const [items, setItems] = React.useState<Item[]>([]);
   const [refreshing, setRefreshing] = React.useState(false);
   const [filter, setFilter] = React.useState<'all' | 'trips' | 'income' | 'expense'>('all');
-  const [month, setMonth] = React.useState<string>('all'); // 'all' or 'YYYY-MM'
+  // Defaults to the current month rather than all-time — most-recently-added
+  // records are what you're checking day to day; "All time" is one tap away.
+  const [month, setMonth] = React.useState<string>(() => new Date().toISOString().slice(0, 7)); // 'all' or 'YYYY-MM'
   const [mode, setMode] = React.useState<RecordsMode>(params.view === 'tax' ? 'tax' : 'records');
   const [scrollResetKey, setScrollResetKey] = React.useState(0);
 
@@ -176,7 +178,7 @@ export default function RecordsScreen() {
                 </Pressable>
               ))}
             </View>
-            {months.length > 1 && (
+            {(months.length > 1 || month !== 'all') && (
               <Pressable onPress={pickMonth} style={[s.monthBtn, month !== 'all' && s.monthBtnOn]} hitSlop={6}>
                 <Feather name="calendar" size={15} color={month !== 'all' ? '#fff' : colors.brandDeep} />
                 {month !== 'all' && <Text style={s.monthBtnText} numberOfLines={1}>{monthLabel(month)}</Text>}
