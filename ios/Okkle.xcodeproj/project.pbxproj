@@ -24,6 +24,7 @@
 		67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D16F24230562870410B37EC /* NativeLogView.swift */; };
 		6D939B15DD214840A6C00DAE /* NativePreShiftNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */; };
 		764745A26CC7406DD271FCFA /* NativeLoggingReminder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8936B37E0604C829E392E1 /* NativeLoggingReminder.swift */; };
+		7B5B2B01A61D4C01A9F83C10 /* NativeICloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B5B2B00A61D4C01A9F83C0F /* NativeICloudSync.swift */; };
 		8559784546AD4021B63E2C13 /* NativeAccountantPackPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */; };
 		9F88AF1F7A4C49F6A7D0F841 /* NativeLegacySQLiteExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */; };
 		A1C4F9022D68000000000002 /* OkkleSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9012D68000000000001 /* OkkleSceneDelegate.swift */; };
@@ -159,6 +160,7 @@
 		B5E90F362D5F4D43B37C9B06 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B5E90F372D5F4D43B37C9B07 /* OkkleWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OkkleWidget.entitlements; sourceTree = "<group>"; };
 		C4D5B140F6D024F07166769E /* OkkleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleStore.swift; sourceTree = "<group>"; };
+		7B5B2B00A61D4C01A9F83C0F /* NativeICloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeICloudSync.swift; sourceTree = "<group>"; };
 		CA7CF6DC51582C5B309BCC83 /* NativeHistoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryItem.swift; sourceTree = "<group>"; };
 		CA931E53CF76B03966392C32 /* NativeHistoryDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryDetails.swift; sourceTree = "<group>"; };
 		D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAutoTrackEngine.swift; sourceTree = "<group>"; };
@@ -274,6 +276,7 @@
 				A99D2172005489541FC78A0C /* NativeLegacySQLiteImporter.swift */,
 				9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */,
 				E4B0F0A44F1E471E8C9F5630 /* NativeLegacyBackupImporter.swift */,
+				7B5B2B00A61D4C01A9F83C0F /* NativeICloudSync.swift */,
 			);
 			path = Store;
 			sourceTree = "<group>";
@@ -624,6 +627,7 @@
 				BBB4B55DF19698F456A9A1FB /* NativeLegacySQLiteImporter.swift in Sources */,
 				9F88AF1F7A4C49F6A7D0F841 /* NativeLegacySQLiteExporter.swift in Sources */,
 				E4B0F0A54F1E471E8C9F5631 /* NativeLegacyBackupImporter.swift in Sources */,
+				7B5B2B01A61D4C01A9F83C10 /* NativeICloudSync.swift in Sources */,
 				3ACB078A0E440BE440FC023F /* OkkleNativeRootView.swift in Sources */,
 				F6BD210B4BDE81D801BAAADC /* NativeOnboardingView.swift in Sources */,
 				D3A9F6319C794EBD7BF510E2 /* NativeComponents.swift in Sources */,

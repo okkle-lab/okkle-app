@@ -15,6 +15,7 @@ final class OkkleStore: ObservableObject {
   @Published var settings = NativeSettings() { didSet { scheduleSave() } }
   @Published var records: [NativeRecord] = [] { didSet { cachedHistory = nil; scheduleSave() } }
   @Published var trips: [NativeTrip] = [] { didSet { cachedHistory = nil; scheduleSave() } }
+  @Published private(set) var iCloudSyncState: NativeICloudSyncState = .disabled
 
   private let key = "uk.okkle.native.swiftui.snapshot.v1"
   private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v3"
@@ -22,6 +23,7 @@ final class OkkleStore: ObservableObject {
   private var isLoading = false
   private var pendingSave: DispatchWorkItem?
   private var cachedHistory: [NativeHistoryItem]?
+  private var isApplyingICloudSnapshot = false
   // The legacy SQLite mirror only exists so an older build can recover the
   // data; rebuilding it on every save is wasted work, so it's deferred to
   // the next trip into the background.
@@ -69,10 +71,13 @@ final class OkkleStore: ObservableObject {
     if normalizeOnboardingState() {
       shouldPersist = true
     }
+
+    iCloudSyncState = settings.iCloudSyncEnabled ? .syncing : .disabled
   }
 
   @objc private func appDidEnterBackground() {
     if pendingSave != nil { save() }
+    refreshICloudSyncIfNeeded()
     guard legacyExportNeeded else { return }
     legacyExportNeeded = false
     let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
@@ -99,11 +104,11 @@ final class OkkleStore: ObservableObject {
     save()
   }
 
-  func save() {
+  func save(uploadToICloud: Bool = true) {
     guard !isLoading else { return }
     pendingSave?.cancel()
     pendingSave = nil
-    persistSnapshot()
+    persistSnapshot(uploadToICloud: uploadToICloud)
   }
 
   private func scheduleSave() {
@@ -120,7 +125,7 @@ final class OkkleStore: ObservableObject {
     DispatchQueue.main.asyncAfter(deadline: .now() + saveDebounceInterval, execute: work)
   }
 
-  private func persistSnapshot() {
+  private func persistSnapshot(uploadToICloud: Bool = true) {
     let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
     legacyExportNeeded = true
     let url = Self.snapshotFileURL
@@ -138,6 +143,13 @@ final class OkkleStore: ObservableObject {
         UserDefaults.standard.removeObject(forKey: defaultsKey)
       } catch {}
     }
+    if uploadToICloud, snapshot.settings.iCloudSyncEnabled, !isApplyingICloudSnapshot {
+      NativeICloudSyncEngine.shared.uploadLocalSnapshot(snapshot, store: self)
+    }
+  }
+
+  var currentSnapshot: NativeSnapshot {
+    NativeSnapshot(settings: settings, records: records, trips: trips)
   }
 
   var backupPayload: NativeBackupPayload {
@@ -158,6 +170,9 @@ final class OkkleStore: ObservableObject {
 
   @discardableResult
   func restoreBackupData(_ data: Data) throws -> NativeBackupRestoreSummary {
+    guard !settings.iCloudSyncEnabled else {
+      throw NativeBackupRestoreError.iCloudSyncEnabled
+    }
     let snapshot = try decodeBackupSnapshot(from: data)
     isLoading = true
     settings = snapshot.settings
@@ -167,6 +182,39 @@ final class OkkleStore: ObservableObject {
     isLoading = false
     save()
     return NativeBackupRestoreSummary(records: records.count, trips: trips.count)
+  }
+
+  func setICloudSyncEnabled(_ isEnabled: Bool) {
+    guard settings.iCloudSyncEnabled != isEnabled else {
+      refreshICloudSyncIfNeeded()
+      return
+    }
+    settings.iCloudSyncEnabled = isEnabled
+    if isEnabled {
+      NativeICloudSyncEngine.shared.refresh(store: self, mergeCloudData: true)
+    } else {
+      iCloudSyncState = .disabled
+    }
+  }
+
+  func refreshICloudSyncIfNeeded() {
+    NativeICloudSyncEngine.shared.refresh(store: self)
+  }
+
+  func setICloudSyncState(_ state: NativeICloudSyncState) {
+    iCloudSyncState = state
+  }
+
+  func applyICloudSnapshot(_ snapshot: NativeSnapshot) {
+    isApplyingICloudSnapshot = true
+    isLoading = true
+    settings = snapshot.settings
+    records = snapshot.records
+    trips = snapshot.trips
+    _ = normalizeOnboardingState()
+    isLoading = false
+    save(uploadToICloud: false)
+    isApplyingICloudSnapshot = false
   }
 
   /// Set by the passive-insights layer so it can quietly check its own

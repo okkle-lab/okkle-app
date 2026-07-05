@@ -697,6 +697,37 @@ struct NativeDataSettingsView: View {
 
   var body: some View {
     Form {
+      Section {
+        Toggle("iCloud sync", isOn: Binding(
+          get: { store.settings.iCloudSyncEnabled },
+          set: { store.setICloudSyncEnabled($0) }
+        ))
+
+        HStack(alignment: .top, spacing: 12) {
+          Image(systemName: iCloudSyncStatusSymbol)
+            .foregroundStyle(iCloudSyncStatusTint)
+          VStack(alignment: .leading, spacing: 4) {
+            Text(store.iCloudSyncState.title)
+              .font(.subheadline.weight(.semibold))
+            Text(store.iCloudSyncState.detail)
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+          }
+        }
+
+        if store.settings.iCloudSyncEnabled {
+          Button {
+            store.refreshICloudSyncIfNeeded()
+          } label: {
+            Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
+          }
+        }
+      } header: {
+        Text("iCloud sync")
+      } footer: {
+        Text("When enabled, Okkle keeps your records and trips synced through your private iCloud Drive. Backup restore is disabled while sync is on to avoid overwriting synced data.")
+      }
+
       Section("Backup & restore") {
         Button {
           backupBusy = true
@@ -725,6 +756,7 @@ struct NativeDataSettingsView: View {
         } label: {
           Label("Load backup", systemImage: "icloud.and.arrow.down")
         }
+        .disabled(store.settings.iCloudSyncEnabled)
       }
 
       Section {
@@ -791,6 +823,10 @@ struct NativeDataSettingsView: View {
   }
 
   private func restoreBackup(from result: Result<[URL], Error>) {
+    guard !store.settings.iCloudSyncEnabled else {
+      backupMessage = "Turn off iCloud sync before restoring a backup."
+      return
+    }
     do {
       guard let url = try result.get().first else { return }
       let didAccess = url.startAccessingSecurityScopedResource()
@@ -804,6 +840,32 @@ struct NativeDataSettingsView: View {
       backupMessage = summary.message
     } catch {
       backupMessage = "Could not load backup. \(error.localizedDescription)"
+    }
+  }
+
+  private var iCloudSyncStatusSymbol: String {
+    switch store.iCloudSyncState {
+    case .disabled:
+      return "icloud.slash"
+    case .unavailable, .failed:
+      return "exclamationmark.icloud"
+    case .syncing:
+      return "icloud.and.arrow.up"
+    case .synced:
+      return "checkmark.icloud"
+    }
+  }
+
+  private var iCloudSyncStatusTint: Color {
+    switch store.iCloudSyncState {
+    case .disabled:
+      return .secondary
+    case .unavailable, .failed:
+      return .orange
+    case .syncing:
+      return OkkleColor.brand
+    case .synced:
+      return .green
     }
   }
 }
