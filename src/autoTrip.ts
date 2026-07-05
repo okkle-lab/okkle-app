@@ -4,6 +4,7 @@ import { Alert } from 'react-native';
 import { kvGet, kvGetNum, kvSet, getUser, getLastTrip, getVehicleKeys, isWorkingDay } from './db';
 import { recentActivity, hasMotionModule, type MotionActivity } from '../modules/okkle-motion';
 import { trackerStart } from './tripTracker';
+import { logEvent } from './diagnostics';
 
 // Automatic trip tracking (Feature 1).
 //
@@ -28,35 +29,57 @@ function pickVehicle(): string {
 }
 
 // Defined at module load so the headless background context can run it too.
+// Every invocation logs exactly one summary line (via src/diagnostics.ts) —
+// this is the only real evidence on a physical device of whether iOS is even
+// waking the task at all, since neither the Simulator nor static analysis can
+// exercise background location delivery. Check Settings → Automatic tracking
+// → Recent activity after a real drive.
 TaskManager.defineTask(AUTO_TRIP_TASK, async ({ data, error }: any) => {
-  if (error) return;
+  if (error) { logEvent('auto-trip', `task error: ${error.message ?? error}`); return; }
   const locations: Location.LocationObject[] = data?.locations ?? [];
-  if (!locations.length) return;
+  if (!locations.length) { logEvent('auto-trip', 'task fired with 0 locations'); return; }
 
-  if (kvGet('trip_active') === '1') return;           // already tracking a trip
-  if (kvGet('auto_trip') !== '1') return;             // feature turned off
-  if (!isWorkingDay()) return;                        // not one of the chosen days
-  if (Date.now() - kvGetNum('auto_trip_last_start', 0) < START_COOLDOWN_MS) return;
+  const topSpeed = locations.reduce((m, l) => Math.max(m, l.coords.speed ?? 0), 0);
+  const base = `fired, ${locations.length} loc(s), top speed ${topSpeed.toFixed(1)} m/s`;
+
+  if (kvGet('trip_active') === '1') { logEvent('auto-trip', `${base} — skipped: trip already active`); return; }
+  if (kvGet('auto_trip') !== '1') { logEvent('auto-trip', `${base} — skipped: feature off`); return; }
+  if (!isWorkingDay()) { logEvent('auto-trip', `${base} — skipped: not a working day`); return; }
+  if (Date.now() - kvGetNum('auto_trip_last_start', 0) < START_COOLDOWN_MS) {
+    logEvent('auto-trip', `${base} — skipped: cooldown`);
+    return;
+  }
 
   // Decide if this is really a *drive*. Prefer Core Motion (accurate — won't fire
   // for a bus/train/passenger); fall back to a GPS-speed heuristic when the native
   // module isn't present (Expo Go / pre-dev-build).
-  const topSpeed = locations.reduce((m, l) => Math.max(m, l.coords.speed ?? 0), 0);
   let driving = topSpeed >= DRIVING_MPS;
   const act = await recentActivity(180).catch((): MotionActivity => ({ available: false }));
+  const motionInfo = act.available
+    ? `motion: automotive=${act.automotive} cycling=${act.cycling} confidence=${act.confidence}`
+    : 'motion: unavailable, using GPS-speed only';
   if (act.available) {
     driving = (act.automotive === true || act.cycling === true) && (act.confidence ?? 0) >= 1;
   }
-  if (!driving) return;
+  if (!driving) { logEvent('auto-trip', `${base} — ${motionInfo} — not driving, no start`); return; }
 
   kvSet('auto_trip_last_start', Date.now());
-  await trackerStart(pickVehicle()).catch(() => {});
+  logEvent('auto-trip', `${base} — ${motionInfo} — starting trip`);
+  await trackerStart(pickVehicle()).catch(err => logEvent('auto-trip', `trackerStart failed: ${err}`));
 });
 
 // Low-power background updates that watch for the *start* of a drive.
+//
+// activityType is deliberately `Other`, not `AutomotiveNavigation` — that type
+// tells iOS "this is an active, already-confirmed drive", which makes iOS pause
+// aggressively the moment it looks parked and gives no guarantee of a prompt
+// resume from that fully-paused state. That's backwards for a task whose only
+// job is noticing the *first* movement after being parked for hours — it's the
+// live in-trip tracker (TRIP_TRACK_TASK, tripTracker.ts) that should claim
+// AutomotiveNavigation, since by then a drive is genuinely underway.
 const AUTO_TRIP_OPTIONS: Location.LocationTaskOptions = {
   accuracy: Location.Accuracy.Balanced,
-  activityType: Location.ActivityType.AutomotiveNavigation,
+  activityType: Location.ActivityType.Other,
   deferredUpdatesInterval: 60_000,
   pausesUpdatesAutomatically: true,   // iOS pauses when stationary → saves battery
   showsBackgroundLocationIndicator: false,
@@ -107,9 +130,15 @@ export async function enableAutoTrip(): Promise<{ ok: boolean; reason?: 'foregro
     }
 
     const fg = await Location.requestForegroundPermissionsAsync();
-    if (fg.status !== 'granted') return { ok: false, reason: 'foreground' };
+    if (fg.status !== 'granted') {
+      logEvent('auto-trip', `enable failed: foreground permission = ${fg.status}`);
+      return { ok: false, reason: 'foreground' };
+    }
     const bg = await Location.requestBackgroundPermissionsAsync();
-    if (bg.status !== 'granted') return { ok: false, reason: 'background' };
+    if (bg.status !== 'granted') {
+      logEvent('auto-trip', `enable failed: background permission = ${bg.status}`);
+      return { ok: false, reason: 'background' };
+    }
     // Trigger the Motion & Fitness permission prompt now (in context), so Core
     // Motion detection is ready. Harmless if the native module isn't present.
     if (hasMotionModule) { await recentActivity(60).catch(() => {}); }
@@ -119,8 +148,10 @@ export async function enableAutoTrip(): Promise<{ ok: boolean; reason?: 'foregro
       await Location.startLocationUpdatesAsync(AUTO_TRIP_TASK, AUTO_TRIP_OPTIONS);
     }
     kvSet('auto_trip', '1');
+    logEvent('auto-trip', `enabled — watching task ${already ? 'already running' : 'started'}, motion module ${hasMotionModule ? 'present' : 'absent'}`);
     return { ok: true };
-  } catch {
+  } catch (e) {
+    logEvent('auto-trip', `enable threw: ${e}`);
     return { ok: false, reason: 'error' };
   }
 }

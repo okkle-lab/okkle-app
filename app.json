@@ -2,7 +2,7 @@
   "expo": {
     "name": "Okkle",
     "slug": "okkle",
-    "version": "1.1",
+    "version": "1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -26,7 +26,7 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "62"
+      "buildNumber": "4"
     },
     "android": {
       "icon": "./assets/icon.png",

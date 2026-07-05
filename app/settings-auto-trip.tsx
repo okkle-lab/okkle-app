@@ -2,12 +2,14 @@ import React from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Switch, Alert, Linking, ScrollView } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
+import { useFocusEffect } from 'expo-router';
 import MapView, { Marker, type LatLng } from 'react-native-maps';
 import { colors, font, spacing, radius, type } from '../src/theme';
 import { Card, ModalHeader } from '../src/components';
 import { enableAutoTrip, disableAutoTrip, isAutoTripEnabled } from '../src/autoTrip';
 import { getExcludedPlaces, addExcludedPlace, removeExcludedPlace, updateExcludedPlace, getWorkingDays, setWorkingDays, type ExcludedPlace } from '../src/db';
 import { trackEvent } from '../src/analytics';
+import { getDiagLog, clearDiagLog } from '../src/diagnostics';
 
 // Monday-first, matching how couriers think about a work week; values are the
 // JS Date.getDay() index each chip represents (0=Sun..6=Sat).
@@ -24,6 +26,22 @@ export default function AutoTripSettings() {
   const [label, setLabel] = React.useState('');
   const [address, setAddress] = React.useState('');
   const [geocoding, setGeocoding] = React.useState(false);
+  const [activityLog, setActivityLog] = React.useState(() => getDiagLog().filter(e => e.ctx === 'auto-trip'));
+
+  // Real background-location behavior only happens on a physical device, out
+  // of our control between visits to this screen — so re-read fresh every
+  // time it regains focus (e.g. coming back after an actual drive) rather
+  // than only once on mount.
+  useFocusEffect(
+    React.useCallback(() => {
+      setActivityLog(getDiagLog().filter(e => e.ctx === 'auto-trip'));
+    }, []),
+  );
+
+  function clearActivityLog() {
+    clearDiagLog();
+    setActivityLog([]);
+  }
 
   function toggleDay(day: number) {
     const next = workingDays.includes(day) ? workingDays.filter(d => d !== day) : [...workingDays, day];
@@ -160,6 +178,34 @@ export default function AutoTripSettings() {
           </Text>
         </Card>
 
+        <View style={s.activityHeaderRow}>
+          <Text style={s.sectionTitle}>Recent activity</Text>
+          {activityLog.length > 0 && (
+            <Pressable onPress={clearActivityLog} hitSlop={10}>
+              <Text style={s.clearLink}>Clear</Text>
+            </Pressable>
+          )}
+        </View>
+        <Text style={s.placesFooter}>
+          What the background watcher has actually seen — useful for checking it's working after a real drive.
+        </Text>
+        {activityLog.length === 0 ? (
+          <Card style={s.activityEmpty}>
+            <Text style={s.activityEmptyText}>
+              Nothing logged yet — this fills in once the app has run in the background during a real drive.
+            </Text>
+          </Card>
+        ) : (
+          <Card style={s.activityCard}>
+            {activityLog.slice(0, 20).map((e, i) => (
+              <View key={i} style={[s.activityRow, i > 0 && s.activityRowBorder]}>
+                <Text style={s.activityTime}>{new Date(e.t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>
+                <Text style={s.activityDetail}>{e.detail}</Text>
+              </View>
+            ))}
+          </Card>
+        )}
+
         <Text style={s.sectionTitle}>Working days</Text>
         <Text style={s.placesFooter}>
           Only auto-track on these days. Leave none selected to track every day.
@@ -261,6 +307,15 @@ const s = StyleSheet.create({
   noteText: { ...type.caption, color: colors.amberDark, lineHeight: 18, flex: 1 },
   sectionTitle: { ...type.bodyMedium, fontSize: 16, marginTop: spacing.xl, marginBottom: 2 },
   placesFooter: { ...type.caption, lineHeight: 18 },
+  activityHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.xl },
+  clearLink: { ...type.bodyMedium, fontSize: 14, color: colors.brandDeep },
+  activityEmpty: { marginTop: spacing.md, alignItems: 'center', paddingVertical: spacing.lg },
+  activityEmptyText: { ...type.caption, textAlign: 'center', lineHeight: 18 },
+  activityCard: { padding: 0, overflow: 'hidden', marginTop: spacing.md },
+  activityRow: { padding: spacing.md, gap: 3 },
+  activityRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+  activityTime: { ...type.caption, fontWeight: font.semibold, color: colors.brandDeep },
+  activityDetail: { ...type.caption, lineHeight: 17 },
   dayRow: { flexDirection: 'row', gap: 8, marginTop: spacing.md },
   dayChip: {
     width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
