@@ -802,7 +802,7 @@ struct NativeDataSettingsView: View {
       return "icloud.slash"
     case .unavailable, .failed:
       return "exclamationmark.icloud"
-    case .syncing:
+    case .syncing, .waitingForDownload:
       return "icloud.and.arrow.up"
     case .synced:
       return "checkmark.icloud"
@@ -815,7 +815,7 @@ struct NativeDataSettingsView: View {
       return .secondary
     case .unavailable, .failed:
       return .orange
-    case .syncing:
+    case .syncing, .waitingForDownload:
       return OkkleColor.brand
     case .synced:
       return .green
