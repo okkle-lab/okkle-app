@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 import UserNotifications
 
@@ -59,9 +60,25 @@ struct NativeAutoShiftReviewView: View {
   let tripID: UUID
 
   @State private var adjustedEnd: Date = Date()
+  @State private var explicitFeedbackGiven = false
 
   private var trip: NativeTrip? {
     store.trips.first { $0.id == tripID }
+  }
+
+  /// The zone that was recommended for this shift's weekday, if the shift's
+  /// own route actually passed near it — nil (no prompt shown) when there
+  /// was nothing to evaluate, e.g. too little history yet for a
+  /// recommendation, or the driver worked somewhere else entirely.
+  private var recommendedZoneNearby: CLLocationCoordinate2D? {
+    guard let trip else { return nil }
+    let weekday = Calendar.current.component(.weekday, from: trip.startedAt) - 1
+    guard let zone = NativeShiftInsights.build(visits: autoTrack.visits, store: store)
+      .weekdayDetails.first(where: { $0.weekday == weekday })?.coordinate else { return nil }
+    let zoneLocation = CLLocation(latitude: zone.latitude, longitude: zone.longitude)
+    let wasNear = stops.contains { $0.location.distance(from: zoneLocation) <= 600 }
+      || trip.points.contains { CLLocation(latitude: $0.latitude, longitude: $0.longitude).distance(from: zoneLocation) <= 600 }
+    return wasNear ? zone : nil
   }
 
   private var stops: [NativeVisit] {
@@ -170,6 +187,22 @@ struct NativeAutoShiftReviewView: View {
                 Text("Use the remove button or swipe left to remove a stop that is not actually work.")
               }
             }
+
+            if !explicitFeedbackGiven, recommendedZoneNearby != nil {
+              Section {
+                HStack(spacing: 12) {
+                  Text("Was this area worth it?")
+                    .font(.system(size: 15, weight: .semibold))
+                  Spacer()
+                  Button("No") { recordZoneFeedback(false) }
+                    .buttonStyle(.bordered)
+                  Button("Yes") { recordZoneFeedback(true) }
+                    .buttonStyle(.borderedProminent)
+                }
+              } footer: {
+                Text("Helps Okkle learn whether a recommended area is actually paying off, not just how busy it looks.")
+              }
+            }
           }
           .onAppear { adjustedEnd = trip.endedAt }
         } else {
@@ -210,6 +243,11 @@ struct NativeAutoShiftReviewView: View {
 
   private func removeStop(_ visit: NativeVisit) {
     autoTrack.discardVisit(visit.id)
+  }
+
+  private func recordZoneFeedback(_ wasWorthIt: Bool) {
+    NativeZoneOutcomeTracker.shared.recordExplicitFeedback(wasWorthIt: wasWorthIt)
+    explicitFeedbackGiven = true
   }
 
   private func shortTime(_ date: Date) -> String {

@@ -127,10 +127,23 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private func checkOutcome(for record: NativeRecord) {
     guard record.kind == .income, let amount = record.amount, let store else { return }
     let weekday = Calendar.current.component(.weekday, from: record.date) - 1
-    let peakWeekdays = NativeShiftInsights.build(visits: visits, store: store)
-      .weekdayDetails.prefix(3).map(\.weekday)
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+    let peakWeekdays = insights.weekdayDetails.prefix(3).map(\.weekday)
     NativeOutcomeTracker.shared.record(amount: amount, period: record.period,
                                        wasPredictedPeakDay: peakWeekdays.contains(weekday))
+
+    // Zone half of the same self-correction: did that day's actual work
+    // happen anywhere near the zone recommended for its weekday? Entirely
+    // silent — feeds NativeZoneOutcomeTracker.zoneHitRate, which only ever
+    // dampens future zone weights, never boosts them.
+    if let recommendedZone = insights.weekdayDetails.first(where: { $0.weekday == weekday })?.coordinate {
+      let recommended = CLLocation(latitude: recommendedZone.latitude, longitude: recommendedZone.longitude)
+      let wasNear = visits.contains { visit in
+        Calendar.current.isDate(visit.arrival, inSameDayAs: record.date) &&
+          visit.location.distance(from: recommended) <= 600
+      }
+      NativeZoneOutcomeTracker.shared.record(amount: amount, period: record.period, wasNearRecommendedZone: wasNear)
+    }
   }
 
   /// Start or stop listening for driving on working days, to match the

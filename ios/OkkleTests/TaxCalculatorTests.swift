@@ -121,6 +121,55 @@ final class NativeInsightsSimulationTests: XCTestCase {
     XCTAssertEqual(insights.paidMiles, 8, accuracy: 0.15)
   }
 
+  func testZoneWeightFavorsLowerDeadMilePercentage() {
+    let store = OkkleStore()
+    // Zone A: the very first visit overall, so no approach leg is possible —
+    // a short, efficient paid leg (0% dead miles).
+    let aArrival = Date().addingTimeInterval(-3600)
+    let visits = [
+      visit(kind: .pickup, latitude: 51.500, longitude: -0.120, arrival: aArrival, departure: aArrival),
+      visit(kind: .dropoff, latitude: 51.501, longitude: -0.120, arrival: aArrival.addingTimeInterval(5 * 60), departure: aArrival.addingTimeInterval(5 * 60)),
+      // An unrelated stop far from zone B, just before it, so zone B's
+      // pickup carries a long (~5.5km) unpaid approach leg.
+      visit(kind: .dropoff, latitude: 52.00, longitude: -1.00, arrival: aArrival.addingTimeInterval(20 * 60), departure: aArrival.addingTimeInterval(21 * 60)),
+      visit(kind: .pickup, latitude: 52.05, longitude: -1.00, arrival: aArrival.addingTimeInterval(30 * 60), departure: aArrival.addingTimeInterval(30 * 60)),
+      visit(kind: .dropoff, latitude: 52.051, longitude: -1.00, arrival: aArrival.addingTimeInterval(35 * 60), departure: aArrival.addingTimeInterval(35 * 60))
+    ]
+
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+    XCTAssertEqual(insights.zones.count, 2)
+    let zoneA = insights.zones.first { $0.coordinate.latitude == 51.500 }
+    let zoneB = insights.zones.first { $0.coordinate.latitude == 52.05 }
+    XCTAssertNotNil(zoneA)
+    XCTAssertNotNil(zoneB)
+    XCTAssertEqual(zoneA?.deadMilePct, 0)
+    XCTAssertGreaterThan(zoneB?.deadMilePct ?? 0, 90)
+    // Same recency, same raw count — only the dead-mile efficiency differs,
+    // so the cleaner zone should rank higher.
+    XCTAssertGreaterThan(zoneA?.weight ?? 0, zoneB?.weight ?? 1)
+  }
+
+  func testZoneWeightDecaysWithAge() {
+    let store = OkkleStore()
+    let recent = Date().addingTimeInterval(-3600)
+    let old = Date().addingTimeInterval(-200 * 86_400)
+    let visits = [
+      visit(kind: .pickup, latitude: 51.500, longitude: -0.120, arrival: recent, departure: recent),
+      visit(kind: .dropoff, latitude: 51.501, longitude: -0.120, arrival: recent.addingTimeInterval(5 * 60), departure: recent.addingTimeInterval(5 * 60)),
+      visit(kind: .pickup, latitude: 52.00, longitude: -1.00, arrival: old, departure: old),
+      visit(kind: .dropoff, latitude: 52.001, longitude: -1.00, arrival: old.addingTimeInterval(5 * 60), departure: old.addingTimeInterval(5 * 60))
+    ]
+
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+    let recentZone = insights.zones.first { $0.coordinate.latitude == 51.500 }
+    let oldZone = insights.zones.first { $0.coordinate.latitude == 52.00 }
+    XCTAssertNotNil(recentZone)
+    XCTAssertNotNil(oldZone)
+    // Same count, same (zero) dead miles for both — only age differs, so a
+    // 200-day-old delivery should rank well below a fresh one.
+    XCTAssertGreaterThan(recentZone?.weight ?? 0, oldZone?.weight ?? 1)
+  }
+
   func testTripDerivedVisitsDoNotProduceLocationZones() {
     let store = OkkleStore()
     store.trips = [trip(miles: 6, startedAt: date(2026, 6, 23, 18), endedAt: date(2026, 6, 23, 18, 30), timestamped: false)]

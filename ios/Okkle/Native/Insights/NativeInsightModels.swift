@@ -106,9 +106,10 @@ func nativeDetectedHomeCoordinate(_ visits: [NativeVisit]) -> CLLocationCoordina
 struct NativeZonePoint: Identifiable, Equatable {
   let id = UUID()
   let coordinate: CLLocationCoordinate2D
-  let weight: Double   // 0 (quiet) ... 1 (your busiest zone)
+  let weight: Double   // 0 (quiet) ... 1 (your busiest zone) — popularity blended with efficiency and, while evidence is thin, a food-POI-density prior
   var count: Int = 0   // raw deliveries in this cluster
   var peakHour: Int? = nil   // the hour this area is busiest for you
+  var deadMilePct: Int? = nil   // % of the miles to reach this zone that were unpaid repositioning
 
   /// A tight "when to go" window around the area's busiest hour.
   var timeLabel: String? {
@@ -552,7 +553,20 @@ struct NativeShiftInsights {
         // ranking below rather than risk recommending home, or a random
         // waypoint, as "where to go".
         let isLocationTrustworthy = !sorted[index].isEndpointGuess && !sorted[dropIndex].isEndpointGuess
-        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date, isLocationTrustworthy))
+        // How far it took to reposition back into this pickup zone from
+        // whatever came before it — the same unpaid-mileage cost the overall
+        // deadMiles figure already counts, just attributed to this specific
+        // zone so "busiest" can be weighed against "cheapest to reach".
+        var approachMeters = 0.0
+        if index > 0 {
+          let prev = sorted[index - 1]
+          let gap = sorted[index].arrival.timeIntervalSince(prev.departure)
+          if gap < shiftGap {
+            approachMeters = routeMeters(from: prev.departure, to: sorted[index].arrival, trips: store.trips)
+              ?? sorted[index].location.distance(from: prev.location)
+          }
+        }
+        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date, isLocationTrustworthy, approachMeters, legMeters))
         index = dropIndex + 1
       } else {
         index += 1
@@ -604,19 +618,75 @@ struct NativeShiftInsights {
     // is already free of excluded places, since `sorted` was filtered above —
     // and further filtered to trustworthy locations only, so a shift with no
     // real classified stop never turns its own start/end point into a "zone".
-    var cells: [String: (coordinate: CLLocationCoordinate2D, count: Int, hours: [Int: Int])] = [:]
+    //
+    // Each cell's weight blends three signals:
+    //  - recency-weighted popularity (older deliveries count for less, so a
+    //    closed restaurant or a changed local scene fades out on its own
+    //    instead of being remembered forever)
+    //  - dead-mile efficiency (how much unpaid repositioning it historically
+    //    took to reach this zone — busiest isn't the same as most profitable,
+    //    and this is the one signal only this app's mileage tracking can
+    //    actually provide)
+    //  - a food-POI density prior, which dominates while a zone has barely
+    //    any real evidence and fades out as real deliveries accumulate — the
+    //    same "trust real evidence once there's enough of it" bar already
+    //    used for NativeExploreCandidate.isValidated (3 real visits)
+    var cells: [String: (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double)] = [:]
     let cellSize = 0.006
+    let recencyHalfLifeDays = 60.0
+    let now = Date()
     for hit in deliveryHits where hit.isLocationTrustworthy {
       let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
-      var cell = cells[key] ?? (hit.coordinate, 0, [:])
-      cell.count += 1
+      var cell = cells[key] ?? (hit.coordinate, 0, 0, [:], 0, 0)
+      let ageDays = max(0, now.timeIntervalSince(hit.date) / 86_400)
+      let decay = pow(0.5, ageDays / recencyHalfLifeDays)
+      cell.rawCount += 1
+      cell.decayedCount += decay
       cell.hours[hit.hour, default: 0] += 1
+      cell.approachMeters += hit.approachMeters
+      cell.paidMeters += hit.paidLegMeters
       cells[key] = cell
     }
-    let maxCount = cells.values.map(\.count).max() ?? 1
+    let maxDecayedCount = cells.values.map(\.decayedCount).max() ?? 1
+    let zoneConfidenceK = 3.0   // matches NativeExploreCandidate.isValidated's "3 real visits" bar
+    // Has "your best zone" actually been paying off in practice? Blends two
+    // kinds of evidence — inferred from logged income, and direct "was this
+    // worth it?" taps — and only ever dampens the final weight, same
+    // restraint as peakHitRate: a good hit rate never inflates a zone beyond
+    // what it already earned, it just stops confidently pointing somewhere
+    // that keeps not paying off.
+    let incomeHitRate = NativeZoneOutcomeTracker.shared.zoneHitRate
+    let explicitHitRate = NativeZoneOutcomeTracker.shared.explicitHitRate
+    let combinedZoneHitRate: Double? = {
+      switch (incomeHitRate, explicitHitRate) {
+      case let (income?, explicit?): return (income + explicit) / 2
+      case let (income?, nil): return income
+      case let (nil, explicit?): return explicit
+      default: return nil
+      }
+    }()
+    let zoneConfidenceFactor: Double = {
+      guard let combinedZoneHitRate else { return 1.0 }
+      if combinedZoneHitRate < 0.35 { return 0.5 }
+      if combinedZoneHitRate < 0.5 { return 0.75 }
+      return 1.0
+    }()
     let zones = cells.values.map { cell -> NativeZonePoint in
       let peak = cell.hours.max { $0.value < $1.value }?.key
-      return NativeZonePoint(coordinate: cell.coordinate, weight: Double(cell.count) / Double(maxCount), count: cell.count, peakHour: peak)
+      let popularity = cell.decayedCount / maxDecayedCount
+      let totalCellMeters = cell.approachMeters + cell.paidMeters
+      let deadMilePct = totalCellMeters > 0 ? Int((cell.approachMeters / totalCellMeters * 100).rounded()) : nil
+      // No approach-leg data for this cell yet → stay neutral rather than
+      // silently reward or punish it in the blend below.
+      let efficiency = deadMilePct.map { 1 - Double($0) / 100 } ?? 0.5
+      let realSignal = popularity * 0.65 + efficiency * 0.35
+      // Fall back to the real signal itself while the async POI lookup is
+      // still resolving, so a zone isn't held back just because the prior
+      // hasn't loaded yet.
+      let poiPrior = NativeZonePOIPrior.shared.priorScore(for: cell.coordinate) ?? realSignal
+      let confidence = Double(cell.rawCount) / (Double(cell.rawCount) + zoneConfidenceK)
+      let weight = (confidence * realSignal + (1 - confidence) * poiPrior) * zoneConfidenceFactor
+      return NativeZonePoint(coordinate: cell.coordinate, weight: weight, count: cell.rawCount, peakHour: peak, deadMilePct: deadMilePct)
     }
 
     // £/hr over the last 14 days: logged income ÷ active hours in the window.
@@ -856,7 +926,7 @@ struct NativeShiftInsights {
   }
 }
 
-typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date, isLocationTrustworthy: Bool)
+typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date, isLocationTrustworthy: Bool, approachMeters: Double, paidLegMeters: Double)
 
 /// The busiest time-band and roughly-where for one weekday.
 func bestBandAndZone(for weekday: Int, deliveryHits: [NativeDeliveryHit], cellSize: Double) -> (band: NativeTimeFilter, zone: CLLocationCoordinate2D?) {
