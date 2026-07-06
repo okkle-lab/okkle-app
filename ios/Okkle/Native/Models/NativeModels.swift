@@ -235,6 +235,9 @@ struct NativeSettings: Codable, Equatable {
   var reminderDay = 1
   var logFrequency: NativeLogFrequency = .weekly
   var taxDeadlineReminders = true
+  // Optional iCloud sync. Kept in settings so the preference follows the
+  // user's Okkle snapshot once sync is enabled.
+  var iCloudSyncEnabled = false
   // Automatic trip tracking: on by default, tracking any trip. `workingDays`
   // holds the weekdays (0 = Sunday … 6 = Saturday, matching Calendar's symbol
   // index) on which trips auto-start; default is every day.
@@ -271,6 +274,7 @@ struct NativeSettings: Codable, Equatable {
     case reminderDay
     case logFrequency
     case taxDeadlineReminders
+    case iCloudSyncEnabled
     case autoTrackTrips
     case siriTripTrackingEnabled
     case workingDays
@@ -296,6 +300,7 @@ struct NativeSettings: Codable, Equatable {
     reminderDay = try container.decodeIfPresent(Int.self, forKey: .reminderDay) ?? 1
     logFrequency = try container.decodeIfPresent(NativeLogFrequency.self, forKey: .logFrequency) ?? .weekly
     taxDeadlineReminders = try container.decodeIfPresent(Bool.self, forKey: .taxDeadlineReminders) ?? true
+    iCloudSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? false
     autoTrackTrips = try container.decodeIfPresent(Bool.self, forKey: .autoTrackTrips) ?? true
     siriTripTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .siriTripTrackingEnabled) ?? false
     workingDays = try container.decodeIfPresent([Int].self, forKey: .workingDays) ?? Array(0...6)
@@ -330,11 +335,14 @@ struct NativeBackupRestoreSummary {
 
 enum NativeBackupRestoreError: LocalizedError {
   case invalidBackup
+  case iCloudSyncEnabled
 
   var errorDescription: String? {
     switch self {
     case .invalidBackup:
       return "That file does not look like an Okkle backup."
+    case .iCloudSyncEnabled:
+      return "Turn off iCloud sync before restoring a backup."
     }
   }
 }

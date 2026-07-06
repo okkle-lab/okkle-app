@@ -28,6 +28,7 @@ struct OkkleNativeRootView: View {
       NativeAutoTrackEngine.shared.configure(store: store)
       NativePreShiftNotifier.refresh(store: store)
       NativeLoggingReminder.refresh(store: store)
+      store.refreshICloudSyncIfNeeded()
       routeWidgetTripRequestIfNeeded()
       routeAutomaticTripIfNeeded()
     }
@@ -46,6 +47,7 @@ struct OkkleNativeRootView: View {
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
       NativeLoggingReminder.refresh(store: store)
+      store.refreshICloudSyncIfNeeded()
     }
     .onChange(of: store.settings.workingDays) { _ in
       NativeAutoTrackEngine.shared.refresh()
