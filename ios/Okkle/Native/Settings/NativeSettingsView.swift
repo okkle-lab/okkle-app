@@ -348,7 +348,19 @@ struct NativeExcludedPlacesSection: View {
             .frame(height: 140)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            Text(place.label).font(.subheadline.weight(.semibold))
+            HStack(spacing: 10) {
+              Text(place.label)
+                .font(.subheadline.weight(.semibold))
+              Spacer(minLength: 10)
+              Button(role: .destructive) {
+                removePlace(place.id)
+              } label: {
+                Label("Remove \(place.label)", systemImage: "trash")
+                  .labelStyle(.iconOnly)
+              }
+              .buttonStyle(.borderless)
+              .accessibilityLabel("Remove \(place.label)")
+            }
             if let address = place.address {
               Text(address).font(.footnote).foregroundStyle(.secondary)
             }
@@ -420,6 +432,10 @@ struct NativeExcludedPlacesSection: View {
     ))
     self.label = ""
     self.address = ""
+  }
+
+  private func removePlace(_ id: UUID) {
+    store.settings.excludedPlaces.removeAll { $0.id == id }
   }
 
   /// Dragging the pin corrects the coordinate directly — geocoding can land a
