@@ -34,10 +34,6 @@ struct NativeTripDetailSheet: View {
       NavigationStack {
         ScrollView {
           VStack(alignment: .leading, spacing: 18) {
-            if hasMapDetails {
-              routeSection
-            }
-
             HStack(spacing: 12) {
               NativeMetricTile(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
               NativeMetricTile(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
@@ -47,10 +43,12 @@ struct NativeTripDetailSheet: View {
               VStack(alignment: .leading, spacing: 14) {
                 tripDetailRow("Vehicle", value: trip.vehicle.label, symbol: trip.vehicle.symbol)
                 Divider()
-                tripDetailRow("Started", value: trip.startedAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()), symbol: "play.circle")
-                tripDetailRow("Ended", value: trip.endedAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()), symbol: "stop.circle")
                 tripDetailRow("Duration", value: nativeDurationLabel(trip.endedAt.timeIntervalSince(trip.startedAt)), symbol: "timer")
               }
+            }
+
+            if hasMapDetails {
+              routeSection
             }
 
             NativeDetailActionButtons(onEdit: onEdit, onDelete: onDelete)
@@ -95,49 +93,35 @@ struct NativeTripDetailSheet: View {
           .frame(height: 250)
           .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
 
-        if let startPoint {
-          routeEndpointRow(
-            "Start",
-            value: startAddress ?? coordinateLabel(startPoint),
-            point: startPoint,
-            symbol: "location.circle",
-            isHome: isKnownHome(startPoint.coordinate)
-          )
-        }
-        if let endPoint {
-          routeEndpointRow(
-            "End",
-            value: endAddress ?? coordinateLabel(endPoint),
-            point: endPoint,
-            symbol: "mappin.circle",
-            isHome: isKnownHome(endPoint.coordinate)
-          )
-        }
-
         tripDetailRow("Route points", value: "\(trip.points.count)", symbol: "point.3.connected.trianglepath.dotted")
 
-        if !numberedStops.isEmpty {
-          Divider()
-          Text("Detected stops")
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(OkkleColor.muted)
+        Divider()
+
+        VStack(alignment: .leading, spacing: 12) {
+          if let startPoint {
+            routeEndpointLocationRow(
+              "Start",
+              value: startAddress ?? coordinateLabel(startPoint),
+              time: timeLabel(for: startPoint.timestamp ?? trip.startedAt),
+              symbol: "location.circle",
+              tint: OkkleColor.brand,
+              isHome: isKnownHome(startPoint.coordinate)
+            )
+          }
+
           ForEach(numberedStops) { stop in
-            HStack(spacing: 12) {
-              Text("\(stop.number)")
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(stopTint(for: stop.visit), in: Circle())
-              VStack(alignment: .leading, spacing: 2) {
-                Text(stopTitle(for: stop.visit))
-                  .font(.system(size: 14, weight: .bold))
-                  .foregroundStyle(OkkleColor.ink)
-                Text(stopSubtitle(for: stop.visit))
-                  .font(.system(size: 12, weight: .semibold))
-                  .foregroundStyle(OkkleColor.muted)
-              }
-              Spacer()
-            }
+            routeStopLocationRow(stop)
+          }
+
+          if let endPoint {
+            routeEndpointLocationRow(
+              "End",
+              value: endAddress ?? coordinateLabel(endPoint),
+              time: timeLabel(for: endPoint.timestamp ?? trip.endedAt),
+              symbol: "mappin.circle",
+              tint: OkkleColor.blue,
+              isHome: isKnownHome(endPoint.coordinate)
+            )
           }
         }
       }
@@ -157,9 +141,12 @@ struct NativeTripDetailSheet: View {
   }
 
   private var stops: [NativeVisit] {
-    autoTrack.visits
+    let recordedStops = autoTrack.visits
       .filter { $0.arrival >= trip.startedAt && $0.departure <= trip.endedAt }
+      .filter { !isEndpointVisit($0) }
       .sorted { $0.arrival < $1.arrival }
+    let detectedStops = NativeRouteStopDetector.detectStops(in: trip.points).map(\.visit)
+    return NativeRouteStopDetector.mergedStops(recordedStops: recordedStops, detectedStops: detectedStops)
   }
 
   private var numberedStops: [NativeTripDetailStop] {
@@ -185,30 +172,71 @@ struct NativeTripDetailSheet: View {
     String(format: "%.5f, %.5f", point.latitude, point.longitude)
   }
 
-  private func routeEndpointRow(_ title: String, value: String, point: RoutePoint, symbol: String, isHome: Bool) -> some View {
+  private func routeEndpointLocationRow(
+    _ title: String,
+    value: String,
+    time: String,
+    symbol: String,
+    tint: Color,
+    isHome: Bool
+  ) -> some View {
     HStack(spacing: 12) {
       Image(systemName: symbol)
         .font(.system(size: 16, weight: .bold))
-        .foregroundStyle(isHome ? OkkleColor.brand : OkkleColor.blue)
+        .foregroundStyle(isHome ? OkkleColor.brand : tint)
         .frame(width: 34, height: 34)
-        .background((isHome ? OkkleColor.brand : OkkleColor.blue).opacity(0.13), in: Circle())
+        .background((isHome ? OkkleColor.brand : tint).opacity(0.13), in: Circle())
       VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 6) {
-          Text(title)
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-          if isHome {
-            Label("Home", systemImage: "house.fill")
-              .font(.system(size: 11, weight: .bold))
-              .foregroundStyle(OkkleColor.brand)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          HStack(spacing: 6) {
+            Text(title)
+              .font(.system(size: 15, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+            if isHome {
+              Label("Home", systemImage: "house.fill")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(OkkleColor.brand)
+            }
           }
+          Spacer(minLength: 8)
+          Text(time)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+            .lineLimit(1)
         }
         Text(value)
           .font(.system(size: 15, weight: .bold))
           .foregroundStyle(OkkleColor.ink)
           .fixedSize(horizontal: false, vertical: true)
       }
-      Spacer(minLength: 10)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func routeStopLocationRow(_ stop: NativeTripDetailStop) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Text("\(stop.number)")
+        .font(.system(size: 12, weight: .heavy, design: .rounded))
+        .foregroundStyle(.white)
+        .frame(width: 34, height: 34)
+        .background(stopTint(for: stop.visit), in: Circle())
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text(stopTitle(for: stop.visit))
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(OkkleColor.ink)
+          Spacer(minLength: 8)
+          Text(stopTimeLabel(for: stop.visit))
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+            .lineLimit(1)
+        }
+        Text(stopSubtitle(for: stop.visit))
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 
@@ -247,6 +275,19 @@ struct NativeTripDetailSheet: View {
     return "\(place) • \(dwellMinutes)m"
   }
 
+  private func timeLabel(for date: Date) -> String {
+    date.formatted(.dateTime.hour().minute())
+  }
+
+  private func stopTimeLabel(for visit: NativeVisit) -> String {
+    let arrival = timeLabel(for: visit.arrival)
+    let departure = timeLabel(for: visit.departure)
+    if Calendar.current.isDate(visit.arrival, equalTo: visit.departure, toGranularity: .minute) {
+      return arrival
+    }
+    return "\(arrival) - \(departure)"
+  }
+
   private func stopTint(for visit: NativeVisit) -> Color {
     switch visit.kind {
     case .pickup:
@@ -267,6 +308,15 @@ struct NativeTripDetailSheet: View {
     case .other:
       return .other
     }
+  }
+
+  private func isEndpointVisit(_ visit: NativeVisit) -> Bool {
+    guard let startPoint, let endPoint else { return false }
+    let nearStart = abs(visit.arrival.timeIntervalSince(trip.startedAt)) < 180 &&
+      distance(from: visit.coordinate, to: startPoint.coordinate) <= 120
+    let nearEnd = abs(visit.departure.timeIntervalSince(trip.endedAt)) < 180 &&
+      distance(from: visit.coordinate, to: endPoint.coordinate) <= 120
+    return nearStart || nearEnd
   }
 
   @MainActor
@@ -1078,9 +1128,11 @@ struct NativeTripEditSheet: View {
   }
 
   private var routeVisits: [NativeVisit] {
-    autoTrack.visits
+    let recordedStops = autoTrack.visits
       .filter { $0.arrival >= startedAt && $0.departure <= endedAt }
       .sorted { $0.arrival < $1.arrival }
+    let detectedStops = NativeRouteStopDetector.detectStops(in: routePoints).map(\.visit)
+    return NativeRouteStopDetector.mergedStops(recordedStops: recordedStops, detectedStops: detectedStops)
   }
 
   private var routeSegments: [NativeTripRouteEditSegment] {
@@ -1247,10 +1299,9 @@ private struct NativeTripRouteEditSegment: Identifiable {
       }
     }
 
-    if indexes.count == 2 && run.count > 18 {
-      let segmentCount = min(6, max(2, run.count / 14))
-      for step in 1..<segmentCount {
-        indexes.insert(runStart + ((run.count - 1) * step / segmentCount))
+    for stop in NativeRouteStopDetector.detectStops(in: points, runStart: runStart, runEnd: runEnd) {
+      if stop.boundaryIndex > runStart && stop.boundaryIndex < runEnd {
+        indexes.insert(stop.boundaryIndex)
       }
     }
 

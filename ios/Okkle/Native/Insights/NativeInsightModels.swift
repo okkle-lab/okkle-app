@@ -427,10 +427,16 @@ struct NativeShiftInsights {
 
   private static func tripDerivedVisits(for trip: NativeTrip, existingVisits: [NativeVisit]) -> [NativeVisit] {
     guard trip.endedAt > trip.startedAt, trip.miles > 0 else { return [] }
-    guard !existingVisits.contains(where: { visit in
+    let overlappingVisits = existingVisits.filter { visit in
       visit.arrival <= trip.endedAt && visit.departure >= trip.startedAt
-    }) else { return [] }
+    }
     guard let start = trip.points.first?.coordinate, let end = trip.points.last?.coordinate else { return [] }
+    let inferredStops = routeDerivedStops(for: trip, start: start, end: end)
+      .filter { !NativeRouteStopDetector.containsSameStop(overlappingVisits, $0) }
+    if !inferredStops.isEmpty {
+      return inferredStops
+    }
+    guard overlappingVisits.isEmpty else { return [] }
 
     let pickupDeparture = trip.startedAt
     let dropArrival = trip.endedAt
@@ -460,6 +466,67 @@ struct NativeShiftInsights {
     dropoff.kind = .dropoff
 
     return [pickup, dropoff]
+  }
+
+  private static func routeDerivedStops(
+    for trip: NativeTrip,
+    start: CLLocationCoordinate2D,
+    end: CLLocationCoordinate2D
+  ) -> [NativeVisit] {
+    var visits = NativeRouteStopDetector.detectStops(in: trip.points).map(\.visit)
+    guard !visits.isEmpty else { return [] }
+
+    if visits.count == 1 {
+      visits[0].kind = .dropoff
+      visits[0].placeName = "Detected stop"
+      return [tripEndpointVisit(
+        trip: trip,
+        coordinate: start,
+        date: trip.startedAt,
+        role: .pickup,
+        suffix: "pickup",
+        name: "Trip start"
+      ), visits[0]]
+    }
+
+    for index in visits.indices {
+      visits[index].kind = index.isMultiple(of: 2) ? .pickup : .dropoff
+      visits[index].placeName = visits[index].kind == .pickup ? "Detected pick-up" : "Detected drop-off"
+    }
+
+    if visits.last?.kind == .pickup {
+      visits.append(tripEndpointVisit(
+        trip: trip,
+        coordinate: end,
+        date: trip.endedAt,
+        role: .dropoff,
+        suffix: "dropoff",
+        name: "Trip end"
+      ))
+    }
+
+    return visits
+  }
+
+  private static func tripEndpointVisit(
+    trip: NativeTrip,
+    coordinate: CLLocationCoordinate2D,
+    date: Date,
+    role: NativeVisit.Kind,
+    suffix: String,
+    name: String
+  ) -> NativeVisit {
+    var visit = NativeVisit(
+      id: deterministicUUID(seed: "\(trip.id.uuidString)-\(suffix)"),
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+      arrival: date,
+      departure: date,
+      kindRaw: role.rawValue,
+      placeName: name
+    )
+    visit.kind = role
+    return visit
   }
 
   private static func deterministicUUID(seed: String) -> UUID {
