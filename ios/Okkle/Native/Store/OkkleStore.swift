@@ -152,6 +152,13 @@ final class OkkleStore: ObservableObject {
     NativeSnapshot(settings: settings, records: records, trips: trips)
   }
 
+  var isFreshInstallForICloudOffer: Bool {
+    !settings.hasCompletedOnboarding &&
+      settings.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+      records.isEmpty &&
+      trips.isEmpty
+  }
+
   var backupPayload: NativeBackupPayload {
     NativeBackupPayload(
       app: "okkle",
@@ -189,16 +196,28 @@ final class OkkleStore: ObservableObject {
       refreshICloudSyncIfNeeded()
       return
     }
-    settings.iCloudSyncEnabled = isEnabled
     if isEnabled {
+      isLoading = true
+      settings.iCloudSyncEnabled = true
+      isLoading = false
+      save(uploadToICloud: false)
       NativeICloudSyncEngine.shared.refresh(store: self, mergeCloudData: true)
     } else {
+      settings.iCloudSyncEnabled = false
       iCloudSyncState = .disabled
     }
   }
 
   func refreshICloudSyncIfNeeded() {
     NativeICloudSyncEngine.shared.refresh(store: self)
+  }
+
+  func existingICloudDataCheck() async -> NativeICloudRemoteSnapshotCheck {
+    await NativeICloudSyncEngine.shared.remoteSnapshotSummary()
+  }
+
+  func restoreExistingICloudData() async throws {
+    try await NativeICloudSyncEngine.shared.restoreExistingRemoteData(store: self)
   }
 
   func setICloudSyncState(_ state: NativeICloudSyncState) {

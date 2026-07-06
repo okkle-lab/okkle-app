@@ -141,12 +141,12 @@ struct NativeTripDetailSheet: View {
   }
 
   private var stops: [NativeVisit] {
-    let recordedStops = autoTrack.visits
-      .filter { $0.arrival >= trip.startedAt && $0.departure <= trip.endedAt }
-      .filter { !isEndpointVisit($0) }
-      .sorted { $0.arrival < $1.arrival }
-    let detectedStops = NativeRouteStopDetector.detectStops(in: trip.points).map(\.visit)
-    return NativeRouteStopDetector.mergedStops(recordedStops: recordedStops, detectedStops: detectedStops)
+    NativeRouteStopDetector.routeStops(
+      in: trip.points,
+      startedAt: trip.startedAt,
+      endedAt: trip.endedAt,
+      recordedVisits: autoTrack.visits
+    )
   }
 
   private var numberedStops: [NativeTripDetailStop] {
@@ -308,15 +308,6 @@ struct NativeTripDetailSheet: View {
     case .other:
       return .other
     }
-  }
-
-  private func isEndpointVisit(_ visit: NativeVisit) -> Bool {
-    guard let startPoint, let endPoint else { return false }
-    let nearStart = abs(visit.arrival.timeIntervalSince(trip.startedAt)) < 180 &&
-      distance(from: visit.coordinate, to: startPoint.coordinate) <= 120
-    let nearEnd = abs(visit.departure.timeIntervalSince(trip.endedAt)) < 180 &&
-      distance(from: visit.coordinate, to: endPoint.coordinate) <= 120
-    return nearStart || nearEnd
   }
 
   @MainActor
@@ -1047,7 +1038,7 @@ struct NativeTripEditSheet: View {
 
         if !routeSegments.isEmpty {
           Section("Route") {
-            NativeRouteMapView(points: routePoints, showsEndMarker: true)
+            NativeRouteMapView(points: routePoints, stops: routeStops, showsEndMarker: true)
               .frame(height: 180)
               .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
@@ -1128,11 +1119,29 @@ struct NativeTripEditSheet: View {
   }
 
   private var routeVisits: [NativeVisit] {
-    let recordedStops = autoTrack.visits
-      .filter { $0.arrival >= startedAt && $0.departure <= endedAt }
-      .sorted { $0.arrival < $1.arrival }
-    let detectedStops = NativeRouteStopDetector.detectStops(in: routePoints).map(\.visit)
-    return NativeRouteStopDetector.mergedStops(recordedStops: recordedStops, detectedStops: detectedStops)
+    NativeRouteStopDetector.routeStops(
+      in: routePoints,
+      startedAt: startedAt,
+      endedAt: endedAt,
+      recordedVisits: autoTrack.visits
+    )
+  }
+
+  private var numberedRouteStops: [(number: Int, visit: NativeVisit)] {
+    routeVisits.enumerated().map { (number: $0.offset + 1, visit: $0.element) }
+  }
+
+  private var routeStops: [NativeRouteMapStop] {
+    numberedRouteStops.map { stop in
+      NativeRouteMapStop(
+        id: stop.visit.id,
+        coordinate: stop.visit.coordinate,
+        title: "\(stop.number). \(editStopTitle(for: stop.visit))",
+        subtitle: editStopSubtitle(for: stop.visit),
+        kind: editRouteStopKind(for: stop.visit),
+        glyphText: "\(stop.number)"
+      )
+    }
   }
 
   private var routeSegments: [NativeTripRouteEditSegment] {
@@ -1172,7 +1181,45 @@ struct NativeTripEditSheet: View {
   private func routeFallbackName(for index: Int, segment: NativeTripRouteEditSegment) -> String {
     if index == routePoints.indices.first { return "Start" }
     if index == routePoints.indices.last { return "End" }
+    if let stopNumber = nearestStopNumber(to: index) { return "Stop \(stopNumber)" }
     return "Point \(index + 1)"
+  }
+
+  private func nearestStopNumber(to routePointIndex: Int) -> Int? {
+    guard routePoints.indices.contains(routePointIndex) else { return nil }
+    let routePoint = routePoints[routePointIndex]
+    let routeLocation = CLLocation(latitude: routePoint.latitude, longitude: routePoint.longitude)
+    return numberedRouteStops.first { stop in
+      routeLocation.distance(from: stop.visit.location) <= 140
+    }?.number
+  }
+
+  private func editStopTitle(for visit: NativeVisit) -> String {
+    switch visit.kind {
+    case .pickup:
+      return "Pick-up"
+    case .dropoff:
+      return "Drop-off"
+    case .other:
+      return "Stop"
+    }
+  }
+
+  private func editStopSubtitle(for visit: NativeVisit) -> String {
+    let place = visit.placeName ?? "Detected from movement"
+    let dwellMinutes = max(1, Int((visit.dwell / 60).rounded()))
+    return "\(place) • \(dwellMinutes)m"
+  }
+
+  private func editRouteStopKind(for visit: NativeVisit) -> NativeRouteMapStop.Kind {
+    switch visit.kind {
+    case .pickup:
+      return .pickup
+    case .dropoff:
+      return .dropoff
+    case .other:
+      return .other
+    }
   }
 
   private func canRemoveRouteSegment(_ segment: NativeTripRouteEditSegment) -> Bool {

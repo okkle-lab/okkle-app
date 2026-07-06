@@ -87,6 +87,17 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
   }
 }
 
+private enum NativeOnboardingICloudCheckState: Equatable {
+  case idle
+  case checking
+  case none
+  case downloading
+  case available
+  case syncing
+  case declined
+  case failed(String)
+}
+
 struct NativeOnboardingView: View {
   @EnvironmentObject private var store: OkkleStore
   @Binding var selectedTab: NativeTab
@@ -101,6 +112,9 @@ struct NativeOnboardingView: View {
   @State private var didSeed = false
   @State private var showBackupImporter = false
   @State private var restoreMessage: String?
+  @State private var iCloudCheckState: NativeOnboardingICloudCheckState = .idle
+  @State private var iCloudSnapshotSummary: NativeICloudRemoteSnapshotSummary?
+  @State private var showICloudSyncPrompt = false
   @FocusState private var nameFocused: Bool
   @FocusState private var customPlatformFocused: Bool
 
@@ -138,7 +152,10 @@ struct NativeOnboardingView: View {
           .background(.ultraThinMaterial)
       }
     }
-    .onAppear(perform: seedFromStore)
+    .onAppear {
+      seedFromStore()
+      checkForExistingICloudDataIfNeeded()
+    }
     .fileImporter(
       isPresented: $showBackupImporter,
       allowedContentTypes: [.json],
@@ -153,6 +170,16 @@ struct NativeOnboardingView: View {
       Button("OK", role: .cancel) {}
     } message: {
       Text(restoreMessage ?? "")
+    }
+    .alert("Sync your iCloud data?", isPresented: $showICloudSyncPrompt, presenting: iCloudSnapshotSummary) { _ in
+      Button("Sync data") {
+        syncExistingICloudData()
+      }
+      Button("Set up as new", role: .cancel) {
+        iCloudCheckState = .declined
+      }
+    } message: { summary in
+      Text(summary.promptMessage)
     }
     .onChange(of: step) { newStep in
       if newStep == .name {
@@ -203,6 +230,8 @@ struct NativeOnboardingView: View {
             NativeOnboardingBullet(symbol: "medal.fill", title: "Build streaks and progress")
           }
         }
+
+        iCloudSyncOffer
 
         Button {
           showBackupImporter = true
@@ -493,6 +522,144 @@ struct NativeOnboardingView: View {
     region = store.settings.region
     incomeBracket = store.settings.incomeBracket
     selectedPlatforms = Set(store.settings.platforms.isEmpty ? ["Uber Eats"] : store.settings.platforms)
+  }
+
+  @ViewBuilder
+  private var iCloudSyncOffer: some View {
+    switch iCloudCheckState {
+    case .idle, .none, .declined:
+      EmptyView()
+    case .checking:
+      NativeGlassCard {
+        HStack(spacing: 12) {
+          ProgressView()
+            .tint(OkkleColor.brand)
+          VStack(alignment: .leading, spacing: 3) {
+            Text("Checking iCloud")
+              .font(.system(size: 17, weight: .bold))
+              .foregroundStyle(OkkleColor.brandDark)
+            Text("Looking for existing Okkle data")
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+          }
+        }
+      }
+    case .available:
+      Button {
+        showICloudSyncPrompt = true
+      } label: {
+        iCloudSyncOfferContent(
+          symbol: "icloud.and.arrow.down.fill",
+          title: "Sync iCloud data",
+          subtitle: iCloudSnapshotSummary.map(iCloudSummaryText) ?? "Found existing Okkle data",
+          showsChevron: true
+        )
+      }
+      .buttonStyle(.plain)
+    case .syncing:
+      iCloudSyncOfferContent(
+        symbol: "arrow.triangle.2.circlepath.icloud.fill",
+        title: "Syncing iCloud data",
+        subtitle: "Loading your records onto this device",
+        showsChevron: false
+      )
+      .allowsHitTesting(false)
+    case .downloading:
+      Button {
+        checkForExistingICloudDataIfNeeded(force: true)
+      } label: {
+        iCloudSyncOfferContent(
+          symbol: "icloud.and.arrow.down",
+          title: "iCloud is still downloading",
+          subtitle: "Tap to check again in a moment",
+          showsChevron: true
+        )
+      }
+      .buttonStyle(.plain)
+    case .failed(let message):
+      Button {
+        checkForExistingICloudDataIfNeeded(force: true)
+      } label: {
+        iCloudSyncOfferContent(
+          symbol: "exclamationmark.icloud.fill",
+          title: "Could not check iCloud",
+          subtitle: message,
+          showsChevron: true
+        )
+      }
+      .buttonStyle(.plain)
+    }
+  }
+
+  private func iCloudSyncOfferContent(symbol: String, title: String, subtitle: String, showsChevron: Bool) -> some View {
+    NativeGlassCard {
+      HStack(spacing: 12) {
+        Image(systemName: symbol)
+          .font(.system(size: 17, weight: .bold))
+          .foregroundStyle(.white)
+          .frame(width: 38, height: 38)
+          .background(OkkleColor.brand, in: Circle())
+        VStack(alignment: .leading, spacing: 3) {
+          Text(title)
+            .font(.system(size: 17, weight: .bold))
+          Text(subtitle)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+            .lineLimit(2)
+        }
+        Spacer()
+        if showsChevron {
+          Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(OkkleColor.muted)
+        }
+      }
+      .foregroundStyle(OkkleColor.brandDark)
+    }
+  }
+
+  private func iCloudSummaryText(_ summary: NativeICloudRemoteSnapshotSummary) -> String {
+    let itemSummary = [
+      summary.recordCount == 1 ? "1 record" : "\(summary.recordCount) records",
+      summary.tripCount == 1 ? "1 trip" : "\(summary.tripCount) trips"
+    ].joined(separator: " and ")
+    if summary.name.isEmpty {
+      return "Found \(itemSummary) in iCloud"
+    }
+    return "Found \(summary.name)'s \(itemSummary) in iCloud"
+  }
+
+  private func checkForExistingICloudDataIfNeeded(force: Bool = false) {
+    guard force || iCloudCheckState == .idle else { return }
+    guard store.isFreshInstallForICloudOffer else { return }
+    iCloudCheckState = .checking
+    Task { @MainActor in
+      switch await store.existingICloudDataCheck() {
+      case .none:
+        iCloudCheckState = .none
+      case .downloading:
+        iCloudCheckState = .downloading
+      case .available(let summary):
+        iCloudSnapshotSummary = summary
+        iCloudCheckState = .available
+        showICloudSyncPrompt = true
+      case .unavailable:
+        iCloudCheckState = .none
+      }
+    }
+  }
+
+  private func syncExistingICloudData() {
+    iCloudCheckState = .syncing
+    Task { @MainActor in
+      do {
+        try await store.restoreExistingICloudData()
+        selectedTab = .trip
+      } catch {
+        iCloudCheckState = .failed(error.localizedDescription)
+        restoreMessage = error.localizedDescription
+      }
+    }
   }
 
   private func advance() {

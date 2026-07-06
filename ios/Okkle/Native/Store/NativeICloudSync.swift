@@ -49,6 +49,37 @@ private struct NativeICloudSnapshotEnvelope: Codable {
   var snapshot: NativeSnapshot
 }
 
+struct NativeICloudRemoteSnapshotSummary: Equatable {
+  var updatedAt: Date
+  var name: String
+  var recordCount: Int
+  var tripCount: Int
+
+  var promptMessage: String {
+    let owner = name.isEmpty ? "your existing Okkle profile" : "\(name)'s Okkle profile"
+    let itemSummary = [
+      recordCount == 1 ? "1 record" : "\(recordCount) records",
+      tripCount == 1 ? "1 trip" : "\(tripCount) trips"
+    ].joined(separator: " and ")
+    return "We found \(owner) in iCloud with \(itemSummary). Sync it to this device?"
+  }
+
+  fileprivate init(envelope: NativeICloudSnapshotEnvelope) {
+    let snapshot = envelope.snapshot
+    updatedAt = envelope.updatedAt
+    name = snapshot.settings.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    recordCount = snapshot.records.count
+    tripCount = snapshot.trips.count
+  }
+}
+
+enum NativeICloudRemoteSnapshotCheck: Equatable {
+  case none
+  case downloading
+  case available(NativeICloudRemoteSnapshotSummary)
+  case unavailable(String)
+}
+
 @MainActor
 final class NativeICloudSyncEngine {
   static let shared = NativeICloudSyncEngine()
@@ -127,6 +158,51 @@ final class NativeICloudSyncEngine {
     }
   }
 
+  func remoteSnapshotSummary() async -> NativeICloudRemoteSnapshotCheck {
+    do {
+      guard let envelope = try await readEnvelopeWithRetry(maxAttempts: 6, delayNanoseconds: 1_000_000_000) else {
+        return .none
+      }
+      guard envelope.snapshot.hasRestorableICloudData else { return .none }
+      return .available(NativeICloudRemoteSnapshotSummary(envelope: envelope))
+    } catch NativeICloudSyncError.remoteDownloadPending {
+      return .downloading
+    } catch NativeICloudSyncError.unavailable {
+      return .unavailable("iCloud Drive is not available on this device.")
+    } catch {
+      return .unavailable(error.localizedDescription)
+    }
+  }
+
+  func restoreExistingRemoteData(store: OkkleStore) async throws {
+    guard !isBusy else {
+      throw NativeICloudSyncError.busy
+    }
+    isBusy = true
+    store.setICloudSyncState(.syncing)
+    defer {
+      isBusy = false
+    }
+
+    do {
+      guard let remote = try await readEnvelopeWithRetry(maxAttempts: 8, delayNanoseconds: 1_000_000_000) else {
+        throw NativeICloudSyncError.noRemoteData
+      }
+      guard remote.snapshot.hasRestorableICloudData else {
+        throw NativeICloudSyncError.noRemoteData
+      }
+      let merged = NativeICloudSnapshotMerge.merge(local: store.currentSnapshot, remote: remote.snapshot)
+      store.applyICloudSnapshot(merged)
+      try writeEnvelope(snapshot: merged, store: store)
+    } catch let error as NativeICloudSyncError {
+      store.setICloudSyncState(error.syncState)
+      throw error
+    } catch {
+      store.setICloudSyncState(Self.syncState(for: error))
+      throw error
+    }
+  }
+
   private func sync(store: OkkleStore, mergeCloudData: Bool) throws {
     if let remote = try readEnvelope() {
       if mergeCloudData {
@@ -191,6 +267,21 @@ final class NativeICloudSyncEngine {
     return envelope
   }
 
+  private func readEnvelopeWithRetry(maxAttempts: Int, delayNanoseconds: UInt64) async throws -> NativeICloudSnapshotEnvelope? {
+    var attempt = 0
+    while true {
+      do {
+        return try readEnvelope()
+      } catch NativeICloudSyncError.remoteDownloadPending {
+        guard attempt < maxAttempts - 1 else {
+          throw NativeICloudSyncError.remoteDownloadPending
+        }
+        attempt += 1
+        try await Task.sleep(nanoseconds: delayNanoseconds)
+      }
+    }
+  }
+
   private func readSnapshotData(at url: URL) throws -> Data {
     do {
       return try coordinatedReadData(at: url)
@@ -251,15 +342,12 @@ final class NativeICloudSyncEngine {
   private func requestDownloadIfNeeded(at url: URL) throws -> Bool {
     let keys: Set<URLResourceKey> = [
       .isUbiquitousItemKey,
-      .ubiquitousItemDownloadingStatusKey,
-      .ubiquitousItemIsDownloadingKey
+      .ubiquitousItemDownloadingStatusKey
     ]
     let values = try? url.resourceValues(forKeys: keys)
     guard values?.isUbiquitousItem == true else { return false }
 
-    let needsDownload = values?.ubiquitousItemDownloadingStatus == .notDownloaded ||
-      values?.ubiquitousItemIsDownloading == true
-    guard needsDownload else { return false }
+    guard values?.ubiquitousItemDownloadingStatus == .notDownloaded else { return false }
 
     do {
       try fileManager.startDownloadingUbiquitousItem(at: url)
@@ -292,9 +380,10 @@ final class NativeICloudSyncEngine {
   private func coordinatedWriteData(_ data: Data, to url: URL) throws {
     var coordinationError: NSError?
     var writeResult: Result<Void, Error>?
+    let options: NSFileCoordinator.WritingOptions = fileManager.fileExists(atPath: url.path) ? .forReplacing : []
     NSFileCoordinator(filePresenter: nil).coordinate(
       writingItemAt: url,
-      options: .forReplacing,
+      options: options,
       error: &coordinationError
     ) { coordinatedURL in
       writeResult = Result { try data.write(to: coordinatedURL, options: [.atomic]) }
@@ -419,6 +508,8 @@ final class NativeICloudSyncEngine {
 private enum NativeICloudSyncError: LocalizedError {
   case unavailable
   case remoteDownloadPending
+  case noRemoteData
+  case busy
 
   var errorDescription: String? {
     switch self {
@@ -426,6 +517,10 @@ private enum NativeICloudSyncError: LocalizedError {
       return "iCloud Drive is not available on this device."
     case .remoteDownloadPending:
       return "Waiting for iCloud Drive to download your Okkle data."
+    case .noRemoteData:
+      return "No Okkle data was found in iCloud."
+    case .busy:
+      return "iCloud sync is already running."
     }
   }
 
@@ -435,6 +530,10 @@ private enum NativeICloudSyncError: LocalizedError {
       return .unavailable(errorDescription ?? "iCloud Drive is not available on this device.")
     case .remoteDownloadPending:
       return .waitingForDownload
+    case .noRemoteData:
+      return .failed(errorDescription ?? "No Okkle data was found in iCloud.")
+    case .busy:
+      return .syncing
     }
   }
 
@@ -442,9 +541,18 @@ private enum NativeICloudSyncError: LocalizedError {
     switch self {
     case .remoteDownloadPending:
       return true
-    case .unavailable:
+    case .unavailable, .noRemoteData, .busy:
       return false
     }
+  }
+}
+
+private extension NativeSnapshot {
+  var hasRestorableICloudData: Bool {
+    settings.hasCompletedOnboarding ||
+      !settings.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+      !records.isEmpty ||
+      !trips.isEmpty
   }
 }
 
