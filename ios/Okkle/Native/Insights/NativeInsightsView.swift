@@ -165,7 +165,7 @@ struct NativeShiftPatternsCard: View {
         Text("Learning your week")
           .font(.system(size: 22, weight: .bold, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
-        Text("This fills in automatically as you drive. Until then, what tends to work for most couriers:")
+        Text("This fills in automatically as you drive.")
           .font(.system(size: 15, weight: .medium))
           .foregroundStyle(OkkleColor.muted)
           .fixedSize(horizontal: false, vertical: true)
@@ -1206,4 +1206,3 @@ struct NativeSiriTripTrackingPrompt: View {
     }
   }
 }
-
