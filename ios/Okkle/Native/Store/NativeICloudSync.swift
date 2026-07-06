@@ -83,7 +83,7 @@ final class NativeICloudSyncEngine {
       } catch let error as NativeICloudSyncError {
         store.setICloudSyncState(error.syncState)
       } catch {
-        store.setICloudSyncState(.failed(error.localizedDescription))
+        store.setICloudSyncState(Self.syncState(for: error))
       }
       finishOperation(store: store)
     }
@@ -104,14 +104,14 @@ final class NativeICloudSyncEngine {
       } catch let error as NativeICloudSyncError {
         store.setICloudSyncState(error.syncState)
       } catch {
-        store.setICloudSyncState(.failed(error.localizedDescription))
+        store.setICloudSyncState(Self.syncState(for: error))
       }
       finishOperation(store: store)
     }
   }
 
   private func sync(store: OkkleStore, mergeCloudData: Bool) throws {
-    if let remote = try readEnvelope() {
+    if let remote = try readEnvelopeForSync() {
       if mergeCloudData {
         let merged = NativeICloudSnapshotMerge.merge(local: store.currentSnapshot, remote: remote.snapshot)
         store.applyICloudSnapshot(merged)
@@ -147,7 +147,7 @@ final class NativeICloudSyncEngine {
 
   private func upload(snapshot: NativeSnapshot, store: OkkleStore) throws {
     let snapshotToUpload: NativeSnapshot
-    if let remote = try readEnvelope(),
+    if let remote = try readEnvelopeForSync(),
        shouldApply(remote) {
       snapshotToUpload = NativeICloudSnapshotMerge.merge(local: snapshot, remote: remote.snapshot)
       store.applyICloudSnapshot(snapshotToUpload)
@@ -155,6 +155,14 @@ final class NativeICloudSyncEngine {
       snapshotToUpload = snapshot
     }
     try writeEnvelope(snapshot: snapshotToUpload, store: store)
+  }
+
+  private func readEnvelopeForSync() throws -> NativeICloudSnapshotEnvelope? {
+    do {
+      return try readEnvelope()
+    } catch NativeICloudSyncError.remoteDownloadPending {
+      return nil
+    }
   }
 
   private func readEnvelope() throws -> NativeICloudSnapshotEnvelope? {
@@ -185,7 +193,7 @@ final class NativeICloudSyncEngine {
     guard let url = syncFileURL() else {
       throw NativeICloudSyncError.unavailable
     }
-    try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try createSyncDirectory(at: url.deletingLastPathComponent())
 
     let updatedAt = Date()
     let envelope = NativeICloudSnapshotEnvelope(
@@ -198,10 +206,55 @@ final class NativeICloudSyncEngine {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(envelope)
-    try data.write(to: url, options: [.atomic])
+    try writeSnapshotData(data, to: url)
     markSeen(envelope)
     markLocalChangesSynced()
     store.setICloudSyncState(.synced(updatedAt))
+  }
+
+  private func writeSnapshotData(_ data: Data, to url: URL) throws {
+    do {
+      try data.write(to: url, options: [.atomic])
+    } catch {
+      guard Self.isMissingICloudData(error) else { throw error }
+      try replaceMissingCloudSnapshot(data, at: url)
+    }
+  }
+
+  private func replaceMissingCloudSnapshot(_ data: Data, at url: URL) throws {
+    try? fileManager.removeItem(at: url)
+    try createSyncDirectory(at: url.deletingLastPathComponent())
+
+    do {
+      try data.write(to: url, options: [.atomic])
+    } catch {
+      guard Self.isMissingICloudData(error) else { throw error }
+      try uploadSnapshotFromTemporaryFile(data, to: url)
+    }
+  }
+
+  private func uploadSnapshotFromTemporaryFile(_ data: Data, to url: URL) throws {
+    let temporaryURL = fileManager.temporaryDirectory
+      .appendingPathComponent("OkkleSync-\(UUID().uuidString)")
+      .appendingPathExtension("json")
+    try data.write(to: temporaryURL, options: [.atomic])
+    do {
+      try? fileManager.removeItem(at: url)
+      try fileManager.setUbiquitous(true, itemAt: temporaryURL, destinationURL: url)
+    } catch {
+      try? fileManager.removeItem(at: temporaryURL)
+      throw error
+    }
+  }
+
+  private func createSyncDirectory(at directoryURL: URL) throws {
+    do {
+      try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    } catch {
+      guard Self.isMissingICloudData(error) else { throw error }
+      try? fileManager.removeItem(at: directoryURL)
+      try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    }
   }
 
   private func syncFileURL() -> URL? {
@@ -262,8 +315,28 @@ final class NativeICloudSyncEngine {
 
   private static func isMissingICloudData(_ error: Error) -> Bool {
     let nsError = error as NSError
-    guard nsError.domain == NSCocoaErrorDomain else { return false }
-    return nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError
+    if nsError.domain == NSCocoaErrorDomain,
+       nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError {
+      return true
+    }
+    if nsError.domain == NSPOSIXErrorDomain, nsError.code == 2 {
+      return true
+    }
+    if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error,
+       isMissingICloudData(underlying) {
+      return true
+    }
+    let description = nsError.localizedDescription.lowercased()
+    return description.contains("data") &&
+      description.contains("read") &&
+      description.contains("missing")
+  }
+
+  private static func syncState(for error: Error) -> NativeICloudSyncState {
+    if isMissingICloudData(error) {
+      return .syncing
+    }
+    return .failed(error.localizedDescription)
   }
 }
 

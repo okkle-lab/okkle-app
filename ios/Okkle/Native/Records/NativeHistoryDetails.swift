@@ -141,9 +141,12 @@ struct NativeTripDetailSheet: View {
   }
 
   private var stops: [NativeVisit] {
-    autoTrack.visits
+    let recordedStops = autoTrack.visits
       .filter { $0.arrival >= trip.startedAt && $0.departure <= trip.endedAt }
+      .filter { !isEndpointVisit($0) }
       .sorted { $0.arrival < $1.arrival }
+    let detectedStops = NativeRouteStopDetector.detectStops(in: trip.points).map(\.visit)
+    return NativeRouteStopDetector.mergedStops(recordedStops: recordedStops, detectedStops: detectedStops)
   }
 
   private var numberedStops: [NativeTripDetailStop] {
@@ -305,6 +308,15 @@ struct NativeTripDetailSheet: View {
     case .other:
       return .other
     }
+  }
+
+  private func isEndpointVisit(_ visit: NativeVisit) -> Bool {
+    guard let startPoint, let endPoint else { return false }
+    let nearStart = abs(visit.arrival.timeIntervalSince(trip.startedAt)) < 180 &&
+      distance(from: visit.coordinate, to: startPoint.coordinate) <= 120
+    let nearEnd = abs(visit.departure.timeIntervalSince(trip.endedAt)) < 180 &&
+      distance(from: visit.coordinate, to: endPoint.coordinate) <= 120
+    return nearStart || nearEnd
   }
 
   @MainActor
@@ -1116,9 +1128,11 @@ struct NativeTripEditSheet: View {
   }
 
   private var routeVisits: [NativeVisit] {
-    autoTrack.visits
+    let recordedStops = autoTrack.visits
       .filter { $0.arrival >= startedAt && $0.departure <= endedAt }
       .sorted { $0.arrival < $1.arrival }
+    let detectedStops = NativeRouteStopDetector.detectStops(in: routePoints).map(\.visit)
+    return NativeRouteStopDetector.mergedStops(recordedStops: recordedStops, detectedStops: detectedStops)
   }
 
   private var routeSegments: [NativeTripRouteEditSegment] {
@@ -1285,10 +1299,9 @@ private struct NativeTripRouteEditSegment: Identifiable {
       }
     }
 
-    if indexes.count == 2 && run.count > 18 {
-      let segmentCount = min(6, max(2, run.count / 14))
-      for step in 1..<segmentCount {
-        indexes.insert(runStart + ((run.count - 1) * step / segmentCount))
+    for stop in NativeRouteStopDetector.detectStops(in: points, runStart: runStart, runEnd: runEnd) {
+      if stop.boundaryIndex > runStart && stop.boundaryIndex < runEnd {
+        indexes.insert(stop.boundaryIndex)
       }
     }
 
