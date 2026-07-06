@@ -70,6 +70,24 @@ struct NativeTripView: View {
         Text("\(miles(completedTrip.miles)) with \(gbp(completedTrip.deduction, whole: true)) deduction.")
       }
     }
+    .alert("Still tracking this trip?", isPresented: Binding(
+      get: { session.stopPromptRequested && completedTrip == nil && session.phase == .live },
+      set: { isPresented in
+        if !isPresented {
+          session.dismissStopPrompt()
+        }
+      }
+    )) {
+      Button("Continue tracking", role: .cancel) {
+        session.dismissStopPrompt()
+      }
+      Button("Stop trip") {
+        session.dismissStopPrompt()
+        finishTripForReview()
+      }
+    } message: {
+      Text("You've been in one place for a while. Stop now, or keep tracking if you're waiting for an order.")
+    }
     .onAppear {
       selectedVehicle = store.settings.defaultVehicle
       now = Date()

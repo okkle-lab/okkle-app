@@ -15,6 +15,7 @@ final class NativeNotificationRouter: NSObject, ObservableObject, UNUserNotifica
   static let shared = NativeNotificationRouter()
 
   @Published var pendingAutoShiftReviewTripID: UUID?
+  @Published var pendingManualTripStopPrompt = false
 
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
@@ -35,6 +36,11 @@ final class NativeNotificationRouter: NSObject, ObservableObject, UNUserNotifica
        let tripID = UUID(uuidString: raw) {
       DispatchQueue.main.async { [weak self] in
         self?.pendingAutoShiftReviewTripID = tripID
+      }
+    } else if info["type"] as? String == "manualTripStopPrompt" {
+      DispatchQueue.main.async { [weak self] in
+        self?.pendingManualTripStopPrompt = true
+        NativeTripSession.shared.stopPromptRequested = true
       }
     }
     completionHandler()

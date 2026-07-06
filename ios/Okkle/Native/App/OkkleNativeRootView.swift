@@ -31,6 +31,7 @@ struct OkkleNativeRootView: View {
       store.refreshICloudSyncIfNeeded()
       routeWidgetTripRequestIfNeeded()
       routeAutomaticTripIfNeeded()
+      routeManualTripStopPromptIfNeeded()
     }
     .sheet(isPresented: Binding(
       get: { notificationRouter.pendingAutoShiftReviewTripID != nil },
@@ -68,6 +69,7 @@ struct OkkleNativeRootView: View {
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
       routeAutomaticTripIfNeeded()
+      routeManualTripStopPromptIfNeeded()
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
       NativeLoggingReminder.refresh(store: store)
@@ -133,6 +135,12 @@ struct OkkleNativeRootView: View {
   private func routeAutomaticTripIfNeeded() {
     guard store.settings.hasCompletedOnboarding,
           autoTrack.shiftPhase != .idle else { return }
+    selectedTab = .trip
+  }
+
+  private func routeManualTripStopPromptIfNeeded() {
+    guard store.settings.hasCompletedOnboarding, notificationRouter.pendingManualTripStopPrompt else { return }
+    notificationRouter.pendingManualTripStopPrompt = false
     selectedTab = .trip
   }
 }
