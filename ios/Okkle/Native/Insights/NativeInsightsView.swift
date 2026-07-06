@@ -73,6 +73,8 @@ struct NativeShiftPatternsCard: View {
   /// activeHours against a tax-year window for income is exactly what made
   /// an earlier "Est. rate" on this tab silently wrong, which is why it had
   /// been removed rather than fixed properly.
+  private var insightVisits: [NativeVisit] { NativeShiftInsights.enrichedVisits(visits: visits, trips: trips) }
+
   private func shift(for period: NativeInsightPeriod) -> NativeShiftInsights {
     if let cached = scopedShifts[period] { return cached }
     let cutoff: Date
@@ -83,7 +85,7 @@ struct NativeShiftPatternsCard: View {
       guard let days = period.lookbackDays else { return shift }
       cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
     }
-    let scoped = visits.filter { $0.arrival >= cutoff }
+    let scoped = insightVisits.filter { $0.arrival >= cutoff }
     return NativeShiftInsights.build(visits: scoped, store: store)
   }
 
@@ -100,13 +102,7 @@ struct NativeShiftPatternsCard: View {
   }
 
   var body: some View {
-    if !autoTrackTrips {
-      NativeAiCard { offState }
-        .transition(.nativeInsightSetupCard)
-    } else if !shift.hasData {
-      NativeAiCard { buildingState }
-        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
-    } else {
+    if shift.hasData {
       VStack(alignment: .leading, spacing: 14) {
         NativeInsightPeriodTabs(period: $period)
 
@@ -133,10 +129,16 @@ struct NativeShiftPatternsCard: View {
       }
       .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
       .onAppear { rebuildScopedShifts() }
-      .onChange(of: visits) { _ in rebuildScopedShifts() }
+      .onChange(of: insightVisits) { _ in rebuildScopedShifts() }
       .onChange(of: trips) { _ in rebuildScopedShifts() }
       .onChange(of: store.records) { _ in rebuildScopedShifts() }
       .onChange(of: store.settings.excludedPlaces) { _ in rebuildScopedShifts() }
+    } else if !autoTrackTrips {
+      NativeAiCard { offState }
+        .transition(.nativeInsightSetupCard)
+    } else {
+      NativeAiCard { buildingState }
+        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
     }
   }
 
@@ -1071,12 +1073,16 @@ struct NativeInsightsView: View {
   // build() walks the whole visit history, so it only reruns when one of its
   // inputs changes rather than on every body evaluation.
   @State private var cachedShift: NativeShiftInsights?
+  private var insightVisits: [NativeVisit] {
+    NativeShiftInsights.enrichedVisits(visits: autoTrack.visits, trips: store.trips)
+  }
+
   private var shift: NativeShiftInsights {
-    cachedShift ?? NativeShiftInsights.build(visits: autoTrack.visits, store: store)
+    cachedShift ?? NativeShiftInsights.build(visits: insightVisits, store: store)
   }
 
   private func rebuildShift() {
-    cachedShift = NativeShiftInsights.build(visits: autoTrack.visits, store: store)
+    cachedShift = NativeShiftInsights.build(visits: insightVisits, store: store)
   }
 
   var body: some View {
@@ -1084,7 +1090,7 @@ struct NativeInsightsView: View {
                  subtitle: "From your trips: when to head out and where to go. Sharper the more you drive.") {
       NativeShiftPatternsCard(
         shift: shift,
-        visits: autoTrack.visits,
+        visits: insightVisits,
         trips: store.trips,
         autoTrackTrips: Binding(
           get: { store.settings.autoTrackTrips },
@@ -1141,7 +1147,7 @@ struct NativeInsightsView: View {
     .animation(nativeInsightPromptAnimation, value: store.settings.loggingReminder)
     .animation(nativeInsightPromptAnimation, value: store.settings.taxDeadlineReminders)
     .onAppear { rebuildShift() }
-    .onChange(of: autoTrack.visits) { _ in rebuildShift() }
+    .onChange(of: insightVisits) { _ in rebuildShift() }
     .onChange(of: store.trips) { _ in rebuildShift() }
     .onChange(of: store.records) { _ in rebuildShift() }
     .onChange(of: store.settings.excludedPlaces) { _ in rebuildShift() }

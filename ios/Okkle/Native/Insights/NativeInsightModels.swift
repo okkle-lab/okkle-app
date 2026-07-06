@@ -414,6 +414,66 @@ struct NativeShiftInsights {
     platformShares: [], hourCounts: Array(repeating: 0, count: 24)
   )
 
+  static func enrichedVisits(visits: [NativeVisit], trips: [NativeTrip]) -> [NativeVisit] {
+    let synthetic = trips.flatMap { trip in
+      tripDerivedVisits(for: trip, existingVisits: visits)
+    }
+    guard !synthetic.isEmpty else { return visits }
+    return (visits + synthetic).sorted { left, right in left.arrival < right.arrival }
+  }
+
+  private static func tripDerivedVisits(for trip: NativeTrip, existingVisits: [NativeVisit]) -> [NativeVisit] {
+    guard trip.endedAt > trip.startedAt, trip.miles > 0 else { return [] }
+    guard !existingVisits.contains(where: { visit in
+      visit.arrival <= trip.endedAt && visit.departure >= trip.startedAt
+    }) else { return [] }
+    guard let start = trip.points.first?.coordinate, let end = trip.points.last?.coordinate else { return [] }
+
+    let pickupDeparture = min(trip.startedAt.addingTimeInterval(60), trip.endedAt)
+    let dropArrival = max(pickupDeparture, trip.endedAt.addingTimeInterval(-60))
+
+    var pickup = NativeVisit(
+      id: deterministicUUID(seed: "\(trip.id.uuidString)-pickup"),
+      latitude: start.latitude,
+      longitude: start.longitude,
+      arrival: trip.startedAt,
+      departure: pickupDeparture,
+      kindRaw: NativeVisit.Kind.pickup.rawValue,
+      placeName: "Trip start"
+    )
+    pickup.kind = .pickup
+
+    var dropoff = NativeVisit(
+      id: deterministicUUID(seed: "\(trip.id.uuidString)-dropoff"),
+      latitude: end.latitude,
+      longitude: end.longitude,
+      arrival: dropArrival,
+      departure: trip.endedAt,
+      kindRaw: NativeVisit.Kind.dropoff.rawValue,
+      placeName: "Trip end"
+    )
+    dropoff.kind = .dropoff
+
+    return [pickup, dropoff]
+  }
+
+  private static func deterministicUUID(seed: String) -> UUID {
+    var first: UInt64 = 0xcbf29ce484222325
+    var second: UInt64 = 0x84222325cbf29ce4
+    for byte in seed.utf8 {
+      first ^= UInt64(byte)
+      first &*= 0x100000001b3
+      second ^= UInt64(byte) &+ 0x9e3779b97f4a7c15
+      second &*= 0x100000001b3
+    }
+    let a = UInt32(truncatingIfNeeded: first >> 32)
+    let b = UInt16(truncatingIfNeeded: first >> 16)
+    let c = UInt16(truncatingIfNeeded: first)
+    let d = UInt16(truncatingIfNeeded: second >> 48)
+    let e = second & 0x0000ffffffffffff
+    return UUID(uuidString: String(format: "%08X-%04X-%04X-%04X-%012llX", a, b, c, d, e)) ?? UUID()
+  }
+
   @MainActor
   static func build(visits: [NativeVisit], store: OkkleStore) -> NativeShiftInsights {
     // Kept out of every calculation below, not just "where to go": places the
@@ -752,7 +812,15 @@ struct NativeShiftInsights {
         guard let t = point.timestamp else { return false }
         return t >= start && t <= end
       }
-      guard inWindow.count > 1 else { continue }
+      if inWindow.count <= 1 {
+        let startDelta = abs(trip.startedAt.timeIntervalSince(start))
+        let endDelta = abs(trip.endedAt.timeIntervalSince(end))
+        if startDelta <= 120, endDelta <= 120, trip.miles > 0 {
+          total += trip.miles * 1609.34
+          sawSegment = true
+        }
+        continue
+      }
       sawSegment = true
       for i in 1..<inWindow.count {
         let a = CLLocation(latitude: inWindow[i - 1].latitude, longitude: inWindow[i - 1].longitude)
