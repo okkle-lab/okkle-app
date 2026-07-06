@@ -36,7 +36,7 @@ struct NativeRecordsView: View {
       case .all:
         return "All"
       case .journeys:
-        return "Mileage"
+        return "Trips"
       case .income:
         return "Income"
       case .expense:
