@@ -43,9 +43,11 @@ struct OkkleNativeRootView: View {
   @StateObject private var store = OkkleStore.shared
   @ObservedObject private var notificationRouter = NativeNotificationRouter.shared
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
+  @ObservedObject private var tripSession = NativeTripSession.shared
   @State private var selectedTab: NativeTab = .trip
   @State private var showSettings = false
   @State private var showAddRecord = false
+  @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
   private let iCloudAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   var body: some View {
@@ -116,8 +118,15 @@ struct OkkleNativeRootView: View {
       routeWidgetTripRequestIfNeeded()
     }
     .onChange(of: autoTrack.shiftPhase) { _ in
+      updateSidebarVisibilityForTripPresentation()
       routeAutomaticTripIfNeeded()
       NativePreShiftNotifier.refresh(store: store)
+    }
+    .onChange(of: tripSession.phase) { _ in
+      updateSidebarVisibilityForTripPresentation()
+    }
+    .onChange(of: selectedTab) { _ in
+      updateSidebarVisibilityForTripPresentation()
     }
   }
 
@@ -185,6 +194,11 @@ struct OkkleNativeRootView: View {
     UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
   }
 
+  private var isTripRecordingPresentation: Bool {
+    guard usesSidebarNavigation, selectedTab == .trip else { return false }
+    return tripSession.phase != .setup || autoTrack.shiftPhase != .idle
+  }
+
   private var phoneTabApp: some View {
     TabView(selection: $selectedTab) {
       NativeTripView(selectedTab: $selectedTab)
@@ -203,8 +217,19 @@ struct OkkleNativeRootView: View {
     .id("okkle-main-tabs-trip-log-insights-records-tax")
   }
 
+  @ViewBuilder
   private var iPadSidebarApp: some View {
-    NavigationSplitView {
+    if isTripRecordingPresentation {
+      iPadSidebarSplitView
+        .navigationSplitViewStyle(.prominentDetail)
+    } else {
+      iPadSidebarSplitView
+        .navigationSplitViewStyle(.balanced)
+    }
+  }
+
+  private var iPadSidebarSplitView: some View {
+    NavigationSplitView(columnVisibility: $sidebarVisibility) {
       NativeSidebar(
         selectedTab: $selectedTab,
         showAddRecord: { showAddRecord = true },
@@ -214,7 +239,9 @@ struct OkkleNativeRootView: View {
       tabContent(for: selectedTab)
         .environment(\.nativeUsesSidebarNavigation, true)
     }
-    .navigationSplitViewStyle(.balanced)
+    .onAppear {
+      updateSidebarVisibilityForTripPresentation()
+    }
   }
 
   @ViewBuilder
@@ -248,6 +275,15 @@ struct OkkleNativeRootView: View {
     guard store.settings.hasCompletedOnboarding, notificationRouter.pendingManualTripStopPrompt else { return }
     notificationRouter.pendingManualTripStopPrompt = false
     selectedTab = .trip
+  }
+
+  private func updateSidebarVisibilityForTripPresentation() {
+    guard usesSidebarNavigation else { return }
+    if isTripRecordingPresentation {
+      sidebarVisibility = .detailOnly
+    } else if sidebarVisibility == .detailOnly {
+      sidebarVisibility = .all
+    }
   }
 }
 
