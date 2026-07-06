@@ -4,6 +4,7 @@ enum NativeICloudSyncState: Equatable {
   case disabled
   case unavailable(String)
   case syncing
+  case waitingForDownload
   case synced(Date)
   case failed(String)
 
@@ -13,7 +14,7 @@ enum NativeICloudSyncState: Equatable {
       return "Off"
     case .unavailable:
       return "Unavailable"
-    case .syncing:
+    case .syncing, .waitingForDownload:
       return "Syncing..."
     case .synced:
       return "Synced"
@@ -29,7 +30,9 @@ enum NativeICloudSyncState: Equatable {
     case .unavailable(let message):
       return message
     case .syncing:
-      return "Updating your iCloud copy."
+      return "Checking iCloud for updates."
+    case .waitingForDownload:
+      return "Waiting for iCloud Drive to download your Okkle data."
     case .synced(let date):
       return "Last synced \(date.formatted(date: .omitted, time: .shortened))."
     case .failed(let message):
@@ -62,6 +65,8 @@ final class NativeICloudSyncEngine {
   private var isBusy = false
   private var pendingRefresh = false
   private var pendingLocalSnapshot: NativeSnapshot?
+  private var pendingRetry: DispatchWorkItem?
+  private var pendingRetryID: UUID?
 
   private init() {}
 
@@ -82,8 +87,14 @@ final class NativeICloudSyncEngine {
         try sync(store: store, mergeCloudData: mergeCloudData)
       } catch let error as NativeICloudSyncError {
         store.setICloudSyncState(error.syncState)
+        if error.shouldRetry {
+          scheduleRetry(store: store)
+        }
       } catch {
         store.setICloudSyncState(Self.syncState(for: error))
+        if Self.isMissingICloudData(error) {
+          scheduleRetry(store: store)
+        }
       }
       finishOperation(store: store)
     }
@@ -103,15 +114,21 @@ final class NativeICloudSyncEngine {
         try upload(snapshot: snapshot, store: store)
       } catch let error as NativeICloudSyncError {
         store.setICloudSyncState(error.syncState)
+        if error.shouldRetry {
+          scheduleRetry(store: store)
+        }
       } catch {
         store.setICloudSyncState(Self.syncState(for: error))
+        if Self.isMissingICloudData(error) {
+          scheduleRetry(store: store)
+        }
       }
       finishOperation(store: store)
     }
   }
 
   private func sync(store: OkkleStore, mergeCloudData: Bool) throws {
-    if let remote = try readEnvelopeForSync() {
+    if let remote = try readEnvelope() {
       if mergeCloudData {
         let merged = NativeICloudSnapshotMerge.merge(local: store.currentSnapshot, remote: remote.snapshot)
         store.applyICloudSnapshot(merged)
@@ -128,6 +145,7 @@ final class NativeICloudSyncEngine {
         }
         store.applyICloudSnapshot(remote.snapshot)
         markSeen(remote)
+        cancelRetry()
         store.setICloudSyncState(.synced(remote.updatedAt))
         return
       }
@@ -138,6 +156,7 @@ final class NativeICloudSyncEngine {
       }
 
       markSeen(remote)
+      cancelRetry()
       store.setICloudSyncState(.synced(remote.updatedAt))
       return
     }
@@ -147,7 +166,7 @@ final class NativeICloudSyncEngine {
 
   private func upload(snapshot: NativeSnapshot, store: OkkleStore) throws {
     let snapshotToUpload: NativeSnapshot
-    if let remote = try readEnvelopeForSync(),
+    if let remote = try readEnvelope(),
        shouldApply(remote) {
       snapshotToUpload = NativeICloudSnapshotMerge.merge(local: snapshot, remote: remote.snapshot)
       store.applyICloudSnapshot(snapshotToUpload)
@@ -157,20 +176,14 @@ final class NativeICloudSyncEngine {
     try writeEnvelope(snapshot: snapshotToUpload, store: store)
   }
 
-  private func readEnvelopeForSync() throws -> NativeICloudSnapshotEnvelope? {
-    do {
-      return try readEnvelope()
-    } catch NativeICloudSyncError.remoteDownloadPending {
-      return nil
-    }
-  }
-
   private func readEnvelope() throws -> NativeICloudSnapshotEnvelope? {
     guard let url = syncFileURL() else {
       throw NativeICloudSyncError.unavailable
     }
     guard fileManager.fileExists(atPath: url.path) else { return nil }
-    try? fileManager.startDownloadingUbiquitousItem(at: url)
+    if try requestDownloadIfNeeded(at: url) {
+      throw NativeICloudSyncError.remoteDownloadPending
+    }
     let data = try readSnapshotData(at: url)
     guard !data.isEmpty else { return nil }
     let envelope = try JSONDecoder().decode(NativeICloudSnapshotEnvelope.self, from: data)
@@ -180,7 +193,7 @@ final class NativeICloudSyncEngine {
 
   private func readSnapshotData(at url: URL) throws -> Data {
     do {
-      return try Data(contentsOf: url)
+      return try coordinatedReadData(at: url)
     } catch {
       if Self.isMissingICloudData(error) {
         throw NativeICloudSyncError.remoteDownloadPending
@@ -209,40 +222,17 @@ final class NativeICloudSyncEngine {
     try writeSnapshotData(data, to: url)
     markSeen(envelope)
     markLocalChangesSynced()
+    cancelRetry()
     store.setICloudSyncState(.synced(updatedAt))
   }
 
   private func writeSnapshotData(_ data: Data, to url: URL) throws {
     do {
-      try data.write(to: url, options: [.atomic])
+      try coordinatedWriteData(data, to: url)
     } catch {
-      guard Self.isMissingICloudData(error) else { throw error }
-      try replaceMissingCloudSnapshot(data, at: url)
-    }
-  }
-
-  private func replaceMissingCloudSnapshot(_ data: Data, at url: URL) throws {
-    try? fileManager.removeItem(at: url)
-    try createSyncDirectory(at: url.deletingLastPathComponent())
-
-    do {
-      try data.write(to: url, options: [.atomic])
-    } catch {
-      guard Self.isMissingICloudData(error) else { throw error }
-      try uploadSnapshotFromTemporaryFile(data, to: url)
-    }
-  }
-
-  private func uploadSnapshotFromTemporaryFile(_ data: Data, to url: URL) throws {
-    let temporaryURL = fileManager.temporaryDirectory
-      .appendingPathComponent("OkkleSync-\(UUID().uuidString)")
-      .appendingPathExtension("json")
-    try data.write(to: temporaryURL, options: [.atomic])
-    do {
-      try? fileManager.removeItem(at: url)
-      try fileManager.setUbiquitous(true, itemAt: temporaryURL, destinationURL: url)
-    } catch {
-      try? fileManager.removeItem(at: temporaryURL)
+      if Self.isMissingICloudData(error) {
+        throw NativeICloudSyncError.remoteDownloadPending
+      }
       throw error
     }
   }
@@ -251,10 +241,68 @@ final class NativeICloudSyncEngine {
     do {
       try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     } catch {
-      guard Self.isMissingICloudData(error) else { throw error }
-      try? fileManager.removeItem(at: directoryURL)
-      try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+      if Self.isMissingICloudData(error) {
+        throw NativeICloudSyncError.remoteDownloadPending
+      }
+      throw error
     }
+  }
+
+  private func requestDownloadIfNeeded(at url: URL) throws -> Bool {
+    let keys: Set<URLResourceKey> = [
+      .isUbiquitousItemKey,
+      .ubiquitousItemDownloadingStatusKey,
+      .ubiquitousItemIsDownloadingKey
+    ]
+    let values = try? url.resourceValues(forKeys: keys)
+    guard values?.isUbiquitousItem == true else { return false }
+
+    let needsDownload = values?.ubiquitousItemDownloadingStatus == .notDownloaded ||
+      values?.ubiquitousItemIsDownloading == true
+    guard needsDownload else { return false }
+
+    do {
+      try fileManager.startDownloadingUbiquitousItem(at: url)
+    } catch {
+      if Self.isMissingICloudData(error) {
+        throw NativeICloudSyncError.remoteDownloadPending
+      }
+      throw error
+    }
+    return true
+  }
+
+  private func coordinatedReadData(at url: URL) throws -> Data {
+    var coordinationError: NSError?
+    var readResult: Result<Data, Error>?
+    NSFileCoordinator(filePresenter: nil).coordinate(
+      readingItemAt: url,
+      options: [],
+      error: &coordinationError
+    ) { coordinatedURL in
+      readResult = Result { try Data(contentsOf: coordinatedURL) }
+    }
+    if let coordinationError {
+      throw coordinationError
+    }
+    guard let readResult else { return Data() }
+    return try readResult.get()
+  }
+
+  private func coordinatedWriteData(_ data: Data, to url: URL) throws {
+    var coordinationError: NSError?
+    var writeResult: Result<Void, Error>?
+    NSFileCoordinator(filePresenter: nil).coordinate(
+      writingItemAt: url,
+      options: .forReplacing,
+      error: &coordinationError
+    ) { coordinatedURL in
+      writeResult = Result { try data.write(to: coordinatedURL, options: [.atomic]) }
+    }
+    if let coordinationError {
+      throw coordinationError
+    }
+    try writeResult?.get()
   }
 
   private func syncFileURL() -> URL? {
@@ -292,6 +340,7 @@ final class NativeICloudSyncEngine {
     guard store.settings.iCloudSyncEnabled else {
       pendingLocalSnapshot = nil
       pendingRefresh = false
+      cancelRetry()
       store.setICloudSyncState(.disabled)
       return
     }
@@ -302,6 +351,29 @@ final class NativeICloudSyncEngine {
       pendingRefresh = false
       refresh(store: store)
     }
+  }
+
+  private func scheduleRetry(store: OkkleStore) {
+    pendingRetry?.cancel()
+    let retryID = UUID()
+    pendingRetryID = retryID
+    let work = DispatchWorkItem { [weak store] in
+      Task { @MainActor in
+        guard NativeICloudSyncEngine.shared.pendingRetryID == retryID else { return }
+        NativeICloudSyncEngine.shared.pendingRetry = nil
+        NativeICloudSyncEngine.shared.pendingRetryID = nil
+        guard let store else { return }
+        NativeICloudSyncEngine.shared.refresh(store: store)
+      }
+    }
+    pendingRetry = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+  }
+
+  private func cancelRetry() {
+    pendingRetry?.cancel()
+    pendingRetry = nil
+    pendingRetryID = nil
   }
 
   private var deviceID: String {
@@ -327,6 +399,10 @@ final class NativeICloudSyncEngine {
       return true
     }
     let description = nsError.localizedDescription.lowercased()
+    if description.contains("not downloaded") ||
+      description.contains("temporarily unavailable") {
+      return true
+    }
     return description.contains("data") &&
       description.contains("read") &&
       description.contains("missing")
@@ -334,7 +410,7 @@ final class NativeICloudSyncEngine {
 
   private static func syncState(for error: Error) -> NativeICloudSyncState {
     if isMissingICloudData(error) {
-      return .syncing
+      return .waitingForDownload
     }
     return .failed(error.localizedDescription)
   }
@@ -358,25 +434,40 @@ private enum NativeICloudSyncError: LocalizedError {
     case .unavailable:
       return .unavailable(errorDescription ?? "iCloud Drive is not available on this device.")
     case .remoteDownloadPending:
-      return .syncing
+      return .waitingForDownload
+    }
+  }
+
+  var shouldRetry: Bool {
+    switch self {
+    case .remoteDownloadPending:
+      return true
+    case .unavailable:
+      return false
     }
   }
 }
 
-private enum NativeICloudSnapshotMerge {
+enum NativeICloudSnapshotMerge {
   static func merge(local: NativeSnapshot, remote: NativeSnapshot) -> NativeSnapshot {
     NativeSnapshot(
-      settings: mergeSettings(local: local.settings, remote: remote.settings),
+      settings: mergeSettings(local: local, remote: remote),
       records: mergeRecords(local.records, remote.records),
       trips: mergeTrips(local.trips, remote.trips)
     )
   }
 
-  private static func mergeSettings(local: NativeSettings, remote: NativeSettings) -> NativeSettings {
-    var settings = local.hasCompletedOnboarding ? local : remote
-    settings.platforms = uniqueStrings(remote.platforms + local.platforms)
+  private static func mergeSettings(local: NativeSnapshot, remote: NativeSnapshot) -> NativeSettings {
+    var settings = shouldPreferRemoteSettings(local: local, remote: remote) ? remote.settings : local.settings
+    settings.platforms = uniqueStrings(remote.settings.platforms + local.settings.platforms)
     settings.iCloudSyncEnabled = true
     return settings
+  }
+
+  private static func shouldPreferRemoteSettings(local: NativeSnapshot, remote: NativeSnapshot) -> Bool {
+    guard remote.settings.hasCompletedOnboarding else { return false }
+    if !local.settings.hasCompletedOnboarding { return true }
+    return local.records.isEmpty && local.trips.isEmpty
   }
 
   private static func mergeRecords(_ local: [NativeRecord], _ remote: [NativeRecord]) -> [NativeRecord] {

@@ -186,3 +186,67 @@ final class NativeNotificationReminderTests: XCTestCase {
     )
   }
 }
+
+
+final class NativeICloudSyncMergeTests: XCTestCase {
+  func testFreshLocalOnboardingDoesNotOverwriteRemoteProfile() {
+    var localSettings = NativeSettings()
+    localSettings.name = "iPad"
+    localSettings.platforms = ["Uber Eats"]
+    localSettings.hasCompletedOnboarding = true
+    localSettings.iCloudSyncEnabled = true
+
+    var remoteSettings = NativeSettings()
+    remoteSettings.name = "Henry"
+    remoteSettings.platforms = ["Deliveroo"]
+    remoteSettings.hasCompletedOnboarding = true
+    remoteSettings.iCloudSyncEnabled = true
+
+    let merged = NativeICloudSnapshotMerge.merge(
+      local: NativeSnapshot(settings: localSettings, records: [], trips: []),
+      remote: NativeSnapshot(settings: remoteSettings, records: [record(amount: 24)], trips: [])
+    )
+
+    XCTAssertEqual(merged.settings.name, "Henry")
+    XCTAssertEqual(merged.settings.platforms, ["Deliveroo", "Uber Eats"])
+    XCTAssertTrue(merged.settings.iCloudSyncEnabled)
+    XCTAssertEqual(merged.records.count, 1)
+  }
+
+  func testLocalProfileWinsWhenDeviceHasLocalActivity() {
+    var localSettings = NativeSettings()
+    localSettings.name = "iPad"
+    localSettings.platforms = ["Uber Eats"]
+    localSettings.hasCompletedOnboarding = true
+    localSettings.iCloudSyncEnabled = true
+
+    var remoteSettings = NativeSettings()
+    remoteSettings.name = "Henry"
+    remoteSettings.platforms = ["Deliveroo"]
+    remoteSettings.hasCompletedOnboarding = true
+    remoteSettings.iCloudSyncEnabled = true
+
+    let merged = NativeICloudSnapshotMerge.merge(
+      local: NativeSnapshot(settings: localSettings, records: [record(amount: 12)], trips: []),
+      remote: NativeSnapshot(settings: remoteSettings, records: [record(amount: 24)], trips: [])
+    )
+
+    XCTAssertEqual(merged.settings.name, "iPad")
+    XCTAssertEqual(merged.records.count, 2)
+  }
+
+  private func record(amount: Double) -> NativeRecord {
+    NativeRecord(
+      kind: .income,
+      platform: "Uber Eats",
+      vehicle: nil,
+      amount: amount,
+      miles: nil,
+      deduction: nil,
+      category: nil,
+      date: Date(),
+      period: .day,
+      receiptImageData: nil
+    )
+  }
+}

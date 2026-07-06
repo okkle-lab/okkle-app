@@ -17,6 +17,7 @@ private struct NativeTopRoundedRectangle: Shape {
 
 struct NativeTripView: View {
   @Environment(\.colorScheme) private var colorScheme
+  @Environment(\.nativeUsesSidebarNavigation) private var nativeUsesSidebarNavigation
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var session: NativeTripSession
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
@@ -115,42 +116,21 @@ struct NativeTripView: View {
           tripStartBackground
             .ignoresSafeArea()
 
-          let centerY = proxy.size.height * 0.45
-
-          Text("Tap to Record")
-            .font(.system(size: 30, weight: .heavy, design: .rounded))
-            .foregroundStyle(.white)
-            .position(x: proxy.size.width / 2, y: centerY - 166)
-
-          startTripButton
-            .position(x: proxy.size.width / 2, y: centerY)
-
-          vehicleSelector
-            .position(x: proxy.size.width / 2, y: centerY + 176)
-
-          missedTripPanel
-            .padding(.horizontal, 18)
-            .position(x: proxy.size.width / 2, y: proxy.size.height - proxy.safeAreaInsets.bottom - (proxy.size.height * 0.05) + 56)
-
-          if let message = session.permissionMessage {
-            Label(message, systemImage: "location.slash")
-              .font(.system(size: 14, weight: .semibold))
-              .foregroundStyle(.white)
-              .multilineTextAlignment(.center)
-              .padding(12)
-              .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-              .padding(.horizontal, 18)
-              .frame(maxWidth: proxy.size.width - 36)
-              .position(x: proxy.size.width / 2, y: min(proxy.size.height - proxy.safeAreaInsets.bottom - 148, centerY + 258))
+          if usesCompactStartLayout(proxy) {
+            compactStartLayout(proxy)
+          } else {
+            regularStartLayout(proxy)
           }
         }
       }
       .navigationTitle("")
       .navigationBarTitleDisplayMode(.large)
       .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
-          NativeProfileToolbarButton {
-            showProfile = true
+        if !nativeUsesSidebarNavigation {
+          ToolbarItem(placement: .topBarTrailing) {
+            NativeProfileToolbarButton {
+              showProfile = true
+            }
           }
         }
       }
@@ -161,6 +141,83 @@ struct NativeTripView: View {
           .presentationCornerRadius(36)
       }
     }
+  }
+
+  private func usesCompactStartLayout(_ proxy: GeometryProxy) -> Bool {
+    proxy.size.height < 560
+  }
+
+  private func regularStartLayout(_ proxy: GeometryProxy) -> some View {
+    let centerY = proxy.size.height * 0.45
+
+    return ZStack {
+      Text("Tap to Record")
+        .font(.system(size: 30, weight: .heavy, design: .rounded))
+        .foregroundStyle(.white)
+        .position(x: proxy.size.width / 2, y: centerY - 166)
+
+      startTripButton()
+        .position(x: proxy.size.width / 2, y: centerY)
+
+      vehicleSelector
+        .position(x: proxy.size.width / 2, y: centerY + 176)
+
+      VStack {
+        Spacer()
+        missedTripPanel
+          .padding(.horizontal, 18)
+          .padding(.bottom, max(proxy.safeAreaInsets.bottom + 18, 24))
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+      if let message = session.permissionMessage {
+        permissionMessage(message, maxWidth: proxy.size.width - 36)
+          .position(x: proxy.size.width / 2, y: min(proxy.size.height - proxy.safeAreaInsets.bottom - 148, centerY + 258))
+      }
+    }
+  }
+
+  private func compactStartLayout(_ proxy: GeometryProxy) -> some View {
+    let buttonSize = min(max(proxy.size.height * 0.42, 132), 174)
+    let horizontalPadding: CGFloat = proxy.size.width < 760 ? 20 : 34
+
+    return HStack(spacing: proxy.size.width < 760 ? 18 : 30) {
+      VStack(spacing: 14) {
+        Text("Tap to Record")
+          .font(.system(size: 24, weight: .heavy, design: .rounded))
+          .foregroundStyle(.white)
+          .lineLimit(1)
+          .minimumScaleFactor(0.82)
+
+        startTripButton(size: buttonSize)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+      VStack(spacing: 12) {
+        vehicleSelector
+
+        missedTripPanel
+
+        if let message = session.permissionMessage {
+          permissionMessage(message, maxWidth: 360)
+        }
+      }
+      .frame(width: min(360, max(260, proxy.size.width * 0.42)))
+    }
+    .padding(.horizontal, horizontalPadding)
+    .padding(.top, proxy.safeAreaInsets.top + 8)
+    .padding(.bottom, proxy.safeAreaInsets.bottom + 10)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private func permissionMessage(_ message: String, maxWidth: CGFloat) -> some View {
+    Label(message, systemImage: "location.slash")
+      .font(.system(size: 14, weight: .semibold))
+      .foregroundStyle(.white)
+      .multilineTextAlignment(.center)
+      .padding(12)
+      .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .frame(maxWidth: maxWidth)
   }
 
   private var vehicleSelector: some View {
@@ -238,12 +295,12 @@ struct NativeTripView: View {
   }
 
   @ViewBuilder
-  private var startTripButton: some View {
+  private func startTripButton(size: CGFloat = 236) -> some View {
     if #available(iOS 26.0, *) {
       Button {
         session.start(vehicle: selectedVehicle)
       } label: {
-        nativeStartTripButtonFace
+        nativeStartTripButtonFace(size: size)
       }
       .buttonStyle(.plain)
       .shadow(color: Color.black.opacity(0.22), radius: 34, y: 18)
@@ -252,7 +309,7 @@ struct NativeTripView: View {
       Button {
         session.start(vehicle: selectedVehicle)
       } label: {
-        startTripButtonFace
+        startTripButtonFace(size: size)
       }
       .buttonStyle(.plain)
       .shadow(color: Color.black.opacity(0.22), radius: 34, y: 18)
@@ -261,12 +318,12 @@ struct NativeTripView: View {
   }
 
   @available(iOS 26.0, *)
-  private var nativeStartTripButtonFace: some View {
-    startTripButtonFace
+  private func nativeStartTripButtonFace(size: CGFloat) -> some View {
+    startTripButtonFace(size: size)
       .glassEffect(.regular.tint(OkkleColor.brand.opacity(0.26)).interactive(), in: Circle())
   }
 
-  private var startTripButtonFace: some View {
+  private func startTripButtonFace(size: CGFloat) -> some View {
     ZStack {
       Circle()
         .fill(startButtonFill)
@@ -283,11 +340,11 @@ struct NativeTripView: View {
         .padding(7)
 
       Image(systemName: "location.north.fill")
-        .font(.system(size: 76, weight: .heavy))
+        .font(.system(size: size * 0.32, weight: .heavy))
         .foregroundStyle(.white)
         .shadow(color: Color.black.opacity(0.18), radius: 8, y: 4)
     }
-    .frame(width: 236, height: 236)
+    .frame(width: size, height: size)
     .clipShape(Circle())
     .contentShape(Circle())
   }

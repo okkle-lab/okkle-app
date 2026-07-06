@@ -45,6 +45,7 @@ struct OkkleNativeRootView: View {
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var selectedTab: NativeTab = .trip
   @State private var showSettings = false
+  @State private var showAddRecord = false
   private let iCloudAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   var body: some View {
@@ -153,6 +154,24 @@ struct OkkleNativeRootView: View {
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
     }
+    .sheet(isPresented: $showAddRecord) {
+      NativeLogView(
+        initialKind: .income,
+        allowedKinds: NativeLogKind.allCases,
+        title: "Add record",
+        subtitle: "Add income, expenses, or mileage.",
+        onClose: {
+          showAddRecord = false
+        },
+        onViewRecords: {
+          showAddRecord = false
+          selectedTab = .records
+        }
+      )
+      .environmentObject(store)
+      .presentationDetents([.large])
+      .presentationDragIndicator(.visible)
+    }
     .sheet(isPresented: $showSettings) {
       NativeSettingsView()
         .environmentObject(store)
@@ -186,15 +205,16 @@ struct OkkleNativeRootView: View {
 
   private var iPadSidebarApp: some View {
     NavigationSplitView {
-      NativeLiquidSidebar(
+      NativeSidebar(
         selectedTab: $selectedTab,
+        showAddRecord: { showAddRecord = true },
         showSettings: { showSettings = true }
       )
     } detail: {
       tabContent(for: selectedTab)
+        .environment(\.nativeUsesSidebarNavigation, true)
     }
     .navigationSplitViewStyle(.balanced)
-    .background(NativeBackground())
   }
 
   @ViewBuilder
@@ -231,133 +251,46 @@ struct OkkleNativeRootView: View {
   }
 }
 
-private struct NativeLiquidSidebar: View {
+private struct NativeSidebar: View {
   @Binding var selectedTab: NativeTab
+  let showAddRecord: () -> Void
   let showSettings: () -> Void
 
   private let primaryTabs: [NativeTab] = [.trip, .insights, .records, .tax]
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Okkle")
-          .font(.system(size: 30, weight: .heavy, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
-        Text("Courier records")
-          .font(.system(size: 13, weight: .bold))
-          .foregroundStyle(OkkleColor.muted)
-      }
-      .padding(.top, 18)
-      .padding(.horizontal, 16)
-
-      VStack(spacing: 8) {
+    List {
+      Section {
         ForEach(primaryTabs, id: \.self) { tab in
-          NativeSidebarTabButton(
-            tab: tab,
-            isSelected: selectedTab == tab,
-            action: { selectedTab = tab }
-          )
+          Button {
+            selectedTab = tab
+          } label: {
+            Label(tab.label, systemImage: tab.symbol)
+          }
+          .foregroundStyle(selectedTab == tab ? OkkleColor.brand : Color.primary)
+          .listRowBackground(selectedTab == tab ? OkkleColor.brand.opacity(0.12) : Color.clear)
         }
       }
 
-      Button {
-        selectedTab = .log
-      } label: {
-        NativeSidebarCommandLabel(
-          title: NativeTab.log.label,
-          symbol: NativeTab.log.symbol,
-          tint: OkkleColor.brand
-        )
+      Section {
+        Button(action: showAddRecord) {
+          Label("Add record", systemImage: "plus.circle.fill")
+        }
       }
-      .buttonStyle(.plain)
-      .padding(.top, 4)
-
-      Spacer(minLength: 20)
-
-      Divider()
-        .opacity(0.55)
-
+    }
+    .navigationTitle("Okkle")
+    .listStyle(.sidebar)
+    .safeAreaInset(edge: .bottom) {
       Button(action: showSettings) {
-        NativeSidebarCommandLabel(
-          title: "Settings",
-          symbol: "person.crop.circle",
-          tint: OkkleColor.ink
-        )
+        Label("Profile", systemImage: "person.crop.circle")
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
       .buttonStyle(.plain)
-      .padding(.bottom, 8)
-    }
-    .padding(.horizontal, 14)
-    .frame(minWidth: 240, idealWidth: 270, maxWidth: 310, maxHeight: .infinity, alignment: .topLeading)
-    .background {
-      Rectangle()
-        .fill(.ultraThinMaterial)
-        .ignoresSafeArea()
-    }
-  }
-}
-
-private struct NativeSidebarTabButton: View {
-  let tab: NativeTab
-  let isSelected: Bool
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 12) {
-        Image(systemName: tab.symbol)
-          .font(.system(size: 17, weight: .bold))
-          .frame(width: 24)
-        Text(tab.label)
-          .font(.system(size: 16, weight: .bold))
-        Spacer()
-      }
-      .foregroundStyle(isSelected ? OkkleColor.brandDark : OkkleColor.ink)
-      .padding(.horizontal, 14)
+      .foregroundStyle(.primary)
+      .padding(.horizontal, 18)
       .padding(.vertical, 12)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-      .background { selectedBackground }
+      .background(.bar)
     }
-    .buttonStyle(.plain)
-    .accessibilityAddTraits(isSelected ? .isSelected : [])
-  }
-
-  @ViewBuilder
-  private var selectedBackground: some View {
-    if isSelected {
-      if #available(iOS 26.0, *) {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-          .fill(.regularMaterial)
-          .glassEffect(.regular.tint(OkkleColor.brand.opacity(0.18)).interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-      } else {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-          .fill(OkkleColor.brand.opacity(0.14))
-      }
-    }
-  }
-}
-
-private struct NativeSidebarCommandLabel: View {
-  let title: String
-  let symbol: String
-  let tint: Color
-
-  var body: some View {
-    HStack(spacing: 12) {
-      Image(systemName: symbol)
-        .font(.system(size: 17, weight: .bold))
-        .foregroundStyle(tint)
-        .frame(width: 24)
-      Text(title)
-        .font(.system(size: 16, weight: .bold))
-        .foregroundStyle(OkkleColor.ink)
-      Spacer()
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
   }
 }
 

@@ -30,7 +30,19 @@ extension EnvironmentValues {
   }
 }
 
+private struct NativeUsesSidebarNavigationKey: EnvironmentKey {
+  static let defaultValue = false
+}
+
+extension EnvironmentValues {
+  var nativeUsesSidebarNavigation: Bool {
+    get { self[NativeUsesSidebarNavigationKey.self] }
+    set { self[NativeUsesSidebarNavigationKey.self] = newValue }
+  }
+}
+
 struct NativeScreen<Content: View>: View {
+  @Environment(\.nativeUsesSidebarNavigation) private var nativeUsesSidebarNavigation
   let title: String
   let collapsedTitle: String?
   let subtitle: String?
@@ -103,7 +115,7 @@ struct NativeScreen<Content: View>: View {
           }
         }
 
-        if showsProfileButton {
+        if showsProfileButton && !nativeUsesSidebarNavigation {
           ToolbarItem(placement: .topBarTrailing) {
             NativeProfileToolbarButton {
               showSettings = true
