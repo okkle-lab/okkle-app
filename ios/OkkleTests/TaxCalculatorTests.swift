@@ -67,3 +67,88 @@ final class TaxCalculatorTests: XCTestCase {
     calendar.date(from: DateComponents(year: year, month: month, day: day))!
   }
 }
+
+
+@MainActor
+final class NativeInsightsSimulationTests: XCTestCase {
+  private var calendar: Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    return calendar
+  }
+
+  func testStoredTripHistoryBuildsInsightsWithoutVisitCache() {
+    let store = OkkleStore()
+    store.trips = [trip(miles: 6, startedAt: date(2026, 6, 23, 18), endedAt: date(2026, 6, 23, 18, 30), timestamped: false)]
+
+    let visits = NativeShiftInsights.enrichedVisits(visits: [], trips: store.trips)
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+
+    XCTAssertEqual(visits.count, 2)
+    XCTAssertEqual(visits.map(\.kind), [.pickup, .dropoff])
+    XCTAssertTrue(insights.hasData)
+    XCTAssertEqual(insights.deliveries, 1)
+    XCTAssertEqual(insights.paidMiles, 6, accuracy: 0.05)
+  }
+
+  func testStoredTripDoesNotDoubleCountWhenRealVisitsAlreadyExist() {
+    let store = OkkleStore()
+    let started = date(2026, 6, 24, 19)
+    let ended = date(2026, 6, 24, 19, 25)
+    store.trips = [trip(miles: 4, startedAt: started, endedAt: ended, timestamped: true)]
+    let existing = [
+      visit(kind: .pickup, latitude: 51.50, longitude: -0.12, arrival: started, departure: started.addingTimeInterval(60)),
+      visit(kind: .dropoff, latitude: 51.53, longitude: -0.10, arrival: ended.addingTimeInterval(-60), departure: ended)
+    ]
+
+    let visits = NativeShiftInsights.enrichedVisits(visits: existing, trips: store.trips)
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+
+    XCTAssertEqual(visits.count, existing.count)
+    XCTAssertEqual(insights.deliveries, 1)
+  }
+
+  func testStoredTripWithTimestampedRouteKeepsRecordedMileageScale() {
+    let store = OkkleStore()
+    store.trips = [trip(miles: 8, startedAt: date(2026, 6, 25, 17), endedAt: date(2026, 6, 25, 18), timestamped: true)]
+
+    let insights = NativeShiftInsights.build(
+      visits: NativeShiftInsights.enrichedVisits(visits: [], trips: store.trips),
+      store: store
+    )
+
+    XCTAssertEqual(insights.deliveries, 1)
+    XCTAssertEqual(insights.paidMiles, 8, accuracy: 0.15)
+  }
+
+  private func trip(miles: Double, startedAt: Date, endedAt: Date, timestamped: Bool) -> NativeTrip {
+    let timestamps: [Date?] = timestamped
+      ? [startedAt, startedAt.addingTimeInterval(20 * 60), startedAt.addingTimeInterval(40 * 60), endedAt]
+      : [nil, nil, nil, nil]
+    let latitudeDelta = miles * 1609.34 / 111_000
+    let points = [
+      RoutePoint(latitude: 51.5000, longitude: -0.1200, timestamp: timestamps[0]),
+      RoutePoint(latitude: 51.5000 + latitudeDelta * 0.33, longitude: -0.1200, timestamp: timestamps[1]),
+      RoutePoint(latitude: 51.5000 + latitudeDelta * 0.66, longitude: -0.1200, timestamp: timestamps[2]),
+      RoutePoint(latitude: 51.5000 + latitudeDelta, longitude: -0.1200, timestamp: timestamps[3])
+    ]
+    return NativeTrip(
+      vehicle: .car,
+      miles: miles,
+      deduction: miles * 0.45,
+      startedAt: startedAt,
+      endedAt: endedAt,
+      points: points
+    )
+  }
+
+  private func visit(kind: NativeVisit.Kind, latitude: Double, longitude: Double, arrival: Date, departure: Date) -> NativeVisit {
+    var visit = NativeVisit(latitude: latitude, longitude: longitude, arrival: arrival, departure: departure)
+    visit.kind = kind
+    return visit
+  }
+
+  private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+    calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+  }
+}

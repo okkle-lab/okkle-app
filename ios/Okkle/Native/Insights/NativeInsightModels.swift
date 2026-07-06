@@ -406,6 +406,8 @@ struct NativeShiftInsights {
     return nil
   }
 
+  private static let routeDistanceNormalizationFactor = 1.3
+
   static let empty = NativeShiftInsights(
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
@@ -429,8 +431,8 @@ struct NativeShiftInsights {
     }) else { return [] }
     guard let start = trip.points.first?.coordinate, let end = trip.points.last?.coordinate else { return [] }
 
-    let pickupDeparture = min(trip.startedAt.addingTimeInterval(60), trip.endedAt)
-    let dropArrival = max(pickupDeparture, trip.endedAt.addingTimeInterval(-60))
+    let pickupDeparture = trip.startedAt
+    let dropArrival = trip.endedAt
 
     var pickup = NativeVisit(
       id: deterministicUUID(seed: "\(trip.id.uuidString)-pickup"),
@@ -796,12 +798,12 @@ struct NativeShiftInsights {
     )
   }
 
-  /// Real driven distance (metres) between two timestamps, summed from the
-  /// actual recorded route points of any trip covering that window — not a
-  /// straight line between the two stops. Falls back to nil when no trip
-  /// data covers the window (older data, or a stop that wasn't part of a
-  /// recorded shift/trip) so callers can fall back to a straight-line
-  /// estimate instead.
+  /// Real driven distance between two timestamps, normalised back to the
+  /// straight-line-equivalent metres this builder stores internally. The caller
+  /// applies the shared road factor once when converting aggregate metres to
+  /// miles; normalising here prevents real GPS/trip mileage being inflated by
+  /// that factor a second time. Falls back to nil when no trip data covers the
+  /// window so callers can still use a straight-line estimate.
   private static func routeMeters(from start: Date, to end: Date, trips: [NativeTrip]) -> Double? {
     guard end > start else { return nil }
     var total = 0.0
@@ -816,7 +818,7 @@ struct NativeShiftInsights {
         let startDelta = abs(trip.startedAt.timeIntervalSince(start))
         let endDelta = abs(trip.endedAt.timeIntervalSince(end))
         if startDelta <= 120, endDelta <= 120, trip.miles > 0 {
-          total += trip.miles * 1609.34
+          total += trip.miles * 1609.34 / routeDistanceNormalizationFactor
           sawSegment = true
         }
         continue
@@ -825,7 +827,7 @@ struct NativeShiftInsights {
       for i in 1..<inWindow.count {
         let a = CLLocation(latitude: inWindow[i - 1].latitude, longitude: inWindow[i - 1].longitude)
         let b = CLLocation(latitude: inWindow[i].latitude, longitude: inWindow[i].longitude)
-        total += b.distance(from: a)
+        total += b.distance(from: a) / routeDistanceNormalizationFactor
       }
     }
     return sawSegment ? total : nil
