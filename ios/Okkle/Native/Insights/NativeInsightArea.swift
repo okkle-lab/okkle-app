@@ -260,13 +260,7 @@ enum NativeAreaSuggester {
   }
 
   private static func poiCount(near coordinate: CLLocationCoordinate2D) async -> Int {
-    await withCheckedContinuation { continuation in
-      let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 400)
-      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
-      MKLocalSearch(request: request).start { response, _ in
-        continuation.resume(returning: response?.mapItems.count ?? 0)
-      }
-    }
+    await nativeFoodPOICount(near: coordinate, radiusMeters: 400)
   }
 
   private static func areaName(for coordinate: CLLocationCoordinate2D) async -> String? {
@@ -274,6 +268,20 @@ enum NativeAreaSuggester {
       CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
         continuation.resume(returning: placemarks?.first.flatMap { $0.thoroughfare ?? $0.subLocality ?? $0.locality })
       }
+    }
+  }
+}
+
+/// How many nearby points of interest look food/delivery-relevant (restaurant,
+/// cafe, bakery, food market, brewery, nightlife) — shared by the explore-area
+/// suggester and the area namer below, so both agree on what counts as
+/// "somewhere worth recommending" rather than any resolvable place name.
+func nativeFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: CLLocationDistance) async -> Int {
+  await withCheckedContinuation { continuation in
+    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: radiusMeters)
+    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
+    MKLocalSearch(request: request).start { response, _ in
+      continuation.resume(returning: response?.mapItems.count ?? 0)
     }
   }
 }
@@ -286,7 +294,10 @@ final class NativeZoneCircle: MKCircle {
 
 /// Turns a zone coordinate into a short, human area name ("Soho", "Camden") for
 /// the daily plan text. On-device reverse geocoding, cached so it only runs
-/// once per rounded coordinate; fails silently (the caller just omits the name).
+/// once per rounded coordinate; fails silently (the caller just omits the name)
+/// — including when the street resolves fine but there's nothing food-relevant
+/// nearby, since a recognisable name is worse than no name if it just sends a
+/// driver to an empty street or a park.
 @MainActor
 final class NativeAreaNamer: ObservableObject {
   static let shared = NativeAreaNamer()
@@ -321,7 +332,16 @@ final class NativeAreaNamer: ObservableObject {
         // "City of Westminster") which is too broad to act on.
         if let p = placemarks?.first,
            let area = p.thoroughfare ?? p.subLocality ?? p.locality {
-          self.names[job.key] = area
+          // A resolvable name isn't enough on its own — check there's
+          // actually somewhere to deliver from/to nearby before naming it,
+          // otherwise a quiet back road or a park street name can end up
+          // confidently recommended as "where to go".
+          let hasFoodNearby = await nativeFoodPOICount(near: job.coordinate, radiusMeters: 500) > 0
+          if hasFoodNearby {
+            self.names[job.key] = area
+          } else {
+            self.enqueued.remove(job.key)
+          }
         } else {
           // Let a later pass retry (throttle/no-result) rather than caching a miss.
           self.enqueued.remove(job.key)

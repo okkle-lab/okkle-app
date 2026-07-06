@@ -19,6 +19,13 @@ struct NativeVisit: Codable, Identifiable, Equatable {
   var departure: Date
   var kindRaw: String = Kind.other.rawValue
   var placeName: String?
+  // True when this pickup/dropoff wasn't a real classified stop, but a stand-in
+  // built from a trip's raw start/end GPS point (see
+  // NativeShiftInsights.enrichedVisits). For a home-based driver that's
+  // usually just "wherever the shift happened to start/end" — not a
+  // restaurant or customer address — so it's real signal for deliveries
+  // count/mileage/active-hours, but not trustworthy for "where to go".
+  var isEndpointGuess: Bool = false
 
   enum Kind: String, Codable, CaseIterable { case pickup, dropoff, other }
 

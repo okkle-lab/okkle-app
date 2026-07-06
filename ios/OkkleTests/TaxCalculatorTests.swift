@@ -121,6 +121,35 @@ final class NativeInsightsSimulationTests: XCTestCase {
     XCTAssertEqual(insights.paidMiles, 8, accuracy: 0.15)
   }
 
+  func testTripDerivedVisitsDoNotProduceLocationZones() {
+    let store = OkkleStore()
+    store.trips = [trip(miles: 6, startedAt: date(2026, 6, 23, 18), endedAt: date(2026, 6, 23, 18, 30), timestamped: false)]
+
+    let visits = NativeShiftInsights.enrichedVisits(visits: [], trips: store.trips)
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+
+    // A trip's raw start/end point is just "wherever the shift happened to
+    // start" — not a real classified stop — so it should count toward
+    // deliveries/mileage but never get named as a "where to go" zone.
+    XCTAssertEqual(insights.deliveries, 1)
+    XCTAssertTrue(insights.zones.isEmpty)
+  }
+
+  func testRealClassifiedVisitsStillProduceLocationZones() {
+    let store = OkkleStore()
+    let started = date(2026, 6, 24, 19)
+    let ended = date(2026, 6, 24, 19, 25)
+    let visits = [
+      visit(kind: .pickup, latitude: 51.50, longitude: -0.12, arrival: started, departure: started.addingTimeInterval(60)),
+      visit(kind: .dropoff, latitude: 51.53, longitude: -0.10, arrival: ended.addingTimeInterval(-60), departure: ended)
+    ]
+
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+
+    XCTAssertEqual(insights.deliveries, 1)
+    XCTAssertFalse(insights.zones.isEmpty)
+  }
+
   private func trip(miles: Double, startedAt: Date, endedAt: Date, timestamped: Bool) -> NativeTrip {
     let timestamps: [Date?] = timestamped
       ? [startedAt, startedAt.addingTimeInterval(20 * 60), startedAt.addingTimeInterval(40 * 60), endedAt]

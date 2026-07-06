@@ -441,7 +441,8 @@ struct NativeShiftInsights {
       arrival: trip.startedAt,
       departure: pickupDeparture,
       kindRaw: NativeVisit.Kind.pickup.rawValue,
-      placeName: "Trip start"
+      placeName: "Trip start",
+      isEndpointGuess: true
     )
     pickup.kind = .pickup
 
@@ -452,7 +453,8 @@ struct NativeShiftInsights {
       arrival: dropArrival,
       departure: trip.endedAt,
       kindRaw: NativeVisit.Kind.dropoff.rawValue,
-      placeName: "Trip end"
+      placeName: "Trip end",
+      isEndpointGuess: true
     )
     dropoff.kind = .dropoff
 
@@ -525,7 +527,7 @@ struct NativeShiftInsights {
     var deliveries = 0
     var paidMeters = 0.0
     var paidMetersByWeekday: [Int: Double] = [:]
-    var deliveryHits: [(weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date)] = []
+    var deliveryHits: [NativeDeliveryHit] = []
     var index = 0
     while index < sorted.count {
       if sorted[index].kind == .pickup,
@@ -543,7 +545,14 @@ struct NativeShiftInsights {
         paidMetersByWeekday[weekday, default: 0] += legMeters
         let hour = Calendar.current.component(.hour, from: date)
         let band = NativeTimeFilter.allCases.first { $0 != .all && $0.includes(date) } ?? .afternoon
-        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date))
+        // A pair built from a trip's raw start/end point (no real classified
+        // stop) still counts toward deliveries/mileage/timing above, but its
+        // coordinate is just "wherever the shift happened to start" — usually
+        // home for a home-based driver — so it's excluded from zone/place
+        // ranking below rather than risk recommending home, or a random
+        // waypoint, as "where to go".
+        let isLocationTrustworthy = !sorted[index].isEndpointGuess && !sorted[dropIndex].isEndpointGuess
+        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date, isLocationTrustworthy))
         index = dropIndex + 1
       } else {
         index += 1
@@ -592,10 +601,12 @@ struct NativeShiftInsights {
 
     // Cluster delivery start points into zones (~500m cells), tracking when each
     // area is busiest so "where to go" can carry a "when to go". deliveryHits
-    // is already free of excluded places, since `sorted` was filtered above.
+    // is already free of excluded places, since `sorted` was filtered above —
+    // and further filtered to trustworthy locations only, so a shift with no
+    // real classified stop never turns its own start/end point into a "zone".
     var cells: [String: (coordinate: CLLocationCoordinate2D, count: Int, hours: [Int: Int])] = [:]
     let cellSize = 0.006
-    for hit in deliveryHits {
+    for hit in deliveryHits where hit.isLocationTrustworthy {
       let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
       var cell = cells[key] ?? (hit.coordinate, 0, [:])
       cell.count += 1
@@ -845,7 +856,7 @@ struct NativeShiftInsights {
   }
 }
 
-typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date)
+typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date, isLocationTrustworthy: Bool)
 
 /// The busiest time-band and roughly-where for one weekday.
 func bestBandAndZone(for weekday: Int, deliveryHits: [NativeDeliveryHit], cellSize: Double) -> (band: NativeTimeFilter, zone: CLLocationCoordinate2D?) {
@@ -853,6 +864,7 @@ func bestBandAndZone(for weekday: Int, deliveryHits: [NativeDeliveryHit], cellSi
   var cells: [String: (coordinate: CLLocationCoordinate2D, count: Int)] = [:]
   for hit in deliveryHits where hit.weekday == weekday {
     bandCounts[hit.band, default: 0] += 1
+    guard hit.isLocationTrustworthy else { continue }
     let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
     if let existing = cells[key] {
       cells[key] = (existing.coordinate, existing.count + 1)
