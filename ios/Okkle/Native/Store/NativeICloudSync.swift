@@ -251,15 +251,12 @@ final class NativeICloudSyncEngine {
   private func requestDownloadIfNeeded(at url: URL) throws -> Bool {
     let keys: Set<URLResourceKey> = [
       .isUbiquitousItemKey,
-      .ubiquitousItemDownloadingStatusKey,
-      .ubiquitousItemIsDownloadingKey
+      .ubiquitousItemDownloadingStatusKey
     ]
     let values = try? url.resourceValues(forKeys: keys)
     guard values?.isUbiquitousItem == true else { return false }
 
-    let needsDownload = values?.ubiquitousItemDownloadingStatus == .notDownloaded ||
-      values?.ubiquitousItemIsDownloading == true
-    guard needsDownload else { return false }
+    guard values?.ubiquitousItemDownloadingStatus == .notDownloaded else { return false }
 
     do {
       try fileManager.startDownloadingUbiquitousItem(at: url)
@@ -292,9 +289,10 @@ final class NativeICloudSyncEngine {
   private func coordinatedWriteData(_ data: Data, to url: URL) throws {
     var coordinationError: NSError?
     var writeResult: Result<Void, Error>?
+    let options: NSFileCoordinator.WritingOptions = fileManager.fileExists(atPath: url.path) ? .forReplacing : []
     NSFileCoordinator(filePresenter: nil).coordinate(
       writingItemAt: url,
-      options: .forReplacing,
+      options: options,
       error: &coordinationError
     ) { coordinatedURL in
       writeResult = Result { try data.write(to: coordinatedURL, options: [.atomic]) }

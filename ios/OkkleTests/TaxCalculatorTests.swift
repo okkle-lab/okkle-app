@@ -188,6 +188,77 @@ final class NativeNotificationReminderTests: XCTestCase {
 }
 
 
+final class NativeRouteStopDetectorTests: XCTestCase {
+  private var calendar: Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    return calendar
+  }
+
+  func testRouteStopsFilterEndpointVisitsAndKeepIntermediateStops() {
+    let started = date(2026, 7, 6, 18, 0)
+    let ended = date(2026, 7, 6, 19, 0)
+    let points = [
+      RoutePoint(latitude: 51.5000, longitude: -0.1200, timestamp: started),
+      RoutePoint(latitude: 51.5200, longitude: -0.1100, timestamp: started.addingTimeInterval(30 * 60)),
+      RoutePoint(latitude: 51.5400, longitude: -0.1000, timestamp: ended)
+    ]
+
+    let stops = NativeRouteStopDetector.routeStops(
+      in: points,
+      startedAt: started,
+      endedAt: ended,
+      recordedVisits: [
+        visit(latitude: 51.5001, longitude: -0.1201, arrival: started, departure: started.addingTimeInterval(60), placeName: "Home"),
+        visit(latitude: 51.5200, longitude: -0.1100, arrival: started.addingTimeInterval(28 * 60), departure: started.addingTimeInterval(32 * 60), placeName: "Restaurant"),
+        visit(latitude: 51.5399, longitude: -0.1001, arrival: ended.addingTimeInterval(-60), departure: ended, placeName: "Home")
+      ]
+    )
+
+    XCTAssertEqual(stops.count, 1)
+    XCTAssertEqual(stops.first?.placeName, "Restaurant")
+  }
+
+  func testRouteStopsIncludeDetectedStationaryStops() {
+    let started = date(2026, 7, 6, 18, 0)
+    let ended = date(2026, 7, 6, 18, 30)
+    let points = [
+      RoutePoint(latitude: 51.5000, longitude: -0.1200, timestamp: started),
+      RoutePoint(latitude: 51.5200, longitude: -0.1100, timestamp: started.addingTimeInterval(10 * 60)),
+      RoutePoint(latitude: 51.5202, longitude: -0.1101, timestamp: started.addingTimeInterval(14 * 60)),
+      RoutePoint(latitude: 51.5400, longitude: -0.1000, timestamp: ended)
+    ]
+
+    let stops = NativeRouteStopDetector.routeStops(
+      in: points,
+      startedAt: started,
+      endedAt: ended,
+      recordedVisits: []
+    )
+
+    XCTAssertEqual(stops.count, 1)
+    XCTAssertEqual(stops.first?.placeName, "Detected from movement")
+  }
+
+  private func visit(
+    latitude: Double,
+    longitude: Double,
+    arrival: Date,
+    departure: Date,
+    placeName: String
+  ) -> NativeVisit {
+    var visit = NativeVisit(latitude: latitude, longitude: longitude, arrival: arrival, departure: departure)
+    visit.kind = .other
+    visit.placeName = placeName
+    return visit
+  }
+
+  private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
+    calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+  }
+}
+
+
 final class NativeICloudSyncMergeTests: XCTestCase {
   func testFreshLocalOnboardingDoesNotOverwriteRemoteProfile() {
     var localSettings = NativeSettings()

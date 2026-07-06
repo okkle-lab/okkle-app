@@ -162,13 +162,19 @@ struct NativeTripView: View {
       vehicleSelector
         .position(x: proxy.size.width / 2, y: centerY + 176)
 
-      VStack {
-        Spacer()
+      if nativeUsesSidebarNavigation {
+        VStack {
+          Spacer()
+          missedTripPanel
+            .padding(.horizontal, 18)
+            .padding(.bottom, max(proxy.safeAreaInsets.bottom + 18, 24))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
         missedTripPanel
           .padding(.horizontal, 18)
-          .padding(.bottom, max(proxy.safeAreaInsets.bottom + 18, 24))
+          .position(x: proxy.size.width / 2, y: proxy.size.height - proxy.safeAreaInsets.bottom - (proxy.size.height * 0.05) + 56)
       }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
 
       if let message = session.permissionMessage {
         permissionMessage(message, maxWidth: proxy.size.width - 36)

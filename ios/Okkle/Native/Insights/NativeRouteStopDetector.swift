@@ -35,6 +35,22 @@ enum NativeRouteStopDetector {
   private static let minimumDwell: TimeInterval = 90
   private static let mergeGap: TimeInterval = 5 * 60
 
+  static func routeStops(
+    in points: [RoutePoint],
+    startedAt: Date,
+    endedAt: Date,
+    recordedVisits: [NativeVisit]
+  ) -> [NativeVisit] {
+    let recordedStops = recordedVisits
+      .filter { $0.arrival >= startedAt && $0.departure <= endedAt }
+      .filter { !isEndpointVisit($0, points: points, startedAt: startedAt, endedAt: endedAt) }
+      .sorted { $0.arrival < $1.arrival }
+    let detectedStops = detectStops(in: points)
+      .map(\.visit)
+      .filter { !isEndpointVisit($0, points: points, startedAt: startedAt, endedAt: endedAt) }
+    return mergedStops(recordedStops: recordedStops, detectedStops: detectedStops)
+  }
+
   static func detectStops(in points: [RoutePoint]) -> [NativeRouteDetectedStop] {
     guard points.count > 2 else { return [] }
     var stops: [NativeRouteDetectedStop] = []
@@ -126,6 +142,20 @@ enum NativeRouteStopDetector {
       abs(lhs.departure.timeIntervalSince(rhs.departure)) < 180
     let distance = lhs.location.distance(from: rhs.location)
     return distance <= 100 && (timeOverlap || timeNear)
+  }
+
+  private static func isEndpointVisit(
+    _ visit: NativeVisit,
+    points: [RoutePoint],
+    startedAt: Date,
+    endedAt: Date
+  ) -> Bool {
+    guard let startPoint = points.first, let endPoint = points.last else { return false }
+    let nearStart = abs(visit.arrival.timeIntervalSince(startedAt)) < 180 &&
+      distance(from: visit.coordinate, to: startPoint.coordinate) <= 120
+    let nearEnd = abs(visit.departure.timeIntervalSince(endedAt)) < 180 &&
+      distance(from: visit.coordinate, to: endPoint.coordinate) <= 120
+    return nearStart || nearEnd
   }
 
   private static func distance(from lhs: CLLocationCoordinate2D, to rhs: CLLocationCoordinate2D) -> CLLocationDistance {
