@@ -32,7 +32,12 @@ struct NativeRecordsView: View {
     case expense
 
     var id: String { rawValue }
-    var label: String { rawValue.capitalized }
+    var label: String {
+      switch self {
+      case .journeys: return "Trips"
+      default: return rawValue.capitalized
+      }
+    }
   }
 
   init(initialMode: RecordsMode = .history, onClose: (() -> Void)? = nil) {
@@ -44,7 +49,7 @@ struct NativeRecordsView: View {
     NativeScreen(
       title: "Data",
       collapsedTitle: "Data",
-      subtitle: "Mileage, recent activity and export-ready history.",
+      subtitle: "Log trip mileage, income and expenses - all export-ready.",
       onClose: onClose
     ) {
       if mode == .tax {
@@ -194,7 +199,7 @@ struct NativeRecordsView: View {
       }
 
       if filteredHistory.isEmpty {
-        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Journeys, earnings and expenses appear here after you save them.")
+        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Trips, earnings and expenses appear here after you save them.")
       } else {
         NativeGlassCard {
           VStack(spacing: 0) {
@@ -511,7 +516,7 @@ struct NativeHistoryRow: View {
 
   private var title: String {
     switch item {
-    case .trip(let trip): return "Journey - \(trip.vehicle.label)"
+    case .trip(let trip): return "Trip - \(trip.vehicle.label)"
     case .record(let record):
       switch record.kind {
       case .income: return record.platform ?? "Earnings"
@@ -681,7 +686,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .freeAgent: return "Income and expenses for bank import"
     case .selfAssessment: return "Turnover, expenses, profit and tax estimate"
     case .mileageLog: return "GPS and manual mileage claims"
-    case .allData: return "Journeys, earnings and expenses"
+    case .allData: return "Trips, earnings and expenses"
     }
   }
 
