@@ -266,9 +266,20 @@ private struct NativeSidebar: View {
             selectedTab = tab
           } label: {
             Label(tab.label, systemImage: tab.symbol)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 14)
+              .padding(.vertical, 12)
+              .background {
+                if selectedTab == tab {
+                  RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(OkkleColor.brand.opacity(0.12))
+                }
+              }
           }
           .foregroundStyle(selectedTab == tab ? OkkleColor.brand : Color.primary)
-          .listRowBackground(selectedTab == tab ? OkkleColor.brand.opacity(0.12) : Color.clear)
+          .buttonStyle(.plain)
+          .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+          .listRowBackground(Color.clear)
         }
       }
 
