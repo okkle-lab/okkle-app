@@ -13,6 +13,7 @@ struct OkkleNativeRootView: View {
   @ObservedObject private var notificationRouter = NativeNotificationRouter.shared
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var selectedTab: NativeTab = .trip
+  private let iCloudAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   var body: some View {
     Group {
@@ -73,6 +74,10 @@ struct OkkleNativeRootView: View {
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
       NativeLoggingReminder.refresh(store: store)
+      store.refreshICloudSyncIfNeeded()
+    }
+    .onReceive(iCloudAutoSyncTimer) { _ in
+      store.refreshICloudSyncIfNeeded()
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       routeWidgetTripRequestIfNeeded()
