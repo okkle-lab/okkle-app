@@ -958,10 +958,13 @@ struct NativeTripEditSheet: View {
   let onSave: (NativeTrip) -> Void
   @Environment(\.dismiss) private var dismiss
   @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var vehicle: NativeVehicle
   @State private var milesText: String
   @State private var startedAt: Date
   @State private var endedAt: Date
+  @State private var routePoints: [RoutePoint]
+  @State private var routeEndpointNames: [Int: String] = [:]
 
   init(trip: NativeTrip, onSave: @escaping (NativeTrip) -> Void) {
     self.trip = trip
@@ -970,6 +973,7 @@ struct NativeTripEditSheet: View {
     _milesText = State(initialValue: String(format: "%.1f", trip.miles))
     _startedAt = State(initialValue: trip.startedAt)
     _endedAt = State(initialValue: trip.endedAt)
+    _routePoints = State(initialValue: trip.points)
   }
 
   var body: some View {
@@ -991,6 +995,43 @@ struct NativeTripEditSheet: View {
           DatePicker("Ended", selection: $endedAt)
         }
 
+        if !routeSegments.isEmpty {
+          Section("Route") {
+            NativeRouteMapView(points: routePoints, showsEndMarker: true)
+              .frame(height: 180)
+              .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            HStack {
+              Label("\(routePoints.count) points", systemImage: "point.3.connected.trianglepath.dotted")
+              Spacer()
+              Text(miles(routeMiles(from: routePoints)))
+                .fontWeight(.bold)
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+
+            ForEach(routeSegments) { segment in
+              HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                  Text(routeSegmentTitle(segment))
+                    .font(.subheadline.weight(.semibold))
+                  Text(routeSegmentSubtitle(segment))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                Button(role: .destructive) {
+                  removeRouteSegment(segment)
+                } label: {
+                  Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!canRemoveRouteSegment(segment))
+              }
+            }
+          }
+        }
+
         Section("Preview") {
           HStack {
             Text("Deduction")
@@ -998,7 +1039,7 @@ struct NativeTripEditSheet: View {
             Text(gbp(previewDeduction, whole: true))
               .fontWeight(.bold)
           }
-          Text("Editing keeps the saved route points and recalculates the mileage deduction.")
+          Text("Removing route segments updates the saved route, mileage and mileage deduction.")
             .font(.footnote)
             .foregroundStyle(.secondary)
         }
@@ -1019,6 +1060,9 @@ struct NativeTripEditSheet: View {
       }
       .nativeKeyboardDoneToolbar()
     }
+    .task(id: routeNameSignature) {
+      await resolveRouteEndpointNames()
+    }
   }
 
   private var milesValue: Double {
@@ -1033,6 +1077,23 @@ struct NativeTripEditSheet: View {
     store.calcDeduction(miles: milesValue, vehicle: vehicle, date: startedAt)
   }
 
+  private var routeVisits: [NativeVisit] {
+    autoTrack.visits
+      .filter { $0.arrival >= startedAt && $0.departure <= endedAt }
+      .sorted { $0.arrival < $1.arrival }
+  }
+
+  private var routeSegments: [NativeTripRouteEditSegment] {
+    NativeTripRouteEditSegment.build(points: routePoints, visits: routeVisits)
+  }
+
+  private var routeNameSignature: String {
+    routeSegments
+      .flatMap { [$0.startIndex, $0.endIndex] }
+      .map(String.init)
+      .joined(separator: "-")
+  }
+
   private func save() {
     guard canSave else { return }
     var updated = trip
@@ -1041,8 +1102,189 @@ struct NativeTripEditSheet: View {
     updated.startedAt = startedAt
     updated.endedAt = endedAt
     updated.deduction = previewDeduction
+    updated.points = routePoints
     onSave(updated)
     dismiss()
+  }
+
+  private func routeSegmentTitle(_ segment: NativeTripRouteEditSegment) -> String {
+    let start = routeEndpointNames[segment.startIndex] ?? routeFallbackName(for: segment.startIndex, segment: segment)
+    let end = routeEndpointNames[segment.endIndex] ?? routeFallbackName(for: segment.endIndex, segment: segment)
+    return "\(start) to \(end)"
+  }
+
+  private func routeSegmentSubtitle(_ segment: NativeTripRouteEditSegment) -> String {
+    "\(miles(segment.miles)) • \(segment.pointCount) route points"
+  }
+
+  private func routeFallbackName(for index: Int, segment: NativeTripRouteEditSegment) -> String {
+    if index == routePoints.indices.first { return "Start" }
+    if index == routePoints.indices.last { return "End" }
+    return "Point \(index + 1)"
+  }
+
+  private func canRemoveRouteSegment(_ segment: NativeTripRouteEditSegment) -> Bool {
+    routePoints.count - segment.pointCount >= 2
+  }
+
+  private func removeRouteSegment(_ segment: NativeTripRouteEditSegment) {
+    guard canRemoveRouteSegment(segment),
+          routePoints.indices.contains(segment.startIndex),
+          routePoints.indices.contains(segment.endIndex),
+          segment.startIndex <= segment.endIndex else {
+      return
+    }
+
+    routePoints.removeSubrange(segment.startIndex...segment.endIndex)
+    if routePoints.indices.contains(segment.startIndex) {
+      routePoints[segment.startIndex].breakBefore = true
+    }
+    if !routePoints.isEmpty {
+      routePoints[0].breakBefore = false
+    }
+    routeEndpointNames = [:]
+
+    let recalculatedMiles = routeMiles(from: routePoints)
+    if recalculatedMiles > 0 {
+      milesText = String(format: "%.1f", recalculatedMiles)
+    }
+  }
+
+  @MainActor
+  private func resolveRouteEndpointNames() async {
+    let indexes = Array(Set(routeSegments.flatMap { [$0.startIndex, $0.endIndex] })).sorted()
+    for index in indexes where routeEndpointNames[index] == nil && routePoints.indices.contains(index) {
+      if let name = await Self.placeName(for: routePoints[index].coordinate) {
+        routeEndpointNames[index] = name
+      }
+    }
+  }
+
+  private func routeMiles(from points: [RoutePoint]) -> Double {
+    guard points.count > 1 else { return 0 }
+    var meters: CLLocationDistance = 0
+    for index in points.indices.dropFirst() where !points[index].breakBefore {
+      let previous = CLLocation(latitude: points[index - 1].latitude, longitude: points[index - 1].longitude)
+      let current = CLLocation(latitude: points[index].latitude, longitude: points[index].longitude)
+      meters += current.distance(from: previous)
+    }
+    return meters / 1_609.344
+  }
+
+  private static func placeName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    await withCheckedContinuation { continuation in
+      CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
+        guard let placemark = placemarks?.first else {
+          continuation.resume(returning: nil)
+          return
+        }
+        let street = [placemark.subThoroughfare, placemark.thoroughfare]
+          .compactMap { $0 }
+          .joined(separator: " ")
+        let area = placemark.subLocality ?? placemark.locality ?? placemark.name
+        let name = [street.isEmpty ? nil : street, area]
+          .compactMap { $0 }
+          .filter { !$0.isEmpty }
+          .joined(separator: ", ")
+        continuation.resume(returning: name.isEmpty ? nil : name)
+      }
+    }
+  }
+}
+
+private struct NativeTripRouteEditSegment: Identifiable {
+  let number: Int
+  let startIndex: Int
+  let endIndex: Int
+  let miles: Double
+
+  var id: String { "\(number)-\(startIndex)-\(endIndex)" }
+  var pointCount: Int { endIndex - startIndex + 1 }
+
+  static func build(points: [RoutePoint], visits: [NativeVisit]) -> [NativeTripRouteEditSegment] {
+    guard points.count > 1 else { return [] }
+
+    var segments: [NativeTripRouteEditSegment] = []
+    var runStart = 0
+
+    while runStart < points.count {
+      var runEnd = runStart
+      while runEnd + 1 < points.count && !points[runEnd + 1].breakBefore {
+        runEnd += 1
+      }
+
+      if runEnd > runStart {
+        let indexes = boundaryIndexes(points: points, runStart: runStart, runEnd: runEnd, visits: visits)
+        for pair in zip(indexes, indexes.dropFirst()) where pair.0 < pair.1 {
+          segments.append(NativeTripRouteEditSegment(
+            number: segments.count + 1,
+            startIndex: pair.0,
+            endIndex: pair.1,
+            miles: miles(points: Array(points[pair.0...pair.1]))
+          ))
+        }
+      }
+
+      runStart = runEnd + 1
+    }
+
+    return segments
+  }
+
+  private static func boundaryIndexes(
+    points: [RoutePoint],
+    runStart: Int,
+    runEnd: Int,
+    visits: [NativeVisit]
+  ) -> [Int] {
+    var indexes = Set([runStart, runEnd])
+    let run = Array(points[runStart...runEnd])
+
+    for visit in visits {
+      let nearest = nearestIndex(to: visit, in: run, offset: runStart)
+      if nearest > runStart && nearest < runEnd {
+        indexes.insert(nearest)
+      }
+    }
+
+    if indexes.count == 2 && run.count > 18 {
+      let segmentCount = min(6, max(2, run.count / 14))
+      for step in 1..<segmentCount {
+        indexes.insert(runStart + ((run.count - 1) * step / segmentCount))
+      }
+    }
+
+    return indexes.sorted()
+  }
+
+  private static func nearestIndex(to visit: NativeVisit, in points: [RoutePoint], offset: Int) -> Int {
+    if points.contains(where: { $0.timestamp != nil }) {
+      let target = visit.arrival.timeIntervalSinceReferenceDate
+      let localIndex = points.indices.min { lhs, rhs in
+        abs((points[lhs].timestamp?.timeIntervalSinceReferenceDate ?? target) - target) <
+          abs((points[rhs].timestamp?.timeIntervalSinceReferenceDate ?? target) - target)
+      } ?? points.startIndex
+      return offset + localIndex
+    }
+
+    let location = visit.location
+    let localIndex = points.indices.min { lhs, rhs in
+      let lhsLocation = CLLocation(latitude: points[lhs].latitude, longitude: points[lhs].longitude)
+      let rhsLocation = CLLocation(latitude: points[rhs].latitude, longitude: points[rhs].longitude)
+      return lhsLocation.distance(from: location) < rhsLocation.distance(from: location)
+    } ?? points.startIndex
+    return offset + localIndex
+  }
+
+  private static func miles(points: [RoutePoint]) -> Double {
+    guard points.count > 1 else { return 0 }
+    var meters: CLLocationDistance = 0
+    for index in points.indices.dropFirst() {
+      let previous = CLLocation(latitude: points[index - 1].latitude, longitude: points[index - 1].longitude)
+      let current = CLLocation(latitude: points[index].latitude, longitude: points[index].longitude)
+      meters += current.distance(from: previous)
+    }
+    return meters / 1_609.344
   }
 }
 
@@ -1125,8 +1367,11 @@ struct NativeRouteMapView: UIViewRepresentable {
         ))
       }
 
-      let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-      mapView.addOverlay(polyline)
+      routeCoordinateRuns(from: points).forEach { run in
+        guard run.count > 1 else { return }
+        let polyline = MKPolyline(coordinates: run, count: run.count)
+        mapView.addOverlay(polyline)
+      }
       mapView.setVisibleMapRect(
         visibleMapRect(routeCoordinates: coordinates, stopCoordinates: stops.map(\.coordinate)),
         edgePadding: UIEdgeInsets(top: 38, left: 30, bottom: 38, right: 30),
@@ -1143,6 +1388,16 @@ struct NativeRouteMapView: UIViewRepresentable {
       let point = MKMapPoint(coordinate)
       let pointRect = MKMapRect(x: point.x, y: point.y, width: 1, height: 1)
       return rect.union(pointRect)
+    }
+  }
+
+  private func routeCoordinateRuns(from points: [RoutePoint]) -> [[CLLocationCoordinate2D]] {
+    points.reduce(into: [[CLLocationCoordinate2D]]()) { runs, point in
+      if runs.isEmpty || point.breakBefore {
+        runs.append([point.coordinate])
+      } else {
+        runs[runs.count - 1].append(point.coordinate)
+      }
     }
   }
 

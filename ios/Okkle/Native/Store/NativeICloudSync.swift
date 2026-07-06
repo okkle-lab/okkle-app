@@ -54,11 +54,14 @@ final class NativeICloudSyncEngine {
   private let defaults = UserDefaults.standard
   private let deviceIDKey = "uk.okkle.native.icloudSync.deviceID"
   private let lastSeenRemoteTimestampKey = "uk.okkle.native.icloudSync.lastSeenRemoteTimestamp"
+  private let localChangesPendingKey = "uk.okkle.native.icloudSync.localChangesPending"
   private let containerIdentifier = "iCloud.okklelab.app"
   private let syncFolderName = "Okkle Sync"
   private let syncFileName = "snapshot.json"
 
   private var isBusy = false
+  private var pendingRefresh = false
+  private var pendingLocalSnapshot: NativeSnapshot?
 
   private init() {}
 
@@ -68,11 +71,13 @@ final class NativeICloudSyncEngine {
       return
     }
 
-    guard !isBusy else { return }
+    guard !isBusy else {
+      pendingRefresh = true
+      return
+    }
     isBusy = true
     store.setICloudSyncState(.syncing)
     Task { @MainActor in
-      defer { isBusy = false }
       do {
         try sync(store: store, mergeCloudData: mergeCloudData)
       } catch let error as NativeICloudSyncError {
@@ -80,31 +85,28 @@ final class NativeICloudSyncEngine {
       } catch {
         store.setICloudSyncState(.failed(error.localizedDescription))
       }
+      finishOperation(store: store)
     }
   }
 
   func uploadLocalSnapshot(_ snapshot: NativeSnapshot, store: OkkleStore) {
     guard snapshot.settings.iCloudSyncEnabled else { return }
-    guard !isBusy else { return }
+    markLocalChangesPending()
+    guard !isBusy else {
+      pendingLocalSnapshot = snapshot
+      return
+    }
     isBusy = true
     store.setICloudSyncState(.syncing)
     Task { @MainActor in
-      defer { isBusy = false }
       do {
-        let snapshotToUpload: NativeSnapshot
-        if let remote = try readEnvelope(),
-           shouldApply(remote) {
-          snapshotToUpload = NativeICloudSnapshotMerge.merge(local: snapshot, remote: remote.snapshot)
-          store.applyICloudSnapshot(snapshotToUpload)
-        } else {
-          snapshotToUpload = snapshot
-        }
-        try writeEnvelope(snapshot: snapshotToUpload, store: store)
+        try upload(snapshot: snapshot, store: store)
       } catch let error as NativeICloudSyncError {
         store.setICloudSyncState(error.syncState)
       } catch {
         store.setICloudSyncState(.failed(error.localizedDescription))
       }
+      finishOperation(store: store)
     }
   }
 
@@ -118,9 +120,20 @@ final class NativeICloudSyncEngine {
       }
 
       if shouldApply(remote) {
+        guard !hasLocalChangesPending else {
+          let merged = NativeICloudSnapshotMerge.merge(local: store.currentSnapshot, remote: remote.snapshot)
+          store.applyICloudSnapshot(merged)
+          try writeEnvelope(snapshot: merged, store: store)
+          return
+        }
         store.applyICloudSnapshot(remote.snapshot)
         markSeen(remote)
         store.setICloudSyncState(.synced(remote.updatedAt))
+        return
+      }
+
+      if hasLocalChangesPending {
+        try writeEnvelope(snapshot: store.currentSnapshot, store: store)
         return
       }
 
@@ -130,6 +143,18 @@ final class NativeICloudSyncEngine {
     }
 
     try writeEnvelope(snapshot: store.currentSnapshot, store: store)
+  }
+
+  private func upload(snapshot: NativeSnapshot, store: OkkleStore) throws {
+    let snapshotToUpload: NativeSnapshot
+    if let remote = try readEnvelope(),
+       shouldApply(remote) {
+      snapshotToUpload = NativeICloudSnapshotMerge.merge(local: snapshot, remote: remote.snapshot)
+      store.applyICloudSnapshot(snapshotToUpload)
+    } else {
+      snapshotToUpload = snapshot
+    }
+    try writeEnvelope(snapshot: snapshotToUpload, store: store)
   }
 
   private func readEnvelope() throws -> NativeICloudSnapshotEnvelope? {
@@ -163,6 +188,7 @@ final class NativeICloudSyncEngine {
     let data = try encoder.encode(envelope)
     try data.write(to: url, options: [.atomic])
     markSeen(envelope)
+    markLocalChangesSynced()
     store.setICloudSyncState(.synced(updatedAt))
   }
 
@@ -182,6 +208,35 @@ final class NativeICloudSyncEngine {
 
   private func markSeen(_ envelope: NativeICloudSnapshotEnvelope) {
     defaults.set(envelope.updatedAt.timeIntervalSince1970, forKey: lastSeenRemoteTimestampKey)
+  }
+
+  private var hasLocalChangesPending: Bool {
+    defaults.bool(forKey: localChangesPendingKey)
+  }
+
+  private func markLocalChangesPending() {
+    defaults.set(true, forKey: localChangesPendingKey)
+  }
+
+  private func markLocalChangesSynced() {
+    defaults.set(false, forKey: localChangesPendingKey)
+  }
+
+  private func finishOperation(store: OkkleStore) {
+    isBusy = false
+    guard store.settings.iCloudSyncEnabled else {
+      pendingLocalSnapshot = nil
+      pendingRefresh = false
+      store.setICloudSyncState(.disabled)
+      return
+    }
+    if let snapshot = pendingLocalSnapshot {
+      pendingLocalSnapshot = nil
+      uploadLocalSnapshot(snapshot, store: store)
+    } else if pendingRefresh {
+      pendingRefresh = false
+      refresh(store: store)
+    }
   }
 
   private var deviceID: String {

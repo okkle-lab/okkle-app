@@ -116,9 +116,43 @@ struct RoutePoint: Identifiable, Codable, Equatable {
   // works — nil just means this point can't be used to attribute a specific
   // paid/dead leg within a multi-stop shift, only the trip's own total.
   var timestamp: Date? = nil
+  // Marks a visible gap before this point, used when a driver removes a
+  // middle route segment. Old trips decode with no gaps.
+  var breakBefore = false
 
   var coordinate: CLLocationCoordinate2D {
     CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case latitude
+    case longitude
+    case timestamp
+    case breakBefore
+  }
+
+  init(
+    id: UUID = UUID(),
+    latitude: Double,
+    longitude: Double,
+    timestamp: Date? = nil,
+    breakBefore: Bool = false
+  ) {
+    self.id = id
+    self.latitude = latitude
+    self.longitude = longitude
+    self.timestamp = timestamp
+    self.breakBefore = breakBefore
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+    latitude = try container.decode(Double.self, forKey: .latitude)
+    longitude = try container.decode(Double.self, forKey: .longitude)
+    timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp)
+    breakBefore = try container.decodeIfPresent(Bool.self, forKey: .breakBefore) ?? false
   }
 }
 
