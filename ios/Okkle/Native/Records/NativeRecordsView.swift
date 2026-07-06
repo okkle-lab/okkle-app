@@ -5,6 +5,11 @@ struct NativeRecordsView: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var mode: RecordsMode
   @State private var filter: RecordsFilter = .all
+  // nil = All time. Defaults to the current month — day-to-day you're
+  // checking what's recent, not everything you've ever logged; All time is
+  // one tap away via the month picker below.
+  @State private var selectedMonth: Date? = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date()))
+  @State private var showsMonthPicker = false
   @State private var itemPendingDeletion: NativeHistoryItem?
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
@@ -163,10 +168,30 @@ struct NativeRecordsView: View {
 
   private var historyContent: some View {
     VStack(spacing: 20) {
-      Picker("History filter", selection: $filter) {
-        ForEach(RecordsFilter.allCases) { Text($0.label).tag($0) }
+      HStack(spacing: 10) {
+        Picker("History filter", selection: $filter) {
+          ForEach(RecordsFilter.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.segmented)
+
+        Button {
+          showsMonthPicker = true
+        } label: {
+          Label(monthButtonLabel, systemImage: "calendar")
+            .labelStyle(.iconOnly)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(selectedMonth != nil ? .white : OkkleColor.brand)
+            .padding(10)
+            .background(selectedMonth != nil ? OkkleColor.brand : OkkleColor.brand.opacity(0.14), in: Circle())
+        }
+        .accessibilityLabel(selectedMonth != nil ? "Showing \(monthButtonLabel)" : "Showing all time")
       }
-      .pickerStyle(.segmented)
+      .confirmationDialog("Show month", isPresented: $showsMonthPicker, titleVisibility: .visible) {
+        Button("All time") { selectedMonth = nil }
+        ForEach(availableMonths, id: \.self) { month in
+          Button(monthLabel(for: month)) { selectedMonth = month }
+        }
+      }
 
       if filteredHistory.isEmpty {
         NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Journeys, earnings and expenses appear here after you save them.")
@@ -194,21 +219,39 @@ struct NativeRecordsView: View {
 
   private var filteredHistory: [NativeHistoryItem] {
     store.history.filter { item in
+      let typeOk: Bool
       switch filter {
       case .all:
-        return true
+        typeOk = true
       case .journeys:
-        if case .trip = item { return true }
-        if case .record(let record) = item { return record.kind == .mileage }
-        return false
+        if case .trip = item { typeOk = true }
+        else if case .record(let record) = item { typeOk = record.kind == .mileage }
+        else { typeOk = false }
       case .income:
-        if case .record(let record) = item { return record.kind == .income }
-        return false
+        if case .record(let record) = item { typeOk = record.kind == .income } else { typeOk = false }
       case .expense:
-        if case .record(let record) = item { return record.kind == .expense }
-        return false
+        if case .record(let record) = item { typeOk = record.kind == .expense } else { typeOk = false }
       }
+      guard typeOk else { return false }
+      guard let selectedMonth else { return true }
+      return Calendar.current.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
     }
+  }
+
+  /// Distinct months present anywhere in history (not just the current type
+  /// filter), newest first — what the month picker offers.
+  private var availableMonths: [Date] {
+    let calendar = Calendar.current
+    let months = Set(store.history.map { calendar.date(from: calendar.dateComponents([.year, .month], from: $0.date)) ?? $0.date })
+    return months.sorted(by: >)
+  }
+
+  private func monthLabel(for month: Date) -> String {
+    month.formatted(.dateTime.month(.abbreviated).year())
+  }
+
+  private var monthButtonLabel: String {
+    selectedMonth.map(monthLabel) ?? "All time"
   }
 
   private func delete(_ item: NativeHistoryItem) {
