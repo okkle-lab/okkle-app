@@ -163,10 +163,22 @@ final class NativeICloudSyncEngine {
     }
     guard fileManager.fileExists(atPath: url.path) else { return nil }
     try? fileManager.startDownloadingUbiquitousItem(at: url)
-    let data = try Data(contentsOf: url)
+    let data = try readSnapshotData(at: url)
+    guard !data.isEmpty else { return nil }
     let envelope = try JSONDecoder().decode(NativeICloudSnapshotEnvelope.self, from: data)
     guard envelope.app == "okkle", envelope.version == 1 else { return nil }
     return envelope
+  }
+
+  private func readSnapshotData(at url: URL) throws -> Data {
+    do {
+      return try Data(contentsOf: url)
+    } catch {
+      if Self.isMissingICloudData(error) {
+        throw NativeICloudSyncError.remoteDownloadPending
+      }
+      throw error
+    }
   }
 
   private func writeEnvelope(snapshot: NativeSnapshot, store: OkkleStore) throws {
@@ -247,15 +259,24 @@ final class NativeICloudSyncEngine {
     defaults.set(id, forKey: deviceIDKey)
     return id
   }
+
+  private static func isMissingICloudData(_ error: Error) -> Bool {
+    let nsError = error as NSError
+    guard nsError.domain == NSCocoaErrorDomain else { return false }
+    return nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError
+  }
 }
 
 private enum NativeICloudSyncError: LocalizedError {
   case unavailable
+  case remoteDownloadPending
 
   var errorDescription: String? {
     switch self {
     case .unavailable:
       return "iCloud Drive is not available on this device."
+    case .remoteDownloadPending:
+      return "Waiting for iCloud Drive to download your Okkle data."
     }
   }
 
@@ -263,6 +284,8 @@ private enum NativeICloudSyncError: LocalizedError {
     switch self {
     case .unavailable:
       return .unavailable(errorDescription ?? "iCloud Drive is not available on this device.")
+    case .remoteDownloadPending:
+      return .syncing
     }
   }
 }
