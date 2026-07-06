@@ -152,3 +152,37 @@ final class NativeInsightsSimulationTests: XCTestCase {
     calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
   }
 }
+
+
+@MainActor
+final class NativeNotificationReminderTests: XCTestCase {
+  func testManualRecordTodayCountsAsLoggedForReminderSuppression() {
+    let store = OkkleStore()
+    store.records = [record(date: Date())]
+
+    XCTAssertTrue(NativeLoggingReminder.hasLoggedToday(store: store, calendar: .current))
+  }
+
+  func testOlderManualRecordDoesNotSuppressTodaysReminder() {
+    let store = OkkleStore()
+    store.records = [record(date: Calendar.current.date(byAdding: .day, value: -2, to: Date())!)]
+    store.trips = []
+
+    XCTAssertFalse(NativeLoggingReminder.hasLoggedToday(store: store, calendar: .current))
+  }
+
+  private func record(date: Date) -> NativeRecord {
+    NativeRecord(
+      kind: .income,
+      platform: "Uber Eats",
+      vehicle: nil,
+      amount: 42,
+      miles: nil,
+      deduction: nil,
+      category: nil,
+      date: date,
+      period: .day,
+      receiptImageData: nil
+    )
+  }
+}

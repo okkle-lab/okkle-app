@@ -52,6 +52,7 @@ enum NativePreShiftNotifier {
 
     let key = "\(calendar.startOfDay(for: Date()).timeIntervalSince1970)-\(peak.startHour)-\(body.hashValue)"
     guard key != lastScheduledKey else { return }
+    let requestIdentifier = identifier
 
     center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
       guard granted else { return }
@@ -61,7 +62,7 @@ enum NativePreShiftNotifier {
       content.sound = .default
       let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
       let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-      center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
+      center.add(UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: trigger))
       Task { @MainActor in lastScheduledKey = key }
     }
   }
@@ -74,13 +75,13 @@ enum NativePreShiftNotifier {
   /// the pending request above and this guard stops it being rescheduled —
   /// so it only ever actually fires if the driver genuinely never went out.
   private static func scheduleFollowUpIfNeeded(store: OkkleStore, peak: NativeHourWindow, areaSuffix: String, calendar: Calendar, center: UNUserNotificationCenter) {
-    guard NativeAutoTrackEngine.shared.shiftPhase == .idle else { return }
-    guard !store.trips.contains(where: { calendar.isDate($0.endedAt, inSameDayAs: Date()) }) else { return }
+    guard !NativeLoggingReminder.hasLoggedToday(store: store, calendar: calendar) else { return }
     guard let followUpDate = calendar.date(bySettingHour: min(23, peak.startHour + 1), minute: 0, second: 0, of: Date()),
           followUpDate > Date().addingTimeInterval(120) else { return }
 
     let title = "You haven't gone out yet"
     let body = "Tonight's usually strong for you around \(peak.label)\(areaSuffix) — worth heading out."
+    let requestIdentifier = followUpIdentifier
 
     center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
       guard granted else { return }
@@ -90,7 +91,7 @@ enum NativePreShiftNotifier {
       content.sound = .default
       let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: followUpDate)
       let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-      center.add(UNNotificationRequest(identifier: followUpIdentifier, content: content, trigger: trigger))
+      center.add(UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: trigger))
     }
   }
 }

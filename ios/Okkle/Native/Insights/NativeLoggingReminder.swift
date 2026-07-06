@@ -49,6 +49,7 @@ enum NativeLoggingReminder {
     }
 
     let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+    let requestIdentifier = identifier
     center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
       guard granted else { return }
       let content = UNMutableNotificationContent()
@@ -56,15 +57,17 @@ enum NativeLoggingReminder {
       content.body = body
       content.sound = .default
       let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-      center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
+      center.add(UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: trigger))
     }
   }
 
-  /// Whether a shift already ended today, or one is currently in progress —
-  /// either way, today already has (or will have) something logged.
-  private static func hasLoggedToday(store: OkkleStore, calendar: Calendar) -> Bool {
+  /// Whether a shift or manual entry already exists today, or one is currently
+  /// in progress — either way, today already has something logged.
+  static func hasLoggedToday(store: OkkleStore, calendar: Calendar) -> Bool {
     if NativeAutoTrackEngine.shared.shiftPhase != .idle { return true }
-    return store.trips.contains { calendar.isDate($0.endedAt, inSameDayAs: Date()) }
+    let today = Date()
+    return store.trips.contains { calendar.isDate($0.endedAt, inSameDayAs: today) }
+      || store.records.contains { calendar.isDate($0.date, inSameDayAs: today) }
   }
 
   /// Weekly: the next occurrence of `reminderDay` (0 = Sunday … 6 = Saturday,

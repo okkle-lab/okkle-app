@@ -225,10 +225,12 @@ final class OkkleStore: ObservableObject {
   func addRecord(_ record: NativeRecord) {
     records.insert(record, at: 0)
     onRecordAdded?(record)
+    refreshLogSensitiveNotifications()
   }
 
   func addTrip(_ trip: NativeTrip) {
     trips.insert(trip, at: 0)
+    refreshLogSensitiveNotifications()
   }
 
   func updateTrip(_ trip: NativeTrip) {
@@ -247,6 +249,11 @@ final class OkkleStore: ObservableObject {
 
   func deleteTrip(_ trip: NativeTrip) {
     trips.removeAll { $0.id == trip.id }
+  }
+
+  private func refreshLogSensitiveNotifications() {
+    NativeLoggingReminder.refresh(store: self)
+    NativePreShiftNotifier.refresh(store: self)
   }
 
   func resetAllData() {
