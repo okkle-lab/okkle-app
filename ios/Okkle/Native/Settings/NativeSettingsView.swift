@@ -138,13 +138,6 @@ struct NativeSettingsView: View {
         }
 
         Section {
-          menuRow("Logged Mileage") { NativeLoggedMileageSettingsView() }
-          menuRow("Medals") { NativeMedalSummarySettingsView() }
-        } header: {
-          Text("Achievements")
-        }
-
-        Section {
           menuRow("Tax settings") { NativeTaxSettingsView() }
           menuRow("Automatic tracking") { NativeAutoTrackSettingsView() }
           menuRow("Siri & Shortcuts") { NativeSiriSettingsView() }
@@ -223,79 +216,6 @@ struct NativeSettingsProfileHeader: View {
     }
     .frame(maxWidth: .infinity)
     .padding(.vertical, 6)
-  }
-}
-
-// MARK: Achievements
-
-struct NativeLoggedMileageSettingsView: View {
-  @EnvironmentObject private var store: OkkleStore
-  @State private var period: NativeProgressPeriod = .yearToDate
-
-  private var totals: NativeProgressTotals {
-    switch period {
-    case .weekly:
-      return NativeProgressSummary.weekly(store: store)
-    case .yearToDate:
-      return NativeProgressSummary.yearToDate(store: store)
-    case .allTime:
-      return NativeProgressSummary.allTime(store: store)
-    }
-  }
-
-  var body: some View {
-    List {
-      Section {
-        VStack(alignment: .leading, spacing: 16) {
-          Picker("Period", selection: $period) {
-            ForEach(NativeProgressPeriod.allCases) { period in
-              Text(period.label).tag(period)
-            }
-          }
-          .pickerStyle(.segmented)
-
-          Divider()
-
-          NativeMileageLoggedPanel(totals: totals)
-        }
-        .padding(.vertical, 6)
-      } header: {
-        Text("Summary")
-      }
-    }
-    .listStyle(.insetGrouped)
-    .scrollContentBackground(.visible)
-    .navigationTitle("Logged Mileage")
-    .navigationBarTitleDisplayMode(.inline)
-  }
-}
-
-struct NativeMedalSummarySettingsView: View {
-  @EnvironmentObject private var store: OkkleStore
-  @State private var showsAllMedals = false
-
-  private var achievements: [NativeMedalAchievement] {
-    NativeMedalEngine.achievements(store: store, period: .weekly)
-  }
-
-  var body: some View {
-    List {
-      Section {
-        NativeMedalPreviewPanel(achievements: achievements, progressPeriod: .weekly) {
-          showsAllMedals = true
-        }
-      } header: {
-        Text("Summary")
-      }
-    }
-    .listStyle(.insetGrouped)
-    .scrollContentBackground(.visible)
-    .navigationTitle("Medals")
-    .navigationBarTitleDisplayMode(.inline)
-    .fullScreenCover(isPresented: $showsAllMedals) {
-      NativeMedalsView(initialPeriod: .weekly)
-        .environmentObject(store)
-    }
   }
 }
 
@@ -715,20 +635,11 @@ struct NativeDataSettingsView: View {
           }
         }
 
-        if store.settings.iCloudSyncEnabled {
-          Button {
-            store.refreshICloudSyncIfNeeded()
-          } label: {
-            Label("Sync now", systemImage: "arrow.triangle.2.circlepath")
-          }
-        }
       } header: {
         Text("iCloud sync")
-      } footer: {
-        Text("When enabled, Okkle keeps your records and trips synced through your private iCloud Drive. Backup restore is disabled while sync is on to avoid overwriting synced data.")
       }
 
-      Section("Backup & restore") {
+      Section {
         Button {
           backupBusy = true
           switch nativeCreateBackup(store: store) {
@@ -741,22 +652,31 @@ struct NativeDataSettingsView: View {
           }
           backupBusy = false
         } label: {
-          Label(backupBusy ? "Backing up..." : "Back up to iCloud", systemImage: "icloud.and.arrow.up")
+          manualBackupLabel(
+            backupBusy ? "Backing up..." : "Back up to iCloud",
+            systemImage: "icloud.and.arrow.up",
+            isDisabled: backupBusy || manualBackupDisabled
+          )
         }
-        .disabled(backupBusy)
+        .disabled(backupBusy || manualBackupDisabled)
 
         Button {
           prepareBackupExport()
         } label: {
-          Label("Choose backup location", systemImage: "folder")
+          manualBackupLabel("Choose backup location", systemImage: "folder", isDisabled: manualBackupDisabled)
         }
+        .disabled(manualBackupDisabled)
 
         Button {
           showBackupImporter = true
         } label: {
-          Label("Load backup", systemImage: "icloud.and.arrow.down")
+          manualBackupLabel("Load backup", systemImage: "icloud.and.arrow.down", isDisabled: manualBackupDisabled)
         }
-        .disabled(store.settings.iCloudSyncEnabled)
+        .disabled(manualBackupDisabled)
+      } header: {
+        Text("Backup & restore")
+      } footer: {
+        Text(manualBackupDisabled ? "Manual backup and restore are disabled while automatic iCloud sync is on." : "Creates a JSON backup you can save to Files or iCloud, or restore onto this device.")
       }
 
       Section {
@@ -766,7 +686,7 @@ struct NativeDataSettingsView: View {
           Label("Clear all app data", systemImage: "trash")
         }
       } footer: {
-        Text("Creates a JSON backup you can save to Files or iCloud, or restore onto this device. Clearing removes everything and restarts sign-up.")
+        Text("Clearing removes everything and restarts sign-up.")
       }
     }
     .navigationTitle("Data & backup")
@@ -840,6 +760,20 @@ struct NativeDataSettingsView: View {
       backupMessage = summary.message
     } catch {
       backupMessage = "Could not load backup. \(error.localizedDescription)"
+    }
+  }
+
+  private var manualBackupDisabled: Bool {
+    store.settings.iCloudSyncEnabled
+  }
+
+  private func manualBackupLabel(_ title: String, systemImage: String, isDisabled: Bool) -> some View {
+    Label {
+      Text(title)
+        .foregroundStyle(isDisabled ? Color.secondary : Color.primary)
+    } icon: {
+      Image(systemName: systemImage)
+        .foregroundStyle(isDisabled ? Color.secondary : OkkleColor.brand)
     }
   }
 

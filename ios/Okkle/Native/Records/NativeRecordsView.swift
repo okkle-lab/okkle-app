@@ -9,7 +9,6 @@ struct NativeRecordsView: View {
   // checking what's recent, not everything you've ever logged; All time is
   // one tap away via the month picker below.
   @State private var selectedMonth: Date? = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date()))
-  @State private var showsMonthPicker = false
   @State private var itemPendingDeletion: NativeHistoryItem?
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
@@ -34,8 +33,14 @@ struct NativeRecordsView: View {
     var id: String { rawValue }
     var label: String {
       switch self {
-      case .journeys: return "Trips"
-      default: return rawValue.capitalized
+      case .all:
+        return "All"
+      case .journeys:
+        return "Mileage"
+      case .income:
+        return "Income"
+      case .expense:
+        return "Expense"
       }
     }
   }
@@ -179,27 +184,45 @@ struct NativeRecordsView: View {
         }
         .pickerStyle(.segmented)
 
-        Button {
-          showsMonthPicker = true
+        Menu {
+          Button {
+            selectedMonth = nil
+          } label: {
+            if selectedMonth == nil {
+              Label("All time", systemImage: "checkmark")
+            } else {
+              Text("All time")
+            }
+          }
+
+          ForEach(availableMonths, id: \.self) { month in
+            Button {
+              selectedMonth = month
+            } label: {
+              if selectedMonth == month {
+                Label(monthLabel(for: month), systemImage: "checkmark")
+              } else {
+                Text(monthLabel(for: month))
+              }
+            }
+          }
         } label: {
-          Label(monthButtonLabel, systemImage: "calendar")
+          Label(monthButtonLabel, systemImage: "line.3.horizontal.decrease")
             .labelStyle(.iconOnly)
             .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(selectedMonth != nil ? .white : OkkleColor.brand)
+            .foregroundStyle(OkkleColor.brand)
             .padding(10)
-            .background(selectedMonth != nil ? OkkleColor.brand : OkkleColor.brand.opacity(0.14), in: Circle())
+            .background(OkkleColor.brand.opacity(selectedMonth != nil ? 0.22 : 0.14), in: Circle())
+            .overlay {
+              Circle()
+                .stroke(OkkleColor.brand.opacity(selectedMonth != nil ? 0.38 : 0), lineWidth: 1)
+            }
         }
         .accessibilityLabel(selectedMonth != nil ? "Showing \(monthButtonLabel)" : "Showing all time")
       }
-      .confirmationDialog("Show month", isPresented: $showsMonthPicker, titleVisibility: .visible) {
-        Button("All time") { selectedMonth = nil }
-        ForEach(availableMonths, id: \.self) { month in
-          Button(monthLabel(for: month)) { selectedMonth = month }
-        }
-      }
 
       if filteredHistory.isEmpty {
-        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Trips, earnings and expenses appear here after you save them.")
+        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Mileage, earnings and expenses appear here after you save them.")
       } else {
         NativeGlassCard {
           VStack(spacing: 0) {
