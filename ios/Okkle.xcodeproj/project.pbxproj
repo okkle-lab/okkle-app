@@ -24,6 +24,7 @@
 		67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D16F24230562870410B37EC /* NativeLogView.swift */; };
 		6D939B15DD214840A6C00DAE /* NativePreShiftNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */; };
 		764745A26CC7406DD271FCFA /* NativeLoggingReminder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8936B37E0604C829E392E1 /* NativeLoggingReminder.swift */; };
+		79D4A9B56FBC4E7DA1B3C221 /* NativeRouteStopDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */; };
 		7B5B2B01A61D4C01A9F83C10 /* NativeICloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B5B2B00A61D4C01A9F83C0F /* NativeICloudSync.swift */; };
 		8559784546AD4021B63E2C13 /* NativeAccountantPackPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */; };
 		9F88AF1F7A4C49F6A7D0F841 /* NativeLegacySQLiteExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */; };
@@ -130,6 +131,7 @@
 		6474E5749C7C4E63B1CD0201 /* NativeLogMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogMedia.swift; sourceTree = "<group>"; };
 		6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePreShiftNotifier.swift; sourceTree = "<group>"; };
 		7840FA4691610C5A1ECDBB5B /* OkkleNativeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleNativeRootView.swift; sourceTree = "<group>"; };
+		79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRouteStopDetector.swift; sourceTree = "<group>"; };
 		7912EDAE45D308E45EABFAB8 /* OkkleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OkkleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7AD6F6C8E5CD65225A295942 /* NativeRecordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRecordsView.swift; sourceTree = "<group>"; };
 		7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightsView.swift; sourceTree = "<group>"; };
@@ -213,6 +215,7 @@
 				AAA72D617231D3C6717321E0 /* NativeShiftMap.swift */,
 				2E272519B01357A93A5AEF02 /* NativeTaxDates.swift */,
 				D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */,
+				79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */,
 				6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */,
 				EAF39469B146AB6A7CF2E14D /* NativeAutoShiftReview.swift */,
 				1A8936B37E0604C829E392E1 /* NativeLoggingReminder.swift */,
@@ -650,6 +653,7 @@
 				D064A003845AB92AD0D13D5F /* NativeShiftMap.swift in Sources */,
 				0A5247338440992A362F9B27 /* NativeTaxDates.swift in Sources */,
 				D30FD8D8D709421B8B1BD003 /* NativeAutoTrackEngine.swift in Sources */,
+				79D4A9B56FBC4E7DA1B3C221 /* NativeRouteStopDetector.swift in Sources */,
 				6D939B15DD214840A6C00DAE /* NativePreShiftNotifier.swift in Sources */,
 				14FC991062602F3F2D2D8B26 /* NativeRecordsView.swift in Sources */,
 				C70CF123C82959ECB53644BC /* NativeExportService.swift in Sources */,

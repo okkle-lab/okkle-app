@@ -707,6 +707,9 @@ struct NativeDataSettingsView: View {
     }
     .navigationTitle("Data & backup")
     .navigationBarTitleDisplayMode(.inline)
+    .onAppear {
+      store.refreshICloudSyncIfNeeded()
+    }
     .sheet(item: $backupShareItem) { item in
       NativeShareSheet(items: [item.url])
     }
