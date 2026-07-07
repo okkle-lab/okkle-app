@@ -131,8 +131,8 @@
 		6474E5749C7C4E63B1CD0201 /* NativeLogMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogMedia.swift; sourceTree = "<group>"; };
 		6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePreShiftNotifier.swift; sourceTree = "<group>"; };
 		7840FA4691610C5A1ECDBB5B /* OkkleNativeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleNativeRootView.swift; sourceTree = "<group>"; };
-		79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRouteStopDetector.swift; sourceTree = "<group>"; };
 		7912EDAE45D308E45EABFAB8 /* OkkleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OkkleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRouteStopDetector.swift; sourceTree = "<group>"; };
 		7AD6F6C8E5CD65225A295942 /* NativeRecordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRecordsView.swift; sourceTree = "<group>"; };
 		7B5B2B00A61D4C01A9F83C0F /* NativeICloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeICloudSync.swift; sourceTree = "<group>"; };
 		7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightsView.swift; sourceTree = "<group>"; };
