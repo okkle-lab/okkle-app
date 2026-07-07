@@ -246,7 +246,6 @@ struct NativeLogView: View {
       )
     case .expense:
       VStack(spacing: 14) {
-        expenseCategorySuggestions
         NativeFreeTextDropdown(
           title: "Category",
           placeholder: "Choose or type a category",
@@ -352,8 +351,6 @@ struct NativeLogView: View {
       return Double(amount) ?? 0 > 0 && !incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .expense:
       return (Double(amount) ?? 0 > 0)
-        && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        && !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
   }
@@ -376,9 +373,7 @@ struct NativeLogView: View {
       case .income:
         return !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       case .expense:
-        return !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-          && !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-          && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return true
       case .mileage:
         return true
       }
@@ -436,7 +431,7 @@ struct NativeLogView: View {
       case .income:
         return "Pick a saved platform or type a new one."
       case .expense:
-        return "Pick a common non-mileage cost, then add merchant and note for the accountant pack."
+        return "Choose a category if useful, then add context for the accountant pack."
       case .mileage:
         return "Okkle uses this to calculate the mileage deduction."
       }
@@ -486,9 +481,14 @@ struct NativeLogView: View {
       rows.append(("Platform", incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines)))
     case .expense:
       rows.append(("Amount", gbp(Double(amount) ?? 0)))
-      rows.append(("Category", category.trimmingCharacters(in: .whitespacesAndNewlines)))
+      let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !cleanCategory.isEmpty {
+        rows.append(("Category", cleanCategory))
+      }
       let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-      rows.append(("Merchant", cleanMerchant))
+      if !cleanMerchant.isEmpty {
+        rows.append(("Merchant", cleanMerchant))
+      }
       rows.append(("Note", note.trimmingCharacters(in: .whitespacesAndNewlines)))
     }
 
@@ -705,19 +705,6 @@ struct NativeLogView: View {
     return platform
   }
 
-  private var preferredExpenseCategories: [String] {
-    [
-      "Phone / data",
-      "Parking",
-      "Congestion charge",
-      "ULEZ charge",
-      "Insulated bag",
-      "Phone mount",
-      "App subscription",
-      "Waterproof gear"
-    ]
-  }
-
   private var categoryOptions: [String] {
     let recent = store.records
       .filter { $0.kind == .expense }
@@ -865,38 +852,6 @@ struct NativeLogView: View {
     }
   }
 
-  private var expenseCategorySuggestions: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("Common courier costs")
-        .font(.system(size: 14, weight: .bold))
-        .foregroundStyle(OkkleColor.ink)
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], alignment: .leading, spacing: 8) {
-        ForEach(preferredExpenseCategories, id: \.self) { item in
-          Button {
-            category = item
-          } label: {
-            HStack(spacing: 6) {
-              Text(item)
-                .font(.system(size: 13, weight: .bold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-              Spacer(minLength: 4)
-              if category == item {
-                Image(systemName: "checkmark.circle.fill")
-                  .font(.system(size: 12, weight: .bold))
-              }
-            }
-            .foregroundStyle(category == item ? .white : OkkleColor.ink)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background(category == item ? OkkleColor.brand : OkkleColor.fieldBackground, in: Capsule())
-          }
-          .buttonStyle(.plain)
-        }
-      }
-    }
-  }
-
   private func nativeTextField(title: String, placeholder: String, text: Binding<String>) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(title)
@@ -987,8 +942,8 @@ struct NativeLogView: View {
         amount: Double(amount) ?? 0,
         miles: nil,
         deduction: nil,
-        category: cleanCategory,
-        merchant: cleanMerchant,
+        category: cleanCategory.isEmpty ? nil : cleanCategory,
+        merchant: cleanMerchant.isEmpty ? nil : cleanMerchant,
         note: cleanNote,
         date: date,
         period: period,

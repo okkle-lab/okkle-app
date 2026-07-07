@@ -948,8 +948,6 @@ struct NativeRecordEditSheet: View {
       return amountValue > 0 && !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .expense:
       return amountValue > 0
-        && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        && !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .mileage:
       return milesValue > 0
@@ -981,8 +979,8 @@ struct NativeRecordEditSheet: View {
       let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
       let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
       updated.amount = amountValue
-      updated.category = cleanCategory
-      updated.merchant = cleanMerchant
+      updated.category = cleanCategory.isEmpty ? nil : cleanCategory
+      updated.merchant = cleanMerchant.isEmpty ? nil : cleanMerchant
       updated.note = cleanNote
     case .mileage:
       updated.vehicle = vehicle
