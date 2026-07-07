@@ -353,7 +353,10 @@ struct NativeShiftInsights {
   /// for "high") catches the second.
   var confidence: NativeConfidence {
     var level: NativeConfidence
-    if deliveries >= 20 && activeDays >= 6 && daySpan >= 14 { level = .high }
+    // High needs the weekly cycle to have actually repeated (14-day span)
+    // and to have been driven on most of those days, not just a handful
+    // scattered across it — 6 of 14 was under half.
+    if deliveries >= 20 && activeDays >= 8 && daySpan >= 14 { level = .high }
     else if deliveries >= 8 && activeDays >= 3 && daySpan >= 7 { level = .medium }
     else { level = .low }
 

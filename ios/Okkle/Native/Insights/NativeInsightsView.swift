@@ -103,12 +103,12 @@ struct NativeShiftPatternsCard: View {
   }
 
   var body: some View {
-    // Full panels only once there's enough evidence to actually trust a
-    // recommendation — a handful of deliveries can produce a "pattern"
-    // that's really just noise. Below medium confidence, show the
-    // building state instead of presenting a shaky read as if it were
-    // solid, even though shift.hasData would already be true by then.
-    if shift.confidence != .low {
+    // Full panels only once confidence is genuinely High — Medium ("good
+    // read") is still shaky enough that presenting it as a confident
+    // recommendation risks sending someone to the wrong place at the
+    // wrong time. Below High, show the building state instead, even
+    // though shift.hasData would already be true well before then.
+    if shift.confidence == .high {
       VStack(alignment: .leading, spacing: 14) {
         NativeInsightPeriodTabs(period: $period)
 
@@ -230,15 +230,15 @@ struct NativeShiftPatternsCard: View {
     }
   }
 
-  /// Mirrors the medium-confidence thresholds in NativeShiftInsights.confidence
-  /// (8+ deliveries, 3+ distinct days, spread across at least a week) —
-  /// whichever of the three is further from being met is the real
-  /// bottleneck, so progress is capped at the smallest ratio rather than
-  /// averaged.
+  /// Mirrors the high-confidence thresholds in NativeShiftInsights.confidence
+  /// (20+ deliveries, 8+ distinct days, spread across at least two weeks —
+  /// full panels now wait for High, not just Medium) — whichever of the
+  /// three is further from being met is the real bottleneck, so progress
+  /// is capped at the smallest ratio rather than averaged.
   private var buildingProgress: Double {
-    let deliveryProgress = min(Double(shift.deliveries) / 8.0, 1.0)
-    let dayProgress = min(Double(shift.activeDays) / 3.0, 1.0)
-    let spanProgress = min(Double(shift.daySpan) / 7.0, 1.0)
+    let deliveryProgress = min(Double(shift.deliveries) / 20.0, 1.0)
+    let dayProgress = min(Double(shift.activeDays) / 8.0, 1.0)
+    let spanProgress = min(Double(shift.daySpan) / 14.0, 1.0)
     return min(deliveryProgress, dayProgress, spanProgress)
   }
 
@@ -250,12 +250,12 @@ struct NativeShiftPatternsCard: View {
       // back by an uneven week (see NativeShiftInsights.confidence) — say
       // so rather than implying it's stuck.
       return "Almost there — a few more regular days will lock in your personalised timing and areas."
-    } else if shift.daySpan < 7 {
-      // Enough deliveries can pile up in just two or three days — that's
-      // not enough to say which days of the week are actually busiest, so
-      // call out the week requirement specifically rather than just the
+    } else if shift.daySpan < 14 {
+      // Enough deliveries can pile up in under two weeks — that's not
+      // enough to say the weekly pattern actually repeats, so call out
+      // the two-week requirement specifically rather than just the
       // delivery count.
-      return "\(shift.deliveries) deliveries so far — needs at least a week of driving before it can trust a pattern."
+      return "\(shift.deliveries) deliveries so far — needs at least two weeks of driving before it can trust a pattern."
     } else {
       let dayLabel = shift.activeDays == 1 ? "day" : "days"
       return "\(shift.deliveries) deliveries across \(shift.activeDays) \(dayLabel) so far — keep driving and this sharpens up."
