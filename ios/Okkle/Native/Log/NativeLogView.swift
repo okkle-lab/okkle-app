@@ -247,18 +247,22 @@ struct NativeLogView: View {
     case .expense:
       VStack(spacing: 14) {
         NativeFreeTextDropdown(
-          title: "Category",
+          title: "Category *",
           placeholder: "Choose or type a category",
           options: categoryOptions,
           text: $category
         )
+        Text("Required. Pick the closest expense type so this can be saved correctly.")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .frame(maxWidth: .infinity, alignment: .leading)
         nativeTextField(
-          title: "Merchant",
+          title: "Merchant (optional)",
           placeholder: "e.g. Shell, Halfords, Vodafone",
           text: $merchant
         )
         nativeTextEditor(
-          title: "Note",
+          title: "Note (optional)",
           placeholder: "e.g. Phone data for courier apps, parking while collecting orders",
           text: $note
         )
@@ -351,7 +355,7 @@ struct NativeLogView: View {
       return Double(amount) ?? 0 > 0 && !incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .expense:
       return (Double(amount) ?? 0 > 0)
-        && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
   }
 
@@ -373,7 +377,7 @@ struct NativeLogView: View {
       case .income:
         return !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       case .expense:
-        return true
+        return !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       case .mileage:
         return true
       }
@@ -431,7 +435,7 @@ struct NativeLogView: View {
       case .income:
         return "Pick a saved platform or type a new one."
       case .expense:
-        return "Choose a category if useful, then add context for the accountant pack."
+        return "Category is required. Merchant and note are optional context for the accountant pack."
       case .mileage:
         return "Okkle uses this to calculate the mileage deduction."
       }
@@ -489,7 +493,10 @@ struct NativeLogView: View {
       if !cleanMerchant.isEmpty {
         rows.append(("Merchant", cleanMerchant))
       }
-      rows.append(("Note", note.trimmingCharacters(in: .whitespacesAndNewlines)))
+      let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !cleanNote.isEmpty {
+        rows.append(("Note", cleanNote))
+      }
     }
 
     rows.append(("Period", period.label))
@@ -944,7 +951,7 @@ struct NativeLogView: View {
         deduction: nil,
         category: cleanCategory.isEmpty ? nil : cleanCategory,
         merchant: cleanMerchant.isEmpty ? nil : cleanMerchant,
-        note: cleanNote,
+        note: cleanNote.isEmpty ? nil : cleanNote,
         date: date,
         period: period,
         periodStart: bounds.start,
