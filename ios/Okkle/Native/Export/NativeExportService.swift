@@ -189,10 +189,12 @@ func nativeFreeAgentCsv(store: OkkleStore) -> String {
           return value
         }.joined(separator: " - ")
       }
+      let cleanNote = record.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      let exportDescription = cleanNote.isEmpty ? description : "\(description) - \(cleanNote)"
       return [
         nativeCsvField(nativeUkDateStamp(record.date)),
         nativeCsvField(nativeDecimal(amount)),
-        nativeCsvField(description)
+        nativeCsvField(exportDescription)
       ].joined(separator: ",")
     }
   return (["Date,Amount,Description"] + rows).joined(separator: "\n")
@@ -200,7 +202,7 @@ func nativeFreeAgentCsv(store: OkkleStore) -> String {
 
 @MainActor
 func nativeAllDataCsv(store: OkkleStore) -> String {
-  let header = "date,type,platform,vehicle,miles,deduction,amount,category,merchant"
+  let header = "date,type,platform,vehicle,miles,deduction,amount,category,merchant,note"
   let tripRows = store.trips.map { trip in
     [
       nativeCsvField(nativeDateStamp(trip.startedAt)),
@@ -209,6 +211,7 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(trip.vehicle.label),
       nativeCsvField(nativeDecimal(trip.miles)),
       nativeCsvField(nativeDecimal(trip.deduction)),
+      nativeCsvField(""),
       nativeCsvField(""),
       nativeCsvField(""),
       nativeCsvField("")
@@ -224,7 +227,8 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(record.deduction.map(nativeDecimal) ?? ""),
       nativeCsvField(record.amount.map(nativeDecimal) ?? ""),
       nativeCsvField(record.category ?? ""),
-      nativeCsvField(record.merchant ?? "")
+      nativeCsvField(record.merchant ?? ""),
+      nativeCsvField(record.note ?? "")
     ].joined(separator: ",")
   }
   return ([header] + tripRows + recordRows).joined(separator: "\n")

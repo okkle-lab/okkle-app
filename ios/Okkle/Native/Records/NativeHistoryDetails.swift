@@ -642,6 +642,9 @@ struct NativeRecordDetailSheet: View {
       if let merchant = record.merchant, !merchant.isEmpty {
         recordDetailRow("Merchant", value: merchant, symbol: "building.2")
       }
+      if let note = record.note, !note.isEmpty {
+        recordDetailRow("Note", value: note, symbol: "note.text")
+      }
       recordDetailRow("Amount", value: gbp(record.amount ?? 0), symbol: "receipt")
     case .mileage:
       recordDetailRow("Vehicle", value: record.vehicle?.label ?? "Vehicle", symbol: record.vehicle?.symbol ?? "car.fill")
@@ -809,6 +812,7 @@ struct NativeRecordEditSheet: View {
   @State private var vehicle: NativeVehicle
   @State private var category: String
   @State private var merchant: String
+  @State private var note: String
   @State private var date: Date
   @State private var period: NativePayPeriod
 
@@ -821,6 +825,7 @@ struct NativeRecordEditSheet: View {
     _vehicle = State(initialValue: record.vehicle ?? .car)
     _category = State(initialValue: record.category ?? "")
     _merchant = State(initialValue: record.merchant ?? "")
+    _note = State(initialValue: record.note ?? "")
     _date = State(initialValue: record.date)
     _period = State(initialValue: record.period)
   }
@@ -848,12 +853,10 @@ struct NativeRecordEditSheet: View {
               options: categoryOptions,
               text: $category
             )
-            NativeFreeTextDropdown(
-              title: "Merchant",
-              placeholder: "Choose or type a merchant",
-              options: merchantOptions,
-              text: $merchant
-            )
+            TextField("Merchant", text: $merchant)
+              .textInputAutocapitalization(.words)
+            TextField("Note for accountant", text: $note, axis: .vertical)
+              .lineLimit(2...4)
           case .mileage:
             NativeNumberDoneTextField(text: $milesText, placeholder: "Miles")
               .frame(height: 34)
@@ -927,13 +930,6 @@ struct NativeRecordEditSheet: View {
     return uniqueStrings([category] + recent + nativeExpenseCategories)
   }
 
-  private var merchantOptions: [String] {
-    let recent = store.records
-      .filter { $0.kind == .expense }
-      .compactMap { $0.merchant }
-    return uniqueStrings([merchant] + recent)
-  }
-
   private var amountValue: Double {
     Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0
   }
@@ -951,7 +947,10 @@ struct NativeRecordEditSheet: View {
     case .income:
       return amountValue > 0 && !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .expense:
-      return amountValue > 0 && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      return amountValue > 0
+        && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .mileage:
       return milesValue > 0
     }
@@ -980,9 +979,11 @@ struct NativeRecordEditSheet: View {
     case .expense:
       let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
       let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+      let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
       updated.amount = amountValue
       updated.category = cleanCategory
-      updated.merchant = cleanMerchant.isEmpty ? nil : cleanMerchant
+      updated.merchant = cleanMerchant
+      updated.note = cleanNote
     case .mileage:
       updated.vehicle = vehicle
       updated.miles = milesValue

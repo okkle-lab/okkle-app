@@ -167,6 +167,7 @@ struct NativeRecord: Identifiable, Codable, Equatable {
   var deduction: Double?
   var category: String?
   var merchant: String? = nil
+  var note: String? = nil
   var date: Date
   var period: NativePayPeriod
   var periodStart: Date? = nil

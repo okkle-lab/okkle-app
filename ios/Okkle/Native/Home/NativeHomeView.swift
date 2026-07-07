@@ -776,20 +776,20 @@ private struct RecentPanelTopPreferenceKey: PreferenceKey {
 let nativeSeenMedalsKey = "uk.okkle.native.medals.seen.v1"
 
 let nativeExpenseCategories = [
-  "Fuel",
-  "Charging",
   "Parking",
   "Phone / data",
-  "Insurance",
-  "Maintenance / repairs",
-  "Tyres",
   "Congestion charge",
   "ULEZ charge",
   "Insulated bag",
-  "Waterproof gear",
-  "Helmet / safety",
   "Phone mount",
   "App subscription",
+  "Waterproof gear",
+  "Helmet / safety",
+  "Charging",
+  "Fuel",
+  "Insurance",
+  "Maintenance / repairs",
+  "Tyres",
 ]
 
 /// A rotating home greeting — time of day, season, and a mix of British, Aussie

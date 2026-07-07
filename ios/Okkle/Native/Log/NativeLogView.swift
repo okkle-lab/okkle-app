@@ -10,6 +10,7 @@ struct NativeLogView: View {
   @State private var distance = ""
   @State private var category = ""
   @State private var merchant = ""
+  @State private var note = ""
   @State private var platform = "Uber Eats"
   @State private var vehicle: NativeVehicle = .car
   @State private var period: NativePayPeriod = .day
@@ -103,7 +104,11 @@ struct NativeLogView: View {
   private var steps: [LogStep] {
     let entrySteps: [LogStep]
     switch kind {
-    case .income, .expense:
+    case .income:
+      entrySteps = savedPlatformOptions.count == 1
+        ? [.receipt, .primary, .date, .review]
+        : [.receipt, .primary, .details, .date, .review]
+    case .expense:
       entrySteps = [.receipt, .primary, .details, .date, .review]
     case .mileage:
       entrySteps = [.primary, .details, .date, .review]
@@ -235,23 +240,28 @@ struct NativeLogView: View {
     case .income:
       NativeFreeTextDropdown(
         title: "Delivery service",
-        placeholder: "Choose or type a delivery service",
+        placeholder: "Choose the delivery service",
         options: platformOptions,
         text: $platform
       )
     case .expense:
       VStack(spacing: 14) {
+        expenseCategorySuggestions
         NativeFreeTextDropdown(
           title: "Category",
           placeholder: "Choose or type a category",
           options: categoryOptions,
           text: $category
         )
-        NativeFreeTextDropdown(
+        nativeTextField(
           title: "Merchant",
-          placeholder: "Choose or type a merchant",
-          options: merchantOptions,
+          placeholder: "e.g. Shell, Halfords, Vodafone",
           text: $merchant
+        )
+        nativeTextEditor(
+          title: "Note",
+          placeholder: "e.g. Phone data for courier apps, parking while collecting orders",
+          text: $note
         )
       }
     case .mileage:
@@ -339,9 +349,12 @@ struct NativeLogView: View {
     case .mileage:
       return Double(distance) ?? 0 > 0
     case .income:
-      return Double(amount) ?? 0 > 0 && !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      return Double(amount) ?? 0 > 0 && !incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .expense:
-      return (Double(amount) ?? 0 > 0) && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      return (Double(amount) ?? 0 > 0)
+        && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
   }
 
@@ -364,6 +377,8 @@ struct NativeLogView: View {
         return !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       case .expense:
         return !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          && !merchant.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       case .mileage:
         return true
       }
@@ -421,7 +436,7 @@ struct NativeLogView: View {
       case .income:
         return "Pick a saved platform or type a new one."
       case .expense:
-        return "Use a category your accountant will understand."
+        return "Pick a common non-mileage cost, then add merchant and note for the accountant pack."
       case .mileage:
         return "Okkle uses this to calculate the mileage deduction."
       }
@@ -468,14 +483,13 @@ struct NativeLogView: View {
       rows.append(("Deduction", gbp(store.calcDeduction(miles: milesValue, vehicle: vehicle, date: date))))
     case .income:
       rows.append(("Amount", gbp(Double(amount) ?? 0)))
-      rows.append(("Platform", platform.trimmingCharacters(in: .whitespacesAndNewlines)))
+      rows.append(("Platform", incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines)))
     case .expense:
       rows.append(("Amount", gbp(Double(amount) ?? 0)))
       rows.append(("Category", category.trimmingCharacters(in: .whitespacesAndNewlines)))
       let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !cleanMerchant.isEmpty {
-        rows.append(("Merchant", cleanMerchant))
-      }
+      rows.append(("Merchant", cleanMerchant))
+      rows.append(("Note", note.trimmingCharacters(in: .whitespacesAndNewlines)))
     }
 
     rows.append(("Period", period.label))
@@ -681,10 +695,27 @@ struct NativeLogView: View {
   }
 
   private var platformOptions: [String] {
-    let recent = store.records
-      .filter { $0.kind == .income }
-      .compactMap { $0.platform }
-    return uniqueStrings(store.settings.platforms + nativeDeliveryServiceOptions + recent + [platform])
+    uniqueStrings(savedPlatformOptions + [platform])
+  }
+
+  private var incomePlatform: String {
+    if savedPlatformOptions.count == 1 {
+      return savedPlatformOptions[0]
+    }
+    return platform
+  }
+
+  private var preferredExpenseCategories: [String] {
+    [
+      "Phone / data",
+      "Parking",
+      "Congestion charge",
+      "ULEZ charge",
+      "Insulated bag",
+      "Phone mount",
+      "App subscription",
+      "Waterproof gear"
+    ]
   }
 
   private var categoryOptions: [String] {
@@ -694,11 +725,10 @@ struct NativeLogView: View {
     return uniqueStrings(recent + nativeExpenseCategories)
   }
 
-  private var merchantOptions: [String] {
-    let recent = store.records
-      .filter { $0.kind == .expense }
-      .compactMap { $0.merchant }
-    return uniqueStrings(recent)
+  private var savedPlatformOptions: [String] {
+    uniqueStrings(store.settings.platforms)
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
   }
 
   private var savedMessage: String {
@@ -835,10 +865,80 @@ struct NativeLogView: View {
     }
   }
 
+  private var expenseCategorySuggestions: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("Common courier costs")
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(OkkleColor.ink)
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], alignment: .leading, spacing: 8) {
+        ForEach(preferredExpenseCategories, id: \.self) { item in
+          Button {
+            category = item
+          } label: {
+            HStack(spacing: 6) {
+              Text(item)
+                .font(.system(size: 13, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+              Spacer(minLength: 4)
+              if category == item {
+                Image(systemName: "checkmark.circle.fill")
+                  .font(.system(size: 12, weight: .bold))
+              }
+            }
+            .foregroundStyle(category == item ? .white : OkkleColor.ink)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(category == item ? OkkleColor.brand : OkkleColor.fieldBackground, in: Capsule())
+          }
+          .buttonStyle(.plain)
+        }
+      }
+    }
+  }
+
+  private func nativeTextField(title: String, placeholder: String, text: Binding<String>) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(title)
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(OkkleColor.ink)
+      TextField(placeholder, text: text)
+        .font(.system(size: 16, weight: .semibold))
+        .textInputAutocapitalization(.words)
+        .padding(14)
+        .background(OkkleColor.fieldBackground, in: RoundedRectangle(cornerRadius: 18))
+    }
+  }
+
+  private func nativeTextEditor(title: String, placeholder: String, text: Binding<String>) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(title)
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(OkkleColor.ink)
+      ZStack(alignment: .topLeading) {
+        if text.wrappedValue.isEmpty {
+          Text(placeholder)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted.opacity(0.72))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .allowsHitTesting(false)
+        }
+        TextEditor(text: text)
+          .font(.system(size: 15, weight: .semibold))
+          .scrollContentBackground(.hidden)
+          .padding(10)
+          .frame(minHeight: 96)
+      }
+      .background(OkkleColor.fieldBackground, in: RoundedRectangle(cornerRadius: 18))
+    }
+  }
+
   private func saveRecord() {
     let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-    let cleanPlatform = platform.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanPlatform = incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines)
     let receiptPayload = nativeOptimizedReceiptData(image: receiptImage, data: receiptData)
     let bounds = store.periodBounds(for: date, period: period)
     let record: NativeRecord
@@ -854,6 +954,7 @@ struct NativeLogView: View {
         deduction: store.calcDeduction(miles: milesValue, vehicle: vehicle, date: date),
         category: nil,
         merchant: nil,
+        note: nil,
         date: date,
         period: period,
         periodStart: bounds.start,
@@ -870,6 +971,7 @@ struct NativeLogView: View {
         deduction: nil,
         category: nil,
         merchant: nil,
+        note: nil,
         date: date,
         period: period,
         periodStart: bounds.start,
@@ -886,7 +988,8 @@ struct NativeLogView: View {
         miles: nil,
         deduction: nil,
         category: cleanCategory,
-        merchant: cleanMerchant.isEmpty ? nil : cleanMerchant,
+        merchant: cleanMerchant,
+        note: cleanNote,
         date: date,
         period: period,
         periodStart: bounds.start,
@@ -904,8 +1007,9 @@ struct NativeLogView: View {
     distance = ""
     category = ""
     merchant = ""
+    note = ""
     vehicle = store.settings.defaultVehicle
-    platform = store.settings.platforms.first ?? "Uber Eats"
+    platform = savedPlatformOptions.first ?? "Uber Eats"
     period = .day
     date = Date()
     receiptImage = nil

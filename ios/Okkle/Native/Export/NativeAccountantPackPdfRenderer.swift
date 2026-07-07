@@ -202,15 +202,16 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
       [
         nativeUkDateStamp(record.date),
         nativeExpenseDescription(record),
+        record.note ?? "",
         gbp(record.amount ?? 0),
         record.receiptImageData == nil ? "No" : "Attached"
       ]
     }
     drawTable(
-      headers: ["Date", "Description", "Amount", "Receipt"],
+      headers: ["Date", "Description", "Note", "Amount", "Receipt"],
       rows: rows,
-      widths: [0.20, 0.44, 0.20, 0.16],
-      rightAligned: [2],
+      widths: [0.16, 0.30, 0.26, 0.14, 0.14],
+      rightAligned: [3],
       emptyMessage: emptyMessage
     )
   }
