@@ -132,15 +132,32 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     NativeOutcomeTracker.shared.record(amount: amount, period: record.period,
                                        wasPredictedPeakDay: peakWeekdays.contains(weekday))
 
-    // Zone half of the same self-correction: did that day's actual work
-    // happen anywhere near the zone recommended for its weekday? Entirely
-    // silent — feeds NativeZoneOutcomeTracker.zoneHitRate, which only ever
-    // dampens future zone weights, never boosts them.
-    if let recommendedZone = insights.weekdayDetails.first(where: { $0.weekday == weekday })?.coordinate {
-      let recommended = CLLocation(latitude: recommendedZone.latitude, longitude: recommendedZone.longitude)
+    // Zone half of the same self-correction: did work happen anywhere near a
+    // recommended zone at any point during this record's own period — not
+    // just the single day the driver happened to pick when logging, which
+    // for a "Week" entry is only where the period ends, not the whole span
+    // it actually covers. Entirely silent — feeds
+    // NativeZoneOutcomeTracker.zoneHitRate, which only ever dampens future
+    // zone weights, never boosts them.
+    let periodStart = Calendar.current.startOfDay(for: record.periodStart ?? record.date)
+    let periodEnd = Calendar.current.startOfDay(for: record.periodEnd ?? record.date)
+    var weekdaysInPeriod = Set<Int>()
+    var cursor = periodStart
+    while cursor <= periodEnd {
+      weekdaysInPeriod.insert(Calendar.current.component(.weekday, from: cursor) - 1)
+      guard let next = Calendar.current.date(byAdding: .day, value: 1, to: cursor) else { break }
+      cursor = next
+    }
+    let recommendedZonesInPeriod = weekdaysInPeriod.compactMap { wd in
+      insights.weekdayDetails.first(where: { $0.weekday == wd })?.coordinate
+    }
+    if !recommendedZonesInPeriod.isEmpty {
+      let periodEndExclusive = periodEnd.addingTimeInterval(86_400)
       let wasNear = visits.contains { visit in
-        Calendar.current.isDate(visit.arrival, inSameDayAs: record.date) &&
-          visit.location.distance(from: recommended) <= 600
+        guard visit.arrival >= periodStart, visit.arrival < periodEndExclusive else { return false }
+        return recommendedZonesInPeriod.contains { zone in
+          visit.location.distance(from: CLLocation(latitude: zone.latitude, longitude: zone.longitude)) <= 600
+        }
       }
       NativeZoneOutcomeTracker.shared.record(amount: amount, period: record.period, wasNearRecommendedZone: wasNear)
     }

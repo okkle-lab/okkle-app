@@ -276,6 +276,41 @@ final class NativeInsightsSimulationTests: XCTestCase {
     XCTAssertGreaterThan(steadyZone?.weight ?? 0, luckyZone?.weight ?? 1)
   }
 
+  func testWeekPeriodIncomeSpreadsAcrossActualDeliveryDays() {
+    let store = OkkleStore()
+    // Three deliveries on different days of the same week, all in one zone —
+    // none of them on the Sunday the week-ending record is dated.
+    let monday = date(2026, 6, 1, 12)
+    let wednesday = date(2026, 6, 3, 12)
+    let friday = date(2026, 6, 5, 12)
+    var visits: [NativeVisit] = []
+    for day in [monday, wednesday, friday] {
+      visits.append(visit(kind: .dropoff, latitude: 51.700, longitude: -0.900, arrival: day, departure: day.addingTimeInterval(60)))
+      visits.append(visit(kind: .pickup, latitude: 51.718, longitude: -0.900, arrival: day.addingTimeInterval(10 * 60), departure: day.addingTimeInterval(10 * 60)))
+      visits.append(visit(kind: .dropoff, latitude: 51.7181, longitude: -0.900, arrival: day.addingTimeInterval(15 * 60), departure: day.addingTimeInterval(15 * 60)))
+    }
+
+    // Logged as one "Week" entry dated the Sunday it ends — no delivery
+    // happened on that exact day, only Mon/Wed/Fri within its period.
+    var weekRecord = record(date: date(2026, 6, 7, 18), amount: 90)
+    weekRecord.period = .week
+    weekRecord.periodStart = date(2026, 6, 1, 0)
+    weekRecord.periodEnd = date(2026, 6, 7, 0)
+    store.records = [weekRecord]
+
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+    let zone = insights.zones.first { $0.coordinate.latitude == 51.718 }
+    XCTAssertNotNil(zone)
+
+    // Same shift with no income logged at all — if the week entry were
+    // silently ignored (matching only `date`, the bug this fixes), the two
+    // weights would come out identical.
+    let insightsWithoutIncome = NativeShiftInsights.build(visits: visits, store: OkkleStore())
+    let zoneWithoutIncome = insightsWithoutIncome.zones.first { $0.coordinate.latitude == 51.718 }
+    XCTAssertNotNil(zoneWithoutIncome)
+    XCTAssertNotEqual(zone?.weight, zoneWithoutIncome?.weight)
+  }
+
   func testTripDerivedVisitsDoNotProduceLocationZones() {
     let store = OkkleStore()
     store.trips = [trip(miles: 6, startedAt: date(2026, 6, 23, 18), endedAt: date(2026, 6, 23, 18, 30), timestamped: false)]

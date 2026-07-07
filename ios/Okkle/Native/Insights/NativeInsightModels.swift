@@ -726,48 +726,59 @@ struct NativeShiftInsights {
       cell.estimatedCost += hitMiles * hit.vehicleCostPerMile
       cells[key] = cell
     }
-    // Attribute each day's logged income across the zone(s) actually worked
-    // that day — the finest grain available, since income is logged per
-    // day/week, not per delivery. A day where every delivery landed in one
-    // zone is attributed exactly; a multi-zone day is a proportional guess
-    // (split by delivery count), so those count for less until enough of
-    // them accumulate. This is what lets a zone with a lot of unpaid
-    // repositioning still rank well if the deliveries it leads to are
-    // genuinely worth the detour, instead of just penalising every unpaid
-    // mile the same regardless of payoff.
+    // Attribute each logged income record across the zone(s) actually worked
+    // during its *own* period — the finest grain available, since income
+    // isn't logged per delivery. A record's period isn't always a single
+    // day: logging "Week" stores periodStart/periodEnd spanning that whole
+    // Monday–Sunday (with `date` itself just the day the driver happened to
+    // pick in the UI) — attributing by `date` alone would dump an entire
+    // week's income onto one day and nothing onto the other six. Spreading
+    // proportionally across every day *within* the record's actual period,
+    // weighted by delivery count, handles Day and Week today and would
+    // handle a Month period automatically too, if one's ever added, since
+    // none of this hardcodes a specific period length. A record whose period
+    // happens to only cover one zone is attributed exactly; one spanning
+    // several zones is a proportional guess (split by delivery count), so
+    // those count for less until enough of them accumulate. This is what
+    // lets a zone with a lot of unpaid repositioning still rank well if the
+    // deliveries it leads to are genuinely worth the detour, instead of just
+    // penalising every unpaid mile the same regardless of payoff.
     struct NativeZoneIncomeAccumulator {
       var exactIncome: Double = 0
       var exactDeliveries: Int = 0
       var splitIncome: Double = 0
       var splitDeliveries: Int = 0
-      // One entry per unambiguous day attributed to this zone — lets the
+      // One entry per unambiguous record attributed to this zone — lets the
       // confidence check below tell "consistently decent" apart from "one
-      // lucky day carrying the average", the same distinction
+      // lucky record carrying the average", the same distinction
       // weekdayReliability already draws for day-of-week counts.
       var exactDayAmounts: [Double] = []
     }
     var incomeByCell: [String: NativeZoneIncomeAccumulator] = [:]
-    let trustworthyHitsByDay = Dictionary(grouping: deliveryHits.filter(\.isLocationTrustworthy)) {
-      Calendar.current.startOfDay(for: $0.date)
-    }
-    for (day, hitsThatDay) in trustworthyHitsByDay {
-      let dayIncome = store.records
-        .filter { $0.kind == .income && Calendar.current.isDate($0.date, inSameDayAs: day) }
-        .reduce(0.0) { $0 + ($1.amount ?? 0) }
-      guard dayIncome > 0 else { continue }
-      let cellsThatDay = Dictionary(grouping: hitsThatDay) { hit in
+    let trustworthyHits = deliveryHits.filter(\.isLocationTrustworthy)
+    let incomeRecords = store.records.filter { $0.kind == .income && ($0.amount ?? 0) > 0 }
+    for record in incomeRecords {
+      guard let amount = record.amount else { continue }
+      let periodStart = Calendar.current.startOfDay(for: record.periodStart ?? record.date)
+      let periodEnd = Calendar.current.startOfDay(for: record.periodEnd ?? record.date)
+      let hitsInPeriod = trustworthyHits.filter { hit in
+        let hitDay = Calendar.current.startOfDay(for: hit.date)
+        return hitDay >= periodStart && hitDay <= periodEnd
+      }
+      guard !hitsInPeriod.isEmpty else { continue }
+      let cellsInPeriod = Dictionary(grouping: hitsInPeriod) { hit in
         "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
       }
-      let isExactDay = cellsThatDay.count == 1
-      for (key, hitsInCell) in cellsThatDay {
-        let share = Double(hitsInCell.count) / Double(hitsThatDay.count)
+      let isExactPeriod = cellsInPeriod.count == 1
+      for (key, hitsInCell) in cellsInPeriod {
+        let share = Double(hitsInCell.count) / Double(hitsInPeriod.count)
         var acc = incomeByCell[key] ?? NativeZoneIncomeAccumulator()
-        if isExactDay {
-          acc.exactIncome += dayIncome * share
+        if isExactPeriod {
+          acc.exactIncome += amount * share
           acc.exactDeliveries += hitsInCell.count
-          acc.exactDayAmounts.append(dayIncome)
+          acc.exactDayAmounts.append(amount)
         } else {
-          acc.splitIncome += dayIncome * share
+          acc.splitIncome += amount * share
           acc.splitDeliveries += hitsInCell.count
         }
         incomeByCell[key] = acc
