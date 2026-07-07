@@ -126,19 +126,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// shows anything, it just quietly keeps the confidence label honest.
   private func checkOutcome(for record: NativeRecord) {
     guard record.kind == .income, let amount = record.amount, let store else { return }
-    let weekday = Calendar.current.component(.weekday, from: record.date) - 1
     let insights = NativeShiftInsights.build(visits: visits, store: store)
-    let peakWeekdays = insights.weekdayDetails.prefix(3).map(\.weekday)
-    NativeOutcomeTracker.shared.record(amount: amount, period: record.period,
-                                       wasPredictedPeakDay: peakWeekdays.contains(weekday))
 
-    // Zone half of the same self-correction: did work happen anywhere near a
-    // recommended zone at any point during this record's own period — not
-    // just the single day the driver happened to pick when logging, which
-    // for a "Week" entry is only where the period ends, not the whole span
-    // it actually covers. Entirely silent — feeds
-    // NativeZoneOutcomeTracker.zoneHitRate, which only ever dampens future
-    // zone weights, never boosts them.
+    // Every weekday this record's own period actually spans — a "Week" entry
+    // covers seven of them, not just the single day the driver happened to
+    // pick when logging (the picker labels it "Week ending", which is only
+    // where the period ends). Shared by both self-correction checks below.
     let periodStart = Calendar.current.startOfDay(for: record.periodStart ?? record.date)
     let periodEnd = Calendar.current.startOfDay(for: record.periodEnd ?? record.date)
     var weekdaysInPeriod = Set<Int>()
@@ -148,6 +141,17 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       guard let next = Calendar.current.date(byAdding: .day, value: 1, to: cursor) else { break }
       cursor = next
     }
+
+    // Day half: was any weekday in this record's period one the model had
+    // called a "peak" day?
+    let peakWeekdays = Set(insights.weekdayDetails.prefix(3).map(\.weekday))
+    NativeOutcomeTracker.shared.record(amount: amount, period: record.period,
+                                       wasPredictedPeakDay: !peakWeekdays.isDisjoint(with: weekdaysInPeriod))
+
+    // Zone half of the same self-correction: did work happen anywhere near a
+    // recommended zone at any point during this record's own period. Entirely
+    // silent — feeds NativeZoneOutcomeTracker.zoneHitRate, which only ever
+    // dampens future zone weights, never boosts them.
     let recommendedZonesInPeriod = weekdaysInPeriod.compactMap { wd in
       insights.weekdayDetails.first(where: { $0.weekday == wd })?.coordinate
     }
