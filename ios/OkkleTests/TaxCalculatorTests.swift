@@ -33,6 +33,69 @@ final class TaxCalculatorTests: XCTestCase {
     XCTAssertEqual(deduction, 70, accuracy: 0.001)
   }
 
+  @MainActor
+  func testAccountantPackPdfStillRendersAfterSharedRendererRefactor() {
+    let store = OkkleStore()
+    let recentDate = Date().addingTimeInterval(-3 * 86_400)
+    store.trips = [
+      NativeTrip(vehicle: .car, miles: 50, deduction: 0, startedAt: recentDate, endedAt: recentDate.addingTimeInterval(3_600), points: [])
+    ]
+    store.records = [
+      NativeRecord(kind: .income, platform: "Uber Eats", vehicle: nil, amount: 120, miles: nil,
+                   deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil)
+    ]
+    let pdf = nativeAccountantPackPdfData(store: store)
+    XCTAssertGreaterThan(pdf.count, 0)
+    XCTAssertEqual(pdf.prefix(4), Data("%PDF".utf8))
+  }
+
+  @MainActor
+  func testMileageReportPdfRendersForEmptyAndPopulatedStore() {
+    let emptyStore = OkkleStore()
+    let emptyPdf = nativeMileageReportPdfData(store: emptyStore)
+    XCTAssertGreaterThan(emptyPdf.count, 0)
+    XCTAssertEqual(emptyPdf.prefix(4), Data("%PDF".utf8))
+
+    // Also exercise a populated store, including a trip past the 10,000-mile
+    // threshold — mainly to catch a crash in the two-band summary rendering,
+    // since PDF byte size doesn't reliably track how much content is on the
+    // page (compression, font subsetting) so isn't worth asserting on.
+    let populatedStore = OkkleStore()
+    let recentDate = Date().addingTimeInterval(-3 * 86_400)
+    populatedStore.trips = [
+      NativeTrip(vehicle: .car, miles: 12_000, deduction: 0, startedAt: recentDate, endedAt: recentDate.addingTimeInterval(3_600), points: [])
+    ]
+    let populatedPdf = nativeMileageReportPdfData(store: populatedStore)
+    XCTAssertGreaterThan(populatedPdf.count, 0)
+    XCTAssertEqual(populatedPdf.prefix(4), Data("%PDF".utf8))
+  }
+
+  @MainActor
+  func testMileageLogRowsMatchYearMileageDeductionAcrossThreshold() {
+    let store = OkkleStore()
+    let earlierDate = Date().addingTimeInterval(-10 * 86_400)
+    let laterDate = Date().addingTimeInterval(-5 * 86_400)
+    store.trips = [
+      NativeTrip(vehicle: .car, miles: 9_500, deduction: 0, startedAt: earlierDate, endedAt: earlierDate.addingTimeInterval(3_600), points: []),
+      NativeTrip(vehicle: .car, miles: 1_000, deduction: 0, startedAt: laterDate, endedAt: laterDate.addingTimeInterval(3_600), points: [])
+    ]
+
+    let rows = store.yearMileageLogRows
+    XCTAssertEqual(rows.count, 2)
+    // The exported rows must sum to exactly the tax-year figure shown
+    // elsewhere in Reports — a trip's own naively-stored `deduction` field
+    // (computed at logging time with no running total) would not, once the
+    // combined car/van mileage crosses the 10,000-mile threshold.
+    let rowTotal = rows.reduce(0.0) { $0 + $1.deduction }
+    XCTAssertEqual(rowTotal, store.yearMileageDeduction, accuracy: 0.01)
+
+    // The second trip's 1,000 miles should split 500 at the first-band rate
+    // and 500 at the after-threshold rate, not all at the first-band rate.
+    let rate = NativeVehicle.car.rateBand(on: laterDate)
+    let expectedSecondRowDeduction = 500 * rate.first + 500 * rate.after
+    XCTAssertEqual(rows[1].deduction, expectedSecondRowDeduction, accuracy: 0.01)
+  }
+
   func testTaxEstimateUsesTradingAllowanceWhenBetterThanExpenses() {
     let position = TaxCalculator.estimate(
       turnover: 20_000,
@@ -44,6 +107,18 @@ final class TaxCalculatorTests: XCTestCase {
     XCTAssertTrue(position.usesTradingAllowance)
     XCTAssertEqual(position.deductionApplied, 1_000, accuracy: 0.001)
     XCTAssertEqual(position.profit, 19_000, accuracy: 0.001)
+  }
+
+  func testAdditionalRateThresholdAccountsForTaperedAllowance() {
+    // At gross £120,000 the personal allowance is already tapered down to
+    // £2,570 (£12,570 minus half of the £20,000 over £100,000). A fixed
+    // taxable-income cutoff of £112,570 for the 45% band (125,140 minus the
+    // *standard* £12,570 allowance) would tax roughly £4,860 of this at the
+    // additional rate — but the real 45% band only starts at £125,140 of
+    // *gross* income, and £120,000 is still under that, so none of it
+    // should be taxed at 45% yet.
+    let tax = TaxCalculator.incomeTax(income: 120_000, region: .ruk)
+    XCTAssertEqual(tax, 39_432, accuracy: 0.01)
   }
 
   func testTaxEstimateAccountsForOtherIncomeStacking() {

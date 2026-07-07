@@ -2,21 +2,12 @@ import Foundation
 import UIKit
 
 @MainActor
-final class NativeAccountantPackPdfRenderer {
+final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
   private let store: OkkleStore
-  private let pageRect = CGRect(x: 0, y: 0, width: 595.2, height: 841.8)
-  private let margin: CGFloat = 42
-  private let ink = UIColor(red: 0.10, green: 0.16, blue: 0.14, alpha: 1)
-  private let muted = UIColor(red: 0.42, green: 0.48, blue: 0.45, alpha: 1)
-  private let brand = UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 1)
-  private let pale = UIColor(red: 0.94, green: 0.98, blue: 0.97, alpha: 1)
-  private let line = UIColor(red: 0.84, green: 0.88, blue: 0.86, alpha: 1)
-  private var y: CGFloat = 42
-  private var page = 0
-  private var context: UIGraphicsPDFRendererContext?
 
   init(store: OkkleStore) {
     self.store = store
+    super.init(footerText: "Okkle accountant pack")
   }
 
   func render() -> Data {
@@ -38,14 +29,6 @@ final class NativeAccountantPackPdfRenderer {
       drawReceipts()
       drawLimitations()
     }
-  }
-
-  private var contentWidth: CGFloat {
-    pageRect.width - (margin * 2)
-  }
-
-  private var bottomLimit: CGFloat {
-    pageRect.height - margin - 26
   }
 
   private var taxYearEndDate: Date {
@@ -74,30 +57,6 @@ final class NativeAccountantPackPdfRenderer {
 
   private var incomeBracketLine: String {
     "\(store.settings.incomeBracket.label) (\(Int(store.settings.incomeBracket.marginalRate(region: store.settings.region) * 100))% tax-saved estimate)"
-  }
-
-  private func beginPage() {
-    context?.beginPage()
-    page += 1
-    y = margin
-    drawFooter()
-  }
-
-  private func drawFooter() {
-    let text = "Okkle accountant pack - Page \(page)"
-    drawString(
-      text,
-      in: CGRect(x: margin, y: pageRect.height - margin + 4, width: contentWidth, height: 14),
-      font: .systemFont(ofSize: 8, weight: .medium),
-      color: muted,
-      alignment: .center
-    )
-  }
-
-  private func ensure(_ height: CGFloat) {
-    if y + height > bottomLimit {
-      beginPage()
-    }
   }
 
   private func drawCover() {
@@ -196,24 +155,12 @@ final class NativeAccountantPackPdfRenderer {
 
   private func drawMileage() {
     drawSectionTitle("Mileage log")
-    let tripRows = yearTrips.map { trip in
-      [
-        nativeUkDateStamp(trip.startedAt),
-        trip.vehicle.label,
-        "GPS trip",
-        miles(trip.miles),
-        gbp(trip.deduction)
-      ]
-    }
-    let manualRows = manualMileageRecords.map { record in
-      [
-        nativeUkDateStamp(record.date),
-        record.vehicle?.label ?? "Vehicle",
-        "Manual",
-        miles(record.miles ?? 0),
-        gbp(record.deduction ?? 0)
-      ]
-    }
+    // Each row's deduction comes from yearMileageLogRows, which recomputes
+    // it against a running car/van total for the tax year — a trip or
+    // manual record's own stored `deduction` field is set at logging time
+    // against a running total of zero, so the rows below would silently
+    // stop summing to the "Mileage deduction" total once combined car/van
+    // mileage crosses the 10,000-mile HMRC simplified-rate threshold.
     drawWrapped(
       "Tracked trips with saved route points support a contemporaneous mileage log. Your accountant should review the business purpose and completeness.",
       font: .systemFont(ofSize: 10.5, weight: .regular),
@@ -222,7 +169,7 @@ final class NativeAccountantPackPdfRenderer {
     )
     drawTable(
       headers: ["Date", "Vehicle", "Source", "Miles", "Deduction"],
-      rows: tripRows + manualRows,
+      rows: nativeMileageLogTableRows(store.yearMileageLogRows),
       widths: [0.20, 0.22, 0.20, 0.16, 0.22],
       rightAligned: [3, 4],
       emptyMessage: "No mileage records logged for this tax year."
@@ -302,148 +249,6 @@ final class NativeAccountantPackPdfRenderer {
       spacingAfter: 0
     )
   }
-
-  private func drawInfoBox(_ rows: [(String, String)]) {
-    let labelFont = UIFont.systemFont(ofSize: 10.5, weight: .semibold)
-    let valueFont = UIFont.systemFont(ofSize: 10.5, weight: .bold)
-    let labelWidth: CGFloat = 150
-    let valueWidth = contentWidth - 194
-    let rowHeights = rows.map { label, value in
-      max(
-        24,
-        measuredHeight(label, font: labelFont, width: labelWidth),
-        measuredHeight(value, font: valueFont, width: valueWidth)
-      ) + 7
-    }
-    let boxHeight = rowHeights.reduce(18, +)
-    ensure(boxHeight)
-    let rect = CGRect(x: margin, y: y, width: contentWidth, height: boxHeight)
-    pale.setFill()
-    UIBezierPath(roundedRect: rect, cornerRadius: 10).fill()
-    line.setStroke()
-    UIBezierPath(roundedRect: rect, cornerRadius: 10).stroke()
-    y += 9
-    for (index, row) in rows.enumerated() {
-      let rowHeight = rowHeights[index]
-      drawString(row.0, in: CGRect(x: margin + 12, y: y, width: labelWidth, height: rowHeight), font: labelFont, color: muted)
-      drawString(row.1, in: CGRect(x: margin + 170, y: y, width: valueWidth, height: rowHeight), font: valueFont, color: ink, alignment: .right)
-      y += rowHeight
-    }
-    y += 13
-  }
-
-  private func drawSectionTitle(_ title: String) {
-    ensure(42)
-    y += y > margin + 2 ? 14 : 0
-    drawWrapped(title, font: .systemFont(ofSize: 15, weight: .heavy), color: brand, spacingAfter: 5)
-    brand.withAlphaComponent(0.22).setFill()
-    UIBezierPath(roundedRect: CGRect(x: margin, y: y, width: contentWidth, height: 2), cornerRadius: 1).fill()
-    y += 9
-  }
-
-  private func drawKeyValue(_ label: String, _ value: String, highlighted: Bool = false) {
-    let labelWidth = contentWidth * 0.48
-    let valueWidth = contentWidth - labelWidth
-    let labelFont = UIFont.systemFont(ofSize: 10.5, weight: .semibold)
-    let valueFont = UIFont.monospacedDigitSystemFont(ofSize: 10.5, weight: highlighted ? .bold : .semibold)
-    let height = max(
-      measuredHeight(label, font: labelFont, width: labelWidth),
-      measuredHeight(value, font: valueFont, width: valueWidth)
-    ) + 10
-    ensure(height)
-    if highlighted {
-      pale.setFill()
-      UIBezierPath(roundedRect: CGRect(x: margin - 6, y: y - 2, width: contentWidth + 12, height: height), cornerRadius: 6).fill()
-    }
-    drawString(label, in: CGRect(x: margin, y: y + 4, width: labelWidth, height: height), font: labelFont, color: muted)
-    drawString(value, in: CGRect(x: margin + labelWidth, y: y + 4, width: valueWidth, height: height), font: valueFont, color: highlighted ? brand : ink, alignment: .right)
-    y += height
-    drawHairline()
-  }
-
-  private func drawTable(
-    headers: [String],
-    rows: [[String]],
-    widths: [CGFloat],
-    rightAligned: Set<Int> = [],
-    emptyMessage: String = "None recorded."
-  ) {
-    let total = widths.reduce(0, +)
-    let columnWidths = widths.map { contentWidth * ($0 / total) }
-    drawTableRow(headers, widths: columnWidths, rightAligned: rightAligned, font: .systemFont(ofSize: 9.4, weight: .bold), textColor: ink, background: UIColor(red: 0.94, green: 0.94, blue: 0.92, alpha: 1))
-
-    if rows.isEmpty {
-      drawTableRow([emptyMessage], widths: [contentWidth], rightAligned: [], font: .systemFont(ofSize: 9.4, weight: .regular), textColor: muted, background: nil)
-    } else {
-      rows.forEach { row in
-        drawTableRow(row, widths: columnWidths, rightAligned: rightAligned, font: .systemFont(ofSize: 9.2, weight: .regular), textColor: ink, background: nil)
-      }
-    }
-    y += 5
-  }
-
-  private func drawTableRow(_ values: [String], widths: [CGFloat], rightAligned: Set<Int>, font: UIFont, textColor: UIColor, background: UIColor?) {
-    let padding: CGFloat = 6
-    let cellHeights = values.enumerated().map { index, value in
-      measuredHeight(value, font: font, width: max(1, widths[index] - padding * 2))
-    }
-    let rowHeight = max(24, (cellHeights.max() ?? 12) + padding * 2)
-    ensure(rowHeight)
-    if let background {
-      background.setFill()
-      UIBezierPath(rect: CGRect(x: margin, y: y, width: contentWidth, height: rowHeight)).fill()
-    }
-
-    var x = margin
-    for (index, value) in values.enumerated() {
-      let width = widths[index]
-      let rect = CGRect(x: x + padding, y: y + padding, width: width - padding * 2, height: rowHeight - padding)
-      drawString(value, in: rect, font: font, color: textColor, alignment: rightAligned.contains(index) ? .right : .left)
-      x += width
-    }
-    y += rowHeight
-    drawHairline()
-  }
-
-  private func drawHairline() {
-    line.setStroke()
-    let path = UIBezierPath()
-    path.move(to: CGPoint(x: margin, y: y))
-    path.addLine(to: CGPoint(x: margin + contentWidth, y: y))
-    path.lineWidth = 0.5
-    path.stroke()
-  }
-
-  @discardableResult
-  private func drawWrapped(_ value: String, font: UIFont, color: UIColor, spacingAfter: CGFloat) -> CGFloat {
-    let height = measuredHeight(value, font: font, width: contentWidth)
-    ensure(height + spacingAfter)
-    drawString(value, in: CGRect(x: margin, y: y, width: contentWidth, height: height), font: font, color: color)
-    y += height + spacingAfter
-    return height
-  }
-
-  private func drawString(_ value: String, in rect: CGRect, font: UIFont, color: UIColor, alignment: NSTextAlignment = .left) {
-    let paragraph = NSMutableParagraphStyle()
-    paragraph.alignment = alignment
-    paragraph.lineBreakMode = .byWordWrapping
-    let attributes: [NSAttributedString.Key: Any] = [
-      .font: font,
-      .foregroundColor: color,
-      .paragraphStyle: paragraph
-    ]
-    (value as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes, context: nil)
-  }
-
-  private func measuredHeight(_ value: String, font: UIFont, width: CGFloat) -> CGFloat {
-    let rect = (value as NSString).boundingRect(
-      with: CGSize(width: width, height: .greatestFiniteMagnitude),
-      options: [.usesLineFragmentOrigin, .usesFontLeading],
-      attributes: [.font: font],
-      context: nil
-    )
-    return ceil(rect.height)
-  }
 }
 
 func nativeExpenseDescription(_ record: NativeRecord) -> String {
@@ -467,4 +272,18 @@ func nativeLongDate(_ date: Date) -> String {
   formatter.locale = Locale(identifier: "en_GB")
   formatter.dateStyle = .long
   return formatter.string(from: date)
+}
+
+/// Shared table-row shape for a mileage log, used by both the accountant
+/// pack's "Mileage log" section and the standalone mileage report.
+func nativeMileageLogTableRows(_ rows: [NativeMileageLogRow]) -> [[String]] {
+  rows.map { row in
+    [
+      nativeUkDateStamp(row.date),
+      row.vehicle.label,
+      row.source == "GPS" ? "GPS trip" : "Manual",
+      miles(row.miles),
+      gbp(row.deduction)
+    ]
+  }
 }

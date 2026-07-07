@@ -74,9 +74,12 @@ func nativeMakeExport(_ kind: NativeTaxExportKind, store: OkkleStore) -> NativeS
     .replacingOccurrences(of: "/", with: "-")
   let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
   do {
-    if kind == .accountantPack {
+    switch kind {
+    case .accountantPack:
       try nativeAccountantPackPdfData(store: store).write(to: url, options: [.atomic])
-    } else {
+    case .mileageReportPdf:
+      try nativeMileageReportPdfData(store: store).write(to: url, options: [.atomic])
+    default:
       let content = nativeExportContents(kind, store: store)
       try content.write(to: url, atomically: true, encoding: .utf8)
     }
@@ -103,6 +106,8 @@ func nativeExportContents(_ kind: NativeTaxExportKind, store: OkkleStore) -> Str
     return nativeFreeAgentCsv(store: store)
   case .selfAssessment:
     return nativeSelfAssessmentText(store: store)
+  case .mileageReportPdf:
+    return ""   // PDF kind, handled directly in nativeMakeExport
   case .mileageLog:
     return nativeMileageCsv(store: store)
   case .allData:
@@ -138,31 +143,23 @@ func nativeSelfAssessmentText(store: OkkleStore) -> String {
 
 @MainActor
 func nativeMileageCsv(store: OkkleStore) -> String {
+  // Scoped to the current tax year, with each row's deduction recomputed
+  // against a running car/van total — a trip's own stored `deduction` is
+  // set at logging time against a running total of zero, so it's only
+  // right below the 10,000-mile HMRC simplified-rate threshold; this way
+  // the exported total always matches the tax-year figure shown in Reports.
   let header = "Date,Vehicle,Source,Miles,Basis,Deduction GBP"
-  let tripRows = store.trips.sorted { $0.startedAt < $1.startedAt }.map { trip in
+  let rows = store.yearMileageLogRows.map { row in
     [
-      nativeCsvField(nativeDateStamp(trip.startedAt)),
-      nativeCsvField(trip.vehicle.label),
-      nativeCsvField("GPS"),
-      nativeCsvField(nativeDecimal(trip.miles)),
+      nativeCsvField(nativeDateStamp(row.date)),
+      nativeCsvField(row.vehicle.label),
+      nativeCsvField(row.source),
+      nativeCsvField(nativeDecimal(row.miles)),
       nativeCsvField("HMRC simplified"),
-      nativeCsvField(nativeDecimal(trip.deduction))
+      nativeCsvField(nativeDecimal(row.deduction))
     ].joined(separator: ",")
   }
-  let manualRows = store.records
-    .filter { $0.kind == .mileage }
-    .sorted { $0.date < $1.date }
-    .map { record in
-      [
-        nativeCsvField(nativeDateStamp(record.date)),
-        nativeCsvField(record.vehicle?.label ?? "Vehicle"),
-        nativeCsvField("Manual"),
-        nativeCsvField(nativeDecimal(record.miles ?? 0)),
-        nativeCsvField("HMRC simplified"),
-        nativeCsvField(nativeDecimal(record.deduction ?? 0))
-      ].joined(separator: ",")
-    }
-  return ([header] + tripRows + manualRows).joined(separator: "\n")
+  return ([header] + rows).joined(separator: "\n")
 }
 
 @MainActor

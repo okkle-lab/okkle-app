@@ -9,6 +9,7 @@ final class OkkleStore: ObservableObject {
     var date: Date
     var miles: Double
     var vehicle: NativeVehicle
+    var source: String = "GPS"
     var interval: DateInterval? = nil
   }
 
@@ -337,6 +338,45 @@ final class OkkleStore: ObservableObject {
     return total
   }
 
+  /// The mileage log, one row per entry, for the current tax year — each
+  /// row's deduction computed against the *same* running car/van total
+  /// yearMileageDeduction itself accumulates, so the two always agree once
+  /// summed. A trip or manual record's own stored `deduction` field is set
+  /// at logging time against a running total of zero (it can't know what
+  /// else that tax year will hold yet), so it's only ever right for whoever
+  /// stays under the 10,000-mile HMRC simplified-rate threshold for the
+  /// whole year — anyone who crosses it needs every later entry recomputed
+  /// at the lower after-threshold rate, which is what this does.
+  var yearMileageLogRows: [NativeMileageLogRow] {
+    var rows: [NativeMileageLogRow] = []
+    var carAndVanMilesBefore = 0.0
+
+    for entry in yearMileageEntries {
+      let deduction: Double
+      switch entry.vehicle {
+      case .car, .van:
+        deduction = calcDeduction(
+          miles: entry.miles,
+          vehicle: entry.vehicle,
+          totalBefore: carAndVanMilesBefore,
+          date: entry.date
+        )
+        carAndVanMilesBefore += entry.miles
+      case .motorbike, .bike:
+        deduction = calcDeduction(miles: entry.miles, vehicle: entry.vehicle, date: entry.date)
+      }
+      rows.append(NativeMileageLogRow(
+        date: entry.date,
+        vehicle: entry.vehicle,
+        source: entry.source,
+        miles: entry.miles,
+        deduction: deduction
+      ))
+    }
+
+    return rows
+  }
+
   var yearIncome: Double {
     yearRecords.reduce(0) { $0 + incomeForTaxYear($1) }
   }
@@ -571,7 +611,8 @@ final class OkkleStore: ObservableObject {
       return TaxYearMileageEntry(
         date: record.date,
         miles: miles,
-        vehicle: record.vehicle ?? settings.defaultVehicle
+        vehicle: record.vehicle ?? settings.defaultVehicle,
+        source: "Manual"
       )
     }
 

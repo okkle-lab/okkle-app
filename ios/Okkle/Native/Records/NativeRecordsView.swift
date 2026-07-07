@@ -688,6 +688,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
   case accountantPack
   case freeAgent
   case selfAssessment
+  case mileageReportPdf
   case mileageLog
   case allData
 
@@ -698,7 +699,8 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .accountantPack: return "Accountant pack PDF"
     case .freeAgent: return "FreeAgent CSV"
     case .selfAssessment: return "Self Assessment summary"
-    case .mileageLog: return "HMRC mileage log"
+    case .mileageReportPdf: return "Mileage report PDF"
+    case .mileageLog: return "HMRC mileage log (CSV)"
     case .allData: return "All data CSV"
     }
   }
@@ -708,7 +710,8 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .accountantPack: return "Summary, mileage, expenses, receipts and records"
     case .freeAgent: return "Income and expenses for bank import"
     case .selfAssessment: return "Turnover, expenses, profit and tax estimate"
-    case .mileageLog: return "GPS and manual mileage claims"
+    case .mileageReportPdf: return "Summary by rate band, plus full per-trip log"
+    case .mileageLog: return "GPS and manual mileage claims, for a spreadsheet"
     case .allData: return "Trips, earnings and expenses"
     }
   }
@@ -718,6 +721,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .accountantPack: return "doc.richtext.fill"
     case .freeAgent: return "arrow.up.doc.fill"
     case .selfAssessment: return "doc.text.fill"
+    case .mileageReportPdf: return "chart.bar.doc.horizontal.fill"
     case .mileageLog: return "map.fill"
     case .allData: return "externaldrive.fill"
     }
@@ -728,6 +732,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .accountantPack: return "Accountant-Pack"
     case .freeAgent: return "FreeAgent-Import"
     case .selfAssessment: return "SelfAssessment-Summary"
+    case .mileageReportPdf: return "Mileage-Report"
     case .mileageLog: return "HMRC-Mileage-Log"
     case .allData: return "All-Data"
     }
@@ -735,7 +740,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
 
   var fileExtension: String {
     switch self {
-    case .accountantPack: return "pdf"
+    case .accountantPack, .mileageReportPdf: return "pdf"
     case .selfAssessment: return "txt"
     case .freeAgent, .mileageLog, .allData: return "csv"
     }
