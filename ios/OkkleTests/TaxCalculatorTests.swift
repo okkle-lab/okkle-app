@@ -121,6 +121,42 @@ final class NativeInsightsSimulationTests: XCTestCase {
     XCTAssertEqual(insights.paidMiles, 8, accuracy: 0.15)
   }
 
+  func testHighIncomeCanOverturnDeadMilePreference() {
+    let store = OkkleStore()
+    let baseDay = calendar.startOfDay(for: Date().addingTimeInterval(-30 * 86_400))
+    var visits: [NativeVisit] = []
+    var records: [NativeRecord] = []
+
+    for i in 0..<4 {
+      // Zone A day: the day's first stop, so 0% dead miles — but a small order.
+      let aDay = calendar.date(byAdding: .day, value: i * 4, to: baseDay)!.addingTimeInterval(10 * 3600)
+      visits.append(visit(kind: .pickup, latitude: 51.500, longitude: -0.120, arrival: aDay, departure: aDay))
+      visits.append(visit(kind: .dropoff, latitude: 51.501, longitude: -0.120, arrival: aDay.addingTimeInterval(5 * 60), departure: aDay.addingTimeInterval(5 * 60)))
+      records.append(record(date: aDay, amount: 5))
+
+      // Zone B day: a long (~5.5km) unpaid approach leg to reach it — but a
+      // big enough order that the trip still pays off per mile.
+      let bDay = calendar.date(byAdding: .day, value: i * 4 + 2, to: baseDay)!.addingTimeInterval(10 * 3600)
+      visits.append(visit(kind: .dropoff, latitude: 52.00, longitude: -1.00, arrival: bDay, departure: bDay.addingTimeInterval(60)))
+      visits.append(visit(kind: .pickup, latitude: 52.05, longitude: -1.00, arrival: bDay.addingTimeInterval(10 * 60), departure: bDay.addingTimeInterval(10 * 60)))
+      visits.append(visit(kind: .dropoff, latitude: 52.051, longitude: -1.00, arrival: bDay.addingTimeInterval(15 * 60), departure: bDay.addingTimeInterval(15 * 60)))
+      records.append(record(date: bDay, amount: 60))
+    }
+
+    store.records = records
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+
+    let zoneA = insights.zones.first { $0.coordinate.latitude == 51.500 }
+    let zoneB = insights.zones.first { $0.coordinate.latitude == 52.05 }
+    XCTAssertNotNil(zoneA)
+    XCTAssertNotNil(zoneB)
+    XCTAssertEqual(zoneA?.deadMilePct, 0)
+    XCTAssertGreaterThan(zoneB?.deadMilePct ?? 0, 90)
+    // Zone B has far worse dead-mile efficiency, but its orders are big
+    // enough that its real attributed £/mile still wins out overall.
+    XCTAssertGreaterThan(zoneB?.weight ?? 0, zoneA?.weight ?? 1)
+  }
+
   func testZoneWeightFavorsLowerDeadMilePercentage() {
     let store = OkkleStore()
     // Zone A: the very first visit overall, so no approach leg is possible —
@@ -228,6 +264,11 @@ final class NativeInsightsSimulationTests: XCTestCase {
 
   private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
     calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+  }
+
+  private func record(date: Date, amount: Double) -> NativeRecord {
+    NativeRecord(kind: .income, platform: "Uber Eats", vehicle: nil, amount: amount, miles: nil,
+                 deduction: nil, category: nil, date: date, period: .day, receiptImageData: nil)
   }
 }
 

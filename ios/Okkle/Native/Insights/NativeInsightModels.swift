@@ -714,6 +714,87 @@ struct NativeShiftInsights {
       cell.paidMeters += hit.paidLegMeters
       cells[key] = cell
     }
+    // Attribute each day's logged income across the zone(s) actually worked
+    // that day — the finest grain available, since income is logged per
+    // day/week, not per delivery. A day where every delivery landed in one
+    // zone is attributed exactly; a multi-zone day is a proportional guess
+    // (split by delivery count), so those count for less until enough of
+    // them accumulate. This is what lets a zone with a lot of unpaid
+    // repositioning still rank well if the deliveries it leads to are
+    // genuinely worth the detour, instead of just penalising every unpaid
+    // mile the same regardless of payoff.
+    struct NativeZoneIncomeAccumulator {
+      var exactIncome: Double = 0
+      var exactDeliveries: Int = 0
+      var splitIncome: Double = 0
+      var splitDeliveries: Int = 0
+    }
+    var incomeByCell: [String: NativeZoneIncomeAccumulator] = [:]
+    let trustworthyHitsByDay = Dictionary(grouping: deliveryHits.filter(\.isLocationTrustworthy)) {
+      Calendar.current.startOfDay(for: $0.date)
+    }
+    for (day, hitsThatDay) in trustworthyHitsByDay {
+      let dayIncome = store.records
+        .filter { $0.kind == .income && Calendar.current.isDate($0.date, inSameDayAs: day) }
+        .reduce(0.0) { $0 + ($1.amount ?? 0) }
+      guard dayIncome > 0 else { continue }
+      let cellsThatDay = Dictionary(grouping: hitsThatDay) { hit in
+        "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
+      }
+      let isExactDay = cellsThatDay.count == 1
+      for (key, hitsInCell) in cellsThatDay {
+        let share = Double(hitsInCell.count) / Double(hitsThatDay.count)
+        var acc = incomeByCell[key] ?? NativeZoneIncomeAccumulator()
+        if isExactDay {
+          acc.exactIncome += dayIncome * share
+          acc.exactDeliveries += hitsInCell.count
+        } else {
+          acc.splitIncome += dayIncome * share
+          acc.splitDeliveries += hitsInCell.count
+        }
+        incomeByCell[key] = acc
+      }
+    }
+    // Split-day attribution is a guess, so it counts for less than a day
+    // that was unambiguous.
+    let splitDayTrust = 0.4
+    // A flat, approximate cost per mile — matching the standard first-band
+    // car mileage rate used elsewhere for tax purposes — good enough for a
+    // ranking heuristic. The real, precise tax deduction calculation lives in
+    // OkkleStore/TaxCalculator and depends on vehicle + cumulative mileage
+    // for the year, which isn't worth entangling into a "which zone is worth
+    // it" estimate.
+    //
+    // This is deliberately *subtracted* from income, not used as a divisor —
+    // an early attempt divided attributed income by zone miles (£/mile), but
+    // that quietly double-penalises a zone's unpaid roaming: once by not
+    // being paid for it, and again by inflating the denominator it's divided
+    // into. A short, cheap delivery paying £5 came out "more valuable per
+    // mile" than a big £60 order that took a long detour to reach — exactly
+    // backwards from "if the income's good enough, the detour was worth it".
+    // Subtracting an estimated cost instead means a big enough payout can
+    // straightforwardly outweigh the roaming it took to earn it, and a zone
+    // that's a net loss after estimated costs correctly still comes out
+    // negative rather than just "a worse ratio".
+    let approxCostPerMile = 0.45
+    func netValuePerDelivery(for key: String, cell: (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double)) -> (value: Double, confidence: Double)? {
+      guard let acc = incomeByCell[key] else { return nil }
+      let effectiveIncome = acc.exactIncome + acc.splitIncome * splitDayTrust
+      let effectiveDeliveries = Double(acc.exactDeliveries) + Double(acc.splitDeliveries) * splitDayTrust
+      guard effectiveDeliveries > 0 else { return nil }
+      let zoneMiles = (cell.approachMeters + cell.paidMeters) / 1609.34 * roadFactor
+      let netValue = effectiveIncome - zoneMiles * approxCostPerMile
+      let incomeConfidenceK = 4.0   // income evidence is scarcer than raw visit counts, so ask for a touch more of it
+      let confidence = effectiveDeliveries / (effectiveDeliveries + incomeConfidenceK)
+      return (netValue / effectiveDeliveries, confidence)
+    }
+    let allNetValues: [Double] = cells.compactMap { key, cell in netValuePerDelivery(for: key, cell: cell)?.value }
+    // Net value can be negative (a zone that's a real loss once estimated
+    // cost is factored in) — min-max scale rather than assume 0 is the floor.
+    let minNetValue = allNetValues.min() ?? 0
+    let maxNetValue = allNetValues.max() ?? 0
+    let netValueRange = maxNetValue - minNetValue
+
     let maxDecayedCount = cells.values.map(\.decayedCount).max() ?? 1
     let zoneConfidenceK = 3.0   // matches NativeExploreCandidate.isValidated's "3 real visits" bar
     // Has "your best zone" actually been paying off in practice? Blends two
@@ -738,7 +819,7 @@ struct NativeShiftInsights {
       if combinedZoneHitRate < 0.5 { return 0.75 }
       return 1.0
     }()
-    let zones = cells.values.map { cell -> NativeZonePoint in
+    let zones = cells.map { key, cell -> NativeZonePoint in
       let peak = cell.hours.max { $0.value < $1.value }?.key
       let popularity = cell.decayedCount / maxDecayedCount
       let totalCellMeters = cell.approachMeters + cell.paidMeters
@@ -746,7 +827,20 @@ struct NativeShiftInsights {
       // No approach-leg data for this cell yet → stay neutral rather than
       // silently reward or punish it in the blend below.
       let efficiency = deadMilePct.map { 1 - Double($0) / 100 } ?? 0.5
-      let realSignal = popularity * 0.65 + efficiency * 0.35
+      // "Was the roaming worth it" is best answered by what a zone actually
+      // nets (income minus an estimated cost for the miles it took), not
+      // just how many miles it cost — so real attributed net value is the
+      // primary value signal once there's enough of it, falling back to the
+      // dead-mile-based efficiency guess while there isn't.
+      let incomeResult = netValuePerDelivery(for: key, cell: cell)
+      let valueSignal: Double
+      if let incomeResult {
+        let normalizedNetValue = netValueRange > 0 ? (incomeResult.value - minNetValue) / netValueRange : 0.5
+        valueSignal = incomeResult.confidence * normalizedNetValue + (1 - incomeResult.confidence) * efficiency
+      } else {
+        valueSignal = efficiency
+      }
+      let realSignal = popularity * 0.55 + valueSignal * 0.45
       // Fall back to the real signal itself while the async POI lookup is
       // still resolving, so a zone isn't held back just because the prior
       // hasn't loaded yet.
