@@ -633,7 +633,15 @@ struct NativeShiftInsights {
               ?? sorted[index].location.distance(from: prev.location)
           }
         }
-        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date, isLocationTrustworthy, approachMeters, legMeters))
+        // The actual vehicle logged for whichever trip covered this delivery
+        // — a bike/motorbike rider's real running cost per mile is far below
+        // a car or van's, so a flat car-based estimate would badly overstate
+        // cost (and therefore understate value) for anyone not driving.
+        // Falls back to the driver's current default vehicle for the rare
+        // case no covering trip is found (e.g. very old data).
+        let hitVehicle = store.trips.first { $0.startedAt <= date && $0.endedAt >= date }?.vehicle ?? store.settings.defaultVehicle
+        let vehicleCostPerMile = hitVehicle.rateBand(on: date).first
+        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date, isLocationTrustworthy, approachMeters, legMeters, vehicleCostPerMile))
         index = dropIndex + 1
       } else {
         index += 1
@@ -698,13 +706,13 @@ struct NativeShiftInsights {
     //    any real evidence and fades out as real deliveries accumulate — the
     //    same "trust real evidence once there's enough of it" bar already
     //    used for NativeExploreCandidate.isValidated (3 real visits)
-    var cells: [String: (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double)] = [:]
+    var cells: [String: (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double, estimatedCost: Double)] = [:]
     let cellSize = 0.006
     let recencyHalfLifeDays = 60.0
     let now = Date()
     for hit in deliveryHits where hit.isLocationTrustworthy {
       let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
-      var cell = cells[key] ?? (hit.coordinate, 0, 0, [:], 0, 0)
+      var cell = cells[key] ?? (hit.coordinate, 0, 0, [:], 0, 0, 0)
       let ageDays = max(0, now.timeIntervalSince(hit.date) / 86_400)
       let decay = pow(0.5, ageDays / recencyHalfLifeDays)
       cell.rawCount += 1
@@ -712,6 +720,10 @@ struct NativeShiftInsights {
       cell.hours[hit.hour, default: 0] += 1
       cell.approachMeters += hit.approachMeters
       cell.paidMeters += hit.paidLegMeters
+      // This hit's own actual vehicle cost — not a flat zone-wide rate — so a
+      // day ridden on a bike doesn't get charged a car's running cost.
+      let hitMiles = (hit.approachMeters + hit.paidLegMeters) / 1609.34 * roadFactor
+      cell.estimatedCost += hitMiles * hit.vehicleCostPerMile
       cells[key] = cell
     }
     // Attribute each day's logged income across the zone(s) actually worked
@@ -728,6 +740,11 @@ struct NativeShiftInsights {
       var exactDeliveries: Int = 0
       var splitIncome: Double = 0
       var splitDeliveries: Int = 0
+      // One entry per unambiguous day attributed to this zone — lets the
+      // confidence check below tell "consistently decent" apart from "one
+      // lucky day carrying the average", the same distinction
+      // weekdayReliability already draws for day-of-week counts.
+      var exactDayAmounts: [Double] = []
     }
     var incomeByCell: [String: NativeZoneIncomeAccumulator] = [:]
     let trustworthyHitsByDay = Dictionary(grouping: deliveryHits.filter(\.isLocationTrustworthy)) {
@@ -748,6 +765,7 @@ struct NativeShiftInsights {
         if isExactDay {
           acc.exactIncome += dayIncome * share
           acc.exactDeliveries += hitsInCell.count
+          acc.exactDayAmounts.append(dayIncome)
         } else {
           acc.splitIncome += dayIncome * share
           acc.splitDeliveries += hitsInCell.count
@@ -758,34 +776,39 @@ struct NativeShiftInsights {
     // Split-day attribution is a guess, so it counts for less than a day
     // that was unambiguous.
     let splitDayTrust = 0.4
-    // A flat, approximate cost per mile — matching the standard first-band
-    // car mileage rate used elsewhere for tax purposes — good enough for a
-    // ranking heuristic. The real, precise tax deduction calculation lives in
-    // OkkleStore/TaxCalculator and depends on vehicle + cumulative mileage
-    // for the year, which isn't worth entangling into a "which zone is worth
-    // it" estimate.
-    //
-    // This is deliberately *subtracted* from income, not used as a divisor —
-    // an early attempt divided attributed income by zone miles (£/mile), but
+    // Estimated cost is *subtracted* from income, not used as a divisor — an
+    // early attempt divided attributed income by zone miles (£/mile), but
     // that quietly double-penalises a zone's unpaid roaming: once by not
     // being paid for it, and again by inflating the denominator it's divided
     // into. A short, cheap delivery paying £5 came out "more valuable per
     // mile" than a big £60 order that took a long detour to reach — exactly
     // backwards from "if the income's good enough, the detour was worth it".
-    // Subtracting an estimated cost instead means a big enough payout can
-    // straightforwardly outweigh the roaming it took to earn it, and a zone
-    // that's a net loss after estimated costs correctly still comes out
-    // negative rather than just "a worse ratio".
-    let approxCostPerMile = 0.45
-    func netValuePerDelivery(for key: String, cell: (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double)) -> (value: Double, confidence: Double)? {
+    // Subtracting cell.estimatedCost (already vehicle-aware per delivery,
+    // see above) instead means a big enough payout can straightforwardly
+    // outweigh the roaming it took to earn it, and a zone that's a net loss
+    // after estimated costs correctly still comes out negative rather than
+    // just "a worse ratio".
+    func netValuePerDelivery(for key: String, cell: (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double, estimatedCost: Double)) -> (value: Double, confidence: Double)? {
       guard let acc = incomeByCell[key] else { return nil }
       let effectiveIncome = acc.exactIncome + acc.splitIncome * splitDayTrust
       let effectiveDeliveries = Double(acc.exactDeliveries) + Double(acc.splitDeliveries) * splitDayTrust
       guard effectiveDeliveries > 0 else { return nil }
-      let zoneMiles = (cell.approachMeters + cell.paidMeters) / 1609.34 * roadFactor
-      let netValue = effectiveIncome - zoneMiles * approxCostPerMile
+      let netValue = effectiveIncome - cell.estimatedCost
       let incomeConfidenceK = 4.0   // income evidence is scarcer than raw visit counts, so ask for a touch more of it
-      let confidence = effectiveDeliveries / (effectiveDeliveries + incomeConfidenceK)
+      // Is this zone consistently decent, or is one lucky day carrying the
+      // whole average? Same coefficient-of-variation check as
+      // weekdayReliability, just over this zone's own unambiguous days —
+      // only ever dampens confidence, never boosts it, same restraint as
+      // everywhere else this pattern is used.
+      let consistencyFactor: Double = {
+        guard acc.exactDayAmounts.count >= 3 else { return 1.0 }
+        let mean = acc.exactDayAmounts.reduce(0, +) / Double(acc.exactDayAmounts.count)
+        guard mean > 0 else { return 1.0 }
+        let variance = acc.exactDayAmounts.reduce(0) { $0 + pow($1 - mean, 2) } / Double(acc.exactDayAmounts.count)
+        let cv = sqrt(variance) / mean
+        return cv > 1.0 ? 0.6 : 1.0
+      }()
+      let confidence = (effectiveDeliveries / (effectiveDeliveries + incomeConfidenceK)) * consistencyFactor
       return (netValue / effectiveDeliveries, confidence)
     }
     let allNetValues: [Double] = cells.compactMap { key, cell in netValuePerDelivery(for: key, cell: cell)?.value }
@@ -1087,7 +1110,7 @@ struct NativeShiftInsights {
   }
 }
 
-typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date, isLocationTrustworthy: Bool, approachMeters: Double, paidLegMeters: Double)
+typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date, isLocationTrustworthy: Bool, approachMeters: Double, paidLegMeters: Double, vehicleCostPerMile: Double)
 
 /// The busiest time-band and roughly-where for one weekday.
 func bestBandAndZone(for weekday: Int, deliveryHits: [NativeDeliveryHit], cellSize: Double) -> (band: NativeTimeFilter, zone: CLLocationCoordinate2D?) {

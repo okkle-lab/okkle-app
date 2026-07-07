@@ -206,6 +206,76 @@ final class NativeInsightsSimulationTests: XCTestCase {
     XCTAssertGreaterThan(recentZone?.weight ?? 0, oldZone?.weight ?? 1)
   }
 
+  func testVehicleTypeChangesEstimatedCostAndZoneValue() {
+    let store = OkkleStore()
+    let carDay = date(2026, 6, 1, 10)
+    let bikeDay = date(2026, 6, 3, 10)
+    let carDropoffArrival = carDay.addingTimeInterval(15 * 60)
+    let bikeDropoffArrival = bikeDay.addingTimeInterval(15 * 60)
+
+    // Identical ~2km unpaid approach leg and paid leg either side — the only
+    // difference is which vehicle actually covered the trip.
+    let visits: [NativeVisit] = [
+      visit(kind: .dropoff, latitude: 51.400, longitude: -0.500, arrival: carDay, departure: carDay.addingTimeInterval(60)),
+      visit(kind: .pickup, latitude: 51.418, longitude: -0.500, arrival: carDay.addingTimeInterval(10 * 60), departure: carDay.addingTimeInterval(10 * 60)),
+      visit(kind: .dropoff, latitude: 51.4181, longitude: -0.500, arrival: carDropoffArrival, departure: carDropoffArrival),
+
+      visit(kind: .dropoff, latitude: 51.600, longitude: -0.700, arrival: bikeDay, departure: bikeDay.addingTimeInterval(60)),
+      visit(kind: .pickup, latitude: 51.618, longitude: -0.700, arrival: bikeDay.addingTimeInterval(10 * 60), departure: bikeDay.addingTimeInterval(10 * 60)),
+      visit(kind: .dropoff, latitude: 51.6181, longitude: -0.700, arrival: bikeDropoffArrival, departure: bikeDropoffArrival)
+    ]
+    store.trips = [
+      trip(miles: 1, startedAt: carDay.addingTimeInterval(-60), endedAt: carDay.addingTimeInterval(20 * 60), timestamped: false, vehicle: .car),
+      trip(miles: 1, startedAt: bikeDay.addingTimeInterval(-60), endedAt: bikeDay.addingTimeInterval(20 * 60), timestamped: false, vehicle: .bike)
+    ]
+    store.records = [record(date: carDropoffArrival, amount: 30), record(date: bikeDropoffArrival, amount: 30)]
+
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+    let carZone = insights.zones.first { $0.coordinate.latitude == 51.418 }
+    let bikeZone = insights.zones.first { $0.coordinate.latitude == 51.618 }
+    XCTAssertNotNil(carZone)
+    XCTAssertNotNil(bikeZone)
+    // Same income, same distance either side — only the vehicle differs —
+    // so the far cheaper-to-run bike should net a higher value than the car.
+    XCTAssertGreaterThan(bikeZone?.weight ?? 0, carZone?.weight ?? 1)
+  }
+
+  func testInconsistentIncomeDampensZoneConfidenceVersusSteadyIncome() {
+    let store = OkkleStore()
+    let baseDay = calendar.startOfDay(for: Date().addingTimeInterval(-40 * 86_400))
+    var visits: [NativeVisit] = []
+    var records: [NativeRecord] = []
+    // Same £20/day average and same (moderately inefficient) approach leg on
+    // both zones — the only difference is how steady the daily amount is.
+    let steadyAmounts: [Double] = [20, 20, 20, 20]
+    let luckyAmounts: [Double] = [5, 5, 5, 65]
+
+    for i in 0..<4 {
+      let steadyDay = calendar.date(byAdding: .day, value: i * 4, to: baseDay)!.addingTimeInterval(10 * 3600)
+      visits.append(visit(kind: .dropoff, latitude: 51.300, longitude: -0.300, arrival: steadyDay, departure: steadyDay.addingTimeInterval(60)))
+      visits.append(visit(kind: .pickup, latitude: 51.318, longitude: -0.300, arrival: steadyDay.addingTimeInterval(10 * 60), departure: steadyDay.addingTimeInterval(10 * 60)))
+      visits.append(visit(kind: .dropoff, latitude: 51.3181, longitude: -0.300, arrival: steadyDay.addingTimeInterval(15 * 60), departure: steadyDay.addingTimeInterval(15 * 60)))
+      records.append(record(date: steadyDay.addingTimeInterval(15 * 60), amount: steadyAmounts[i]))
+
+      let luckyDay = calendar.date(byAdding: .day, value: i * 4 + 2, to: baseDay)!.addingTimeInterval(10 * 3600)
+      visits.append(visit(kind: .dropoff, latitude: 51.500, longitude: -0.500, arrival: luckyDay, departure: luckyDay.addingTimeInterval(60)))
+      visits.append(visit(kind: .pickup, latitude: 51.518, longitude: -0.500, arrival: luckyDay.addingTimeInterval(10 * 60), departure: luckyDay.addingTimeInterval(10 * 60)))
+      visits.append(visit(kind: .dropoff, latitude: 51.5181, longitude: -0.500, arrival: luckyDay.addingTimeInterval(15 * 60), departure: luckyDay.addingTimeInterval(15 * 60)))
+      records.append(record(date: luckyDay.addingTimeInterval(15 * 60), amount: luckyAmounts[i]))
+    }
+
+    store.records = records
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+    let steadyZone = insights.zones.first { $0.coordinate.latitude == 51.318 }
+    let luckyZone = insights.zones.first { $0.coordinate.latitude == 51.518 }
+    XCTAssertNotNil(steadyZone)
+    XCTAssertNotNil(luckyZone)
+    // Same total and average income, same distances either side — only the
+    // day-to-day consistency differs, so the steady zone should be trusted
+    // (and therefore rank) higher than the one carried by a single lucky day.
+    XCTAssertGreaterThan(steadyZone?.weight ?? 0, luckyZone?.weight ?? 1)
+  }
+
   func testTripDerivedVisitsDoNotProduceLocationZones() {
     let store = OkkleStore()
     store.trips = [trip(miles: 6, startedAt: date(2026, 6, 23, 18), endedAt: date(2026, 6, 23, 18, 30), timestamped: false)]
@@ -235,7 +305,7 @@ final class NativeInsightsSimulationTests: XCTestCase {
     XCTAssertFalse(insights.zones.isEmpty)
   }
 
-  private func trip(miles: Double, startedAt: Date, endedAt: Date, timestamped: Bool) -> NativeTrip {
+  private func trip(miles: Double, startedAt: Date, endedAt: Date, timestamped: Bool, vehicle: NativeVehicle = .car) -> NativeTrip {
     let timestamps: [Date?] = timestamped
       ? [startedAt, startedAt.addingTimeInterval(20 * 60), startedAt.addingTimeInterval(40 * 60), endedAt]
       : [nil, nil, nil, nil]
@@ -247,7 +317,7 @@ final class NativeInsightsSimulationTests: XCTestCase {
       RoutePoint(latitude: 51.5000 + latitudeDelta, longitude: -0.1200, timestamp: timestamps[3])
     ]
     return NativeTrip(
-      vehicle: .car,
+      vehicle: vehicle,
       miles: miles,
       deduction: miles * 0.45,
       startedAt: startedAt,
