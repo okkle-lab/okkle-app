@@ -99,18 +99,110 @@ final class NativeOutcomeTracker: ObservableObject {
   }
 }
 
-// MARK: - Areas to try — a silent background layer, not a UI feature.
+/// One logged pay entry, tagged with whether that day's work actually
+/// happened near the zone the model was recommending at the time.
+struct NativeZoneOutcomeSample: Codable {
+  let date: Date
+  let period: NativePayPeriod
+  let amount: Double
+  let wasNearRecommendedZone: Bool
+}
+
+/// The zone-ranking counterpart to NativeOutcomeTracker: closes the loop on
+/// "where to go" the same way that one already closes the loop on "when to
+/// go". Every time pay gets logged, checks whether that day's work happened
+/// near that weekday's recommended zone, and whether the pay came in at or
+/// above what the driver normally logs for that period length. Only ever
+/// used to *dampen* zone weights when the hit rate is poor — same restraint
+/// as peakHitRate, a good hit rate never inflates a zone's weight beyond
+/// what its own popularity/efficiency/POI signal already earned.
+@MainActor
+final class NativeZoneOutcomeTracker: ObservableObject {
+  static let shared = NativeZoneOutcomeTracker()
+  @Published private(set) var samples: [NativeZoneOutcomeSample] = []
+  private let storageKey = "uk.okkle.native.zoneoutcome.samples.v1"
+
+  init() { load() }
+
+  func record(amount: Double, period: NativePayPeriod, wasNearRecommendedZone: Bool) {
+    guard amount > 0 else { return }
+    samples.append(NativeZoneOutcomeSample(date: Date(), period: period, amount: amount, wasNearRecommendedZone: wasNearRecommendedZone))
+    if samples.count > 40 { samples.removeFirst(samples.count - 40) }
+    save()
+  }
+
+  var zoneHitRate: Double? {
+    let nearSamples = samples.filter(\.wasNearRecommendedZone)
+    guard nearSamples.count >= 5 else { return nil }
+    var hits = 0
+    var evaluated = 0
+    for sample in nearSamples {
+      let sameScale = samples.filter { $0.period == sample.period }.map(\.amount).sorted()
+      guard sameScale.count >= 3 else { continue }
+      let median = sameScale[sameScale.count / 2]
+      evaluated += 1
+      if sample.amount >= median { hits += 1 }
+    }
+    guard evaluated >= 5 else { return nil }
+    return Double(hits) / Double(evaluated)
+  }
+
+  // MARK: - Explicit feedback ("was this worth it?")
+  //
+  // A direct yes/no tap after a shift is simpler and more reliable ground
+  // truth than inferring from logged income (income can be moved by traffic,
+  // weather, luck) — tracked as its own tally rather than folded into the
+  // income-comparison samples above, which need real £ amounts to stay
+  // meaningful.
+  @Published private(set) var explicitPositive: Int = 0
+  @Published private(set) var explicitNegative: Int = 0
+  private let explicitKey = "uk.okkle.native.zoneoutcome.explicit.v1"
+
+  var explicitHitRate: Double? {
+    let total = explicitPositive + explicitNegative
+    guard total >= 3 else { return nil }
+    return Double(explicitPositive) / Double(total)
+  }
+
+  func recordExplicitFeedback(wasWorthIt: Bool) {
+    if wasWorthIt { explicitPositive += 1 } else { explicitNegative += 1 }
+    if let data = try? JSONEncoder().encode([explicitPositive, explicitNegative]) {
+      UserDefaults.standard.set(data, forKey: explicitKey)
+    }
+  }
+
+  private func load() {
+    if let data = UserDefaults.standard.data(forKey: storageKey),
+       let saved = try? JSONDecoder().decode([NativeZoneOutcomeSample].self, from: data) {
+      samples = saved
+    }
+    if let data = UserDefaults.standard.data(forKey: explicitKey),
+       let saved = try? JSONDecoder().decode([Int].self, from: data), saved.count == 2 {
+      explicitPositive = saved[0]
+      explicitNegative = saved[1]
+    }
+  }
+
+  private func save() {
+    if let data = try? JSONEncoder().encode(samples) {
+      UserDefaults.standard.set(data, forKey: storageKey)
+    }
+  }
+}
+
+// MARK: - Areas to try — cold-start guesses, clearly labelled as guesses.
 //
-// There's no order-volume data to learn real demand from, so any "try this
-// area" guess is a guess. Rather than show it to the driver, this layer
-// quietly scores nearby candidates by restaurant density, then watches real
-// passive visits: if the driver ever naturally drives near a candidate, that
-// visit's day becomes a trial. Enough trials with decent earnings and the
-// candidate is "validated" — at which point it's simply real data, already
-// flowing into the normal zone/ranking pipeline like anywhere else the driver
-// has worked. That's the automatic feedback loop: no manual promotion, no
-// dashboard, just evidence accumulating quietly until a guess earns its way
-// into being real.
+// There's no order-volume data to learn real demand from on day one, so any
+// "try this area" guess is a guess — surfaced as exactly that (see
+// bestUnvalidatedCandidate below) rather than with the same confidence as an
+// earned recommendation. This layer scores nearby candidates by restaurant
+// density, then watches real passive visits: if the driver ever naturally
+// drives near a candidate, that visit's day becomes a trial. Enough trials
+// with decent earnings and the candidate is "validated" — at which point
+// it's simply real data, already flowing into the normal zone/ranking
+// pipeline like anywhere else the driver has worked. That's the automatic
+// feedback loop: no manual promotion, no dashboard, just evidence
+// accumulating quietly until a guess earns its way into being real.
 
 /// One candidate the background layer discovered — persisted so trial
 /// evidence survives across launches.
@@ -150,6 +242,14 @@ final class NativeExploreCandidateStore: ObservableObject {
     }
     trim()
     save()
+  }
+
+  /// The strongest guess still unproven — what the cold-start card shows,
+  /// clearly hedged, while the driver has no earned zones of their own yet.
+  /// Once something validates it stops being a "candidate" at all (it's just
+  /// a real zone now), so this naturally empties out as real data arrives.
+  var bestUnvalidatedCandidate: NativeExploreCandidate? {
+    candidates.filter { !$0.isValidated }.max { $0.poiScore < $1.poiScore }
   }
 
   /// Called on every real passive visit — the feedback half of the loop. If
@@ -260,13 +360,7 @@ enum NativeAreaSuggester {
   }
 
   private static func poiCount(near coordinate: CLLocationCoordinate2D) async -> Int {
-    await withCheckedContinuation { continuation in
-      let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 400)
-      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
-      MKLocalSearch(request: request).start { response, _ in
-        continuation.resume(returning: response?.mapItems.count ?? 0)
-      }
-    }
+    await nativeFoodPOICount(near: coordinate, radiusMeters: 400)
   }
 
   private static func areaName(for coordinate: CLLocationCoordinate2D) async -> String? {
@@ -278,15 +372,74 @@ enum NativeAreaSuggester {
   }
 }
 
+/// How many nearby points of interest look food/delivery-relevant (restaurant,
+/// cafe, bakery, food market, brewery, nightlife) — shared by the explore-area
+/// suggester and the area namer below, so both agree on what counts as
+/// "somewhere worth recommending" rather than any resolvable place name.
+func nativeFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: CLLocationDistance) async -> Int {
+  await withCheckedContinuation { continuation in
+    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: radiusMeters)
+    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
+    MKLocalSearch(request: request).start { response, _ in
+      continuation.resume(returning: response?.mapItems.count ?? 0)
+    }
+  }
+}
+
 /// A coloured overlay circle for one zone — a plain MKCircle plus the weight
 /// that decides its colour.
 final class NativeZoneCircle: MKCircle {
   var weight: Double = 0.5
 }
 
+/// A cheap, cached "does this look like a food-delivery area at all" prior,
+/// used to steer zone ranking while a zone has little or no real delivery
+/// history yet — same cache-then-resolve-async shape as NativeAreaNamer, so
+/// build() can call it synchronously and just get nil until the on-device
+/// MapKit lookup resolves.
+@MainActor
+final class NativeZonePOIPrior: ObservableObject {
+  static let shared = NativeZonePOIPrior()
+  @Published private(set) var scores: [String: Double] = [:]
+  private var pending: [(key: String, coordinate: CLLocationCoordinate2D)] = []
+  private var enqueued: Set<String> = []
+  private var busy = false
+  // A handful of nearby restaurants is already "clearly food-relevant" —
+  // beyond this the score just stays capped at 1, rather than rewarding
+  // whichever cell happens to sit in the single densest high street.
+  private static let saturationCount = 8.0
+
+  func priorScore(for coordinate: CLLocationCoordinate2D) -> Double? {
+    let key = "\(Int((coordinate.latitude * 200).rounded())),\(Int((coordinate.longitude * 200).rounded()))"
+    if let cached = scores[key] { return cached }
+    if !enqueued.contains(key) {
+      enqueued.insert(key)
+      pending.append((key, coordinate))
+      drain()
+    }
+    return nil
+  }
+
+  private func drain() {
+    guard !busy, !pending.isEmpty else { return }
+    busy = true
+    let job = pending.removeFirst()
+    Task {
+      let count = await nativeFoodPOICount(near: job.coordinate, radiusMeters: 500)
+      self.scores[job.key] = min(Double(count) / Self.saturationCount, 1.0)
+      self.busy = false
+      try? await Task.sleep(nanoseconds: 250_000_000)
+      self.drain()
+    }
+  }
+}
+
 /// Turns a zone coordinate into a short, human area name ("Soho", "Camden") for
 /// the daily plan text. On-device reverse geocoding, cached so it only runs
-/// once per rounded coordinate; fails silently (the caller just omits the name).
+/// once per rounded coordinate; fails silently (the caller just omits the name)
+/// — including when the street resolves fine but there's nothing food-relevant
+/// nearby, since a recognisable name is worse than no name if it just sends a
+/// driver to an empty street or a park.
 @MainActor
 final class NativeAreaNamer: ObservableObject {
   static let shared = NativeAreaNamer()
@@ -321,7 +474,16 @@ final class NativeAreaNamer: ObservableObject {
         // "City of Westminster") which is too broad to act on.
         if let p = placemarks?.first,
            let area = p.thoroughfare ?? p.subLocality ?? p.locality {
-          self.names[job.key] = area
+          // A resolvable name isn't enough on its own — check there's
+          // actually somewhere to deliver from/to nearby before naming it,
+          // otherwise a quiet back road or a park street name can end up
+          // confidently recommended as "where to go".
+          let hasFoodNearby = await nativeFoodPOICount(near: job.coordinate, radiusMeters: 500) > 0
+          if hasFoodNearby {
+            self.names[job.key] = area
+          } else {
+            self.enqueued.remove(job.key)
+          }
         } else {
           // Let a later pass retry (throttle/no-result) rather than caching a miss.
           self.enqueued.remove(job.key)

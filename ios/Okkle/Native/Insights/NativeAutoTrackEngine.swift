@@ -19,6 +19,13 @@ struct NativeVisit: Codable, Identifiable, Equatable {
   var departure: Date
   var kindRaw: String = Kind.other.rawValue
   var placeName: String?
+  // True when this pickup/dropoff wasn't a real classified stop, but a stand-in
+  // built from a trip's raw start/end GPS point (see
+  // NativeShiftInsights.enrichedVisits). For a home-based driver that's
+  // usually just "wherever the shift happened to start/end" — not a
+  // restaurant or customer address — so it's real signal for deliveries
+  // count/mileage/active-hours, but not trustworthy for "where to go".
+  var isEndpointGuess: Bool = false
 
   enum Kind: String, Codable, CaseIterable { case pickup, dropoff, other }
 
@@ -119,11 +126,45 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// shows anything, it just quietly keeps the confidence label honest.
   private func checkOutcome(for record: NativeRecord) {
     guard record.kind == .income, let amount = record.amount, let store else { return }
-    let weekday = Calendar.current.component(.weekday, from: record.date) - 1
-    let peakWeekdays = NativeShiftInsights.build(visits: visits, store: store)
-      .weekdayDetails.prefix(3).map(\.weekday)
+    let insights = NativeShiftInsights.build(visits: visits, store: store)
+
+    // Every weekday this record's own period actually spans — a "Week" entry
+    // covers seven of them, not just the single day the driver happened to
+    // pick when logging (the picker labels it "Week ending", which is only
+    // where the period ends). Shared by both self-correction checks below.
+    let periodStart = Calendar.current.startOfDay(for: record.periodStart ?? record.date)
+    let periodEnd = Calendar.current.startOfDay(for: record.periodEnd ?? record.date)
+    var weekdaysInPeriod = Set<Int>()
+    var cursor = periodStart
+    while cursor <= periodEnd {
+      weekdaysInPeriod.insert(Calendar.current.component(.weekday, from: cursor) - 1)
+      guard let next = Calendar.current.date(byAdding: .day, value: 1, to: cursor) else { break }
+      cursor = next
+    }
+
+    // Day half: was any weekday in this record's period one the model had
+    // called a "peak" day?
+    let peakWeekdays = Set(insights.weekdayDetails.prefix(3).map(\.weekday))
     NativeOutcomeTracker.shared.record(amount: amount, period: record.period,
-                                       wasPredictedPeakDay: peakWeekdays.contains(weekday))
+                                       wasPredictedPeakDay: !peakWeekdays.isDisjoint(with: weekdaysInPeriod))
+
+    // Zone half of the same self-correction: did work happen anywhere near a
+    // recommended zone at any point during this record's own period. Entirely
+    // silent — feeds NativeZoneOutcomeTracker.zoneHitRate, which only ever
+    // dampens future zone weights, never boosts them.
+    let recommendedZonesInPeriod = weekdaysInPeriod.compactMap { wd in
+      insights.weekdayDetails.first(where: { $0.weekday == wd })?.coordinate
+    }
+    if !recommendedZonesInPeriod.isEmpty {
+      let periodEndExclusive = periodEnd.addingTimeInterval(86_400)
+      let wasNear = visits.contains { visit in
+        guard visit.arrival >= periodStart, visit.arrival < periodEndExclusive else { return false }
+        return recommendedZonesInPeriod.contains { zone in
+          visit.location.distance(from: CLLocation(latitude: zone.latitude, longitude: zone.longitude)) <= 600
+        }
+      }
+      NativeZoneOutcomeTracker.shared.record(amount: amount, period: record.period, wasNearRecommendedZone: wasNear)
+    }
   }
 
   /// Start or stop listening for driving on working days, to match the

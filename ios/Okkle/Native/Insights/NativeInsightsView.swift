@@ -60,6 +60,7 @@ struct NativeShiftPatternsCard: View {
   let trips: [NativeTrip]
   @Binding var autoTrackTrips: Bool
   @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var exploreCandidates = NativeExploreCandidateStore.shared
   @State private var period: NativeInsightPeriod = .today
   @State private var pageHeights: [NativeInsightPeriod: CGFloat] = [:]
 
@@ -139,7 +140,19 @@ struct NativeShiftPatternsCard: View {
     } else {
       NativeAiCard { buildingState }
         .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+        .onAppear { discoverTentativeZoneIfNeeded() }
     }
+  }
+
+  /// A brand-new driver has no visits at all yet, so the normal background
+  /// exploration (triggered by real passive visits) has nothing to run from.
+  /// Seed it once from Home, if set, so the cold-start card can still offer a
+  /// tentative "worth trying" area on day one instead of nothing at all.
+  private func discoverTentativeZoneIfNeeded() {
+    guard exploreCandidates.candidates.isEmpty else { return }
+    let home = store.settings.excludedPlaces.first { $0.label == "Home" } ?? store.settings.excludedPlaces.first
+    guard let origin = home?.coordinate else { return }
+    NativeAreaSuggester.refresh(near: origin, knownZones: [])
   }
 
   private var offState: some View {
@@ -174,9 +187,37 @@ struct NativeShiftPatternsCard: View {
         baselineRow("fork.knife", "Dinner beats mid-afternoon", "5–9pm is usually your window", true)
         baselineRow("calendar", "Weekend evenings are strongest", "Friday to Sunday", true)
         baselineRow("cloud.rain.fill", "Rain and cold pay better", "More orders, fewer drivers", true)
-        baselineRow("fuelpump.fill", "Cut the roaming", "Idle miles quietly eat profit", false)
+        baselineRow("fuelpump.fill", "Cut the roaming", "Idle miles quietly eat profit", exploreCandidates.bestUnvalidatedCandidate != nil)
+      }
+      if let candidate = exploreCandidates.bestUnvalidatedCandidate {
+        tentativeZoneRow(candidate)
       }
     }
+  }
+
+  /// Deliberately styled apart from the baseline tips above — this one is a
+  /// guess about *this specific driver's* area (restaurant density nearby),
+  /// not generic advice, but it's still unproven, so it says so rather than
+  /// borrowing the confidence of an earned recommendation.
+  private func tentativeZoneRow(_ candidate: NativeExploreCandidate) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: "sparkle.magnifyingglass")
+        .font(.system(size: 16, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+        .frame(width: 24)
+      VStack(alignment: .leading, spacing: 1) {
+        Text("Worth trying: \(candidate.name)")
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(OkkleColor.ink)
+        Text("Restaurant-dense nearby — unproven, not from your own data yet")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 10)
+    .padding(.horizontal, 10)
+    .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 
   private func baselineRow(_ symbol: String, _ title: String, _ sub: String, _ divider: Bool) -> some View {

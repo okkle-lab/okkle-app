@@ -71,19 +71,19 @@
 			remoteGlobalIDString = 13B07F861A680F5B00A75B9A;
 			remoteInfo = Okkle;
 		};
-		B5E90F492D5F4D43B37C9B19 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = B5E90F452D5F4D43B37C9B15;
-			remoteInfo = OkkleWidget;
-		};
 		A7C000000000000000000050 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = A7C000000000000000000030;
 			remoteInfo = "Okkle Watch App";
+		};
+		B5E90F492D5F4D43B37C9B19 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B5E90F452D5F4D43B37C9B15;
+			remoteInfo = OkkleWidget;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -131,9 +131,10 @@
 		6474E5749C7C4E63B1CD0201 /* NativeLogMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLogMedia.swift; sourceTree = "<group>"; };
 		6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePreShiftNotifier.swift; sourceTree = "<group>"; };
 		7840FA4691610C5A1ECDBB5B /* OkkleNativeRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleNativeRootView.swift; sourceTree = "<group>"; };
-		79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRouteStopDetector.swift; sourceTree = "<group>"; };
 		7912EDAE45D308E45EABFAB8 /* OkkleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OkkleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRouteStopDetector.swift; sourceTree = "<group>"; };
 		7AD6F6C8E5CD65225A295942 /* NativeRecordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRecordsView.swift; sourceTree = "<group>"; };
+		7B5B2B00A61D4C01A9F83C0F /* NativeICloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeICloudSync.swift; sourceTree = "<group>"; };
 		7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightsView.swift; sourceTree = "<group>"; };
 		8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccountantPackPdfRenderer.swift; sourceTree = "<group>"; };
 		8DAE2D16EF49CF415577E154 /* NativeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSettingsView.swift; sourceTree = "<group>"; };
@@ -162,7 +163,6 @@
 		B5E90F362D5F4D43B37C9B06 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B5E90F372D5F4D43B37C9B07 /* OkkleWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OkkleWidget.entitlements; sourceTree = "<group>"; };
 		C4D5B140F6D024F07166769E /* OkkleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleStore.swift; sourceTree = "<group>"; };
-		7B5B2B00A61D4C01A9F83C0F /* NativeICloudSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeICloudSync.swift; sourceTree = "<group>"; };
 		CA7CF6DC51582C5B309BCC83 /* NativeHistoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryItem.swift; sourceTree = "<group>"; };
 		CA931E53CF76B03966392C32 /* NativeHistoryDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryDetails.swift; sourceTree = "<group>"; };
 		D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAutoTrackEngine.swift; sourceTree = "<group>"; };
@@ -181,14 +181,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B5E90F402D5F4D43B37C9B10 /* Frameworks */ = {
+		A7C000000000000000000021 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A7C000000000000000000021 /* Frameworks */ = {
+		B5E90F402D5F4D43B37C9B10 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -413,6 +413,14 @@
 			path = Trip;
 			sourceTree = "<group>";
 		};
+		A1C4F9032D68000000000003 /* CarPlay */ = {
+			isa = PBXGroup;
+			children = (
+				A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */,
+			);
+			path = CarPlay;
+			sourceTree = "<group>";
+		};
 		A7C000000000000000000060 /* OkkleWatch */ = {
 			isa = PBXGroup;
 			children = (
@@ -421,14 +429,6 @@
 				A7C000000000000000000014 /* WatchTripConnector.swift */,
 			);
 			path = OkkleWatch;
-			sourceTree = "<group>";
-		};
-		A1C4F9032D68000000000003 /* CarPlay */ = {
-			isa = PBXGroup;
-			children = (
-				A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */,
-			);
-			path = CarPlay;
 			sourceTree = "<group>";
 		};
 		B5E90F442D5F4D43B37C9B14 /* OkkleWidget */ = {
@@ -499,23 +499,6 @@
 			productReference = 13B07F961A680F5B00A75B9A /* Okkle.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B5E90F452D5F4D43B37C9B15 /* OkkleWidget */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = B5E90F462D5F4D43B37C9B16 /* Build configuration list for PBXNativeTarget "OkkleWidget" */;
-			buildPhases = (
-				B5E90F412D5F4D43B37C9B11 /* Sources */,
-				B5E90F402D5F4D43B37C9B10 /* Frameworks */,
-				B5E90F422D5F4D43B37C9B12 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = OkkleWidget;
-			productName = OkkleWidget;
-			productReference = B5E90F342D5F4D43B37C9B04 /* OkkleWidget.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 		A7C000000000000000000030 /* Okkle Watch App */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A7C000000000000000000042 /* Build configuration list for PBXNativeTarget "Okkle Watch App" */;
@@ -533,6 +516,23 @@
 			productReference = A7C000000000000000000010 /* Okkle Watch App.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B5E90F452D5F4D43B37C9B15 /* OkkleWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B5E90F462D5F4D43B37C9B16 /* Build configuration list for PBXNativeTarget "OkkleWidget" */;
+			buildPhases = (
+				B5E90F412D5F4D43B37C9B11 /* Sources */,
+				B5E90F402D5F4D43B37C9B10 /* Frameworks */,
+				B5E90F422D5F4D43B37C9B12 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OkkleWidget;
+			productName = OkkleWidget;
+			productReference = B5E90F342D5F4D43B37C9B04 /* OkkleWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -549,11 +549,11 @@
 						DevelopmentTeam = 22S8J5SFT8;
 						LastSwiftMigration = 1250;
 					};
-					B5E90F452D5F4D43B37C9B15 = {
+					A7C000000000000000000030 = {
 						CreatedOnToolsVersion = 17.0;
 						DevelopmentTeam = 22S8J5SFT8;
 					};
-					A7C000000000000000000030 = {
+					B5E90F452D5F4D43B37C9B15 = {
 						CreatedOnToolsVersion = 17.0;
 						DevelopmentTeam = 22S8J5SFT8;
 					};
@@ -598,14 +598,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B5E90F422D5F4D43B37C9B12 /* Resources */ = {
+		A7C000000000000000000022 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A7C000000000000000000022 /* Resources */ = {
+		B5E90F422D5F4D43B37C9B12 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -665,15 +665,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B5E90F412D5F4D43B37C9B11 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				B5E90F382D5F4D43B37C9B08 /* OkkleWidget.swift in Sources */,
-				B5E90F332D5F4D43B37C9B03 /* NativeTripWidgetState.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		A7C000000000000000000020 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -681,6 +672,15 @@
 				A7C000000000000000000002 /* OkkleWatchApp.swift in Sources */,
 				A7C000000000000000000003 /* WatchContentView.swift in Sources */,
 				A7C000000000000000000004 /* WatchTripConnector.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5E90F412D5F4D43B37C9B11 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5E90F382D5F4D43B37C9B08 /* OkkleWidget.swift in Sources */,
+				B5E90F332D5F4D43B37C9B03 /* NativeTripWidgetState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -695,6 +695,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		A7C000000000000000000051 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A7C000000000000000000030 /* Okkle Watch App */;
+			targetProxy = A7C000000000000000000050 /* PBXContainerItemProxy */;
+		};
 		AA25A57BDD539A539C637257 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 13B07F861A680F5B00A75B9A /* Okkle */;
@@ -704,11 +709,6 @@
 			isa = PBXTargetDependency;
 			target = B5E90F452D5F4D43B37C9B15 /* OkkleWidget */;
 			targetProxy = B5E90F492D5F4D43B37C9B19 /* PBXContainerItemProxy */;
-		};
-		A7C000000000000000000051 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A7C000000000000000000030 /* Okkle Watch App */;
-			targetProxy = A7C000000000000000000050 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -866,53 +866,6 @@
 			};
 			name = Release;
 		};
-		B5E90F472D5F4D43B37C9B17 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = OkkleWidget/OkkleWidget.entitlements;
-				CURRENT_PROJECT_VERSION = 41;
-				DEVELOPMENT_TEAM = 22S8J5SFT8;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = OkkleWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-				VERSIONING_SYSTEM = "apple-generic";
-			};
-			name = Debug;
-		};
-		B5E90F482D5F4D43B37C9B18 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = OkkleWidget/OkkleWidget.entitlements;
-				CURRENT_PROJECT_VERSION = 41;
-				DEVELOPMENT_TEAM = 22S8J5SFT8;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = OkkleWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-				VERSIONING_SYSTEM = "apple-generic";
-			};
-			name = Release;
-		};
 		A7C000000000000000000040 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -963,6 +916,53 @@
 				TARGETED_DEVICE_FAMILY = 4;
 				VERSIONING_SYSTEM = "apple-generic";
 				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		B5E90F472D5F4D43B37C9B17 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = OkkleWidget/OkkleWidget.entitlements;
+				CURRENT_PROJECT_VERSION = 41;
+				DEVELOPMENT_TEAM = 22S8J5SFT8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OkkleWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		B5E90F482D5F4D43B37C9B18 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = OkkleWidget/OkkleWidget.entitlements;
+				CURRENT_PROJECT_VERSION = 41;
+				DEVELOPMENT_TEAM = 22S8J5SFT8;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OkkleWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
 		};
@@ -1032,20 +1032,20 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B5E90F462D5F4D43B37C9B16 /* Build configuration list for PBXNativeTarget "OkkleWidget" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				B5E90F472D5F4D43B37C9B17 /* Debug */,
-				B5E90F482D5F4D43B37C9B18 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		A7C000000000000000000042 /* Build configuration list for PBXNativeTarget "Okkle Watch App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A7C000000000000000000040 /* Debug */,
 				A7C000000000000000000041 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B5E90F462D5F4D43B37C9B16 /* Build configuration list for PBXNativeTarget "OkkleWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B5E90F472D5F4D43B37C9B17 /* Debug */,
+				B5E90F482D5F4D43B37C9B18 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
