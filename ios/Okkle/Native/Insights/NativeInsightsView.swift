@@ -194,7 +194,7 @@ struct NativeShiftPatternsCard: View {
 
       VStack(alignment: .leading, spacing: 8) {
         HStack {
-          Text("BUILDING YOUR HEATMAP")
+          Text("BUILDING YOUR INSIGHTS")
             .font(.system(size: 12, weight: .heavy)).tracking(0.5)
             .foregroundStyle(OkkleColor.muted)
           Spacer()
@@ -202,8 +202,14 @@ struct NativeShiftPatternsCard: View {
             .font(.system(size: 12, weight: .heavy))
             .foregroundStyle(OkkleColor.brand)
         }
-        ProgressView(value: buildingProgress)
-          .tint(OkkleColor.brand)
+        // The real heat map, mid-build — your own tracked routes and
+        // whatever zones have formed so far, however sparse. As it fills
+        // in, this is the same map that shows on the finished panels; a
+        // fake progress visual would say "trust me", this actually shows it.
+        NativeShiftMapRepresentable(trips: trips, zones: shift.zones, interactive: false, pinLimit: 3)
+          .frame(height: 150)
+          .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+          .allowsHitTesting(false)
         Text(buildingSubtitle)
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(OkkleColor.muted)
