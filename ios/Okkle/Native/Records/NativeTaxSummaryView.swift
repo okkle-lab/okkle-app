@@ -12,51 +12,18 @@ struct NativeTaxDetailView: View {
       let savings = NativeProgressSummary.mileageTaxSavings(store: store, period: .yearToDate)
 
       VStack(alignment: .leading, spacing: 14) {
-        if let deadline = upcomingDeadline {
-          NativeTaxDeadlineBanner(deadline: deadline.deadline, days: deadline.days) {
-            showsDeadlines = true
-          }
-        }
+        priorityBanner(savings: savings)
 
-        Button {
-          detail = .saved
-        } label: {
-          NativeTaxSavedCard(miles: savings.miles, taxSaved: savings.taxSaved)
-        }
-        .buttonStyle(.plain)
-
-        if shouldShowMileageBandNudge {
-          NativeTaxMileageNudge(miles: savings.miles)
-        }
-
-        Text("Tap a card for the detail")
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
-          .padding(.top, 2)
+        NativeTaxOverviewStatsCard(
+          due: gbp(tax.totalDue),
+          saved: gbp(savings.taxSaved),
+          profit: gbp(tax.profit),
+          onTapDue: { detail = .bill },
+          onTapSaved: { detail = .saved },
+          onTapProfit: { detail = .year }
+        )
 
         NativeTaxOverviewGroup {
-          NativeTaxOverviewRow(
-            icon: "shield.lefthalf.filled",
-            title: "Set aside for tax",
-            subtitle: nativeTaxYearLabel(for: store.taxYear),
-            value: gbp(tax.totalDue)
-          ) {
-            detail = .bill
-          }
-
-          NativeTaxOverviewDivider()
-
-          NativeTaxOverviewRow(
-            icon: "briefcase.fill",
-            title: "This year",
-            subtitle: "Turnover, expenses & profit",
-            value: gbp(tax.profit)
-          ) {
-            detail = .year
-          }
-
-          NativeTaxOverviewDivider()
-
           NativeTaxDeadlinesButton {
             showsDeadlines = true
           }
@@ -80,6 +47,20 @@ struct NativeTaxDetailView: View {
       NativeKeyTaxDatesSheet()
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+    .onAppear {
+      NativeTripAddressResolver.backfillMissingAddresses(store: store)
+    }
+  }
+
+  @ViewBuilder
+  private func priorityBanner(savings: NativeMileageTaxSavings) -> some View {
+    if let deadline = upcomingDeadline {
+      NativeTaxDeadlineBanner(deadline: deadline.deadline, days: deadline.days) {
+        showsDeadlines = true
+      }
+    } else if shouldShowMileageBandNudge {
+      NativeTaxMileageNudge(miles: savings.miles)
     }
   }
 
@@ -181,35 +162,49 @@ private struct NativeTaxSetAsideCard: View {
   }
 }
 
-private struct NativeTaxSavedCard: View {
-  let miles: Double
-  let taxSaved: Double
+private struct NativeTaxOverviewStatsCard: View {
+  let due: String
+  let saved: String
+  let profit: String
+  let onTapDue: () -> Void
+  let onTapSaved: () -> Void
+  let onTapProfit: () -> Void
 
   var body: some View {
-    NativeGlassCard(cornerRadius: 32) {
-      VStack(alignment: .leading, spacing: 14) {
-        HStack(alignment: .center) {
-          Label("Tax saved this year", systemImage: "chart.line.uptrend.xyaxis")
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(OkkleColor.brandDark)
-          Spacer()
-          Image(systemName: "chevron.right")
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(OkkleColor.muted)
+    NativeGlassCard(cornerRadius: 28, contentPadding: 18) {
+      VStack(alignment: .leading, spacing: 16) {
+        Label("Tax overview", systemImage: "shield.lefthalf.filled")
+          .font(.system(size: 15, weight: .bold))
+          .foregroundStyle(OkkleColor.brandDark)
+
+        HStack(alignment: .top, spacing: 0) {
+          stat(title: "Due", value: due, action: onTapDue)
+          Divider().frame(height: 46)
+          stat(title: "Saved", value: saved, color: OkkleColor.brand, action: onTapSaved)
+          Divider().frame(height: 46)
+          stat(title: "Profit", value: profit, action: onTapProfit)
         }
-
-        Text(gbp(taxSaved))
-          .font(.system(size: 54, weight: .heavy, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
-          .lineLimit(1)
-          .minimumScaleFactor(0.58)
-
-        Text("From \(Okkle.miles(miles)) of mileage logged this year")
-          .font(.system(size: 14, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
-          .fixedSize(horizontal: false, vertical: true)
       }
     }
+  }
+
+  private func stat(title: String, value: String, color: Color = OkkleColor.ink, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title)
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+        Text(value)
+          .font(.system(size: 19, weight: .heavy, design: .rounded))
+          .foregroundStyle(color)
+          .lineLimit(1)
+          .minimumScaleFactor(0.6)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, 6)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
   }
 }
 
@@ -256,57 +251,6 @@ private struct NativeTaxOverviewGroup<Content: View>: View {
     }
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     .shadow(color: .black.opacity(0.07), radius: 22, y: 12)
-  }
-}
-
-private struct NativeTaxOverviewDivider: View {
-  var body: some View {
-    Divider()
-      .padding(.leading, 64)
-  }
-}
-
-private struct NativeTaxOverviewRow: View {
-  let icon: String
-  let title: String
-  let subtitle: String
-  let value: String
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 14) {
-        Image(systemName: icon)
-          .font(.system(size: 18, weight: .bold))
-          .foregroundStyle(OkkleColor.brand)
-          .frame(width: 38, height: 38)
-          .background(OkkleColor.mint, in: Circle())
-
-        VStack(alignment: .leading, spacing: 3) {
-          Text(title)
-            .font(.system(size: 16, weight: .bold))
-            .foregroundStyle(OkkleColor.ink)
-          Text(subtitle)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-            .lineLimit(2)
-        }
-
-        Spacer(minLength: 10)
-
-        Text(value)
-          .font(.system(size: 16, weight: .bold, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
-          .lineLimit(1)
-          .minimumScaleFactor(0.68)
-
-        Image(systemName: "chevron.right")
-          .font(.system(size: 13, weight: .bold))
-          .foregroundStyle(OkkleColor.muted.opacity(0.7))
-      }
-      .padding(16)
-    }
-    .buttonStyle(.plain)
   }
 }
 
@@ -388,10 +332,10 @@ private struct NativeTaxBillBreakdown: View {
       VStack(spacing: 12) {
         NativeTaxBreakdownHeader(title: "Set aside", value: gbp(tax.totalDue), symbol: "shield.lefthalf.filled")
         NativeTaxDetailRow("Income tax", gbp(tax.incomeTax))
-        NativeTaxDetailRow("Class 4 NIC", gbp(tax.class4))
-        NativeTaxDetailRow("Payment on account", gbp(tax.paymentOnAccount))
-        NativeTaxDetailRow("Taxable profit", gbp(tax.profit))
-        NativeTaxDetailRow("Income tax band", store.settings.incomeBracket.label)
+        NativeTaxDetailRow("Class 4 NIC", gbp(tax.class4), info: NativeTaxTerm.class4NIC)
+        NativeTaxDetailRow("Payment on account", gbp(tax.paymentOnAccount), info: NativeTaxTerm.paymentOnAccount)
+        NativeTaxDetailRow("Taxable profit", gbp(tax.profit), info: NativeTaxTerm.taxableProfit)
+        NativeTaxDetailRow("Income tax band", store.settings.incomeBracket.label, info: NativeTaxTerm.incomeTaxBand)
       }
     }
   }
@@ -425,8 +369,8 @@ private struct NativeTaxYearBreakdown: View {
         NativeTaxDetailRow("Turnover", gbp(tax.turnover))
         NativeTaxDetailRow("Logged expenses", gbp(tax.expenses))
         NativeTaxDetailRow("Business profit", gbp(tax.businessProfit))
-        NativeTaxDetailRow("Deduction applied", gbp(tax.deductionApplied))
-        NativeTaxDetailRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
+        NativeTaxDetailRow("Deduction applied", gbp(tax.deductionApplied), info: NativeTaxTerm.deductionApplied)
+        NativeTaxDetailRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used", info: NativeTaxTerm.tradingAllowance)
       }
     }
   }
@@ -457,18 +401,38 @@ private struct NativeTaxDetailRow: View {
   let label: String
   let value: String
   var emphasized = false
+  var info: String? = nil
+  @State private var showsInfo = false
 
-  init(_ label: String, _ value: String, emphasized: Bool = false) {
+  init(_ label: String, _ value: String, emphasized: Bool = false, info: String? = nil) {
     self.label = label
     self.value = value
     self.emphasized = emphasized
+    self.info = info
   }
 
   var body: some View {
     HStack(alignment: .firstTextBaseline) {
-      Text(label)
-        .font(.system(size: 15, weight: .semibold))
-        .foregroundStyle(OkkleColor.muted)
+      HStack(spacing: 4) {
+        Text(label)
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+        if let info {
+          Button {
+            showsInfo = true
+          } label: {
+            Image(systemName: "info.circle")
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted.opacity(0.65))
+          }
+          .buttonStyle(.plain)
+          .alert(label, isPresented: $showsInfo) {
+            Button("Got it", role: .cancel) {}
+          } message: {
+            Text(info)
+          }
+        }
+      }
       Spacer(minLength: 12)
       Text(value)
         .font(.system(size: 16, weight: emphasized ? .heavy : .bold, design: .rounded))
@@ -476,6 +440,19 @@ private struct NativeTaxDetailRow: View {
         .multilineTextAlignment(.trailing)
     }
   }
+}
+
+/// Short, plain-English explanations for the tax jargon shown on this
+/// screen — surfaced inline via the (i) buttons above rather than as a
+/// separate glossary page, so it stays beginner-friendly without adding
+/// another list to scroll through.
+private enum NativeTaxTerm {
+  static let class4NIC = "A National Insurance charge for self-employed profits above £12,570 a year, on top of income tax."
+  static let paymentOnAccount = "An advance instalment HMRC asks for towards next year's bill, paid alongside this year's — only kicks in once your bill passes a threshold."
+  static let incomeTaxBand = "The rate HMRC charges on income above your tax-free Personal Allowance. It rises in steps as you earn more."
+  static let taxableProfit = "Turnover minus allowable expenses (or the Trading Allowance) — the amount tax is actually calculated on."
+  static let deductionApplied = "The mileage or expense deduction subtracted from turnover before working out what's taxed."
+  static let tradingAllowance = "The first £1,000 of self-employed income each tax year that's automatically tax-free, no expense logging needed."
 }
 
 struct NativeTaxSavedPanel: View {

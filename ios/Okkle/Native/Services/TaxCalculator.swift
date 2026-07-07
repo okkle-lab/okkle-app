@@ -6,6 +6,8 @@ struct NativeMileageLogRow {
   let source: String
   let miles: Double
   let deduction: Double
+  let fromAddress: String?
+  let toAddress: String?
 }
 
 struct NativeTaxPosition {

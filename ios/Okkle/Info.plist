@@ -36,6 +36,7 @@
 	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
+		<string>comgooglemaps</string>
 		<string>airmail</string>
 		<string>message</string>
 		<string>bluemail</string>

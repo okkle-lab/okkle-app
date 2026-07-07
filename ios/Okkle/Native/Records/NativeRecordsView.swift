@@ -588,10 +588,45 @@ struct NativeShareSheet: UIViewControllerRepresentable {
   let items: [Any]
 
   func makeUIViewController(context: Context) -> UIActivityViewController {
-    UIActivityViewController(activityItems: items, applicationActivities: nil)
+    // Wrap file URLs so the share sheet declares an explicit UTType (from
+    // the file's own extension) rather than leaving Mail/Files/AirDrop to
+    // infer one — without this, some destinations fall back to treating
+    // the file as generic plain text instead of recognising it as a CSV
+    // or PDF.
+    let wrapped = items.map { item -> Any in
+      guard let url = item as? URL else { return item }
+      return NativeFileActivityItem(url: url)
+    }
+    return UIActivityViewController(activityItems: wrapped, applicationActivities: nil)
   }
 
   func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private final class NativeFileActivityItem: NSObject, UIActivityItemSource {
+  let url: URL
+  private let utType: UTType
+
+  init(url: URL) {
+    self.url = url
+    self.utType = UTType(filenameExtension: url.pathExtension) ?? .data
+  }
+
+  func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+    url
+  }
+
+  func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
+    url
+  }
+
+  func activityViewController(_ activityViewController: UIActivityViewController, subjectForActivityType activityType: UIActivity.ActivityType?) -> String {
+    url.deletingPathExtension().lastPathComponent
+  }
+
+  func activityViewController(_ activityViewController: UIActivityViewController, dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?) -> String {
+    utType.identifier
+  }
 }
 
 struct NativeBackupDocument: FileDocument {
@@ -707,11 +742,11 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
 
   var subtitle: String {
     switch self {
-    case .accountantPack: return "Summary, mileage, expenses, receipts and records"
-    case .freeAgent: return "Income and expenses for bank import"
-    case .selfAssessment: return "Turnover, expenses, profit and tax estimate"
-    case .mileageReportPdf: return "Summary by rate band, plus full per-trip log"
-    case .mileageLog: return "GPS and manual mileage claims, for a spreadsheet"
+    case .accountantPack: return "Mileage, expenses & receipts"
+    case .freeAgent: return "Ready for bank import"
+    case .selfAssessment: return "Turnover, profit and tax due"
+    case .mileageReportPdf: return "By rate band, plus full log"
+    case .mileageLog: return "Every mileage entry, as CSV"
     case .allData: return "Trips, earnings and expenses"
     }
   }
@@ -743,6 +778,28 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .accountantPack, .mileageReportPdf: return "pdf"
     case .selfAssessment: return "txt"
     case .freeAgent, .mileageLog, .allData: return "csv"
+    }
+  }
+
+  var group: NativeTaxExportGroup {
+    switch self {
+    case .accountantPack, .selfAssessment: return .accountant
+    case .mileageReportPdf, .mileageLog: return .mileage
+    case .freeAgent, .allData: return .rawData
+    }
+  }
+}
+
+enum NativeTaxExportGroup: CaseIterable {
+  case accountant
+  case mileage
+  case rawData
+
+  var title: String {
+    switch self {
+    case .accountant: return "For your accountant"
+    case .mileage: return "Mileage"
+    case .rawData: return "Raw data"
     }
   }
 }

@@ -183,6 +183,12 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var startedAt: Date
   var endedAt: Date
   var points: [RoutePoint]
+  // Reverse-geocoded lazily after the trip is saved (see
+  // NativeTripAddressResolver) so the mileage log can show a real from/to
+  // journey rather than just an aggregate distance. Nil until resolved, or
+  // for trips saved before this existed.
+  var startAddress: String? = nil
+  var endAddress: String? = nil
 }
 
 enum NativePayPeriod: String, CaseIterable, Identifiable, Codable {

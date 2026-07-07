@@ -7,51 +7,27 @@ struct NativeExportCard: View {
   var body: some View {
     NativeGlassCard(cornerRadius: 30) {
       VStack(alignment: .leading, spacing: 14) {
-        Label("Send to your accountant", systemImage: "square.and.arrow.up")
-          .font(.system(size: 16, weight: .heavy))
-          .foregroundStyle(OkkleColor.brandDark)
         Text("Export & share")
           .font(.system(size: 24, weight: .heavy, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
-        Text("Generate files on-device and choose where to send or save them.")
-          .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
 
-        VStack(spacing: 0) {
-          ForEach(NativeTaxExportKind.allCases) { kind in
-            Button {
-              if let item = nativeMakeExport(kind, store: store) {
-                shareItem = item
-              } else {
-                exportFailed = true
-              }
-            } label: {
-              HStack(spacing: 12) {
-                Image(systemName: kind.symbol)
-                  .font(.system(size: 17, weight: .bold))
-                  .foregroundStyle(OkkleColor.brand)
-                  .frame(width: 38, height: 38)
-                  .background(OkkleColor.brand.opacity(0.12), in: Circle())
-                VStack(alignment: .leading, spacing: 3) {
-                  Text(kind.title)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(OkkleColor.ink)
-                  Text(kind.subtitle)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(OkkleColor.muted)
-                    .lineLimit(2)
+        VStack(alignment: .leading, spacing: 16) {
+          ForEach(NativeTaxExportGroup.allCases, id: \.self) { group in
+            let kinds = NativeTaxExportKind.allCases.filter { $0.group == group }
+            VStack(alignment: .leading, spacing: 4) {
+              Text(group.title)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(OkkleColor.muted)
+                .padding(.leading, 2)
+
+              VStack(spacing: 0) {
+                ForEach(kinds) { kind in
+                  exportRow(kind)
+                  if kind != kinds.last {
+                    Divider().padding(.leading, 50)
+                  }
                 }
-                Spacer()
-                Image(systemName: "square.and.arrow.up")
-                  .font(.system(size: 15, weight: .bold))
-                  .foregroundStyle(OkkleColor.muted)
               }
-              .padding(.vertical, 11)
-            }
-            .buttonStyle(.plain)
-
-            if kind != .allData {
-              Divider().padding(.leading, 50)
             }
           }
         }
@@ -65,6 +41,39 @@ struct NativeExportCard: View {
     } message: {
       Text("Please try again.")
     }
+  }
+
+  private func exportRow(_ kind: NativeTaxExportKind) -> some View {
+    Button {
+      if let item = nativeMakeExport(kind, store: store) {
+        shareItem = item
+      } else {
+        exportFailed = true
+      }
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: kind.symbol)
+          .font(.system(size: 17, weight: .bold))
+          .foregroundStyle(OkkleColor.brand)
+          .frame(width: 38, height: 38)
+          .background(OkkleColor.brand.opacity(0.12), in: Circle())
+        VStack(alignment: .leading, spacing: 3) {
+          Text(kind.title)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(OkkleColor.ink)
+          Text(kind.subtitle)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+            .lineLimit(1)
+        }
+        Spacer()
+        Image(systemName: "square.and.arrow.up")
+          .font(.system(size: 15, weight: .bold))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      .padding(.vertical, 11)
+    }
+    .buttonStyle(.plain)
   }
 }
 
@@ -148,7 +157,7 @@ func nativeMileageCsv(store: OkkleStore) -> String {
   // set at logging time against a running total of zero, so it's only
   // right below the 10,000-mile HMRC simplified-rate threshold; this way
   // the exported total always matches the tax-year figure shown in Reports.
-  let header = "Date,Vehicle,Source,Miles,Basis,Deduction GBP"
+  let header = "Date,Vehicle,Source,Miles,Basis,Deduction GBP,From,To"
   let rows = store.yearMileageLogRows.map { row in
     [
       nativeCsvField(nativeDateStamp(row.date)),
@@ -156,7 +165,9 @@ func nativeMileageCsv(store: OkkleStore) -> String {
       nativeCsvField(row.source),
       nativeCsvField(nativeDecimal(row.miles)),
       nativeCsvField("HMRC simplified"),
-      nativeCsvField(nativeDecimal(row.deduction))
+      nativeCsvField(nativeDecimal(row.deduction)),
+      nativeCsvField(row.fromAddress ?? ""),
+      nativeCsvField(row.toAddress ?? "")
     ].joined(separator: ",")
   }
   return ([header] + rows).joined(separator: "\n")

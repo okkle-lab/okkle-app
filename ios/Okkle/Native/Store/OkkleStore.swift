@@ -11,6 +11,8 @@ final class OkkleStore: ObservableObject {
     var vehicle: NativeVehicle
     var source: String = "GPS"
     var interval: DateInterval? = nil
+    var fromAddress: String? = nil
+    var toAddress: String? = nil
   }
 
   @Published var settings = NativeSettings() { didSet { scheduleSave() } }
@@ -251,6 +253,7 @@ final class OkkleStore: ObservableObject {
   func addTrip(_ trip: NativeTrip) {
     trips.insert(trip, at: 0)
     refreshLogSensitiveNotifications()
+    NativeTripAddressResolver.resolveAddresses(for: trip.id, store: self)
   }
 
   func updateTrip(_ trip: NativeTrip) {
@@ -370,7 +373,9 @@ final class OkkleStore: ObservableObject {
         vehicle: entry.vehicle,
         source: entry.source,
         miles: entry.miles,
-        deduction: deduction
+        deduction: deduction,
+        fromAddress: entry.fromAddress,
+        toAddress: entry.toAddress
       ))
     }
 
@@ -601,7 +606,13 @@ final class OkkleStore: ObservableObject {
     let tripEntries = yearTrips.compactMap { trip -> TaxYearMileageEntry? in
       let miles = max(0, trip.miles)
       guard miles > 0 else { return nil }
-      return TaxYearMileageEntry(date: trip.startedAt, miles: miles, vehicle: trip.vehicle)
+      return TaxYearMileageEntry(
+        date: trip.startedAt,
+        miles: miles,
+        vehicle: trip.vehicle,
+        fromAddress: trip.startAddress,
+        toAddress: trip.endAddress
+      )
     }
 
     let recordEntries = yearRecords.compactMap { record -> TaxYearMileageEntry? in

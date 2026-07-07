@@ -12,6 +12,7 @@
 		14FC991062602F3F2D2D8B26 /* NativeRecordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD6F6C8E5CD65225A295942 /* NativeRecordsView.swift */; };
 		19005EB983B81A24C63B8DD3 /* NativeWeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E0E24C7F9927CA1A494C91C /* NativeWeatherService.swift */; };
 		209F3359ED511A0BC9D64DB7 /* NativeInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */; };
+		21561511FF97EDEF82EB30D4 /* NativeTripAddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900E20793004ECB20E38A07A /* NativeTripAddressResolver.swift */; };
 		343A8C0342A9A5D0710B2970 /* TaxCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 304A0809B3D20910AAEAA20C /* TaxCalculatorTests.swift */; };
 		37E08F9D0CE14C3DB802356D /* NativeProgressSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37E08F9C0CE14C3DB802356C /* NativeProgressSummary.swift */; };
 		3ACB078A0E440BE440FC023F /* OkkleNativeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7840FA4691610C5A1ECDBB5B /* OkkleNativeRootView.swift */; };
@@ -143,6 +144,7 @@
 		8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAccountantPackPdfRenderer.swift; sourceTree = "<group>"; };
 		8DAE2D16EF49CF415577E154 /* NativeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSettingsView.swift; sourceTree = "<group>"; };
 		8E0E24C7F9927CA1A494C91C /* NativeWeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWeatherService.swift; sourceTree = "<group>"; };
+		900E20793004ECB20E38A07A /* NativeTripAddressResolver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeTripAddressResolver.swift; sourceTree = "<group>"; };
 		99F6F33FCC220B2D976D3CAA /* NativeInsightArea.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightArea.swift; sourceTree = "<group>"; };
 		9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSession.swift; sourceTree = "<group>"; };
 		9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacySQLiteExporter.swift; sourceTree = "<group>"; };
@@ -310,6 +312,7 @@
 				8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */,
 				6FCB2220388F7D57B4A3CEF3 /* NativePdfDocumentRenderer.swift */,
 				451B572069C14D2C51AE89CD /* NativeMileageReportPdfRenderer.swift */,
+				900E20793004ECB20E38A07A /* NativeTripAddressResolver.swift */,
 			);
 			path = Export;
 			sourceTree = "<group>";
@@ -670,6 +673,7 @@
 				764745A26CC7406DD271FCFA /* NativeLoggingReminder.swift in Sources */,
 				8AC319BFA10D96F07E2BAB00 /* NativePdfDocumentRenderer.swift in Sources */,
 				F4D8AB70ABF84B06A1C6C4D9 /* NativeMileageReportPdfRenderer.swift in Sources */,
+				21561511FF97EDEF82EB30D4 /* NativeTripAddressResolver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

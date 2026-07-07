@@ -209,52 +209,74 @@ struct NativeTopAreasList: View {
   var showShareBar: Bool = false
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @ObservedObject private var locator = NativeOneShotLocator.shared
+  @State private var directionsTarget: NativeRankedArea?
 
   var body: some View {
     let rows = nativeRankedAreas(zones, near: locator.coordinate, namer: areaNamer, limit: limit)
     if !rows.isEmpty {
       VStack(spacing: 0) {
         ForEach(Array(rows.enumerated()), id: \.element.id) { index, area in
-          HStack(spacing: 12) {
-            // Numbered badge — one brand colour so the number carries the rank.
-            // (Heat colours are reserved for the busy-hours graph and map, to
-            // avoid reading rank and busyness as the same scale.)
-            Text("\(area.rank)")
-              .font(.system(size: 13, weight: .heavy))
-              .foregroundStyle(.white)
-              .frame(width: 24, height: 24)
-              .background(OkkleColor.brand, in: Circle())
-            VStack(alignment: .leading, spacing: showShareBar ? 5 : 1) {
-              Text(area.name)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(OkkleColor.ink)
-              Text(area.time.map { "Busy \($0)" } ?? "One of your patches")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(OkkleColor.muted)
-              if showShareBar {
-                HStack(spacing: 8) {
-                  GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                      Capsule().fill(OkkleColor.muted.opacity(0.12)).frame(height: 4)
-                      Capsule().fill(OkkleColor.brand).frame(width: max(6, geo.size.width * area.weight), height: 4)
+          Button {
+            directionsTarget = area
+          } label: {
+            HStack(spacing: 12) {
+              // Numbered badge — one brand colour so the number carries the rank.
+              // (Heat colours are reserved for the busy-hours graph and map, to
+              // avoid reading rank and busyness as the same scale.)
+              Text("\(area.rank)")
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(OkkleColor.brand, in: Circle())
+              VStack(alignment: .leading, spacing: showShareBar ? 5 : 1) {
+                Text(area.name)
+                  .font(.system(size: 16, weight: .semibold))
+                  .foregroundStyle(OkkleColor.ink)
+                Text(area.time.map { "Busy \($0)" } ?? "One of your patches")
+                  .font(.system(size: 13, weight: .medium))
+                  .foregroundStyle(OkkleColor.muted)
+                if showShareBar {
+                  HStack(spacing: 8) {
+                    GeometryReader { geo in
+                      ZStack(alignment: .leading) {
+                        Capsule().fill(OkkleColor.muted.opacity(0.12)).frame(height: 4)
+                        Capsule().fill(OkkleColor.brand).frame(width: max(6, geo.size.width * area.weight), height: 4)
+                      }
                     }
+                    .frame(height: 4)
+                    // The bar alone can't say whether it means 90% or 20% — put
+                    // the actual number on it, same as Platform Mix does.
+                    Text("\(Int((area.weight * 100).rounded()))%")
+                      .font(.system(size: 11, weight: .bold))
+                      .foregroundStyle(OkkleColor.muted)
+                      .frame(width: 32, alignment: .trailing)
                   }
-                  .frame(height: 4)
-                  // The bar alone can't say whether it means 90% or 20% — put
-                  // the actual number on it, same as Platform Mix does.
-                  Text("\(Int((area.weight * 100).rounded()))%")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(OkkleColor.muted)
-                    .frame(width: 32, alignment: .trailing)
+                  .padding(.top, 1)
                 }
-                .padding(.top, 1)
               }
+              .frame(maxWidth: .infinity, alignment: .leading)
+              Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(OkkleColor.muted.opacity(0.5))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
           }
-          .padding(.vertical, 10)
+          .buttonStyle(.plain)
           if index < rows.count - 1 {
             Divider().padding(.leading, 36)
+          }
+        }
+      }
+      .confirmationDialog(
+        directionsTarget.map { "Directions to \($0.name)" } ?? "Directions",
+        isPresented: Binding(get: { directionsTarget != nil }, set: { if !$0 { directionsTarget = nil } }),
+        titleVisibility: .visible
+      ) {
+        if let area = directionsTarget {
+          Button("Apple Maps") { nativeOpenDirections(to: area.coordinate, name: area.name, app: .apple) }
+          if nativeGoogleMapsInstalled {
+            Button("Google Maps") { nativeOpenDirections(to: area.coordinate, name: area.name, app: .google) }
           }
         }
       }
@@ -265,6 +287,30 @@ struct NativeTopAreasList: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.vertical, 4)
     }
+  }
+}
+
+enum NativeMapsApp {
+  case apple
+  case google
+}
+
+var nativeGoogleMapsInstalled: Bool {
+  guard let url = URL(string: "comgooglemaps://") else { return false }
+  return UIApplication.shared.canOpenURL(url)
+}
+
+@MainActor
+func nativeOpenDirections(to coordinate: CLLocationCoordinate2D, name: String, app: NativeMapsApp) {
+  switch app {
+  case .apple:
+    let placemark = MKPlacemark(coordinate: coordinate)
+    let item = MKMapItem(placemark: placemark)
+    item.name = name
+    item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+  case .google:
+    guard let url = URL(string: "comgooglemaps://?daddr=\(coordinate.latitude),\(coordinate.longitude)&directionsmode=driving") else { return }
+    UIApplication.shared.open(url)
   }
 }
 
