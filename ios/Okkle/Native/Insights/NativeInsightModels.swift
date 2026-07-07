@@ -326,6 +326,7 @@ struct NativeShiftInsights {
   let todayPlan: NativeDayPlan?
   let lastShift: NativeShiftDebrief?
   let activeDays: Int                          // distinct days with tracked stops
+  let daySpan: Int                             // calendar days from the first tracked stop to the last
   let peakHitRate: Double?                     // how often "your peak" has actually paid off
   let weekdayReliability: [Int: NativeDayReliability]   // per-weekday, week-to-week consistency
   let platformShares: [NativePlatformShare]             // ranked, only populated with 2+ platforms logged
@@ -339,17 +340,21 @@ struct NativeShiftInsights {
   }
 
   /// Overall evidence level: enough deliveries across enough distinct days,
-  /// *and* those days actually look alike. Sample size alone can be
-  /// misleading — five visits that all landed near the same volume is a
-  /// genuinely repeatable pattern; five visits where one outlier day did most
-  /// of the work is really a single fluke wearing a big-sample-size costume.
-  /// The day-to-day spread (coefficient of variation across active weekdays)
-  /// catches that and caps confidence accordingly, even when the raw totals
-  /// look strong.
+  /// spread over enough real time, *and* those days actually look alike.
+  /// Sample size alone can be misleading two different ways: five visits
+  /// that all landed near the same volume is a genuinely repeatable
+  /// pattern; five visits where one outlier day did most of the work is
+  /// really a single fluke wearing a big-sample-size costume; and eight
+  /// deliveries crammed into three back-to-back days says nothing about
+  /// which days of the week are actually busiest, even though the raw
+  /// counts alone would already clear the bar. The day-to-day spread
+  /// (coefficient of variation across active weekdays) catches the first
+  /// problem; requiring the evidence to span at least a week (a fortnight
+  /// for "high") catches the second.
   var confidence: NativeConfidence {
     var level: NativeConfidence
-    if deliveries >= 20 && activeDays >= 6 { level = .high }
-    else if deliveries >= 8 && activeDays >= 3 { level = .medium }
+    if deliveries >= 20 && activeDays >= 6 && daySpan >= 14 { level = .high }
+    else if deliveries >= 8 && activeDays >= 3 && daySpan >= 7 { level = .medium }
     else { level = .low }
 
     if level != .low {
@@ -413,7 +418,7 @@ struct NativeShiftInsights {
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
     weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
-    activeDays: 0, peakHitRate: nil, weekdayReliability: [:],
+    activeDays: 0, daySpan: 0, peakHitRate: nil, weekdayReliability: [:],
     platformShares: [], hourCounts: Array(repeating: 0, count: 24)
   )
 
@@ -1004,6 +1009,11 @@ struct NativeShiftInsights {
 
     let lastShift = debrief(sorted: sorted, deliveryHits: deliveryHits, store: store, shiftGap: shiftGap, cellSize: cellSize)
     let activeDays = Set(sorted.map { Calendar.current.startOfDay(for: $0.arrival) }).count
+    let daySpan = Calendar.current.dateComponents(
+      [.day],
+      from: Calendar.current.startOfDay(for: sorted[0].arrival),
+      to: Calendar.current.startOfDay(for: sorted[sorted.count - 1].arrival)
+    ).day ?? 0
 
     return NativeShiftInsights(
       deliveries: deliveries,
@@ -1020,6 +1030,7 @@ struct NativeShiftInsights {
       todayPlan: todayPlan,
       lastShift: lastShift,
       activeDays: activeDays,
+      daySpan: daySpan,
       peakHitRate: NativeOutcomeTracker.shared.peakHitRate,
       weekdayReliability: weekdayReliability,
       platformShares: platformShares,

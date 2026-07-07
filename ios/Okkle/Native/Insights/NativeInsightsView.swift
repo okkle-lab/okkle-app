@@ -223,13 +223,15 @@ struct NativeShiftPatternsCard: View {
   }
 
   /// Mirrors the medium-confidence thresholds in NativeShiftInsights.confidence
-  /// (8+ deliveries across 3+ distinct days) — whichever of the two is further
-  /// from being met is the real bottleneck, so progress is capped at the
-  /// smaller of the two ratios rather than averaged.
+  /// (8+ deliveries, 3+ distinct days, spread across at least a week) —
+  /// whichever of the three is further from being met is the real
+  /// bottleneck, so progress is capped at the smallest ratio rather than
+  /// averaged.
   private var buildingProgress: Double {
     let deliveryProgress = min(Double(shift.deliveries) / 8.0, 1.0)
     let dayProgress = min(Double(shift.activeDays) / 3.0, 1.0)
-    return min(deliveryProgress, dayProgress)
+    let spanProgress = min(Double(shift.daySpan) / 7.0, 1.0)
+    return min(deliveryProgress, dayProgress, spanProgress)
   }
 
   private var buildingSubtitle: String {
@@ -240,6 +242,12 @@ struct NativeShiftPatternsCard: View {
       // back by an uneven week (see NativeShiftInsights.confidence) — say
       // so rather than implying it's stuck.
       return "Almost there — a few more regular days will lock in your personalised timing and areas."
+    } else if shift.daySpan < 7 {
+      // Enough deliveries can pile up in just two or three days — that's
+      // not enough to say which days of the week are actually busiest, so
+      // call out the week requirement specifically rather than just the
+      // delivery count.
+      return "\(shift.deliveries) deliveries so far — needs at least a week of driving before it can trust a pattern."
     } else {
       let dayLabel = shift.activeDays == 1 ? "day" : "days"
       return "\(shift.deliveries) deliveries across \(shift.activeDays) \(dayLabel) so far — keep driving and this sharpens up."
