@@ -103,7 +103,12 @@ struct NativeShiftPatternsCard: View {
   }
 
   var body: some View {
-    if shift.hasData {
+    // Full panels only once there's enough evidence to actually trust a
+    // recommendation — a handful of deliveries can produce a "pattern"
+    // that's really just noise. Below medium confidence, show the
+    // building state instead of presenting a shaky read as if it were
+    // solid, even though shift.hasData would already be true by then.
+    if shift.confidence != .low {
       VStack(alignment: .leading, spacing: 14) {
         NativeInsightPeriodTabs(period: $period)
 
@@ -172,6 +177,9 @@ struct NativeShiftPatternsCard: View {
 
   /// Cold start: sensible built-in guidance so a day-1 driver still gets
   /// something useful while their own pattern accrues. Clearly generic.
+  /// Covers everything below medium confidence — zero deliveries all the
+  /// way through a handful of shaky ones — with a progress bar so it
+  /// reads as "still building" rather than "broken" or "empty".
   private var buildingState: some View {
     VStack(alignment: .leading, spacing: 16) {
       VStack(alignment: .leading, spacing: 3) {
@@ -183,6 +191,25 @@ struct NativeShiftPatternsCard: View {
           .foregroundStyle(OkkleColor.muted)
           .fixedSize(horizontal: false, vertical: true)
       }
+
+      VStack(alignment: .leading, spacing: 8) {
+        HStack {
+          Text("BUILDING YOUR HEATMAP")
+            .font(.system(size: 12, weight: .heavy)).tracking(0.5)
+            .foregroundStyle(OkkleColor.muted)
+          Spacer()
+          Text("\(Int((buildingProgress * 100).rounded()))%")
+            .font(.system(size: 12, weight: .heavy))
+            .foregroundStyle(OkkleColor.brand)
+        }
+        ProgressView(value: buildingProgress)
+          .tint(OkkleColor.brand)
+        Text(buildingSubtitle)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       VStack(spacing: 0) {
         baselineRow("fork.knife", "Dinner beats mid-afternoon", "5–9pm is usually your window", true)
         baselineRow("calendar", "Weekend evenings are strongest", "Friday to Sunday", true)
@@ -192,6 +219,30 @@ struct NativeShiftPatternsCard: View {
       if let candidate = exploreCandidates.bestUnvalidatedCandidate {
         tentativeZoneRow(candidate)
       }
+    }
+  }
+
+  /// Mirrors the medium-confidence thresholds in NativeShiftInsights.confidence
+  /// (8+ deliveries across 3+ distinct days) — whichever of the two is further
+  /// from being met is the real bottleneck, so progress is capped at the
+  /// smaller of the two ratios rather than averaged.
+  private var buildingProgress: Double {
+    let deliveryProgress = min(Double(shift.deliveries) / 8.0, 1.0)
+    let dayProgress = min(Double(shift.activeDays) / 3.0, 1.0)
+    return min(deliveryProgress, dayProgress)
+  }
+
+  private var buildingSubtitle: String {
+    if shift.deliveries == 0 {
+      return "Starts filling in as soon as you log your first delivery."
+    } else if buildingProgress >= 1 {
+      // Thresholds met on raw counts, but confidence can still be held
+      // back by an uneven week (see NativeShiftInsights.confidence) — say
+      // so rather than implying it's stuck.
+      return "Almost there — a few more regular days will lock in your personalised timing and areas."
+    } else {
+      let dayLabel = shift.activeDays == 1 ? "day" : "days"
+      return "\(shift.deliveries) deliveries across \(shift.activeDays) \(dayLabel) so far — keep driving and this sharpens up."
     }
   }
 
