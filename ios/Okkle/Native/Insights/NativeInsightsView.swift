@@ -202,6 +202,8 @@ struct NativeShiftPatternsCard: View {
             .font(.system(size: 12, weight: .heavy))
             .foregroundStyle(OkkleColor.brand)
         }
+        ProgressView(value: buildingProgress)
+          .tint(OkkleColor.brand)
         // The real heat map, mid-build — your own tracked routes and
         // whatever zones have formed so far, however sparse. As it fills
         // in, this is the same map that shows on the finished panels; a
