@@ -34,10 +34,19 @@ private struct NativeUsesSidebarNavigationKey: EnvironmentKey {
   static let defaultValue = false
 }
 
+private struct NativeSidebarAvoidanceInsetKey: EnvironmentKey {
+  static let defaultValue: CGFloat = 0
+}
+
 extension EnvironmentValues {
   var nativeUsesSidebarNavigation: Bool {
     get { self[NativeUsesSidebarNavigationKey.self] }
     set { self[NativeUsesSidebarNavigationKey.self] = newValue }
+  }
+
+  var nativeSidebarAvoidanceInset: CGFloat {
+    get { self[NativeSidebarAvoidanceInsetKey.self] }
+    set { self[NativeSidebarAvoidanceInsetKey.self] = newValue }
   }
 }
 

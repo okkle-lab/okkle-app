@@ -44,6 +44,7 @@ struct OkkleNativeRootView: View {
   @ObservedObject private var notificationRouter = NativeNotificationRouter.shared
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var selectedTab: NativeTab = .trip
+  @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
   @State private var showSettings = false
   @State private var showAddRecord = false
   private let iCloudAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -216,17 +217,27 @@ struct OkkleNativeRootView: View {
   }
 
   private var iPadSidebarApp: some View {
-    NavigationSplitView {
+    NavigationSplitView(columnVisibility: $sidebarVisibility) {
       NativeSidebar(
         selectedTab: $selectedTab,
         showAddRecord: { showAddRecord = true },
         showSettings: { showSettings = true }
       )
+      .navigationSplitViewColumnWidth(
+        min: NativeSidebarMetrics.minimumWidth,
+        ideal: NativeSidebarMetrics.idealWidth,
+        max: NativeSidebarMetrics.maximumWidth
+      )
     } detail: {
       tabContent(for: selectedTab)
         .environment(\.nativeUsesSidebarNavigation, true)
+        .environment(\.nativeSidebarAvoidanceInset, sidebarAvoidanceInset)
     }
     .navigationSplitViewStyle(.balanced)
+  }
+
+  private var sidebarAvoidanceInset: CGFloat {
+    sidebarVisibility == .detailOnly ? 0 : NativeSidebarMetrics.avoidanceInset
   }
 
   @ViewBuilder
@@ -273,6 +284,13 @@ struct OkkleNativeRootView: View {
     notificationRouter.pendingManualTripAutoCompleted = false
     selectedTab = .records
   }
+}
+
+private enum NativeSidebarMetrics {
+  static let minimumWidth: CGFloat = 220
+  static let idealWidth: CGFloat = 236
+  static let maximumWidth: CGFloat = 264
+  static let avoidanceInset: CGFloat = 252
 }
 
 private struct NativeSidebar: View {
