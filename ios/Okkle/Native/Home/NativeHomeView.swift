@@ -7,6 +7,7 @@ struct NativeProgressView: View {
   @State private var recordsDestination: RecordsDestination?
   @State private var showsTaxBreakdown = false
   @ObservedObject private var tripSession = NativeTripSession.shared
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var showsMedals = false
   @State private var medalAlert: NativeMedalAchievement?
   @State private var seenMedalKeys = Set<String>()
@@ -296,7 +297,7 @@ struct NativeProgressView: View {
       }
       .padding(.horizontal, 4)
 
-      let hasLiveTrip = tripSession.phase == .live || tripSession.phase == .paused
+      let hasLiveTrip = tripSession.phase == .live || tripSession.phase == .paused || autoTrack.shiftPhase != .idle
       if hasLiveTrip {
         liveTripCard
       }
@@ -311,8 +312,11 @@ struct NativeProgressView: View {
   }
 
   private var liveTripCard: some View {
-    let paused = tripSession.phase == .paused
+    let autoVisible = tripSession.phase != .live && tripSession.phase != .paused && autoTrack.shiftPhase != .idle
+    let paused = autoVisible ? autoTrack.shiftPhase == .paused : tripSession.phase == .paused
     let accent = paused ? OkkleColor.amber : OkkleColor.brand
+    let title = autoVisible ? (paused ? "Auto trip paused" : "Automatically tracking") : (paused ? "Trip paused" : "Tracking trip")
+    let distance = autoVisible ? autoTrack.liveShiftMiles : tripSession.miles
     return VStack(alignment: .leading, spacing: 0) {
       Button { selectedTab = .trip } label: {
         HStack(spacing: 12) {
@@ -324,7 +328,7 @@ struct NativeProgressView: View {
           }
           VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 7) {
-              Text(paused ? "Trip paused" : "Tracking trip")
+              Text(title)
                 .font(.system(size: 16, weight: .heavy))
                 .foregroundStyle(OkkleColor.ink)
               Text(paused ? "PAUSED" : "LIVE")
@@ -334,7 +338,7 @@ struct NativeProgressView: View {
                 .padding(.vertical, 3)
                 .background(paused ? OkkleColor.amber : OkkleColor.red, in: Capsule())
             }
-            Text("\(miles(tripSession.miles)) tracked so far")
+            Text("\(miles(distance)) tracked so far")
               .font(.system(size: 13, weight: .semibold))
               .foregroundStyle(OkkleColor.muted)
           }

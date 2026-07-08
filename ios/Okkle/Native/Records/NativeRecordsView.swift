@@ -55,7 +55,8 @@ struct NativeRecordsView: View {
       title: "Data",
       collapsedTitle: "Data",
       subtitle: "Log trip mileage, income and expenses - all export-ready.",
-      onClose: onClose
+      onClose: onClose,
+      fillsViewport: mode == .history
     ) {
       if mode == .tax {
         NativeTaxSummaryView()
@@ -177,68 +178,85 @@ struct NativeRecordsView: View {
   }
 
   private var historyContent: some View {
-    VStack(spacing: 20) {
-      HStack(spacing: 10) {
-        Picker("History filter", selection: $filter) {
-          ForEach(RecordsFilter.allCases) { Text($0.label).tag($0) }
-        }
-        .pickerStyle(.segmented)
-
-        Menu {
-          Button {
-            selectedMonth = nil
-          } label: {
-            if selectedMonth == nil {
-              Label("All time", systemImage: "checkmark")
-            } else {
-              Text("All time")
-            }
-          }
-
-          ForEach(availableMonths, id: \.self) { month in
-            Button {
-              selectedMonth = month
-            } label: {
-              if selectedMonth == month {
-                Label(monthLabel(for: month), systemImage: "checkmark")
-              } else {
-                Text(monthLabel(for: month))
-              }
-            }
-          }
-        } label: {
-          Label(monthButtonLabel, systemImage: "line.3.horizontal.decrease")
-            .labelStyle(.iconOnly)
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(OkkleColor.brand)
-            .padding(10)
-            .background(OkkleColor.brand.opacity(selectedMonth != nil ? 0.22 : 0.14), in: Circle())
-            .overlay {
-              Circle()
-                .stroke(OkkleColor.brand.opacity(selectedMonth != nil ? 0.38 : 0), lineWidth: 1)
-            }
-        }
-        .accessibilityLabel(selectedMonth != nil ? "Showing \(monthButtonLabel)" : "Showing all time")
-      }
-
-      if filteredHistory.isEmpty {
-        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Mileage, earnings and expenses appear here after you save them.")
-      } else {
-        NativeGlassCard {
-          VStack(spacing: 0) {
-            ForEach(filteredHistory) { item in
-              NativeSelectableHistoryRow(
-                item: item,
-                onSelect: { selectFromAllHistory(item) }
-              )
-              if item.id != filteredHistory.last?.id {
-                Divider().padding(.leading, 52)
+    LazyVStack(spacing: 14, pinnedViews: [.sectionHeaders]) {
+      Section {
+        if filteredHistory.isEmpty {
+          NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Mileage, earnings and expenses appear here after you save them.")
+            .padding(.top, 20)
+        } else {
+          NativeGlassCard {
+            VStack(spacing: 0) {
+              ForEach(filteredHistory) { item in
+                NativeSelectableHistoryRow(
+                  item: item,
+                  onSelect: { selectFromAllHistory(item) }
+                )
+                if item.id != filteredHistory.last?.id {
+                  Divider().padding(.leading, 52)
+                }
               }
             }
           }
         }
+      } header: {
+        historyFilterBar
       }
     }
+    .frame(maxWidth: .infinity, alignment: .top)
+  }
+
+  private var historyFilterBar: some View {
+    HStack(spacing: 10) {
+      Picker("History filter", selection: $filter) {
+        ForEach(RecordsFilter.allCases) { Text($0.label).tag($0) }
+      }
+      .pickerStyle(.segmented)
+
+      Menu {
+        Button {
+          selectedMonth = nil
+        } label: {
+          if selectedMonth == nil {
+            Label("All time", systemImage: "checkmark")
+          } else {
+            Text("All time")
+          }
+        }
+
+        ForEach(availableMonths, id: \.self) { month in
+          Button {
+            selectedMonth = month
+          } label: {
+            if selectedMonth == month {
+              Label(monthLabel(for: month), systemImage: "checkmark")
+            } else {
+              Text(monthLabel(for: month))
+            }
+          }
+        }
+      } label: {
+        Label(monthButtonLabel, systemImage: "line.3.horizontal.decrease")
+          .labelStyle(.iconOnly)
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(OkkleColor.brand)
+          .padding(10)
+          .background(OkkleColor.brand.opacity(selectedMonth != nil ? 0.22 : 0.14), in: Circle())
+          .overlay {
+            Circle()
+              .stroke(OkkleColor.brand.opacity(selectedMonth != nil ? 0.38 : 0), lineWidth: 1)
+          }
+      }
+      .accessibilityLabel(selectedMonth != nil ? "Showing \(monthButtonLabel)" : "Showing all time")
+    }
+    .padding(.vertical, 8)
+    .padding(.horizontal, 8)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 18, style: .continuous)
+        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+    }
+    .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
+    .zIndex(1)
   }
 
   private func selectFromAllHistory(_ item: NativeHistoryItem) {
@@ -310,10 +328,8 @@ struct NativeRecordsView: View {
   }
 
   private func requestEdit(_ item: NativeHistoryItem) {
+    edit(currentItem(matching: item) ?? item)
     selectedHistoryItem = nil
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-      edit(currentItem(matching: item) ?? item)
-    }
   }
 
   private func requestDelete(_ item: NativeHistoryItem) {

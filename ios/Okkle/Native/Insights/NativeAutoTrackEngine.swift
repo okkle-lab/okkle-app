@@ -54,6 +54,7 @@ enum NativeAutoShiftPhase: Equatable {
   case idle
   case driving
   case stationaryPending
+  case paused
 }
 
 /// Passive, hands-off shift tracking. On a working day, the moment Core
@@ -241,7 +242,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       beginShift()
     case .stationaryPending:
       resumeShift()
-    case .driving:
+    case .driving, .paused:
       break
     }
   }
@@ -275,6 +276,31 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     publishLiveShift()
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
+  }
+
+  func pauseCurrentShift() {
+    guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
+    stationaryTimer?.invalidate()
+    stationaryTimer = nil
+    stationarySince = nil
+    stationaryCoordinate = nil
+    shiftPhase = .paused
+    manager.stopUpdatingLocation()
+    setBackgroundTrackingEnabled(false)
+    publishLiveShift()
+  }
+
+  func resumeCurrentShift() {
+    guard shiftPhase == .paused else { return }
+    shiftPhase = .driving
+    setBackgroundTrackingEnabled(true)
+    manager.startUpdatingLocation()
+    publishLiveShift()
+  }
+
+  func endCurrentShift() {
+    guard shiftPhase != .idle else { return }
+    concludeShift()
   }
 
   /// Driving resumed before the stationary timer expired — the stop that was
