@@ -289,6 +289,9 @@ struct NativeSettings: Codable, Equatable {
   var workingDays: [Int] = Array(0...6)
   // A heads-up before your busy window starts, on working days.
   var preShiftAlerts = true
+  // Manual trips still ask before ending by default. When enabled, the same
+  // stationary detection quietly completes the trip after the driver stops.
+  var manualTripAutoComplete = false
   var hasCompletedOnboarding = false
   // Places the driver has manually marked as not-work (home, a usual break
   // spot) — kept out of the "where to go" earning suggestions. If this is
@@ -320,6 +323,7 @@ struct NativeSettings: Codable, Equatable {
     case siriTripTrackingEnabled
     case workingDays
     case preShiftAlerts
+    case manualTripAutoComplete
     case hasCompletedOnboarding
     case excludedPlaces
     case autoTrackCalibration
@@ -346,6 +350,7 @@ struct NativeSettings: Codable, Equatable {
     siriTripTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .siriTripTrackingEnabled) ?? false
     workingDays = try container.decodeIfPresent([Int].self, forKey: .workingDays) ?? Array(0...6)
     preShiftAlerts = try container.decodeIfPresent(Bool.self, forKey: .preShiftAlerts) ?? true
+    manualTripAutoComplete = try container.decodeIfPresent(Bool.self, forKey: .manualTripAutoComplete) ?? false
     hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
     excludedPlaces = try container.decodeIfPresent([NativeExcludedPlace].self, forKey: .excludedPlaces) ?? []
     autoTrackCalibration = try container.decodeIfPresent(NativeAutoTrackCalibration.self, forKey: .autoTrackCalibration) ?? NativeAutoTrackCalibration()

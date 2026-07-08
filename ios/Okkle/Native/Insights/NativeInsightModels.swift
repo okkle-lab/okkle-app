@@ -499,7 +499,7 @@ struct NativeShiftInsights {
 
     for index in visits.indices {
       visits[index].kind = index.isMultiple(of: 2) ? .pickup : .dropoff
-      visits[index].placeName = visits[index].kind == .pickup ? "Detected pick-up" : "Detected drop-off"
+      visits[index].placeName = "Detected stop"
     }
 
     if visits.last?.kind == .pickup {

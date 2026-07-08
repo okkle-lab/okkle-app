@@ -318,6 +318,17 @@ struct NativeAutoTrackSettingsView: View {
 
         NativeExcludedPlacesSection()
       }
+
+      Section {
+        Toggle("Auto-complete stopped manual trips", isOn: Binding(
+          get: { store.settings.manualTripAutoComplete },
+          set: { store.settings.manualTripAutoComplete = $0 }
+        ))
+      } header: {
+        Text("Manual trips")
+      } footer: {
+        Text("When a trip you started by hand has been stationary for a while, Okkle can save it automatically instead of asking you to end it.")
+      }
     }
     .navigationTitle("Automatic tracking")
     .navigationBarTitleDisplayMode(.inline)

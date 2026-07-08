@@ -32,7 +32,7 @@ struct NativeRouteDetectedStop {
 enum NativeRouteStopDetector {
   private static let stationaryRadius: CLLocationDistance = 90
   private static let mergeRadius: CLLocationDistance = 120
-  private static let minimumDwell: TimeInterval = 90
+  private static let minimumDwell: TimeInterval = 4 * 60
   private static let mergeGap: TimeInterval = 5 * 60
 
   static func routeStops(

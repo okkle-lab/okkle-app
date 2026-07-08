@@ -44,6 +44,7 @@ struct OkkleNativeRootView: View {
   @ObservedObject private var notificationRouter = NativeNotificationRouter.shared
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var selectedTab: NativeTab = .trip
+  @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
   @State private var showSettings = false
   @State private var showAddRecord = false
   private let iCloudAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -66,6 +67,7 @@ struct OkkleNativeRootView: View {
       routeWidgetTripRequestIfNeeded()
       routeAutomaticTripIfNeeded()
       routeManualTripStopPromptIfNeeded()
+      routeManualTripAutoCompletedIfNeeded()
     }
     .sheet(isPresented: Binding(
       get: { notificationRouter.pendingAutoShiftReviewTripID != nil },
@@ -102,8 +104,10 @@ struct OkkleNativeRootView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
+      routeAutomaticStartNotificationIfNeeded()
       routeAutomaticTripIfNeeded()
       routeManualTripStopPromptIfNeeded()
+      routeManualTripAutoCompletedIfNeeded()
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
       NativeLoggingReminder.refresh(store: store)
@@ -114,6 +118,15 @@ struct OkkleNativeRootView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       routeWidgetTripRequestIfNeeded()
+    }
+    .onChange(of: notificationRouter.pendingAutoShiftStarted) { _ in
+      routeAutomaticStartNotificationIfNeeded()
+    }
+    .onChange(of: notificationRouter.pendingManualTripStopPrompt) { _ in
+      routeManualTripStopPromptIfNeeded()
+    }
+    .onChange(of: notificationRouter.pendingManualTripAutoCompleted) { _ in
+      routeManualTripAutoCompletedIfNeeded()
     }
     .onChange(of: autoTrack.shiftPhase) { _ in
       routeAutomaticTripIfNeeded()
@@ -204,17 +217,27 @@ struct OkkleNativeRootView: View {
   }
 
   private var iPadSidebarApp: some View {
-    NavigationSplitView {
+    NavigationSplitView(columnVisibility: $sidebarVisibility) {
       NativeSidebar(
         selectedTab: $selectedTab,
         showAddRecord: { showAddRecord = true },
         showSettings: { showSettings = true }
       )
+      .navigationSplitViewColumnWidth(
+        min: NativeSidebarMetrics.minimumWidth,
+        ideal: NativeSidebarMetrics.idealWidth,
+        max: NativeSidebarMetrics.maximumWidth
+      )
     } detail: {
       tabContent(for: selectedTab)
         .environment(\.nativeUsesSidebarNavigation, true)
+        .environment(\.nativeSidebarAvoidanceInset, sidebarAvoidanceInset)
     }
     .navigationSplitViewStyle(.balanced)
+  }
+
+  private var sidebarAvoidanceInset: CGFloat {
+    sidebarVisibility == .detailOnly ? 0 : NativeSidebarMetrics.avoidanceInset
   }
 
   @ViewBuilder
@@ -244,11 +267,30 @@ struct OkkleNativeRootView: View {
     selectedTab = .trip
   }
 
+  private func routeAutomaticStartNotificationIfNeeded() {
+    guard store.settings.hasCompletedOnboarding, notificationRouter.pendingAutoShiftStarted else { return }
+    notificationRouter.pendingAutoShiftStarted = false
+    selectedTab = .trip
+  }
+
   private func routeManualTripStopPromptIfNeeded() {
     guard store.settings.hasCompletedOnboarding, notificationRouter.pendingManualTripStopPrompt else { return }
     notificationRouter.pendingManualTripStopPrompt = false
     selectedTab = .trip
   }
+
+  private func routeManualTripAutoCompletedIfNeeded() {
+    guard store.settings.hasCompletedOnboarding, notificationRouter.pendingManualTripAutoCompleted else { return }
+    notificationRouter.pendingManualTripAutoCompleted = false
+    selectedTab = .records
+  }
+}
+
+private enum NativeSidebarMetrics {
+  static let minimumWidth: CGFloat = 220
+  static let idealWidth: CGFloat = 236
+  static let maximumWidth: CGFloat = 264
+  static let avoidanceInset: CGFloat = 252
 }
 
 private struct NativeSidebar: View {

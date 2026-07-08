@@ -3,6 +3,39 @@ import Combine
 import Foundation
 import UIKit
 @preconcurrency import UserNotifications
+
+enum NativeManualTripStopNotification {
+  static let categoryIdentifier = "uk.okkle.native.manual-trip-stop"
+  static let endActionIdentifier = "uk.okkle.native.manual-trip-stop.end"
+  static let continueActionIdentifier = "uk.okkle.native.manual-trip-stop.continue"
+  static let autoCompleteActionIdentifier = "uk.okkle.native.manual-trip-stop.auto-complete"
+
+  static func registerCategory() {
+    let endAction = UNNotificationAction(
+      identifier: endActionIdentifier,
+      title: "End trip",
+      options: [.authenticationRequired]
+    )
+    let continueAction = UNNotificationAction(
+      identifier: continueActionIdentifier,
+      title: "Keep tracking",
+      options: []
+    )
+    let autoCompleteAction = UNNotificationAction(
+      identifier: autoCompleteActionIdentifier,
+      title: "Auto-complete",
+      options: [.authenticationRequired]
+    )
+    let category = UNNotificationCategory(
+      identifier: categoryIdentifier,
+      actions: [endAction, continueAction, autoCompleteAction],
+      intentIdentifiers: [],
+      options: []
+    )
+    UNUserNotificationCenter.current().setNotificationCategories([category])
+  }
+}
+
 final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDelegate {
   static let shared = NativeTripSession()
 
@@ -36,6 +69,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   private let minimumTrackingTimeBeforeStopPrompt: TimeInterval = 10 * 60
   private let stationaryPromptRadius: CLLocationDistance = 60
   private let stopPromptNotificationIdentifier = "uk.okkle.native.manual-trip-stop-prompt"
+  private let autoCompletedNotificationIdentifier = "uk.okkle.native.manual-trip-auto-completed"
 
   override init() {
     super.init()
@@ -225,7 +259,9 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     timer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { [weak self] _ in
       guard let self, let startedAt = self.startedAt else { return }
       self.elapsed = Date().timeIntervalSince(startedAt)
-      self.promptToStopIfStationary(now: Date())
+      Task { @MainActor in
+        self.promptToStopIfStationary(now: Date())
+      }
     }
     timer?.tolerance = 2
   }
@@ -274,12 +310,20 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     }
   }
 
+  @MainActor
   private func promptToStopIfStationary(now: Date) {
     guard phase == .live, !stopPromptRequested, !promptedForCurrentStationaryPeriod else { return }
     guard let startedAt, now.timeIntervalSince(startedAt) >= minimumTrackingTimeBeforeStopPrompt else { return }
     guard let stationarySince, now.timeIntervalSince(stationarySince) >= stationaryPromptDelay else { return }
 
     promptedForCurrentStationaryPeriod = true
+    if OkkleStore.shared.settings.manualTripAutoComplete {
+      Task { @MainActor [weak self] in
+        self?.completeStoppedManualTrip(store: OkkleStore.shared, notify: true)
+      }
+      return
+    }
+
     stopPromptRequested = true
     if UIApplication.shared.applicationState != .active {
       sendStopPromptNotification()
@@ -290,6 +334,17 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     stopPromptRequested = false
   }
 
+  @MainActor
+  func completeStoppedManualTrip(store: OkkleStore, notify: Bool) {
+    guard phase == .live || phase == .paused else { return }
+    guard let trip = end(store: store) else { return }
+    store.addTrip(trip)
+    discard()
+    if notify {
+      sendAutoCompletedNotification(trip)
+    }
+  }
+
   private func sendStopPromptNotification() {
     let center = UNUserNotificationCenter.current()
     let requestIdentifier = stopPromptNotificationIdentifier
@@ -297,11 +352,26 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
       guard granted else { return }
       let content = UNMutableNotificationContent()
-      content.title = "Still tracking this trip?"
-      content.body = "You've been in one place for a while. Tap to stop or continue tracking."
+      content.title = "Looks like you've stopped moving"
+      content.body = "End this trip, keep tracking, or let Okkle auto-complete stopped manual trips."
       content.sound = .default
+      content.categoryIdentifier = NativeManualTripStopNotification.categoryIdentifier
       content.userInfo = ["type": "manualTripStopPrompt"]
       center.add(UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: nil))
+    }
+  }
+
+  private func sendAutoCompletedNotification(_ trip: NativeTrip) {
+    let center = UNUserNotificationCenter.current()
+    let milesText = String(format: "%.1f", trip.miles)
+    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+      guard granted else { return }
+      let content = UNMutableNotificationContent()
+      content.title = "Trip completed automatically"
+      content.body = "\(milesText) miles were saved after movement stopped."
+      content.sound = .default
+      content.userInfo = ["type": "manualTripAutoCompleted", "tripID": trip.id.uuidString]
+      center.add(UNNotificationRequest(identifier: self.autoCompletedNotificationIdentifier, content: content, trigger: nil))
     }
   }
 }

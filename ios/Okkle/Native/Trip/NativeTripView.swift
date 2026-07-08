@@ -18,6 +18,7 @@ private struct NativeTopRoundedRectangle: Shape {
 struct NativeTripView: View {
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.nativeUsesSidebarNavigation) private var nativeUsesSidebarNavigation
+  @Environment(\.nativeSidebarAvoidanceInset) private var nativeSidebarAvoidanceInset
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var session: NativeTripSession
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
@@ -86,8 +87,13 @@ struct NativeTripView: View {
         session.dismissStopPrompt()
         finishTripForReview()
       }
+      Button("Auto-complete trips") {
+        store.settings.manualTripAutoComplete = true
+        session.dismissStopPrompt()
+        finishTripForReview()
+      }
     } message: {
-      Text("You've been in one place for a while. Stop now, or keep tracking if you're waiting for an order.")
+      Text("You've been in one place for a while. Stop now, keep tracking, or let Okkle auto-complete stopped manual trips next time.")
     }
     .onAppear {
       selectedVehicle = store.settings.defaultVehicle
@@ -411,6 +417,8 @@ struct NativeTripView: View {
 
   private var trackingMapScreen: some View {
     GeometryReader { proxy in
+      let sidebarInset = trackingSidebarAvoidanceInset(for: proxy)
+
       ZStack(alignment: .bottom) {
         NativeRouteMapView(points: trackingPoints, showsEndMarker: completedTrip != nil)
           .ignoresSafeArea()
@@ -429,11 +437,12 @@ struct NativeTripView: View {
           trackingStatusBadge
           Spacer()
         }
-        .padding(.horizontal, 18)
+        .padding(.leading, 18 + sidebarInset)
+        .padding(.trailing, 18)
         .padding(.top, proxy.safeAreaInsets.top + 12)
         .allowsHitTesting(false)
 
-        trackingPanel(bottomInset: proxy.safeAreaInsets.bottom)
+        trackingPanel(bottomInset: proxy.safeAreaInsets.bottom, leadingInset: sidebarInset)
       }
       .background(Color(uiColor: .systemBackground))
       .ignoresSafeArea()
@@ -457,7 +466,7 @@ struct NativeTripView: View {
     .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
   }
 
-  private func trackingPanel(bottomInset: CGFloat) -> some View {
+  private func trackingPanel(bottomInset: CGFloat, leadingInset: CGFloat = 0) -> some View {
     VStack(alignment: .leading, spacing: 14) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 6) {
@@ -517,8 +526,16 @@ struct NativeTripView: View {
         .fill(trackingPanelSheen)
         .allowsHitTesting(false)
     }
+    .padding(.leading, leadingInset)
     .shadow(color: .black.opacity(0.18), radius: 30, y: 14)
     .transition(.move(edge: .bottom).combined(with: .opacity))
+  }
+
+  private func trackingSidebarAvoidanceInset(for proxy: GeometryProxy) -> CGFloat {
+    guard nativeUsesSidebarNavigation else { return 0 }
+    let minimumReadableWidth: CGFloat = 500
+    let maximumInset = max(0, proxy.size.width - minimumReadableWidth)
+    return min(nativeSidebarAvoidanceInset, maximumInset)
   }
 
   private var trackingPanelShape: NativeTopRoundedRectangle {

@@ -7,8 +7,10 @@ final class NativeWatchTripConnector: NSObject, WCSessionDelegate {
 
   private let watchSession: WCSession?
   private let tripSession = NativeTripSession.shared
-  private let store = OkkleStore.shared
   private var cancellable: AnyCancellable?
+
+  @MainActor
+  private var store: OkkleStore { OkkleStore.shared }
 
   private override init() {
     watchSession = WCSession.isSupported() ? WCSession.default : nil

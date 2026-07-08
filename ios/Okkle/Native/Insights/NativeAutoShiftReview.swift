@@ -16,7 +16,9 @@ final class NativeNotificationRouter: NSObject, ObservableObject, UNUserNotifica
   static let shared = NativeNotificationRouter()
 
   @Published var pendingAutoShiftReviewTripID: UUID?
+  @Published var pendingAutoShiftStarted = false
   @Published var pendingManualTripStopPrompt = false
+  @Published var pendingManualTripAutoCompleted = false
 
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
@@ -32,16 +34,48 @@ final class NativeNotificationRouter: NSObject, ObservableObject, UNUserNotifica
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let info = response.notification.request.content.userInfo
+    switch response.actionIdentifier {
+    case NativeManualTripStopNotification.endActionIdentifier:
+      Task { @MainActor in
+        NativeTripSession.shared.completeStoppedManualTrip(store: OkkleStore.shared, notify: false)
+      }
+      completionHandler()
+      return
+    case NativeManualTripStopNotification.continueActionIdentifier:
+      DispatchQueue.main.async {
+        NativeTripSession.shared.dismissStopPrompt()
+      }
+      completionHandler()
+      return
+    case NativeManualTripStopNotification.autoCompleteActionIdentifier:
+      Task { @MainActor in
+        OkkleStore.shared.settings.manualTripAutoComplete = true
+        NativeTripSession.shared.completeStoppedManualTrip(store: OkkleStore.shared, notify: false)
+      }
+      completionHandler()
+      return
+    default:
+      break
+    }
+
     if info["type"] as? String == "autoShiftReview",
        let raw = info["tripID"] as? String,
        let tripID = UUID(uuidString: raw) {
       DispatchQueue.main.async { [weak self] in
         self?.pendingAutoShiftReviewTripID = tripID
       }
+    } else if info["type"] as? String == "autoShiftStarted" {
+      DispatchQueue.main.async { [weak self] in
+        self?.pendingAutoShiftStarted = true
+      }
     } else if info["type"] as? String == "manualTripStopPrompt" {
       DispatchQueue.main.async { [weak self] in
         self?.pendingManualTripStopPrompt = true
         NativeTripSession.shared.stopPromptRequested = true
+      }
+    } else if info["type"] as? String == "manualTripAutoCompleted" {
+      DispatchQueue.main.async { [weak self] in
+        self?.pendingManualTripAutoCompleted = true
       }
     }
     completionHandler()
@@ -255,14 +289,7 @@ struct NativeAutoShiftReviewView: View {
   }
 
   private func stopTitle(for visit: NativeVisit) -> String {
-    switch visit.kind {
-    case .pickup:
-      return "Pick-up"
-    case .dropoff:
-      return "Drop-off"
-    case .other:
-      return "Stop"
-    }
+    "Stop"
   }
 
   private func stopSubtitle(for visit: NativeVisit) -> String {
@@ -274,24 +301,10 @@ struct NativeAutoShiftReviewView: View {
   }
 
   private func routeStopKind(for visit: NativeVisit) -> NativeRouteMapStop.Kind {
-    switch visit.kind {
-    case .pickup:
-      return .pickup
-    case .dropoff:
-      return .dropoff
-    case .other:
-      return .other
-    }
+    .other
   }
 
   private func stopTint(for visit: NativeVisit) -> Color {
-    switch visit.kind {
-    case .pickup:
-      return .indigo
-    case .dropoff:
-      return .orange
-    case .other:
-      return .secondary
-    }
+    .secondary
   }
 }

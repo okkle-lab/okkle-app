@@ -144,18 +144,42 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       let view = mapView.dequeueReusableAnnotationView(withIdentifier: id) ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
       view.annotation = annotation
       let size: CGFloat = 26
-      let badge = UILabel(frame: CGRect(x: 0, y: 0, width: size, height: size))
-      badge.text = "\(rank.rank)"
-      badge.textAlignment = .center
-      badge.textColor = .white
-      badge.font = .systemFont(ofSize: 13, weight: .heavy)
-      badge.backgroundColor = UIColor(OkkleColor.brand)   // rank marker, not a heat value
-      badge.layer.cornerRadius = size / 2
-      badge.layer.borderColor = UIColor.white.cgColor
-      badge.layer.borderWidth = 2
-      badge.layer.masksToBounds = true
       let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
-      view.image = renderer.image { _ in badge.layer.render(in: UIGraphicsGetCurrentContext()!) }
+      view.image = renderer.image { context in
+        let rect = CGRect(x: 0, y: 0, width: size, height: size)
+        let insetRect = rect.insetBy(dx: 1, dy: 1)
+        let cgContext = context.cgContext
+        cgContext.saveGState()
+        cgContext.addEllipse(in: insetRect)
+        cgContext.clip()
+        if let gradient = CGGradient(
+          colorsSpace: CGColorSpaceCreateDeviceRGB(),
+          colors: [UIColor(nativeAIAccentPink).cgColor, UIColor(nativeAIAccentPurple).cgColor] as CFArray,
+          locations: [0, 1]
+        ) {
+          cgContext.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: insetRect.minX, y: insetRect.minY),
+            end: CGPoint(x: insetRect.maxX, y: insetRect.maxY),
+            options: []
+          )
+        }
+        cgContext.restoreGState()
+        cgContext.setStrokeColor(UIColor.white.cgColor)
+        cgContext.setLineWidth(2)
+        cgContext.strokeEllipse(in: insetRect)
+
+        let text = "\(rank.rank)" as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+          .font: UIFont.systemFont(ofSize: 13, weight: .heavy),
+          .foregroundColor: UIColor.white
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        text.draw(
+          at: CGPoint(x: rect.midX - textSize.width / 2, y: rect.midY - textSize.height / 2),
+          withAttributes: attributes
+        )
+      }
       view.centerOffset = .zero
       return view
     }
@@ -227,7 +251,7 @@ struct NativeTopAreasList: View {
                 .font(.system(size: 13, weight: .heavy))
                 .foregroundStyle(.white)
                 .frame(width: 24, height: 24)
-                .background(OkkleColor.brand, in: Circle())
+                .background(nativeAIAccentGradient, in: Circle())
               VStack(alignment: .leading, spacing: showShareBar ? 5 : 1) {
                 Text(area.name)
                   .font(.system(size: 16, weight: .semibold))
@@ -240,7 +264,7 @@ struct NativeTopAreasList: View {
                     GeometryReader { geo in
                       ZStack(alignment: .leading) {
                         Capsule().fill(OkkleColor.muted.opacity(0.12)).frame(height: 4)
-                        Capsule().fill(OkkleColor.brand).frame(width: max(6, geo.size.width * area.weight), height: 4)
+                        Capsule().fill(nativeAIAccentHorizontalGradient).frame(width: max(6, geo.size.width * area.weight), height: 4)
                       }
                     }
                     .frame(height: 4)
