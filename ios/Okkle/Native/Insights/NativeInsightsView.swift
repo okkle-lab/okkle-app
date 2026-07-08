@@ -159,7 +159,14 @@ struct NativeShiftPatternsCard: View {
     } else {
       NativeAiCard { buildingState }
         .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
-        .onAppear { discoverTentativeZoneIfNeeded() }
+        .onAppear {
+          discoverTentativeZoneIfNeeded()
+          // Otherwise the mid-build heatmap has no live-location fallback at
+          // all until the high-confidence daily panel requests it — for
+          // trips with no route points yet (manual entries), that meant no
+          // fallback except a hardcoded default coordinate.
+          NativeOneShotLocator.shared.request()
+        }
     }
   }
 

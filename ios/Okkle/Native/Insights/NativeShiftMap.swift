@@ -108,13 +108,32 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     // city and the pins become useless dots. Staying anchored near your
     // current spot keeps it readable; on the interactive map you can still
     // pan out to see the rest.
+    //
+    // Before any zones have formed (the early "building your insights"
+    // state), ranked is empty — and if the one-shot locator hasn't resolved
+    // yet either, this used to fall all the way back to a hardcoded central
+    // London coordinate, showing a random part of the city instead of
+    // anything to do with the driver. The actual driven routes are real
+    // data already in hand at that point, so their centroid is a far
+    // better stand-in than a fixed default.
     if !interactive {
-      let focus = ranked.first?.coordinate ?? locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
+      let focus = ranked.first?.coordinate ?? tripsCentroid ?? locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
       mapView.setRegion(MKCoordinateRegion(center: focus, span: MKCoordinateSpan(latitudeDelta: 0.055, longitudeDelta: 0.055)), animated: false)
     } else {
-      let center = locator.coordinate ?? ranked.first?.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
+      let center = locator.coordinate ?? tripsCentroid ?? ranked.first?.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
       mapView.setRegion(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)), animated: false)
     }
+  }
+
+  /// Average point across every recorded route point in `trips` — a much
+  /// better fallback focus than a hardcoded city coordinate once there's
+  /// real driving data but no formed zones or live location yet.
+  private var tripsCentroid: CLLocationCoordinate2D? {
+    let points = trips.flatMap { $0.points.map(\.coordinate) }
+    guard !points.isEmpty else { return nil }
+    let lat = points.map(\.latitude).reduce(0, +) / Double(points.count)
+    let lon = points.map(\.longitude).reduce(0, +) / Double(points.count)
+    return CLLocationCoordinate2D(latitude: lat, longitude: lon)
   }
 
   final class Coordinator: NSObject, MKMapViewDelegate {

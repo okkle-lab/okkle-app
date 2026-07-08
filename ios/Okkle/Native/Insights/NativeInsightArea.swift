@@ -361,11 +361,25 @@ enum NativeAreaSuggester {
 
     // Sequential, not concurrent — MKLocalSearch (like CLGeocoder) cancels
     // overlapping requests, so parallel calls would silently drop results.
-    var scored: [(CLLocationCoordinate2D, Int)] = []
+    var sampled: [(CLLocationCoordinate2D, Int)] = []
     for candidate in candidates {
       let count = await poiCount(near: candidate)
-      if count >= nativeMinimumViableAreaPoiScore { scored.append((candidate, count)) }
+      sampled.append((candidate, count))
     }
+
+    // A flat minimum count means something different everywhere: in a
+    // quiet suburb it's a real bar, but in central London where nearly
+    // every sampled point clears any small number, it's just noise and
+    // "the best of 16 near-ties" is arbitrary. Comparing each point
+    // against this origin's own local median instead means a candidate
+    // has to actually stand out from its immediate surroundings, not
+    // just clear a number that means something different depending on
+    // where the driver happens to live.
+    let counts = sampled.map(\.1).sorted()
+    let median = counts.isEmpty ? 0 : counts[counts.count / 2]
+    let bar = max(nativeMinimumViableAreaPoiScore, median + max(2, median / 3))
+
+    var scored = sampled.filter { $0.1 >= bar }
     scored.sort { $0.1 > $1.1 }
 
     var out: [(name: String, coordinate: CLLocationCoordinate2D, poiScore: Int)] = []
