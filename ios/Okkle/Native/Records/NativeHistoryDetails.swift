@@ -481,70 +481,26 @@ struct NativeTripDetailSheet: View {
     }
   }
 
+  /// Names a stop by street/area rather than guessing which specific
+  /// business the driver was at — "nearest POI within N metres" reads
+  /// confident but is frequently wrong in dense strips (a few shopfronts
+  /// apart is well within GPS drift), and a wrong shop name is worse than
+  /// an honest, always-accurate street. Shares the neighbourhood-first
+  /// naming used for area suggestions elsewhere (NativeInsightArea.swift).
   private static func placeName(for coordinate: CLLocationCoordinate2D) async -> String? {
-    if let poi = await pointOfInterestName(for: coordinate) {
-      return poi
-    }
-    return await address(for: coordinate)
-  }
-
-  private static func pointOfInterestName(for coordinate: CLLocationCoordinate2D) async -> String? {
-    if let categoryMatch = await categoryPointOfInterestName(for: coordinate) {
-      return categoryMatch
-    }
-    return await nearbyBusinessName(for: coordinate)
-  }
-
-  private static func categoryPointOfInterestName(for coordinate: CLLocationCoordinate2D) async -> String? {
     await withCheckedContinuation { continuation in
-      let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 160)
-      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [
-        .restaurant,
-        .cafe,
-        .bakery,
-        .foodMarket,
-        .pharmacy,
-        .laundry,
-        .publicTransport,
-        .parking
-      ])
-      MKLocalSearch(request: request).start { response, _ in
-        let items = response?.mapItems ?? []
-        let stop = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        let nearest = items
-          .filter { ($0.name ?? "").isEmpty == false }
-          .min { lhs, rhs in
-            let lhsDistance = lhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-            let rhsDistance = rhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-            return lhsDistance < rhsDistance
-          }
-        let nearestDistance = nearest?.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-        continuation.resume(returning: nearestDistance <= 160 ? nearest?.name : nil)
-      }
-    }
-  }
-
-  private static func nearbyBusinessName(for coordinate: CLLocationCoordinate2D) async -> String? {
-    await withCheckedContinuation { continuation in
-      let request = MKLocalSearch.Request()
-      request.naturalLanguageQuery = "restaurant cafe shop store"
-      request.region = MKCoordinateRegion(
-        center: coordinate,
-        latitudinalMeters: 260,
-        longitudinalMeters: 260
-      )
-      MKLocalSearch(request: request).start { response, _ in
-        let items = response?.mapItems ?? []
-        let stop = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        let nearest = items
-          .filter { ($0.name ?? "").isEmpty == false }
-          .min { lhs, rhs in
-            let lhsDistance = lhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-            let rhsDistance = rhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-            return lhsDistance < rhsDistance
-          }
-        let nearestDistance = nearest?.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-        continuation.resume(returning: nearestDistance <= 160 ? nearest?.name : nil)
+      CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
+        guard let placemark = placemarks?.first else {
+          continuation.resume(returning: nil)
+          return
+        }
+        let street = [placemark.subThoroughfare, placemark.thoroughfare].compactMap { $0 }.joined(separator: " ")
+        let area = placemark.subLocality ?? placemark.locality
+        let name = [street.isEmpty ? nil : street, area]
+          .compactMap { $0 }
+          .filter { !$0.isEmpty }
+          .joined(separator: ", ")
+        continuation.resume(returning: name.isEmpty ? nil : name)
       }
     }
   }
@@ -1560,10 +1516,7 @@ struct NativeTripEditSheet: View {
   }
 
   private static func placeName(for coordinate: CLLocationCoordinate2D) async -> String? {
-    if let poi = await pointOfInterestName(for: coordinate) {
-      return poi
-    }
-    return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+    await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
       CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
         guard let placemark = placemarks?.first else {
           continuation.resume(returning: nil)
@@ -1572,73 +1525,12 @@ struct NativeTripEditSheet: View {
         let street = [placemark.subThoroughfare, placemark.thoroughfare]
           .compactMap { $0 }
           .joined(separator: " ")
-        let area = placemark.subLocality ?? placemark.locality ?? placemark.name
+        let area = placemark.subLocality ?? placemark.locality
         let name = [street.isEmpty ? nil : street, area]
           .compactMap { $0 }
           .filter { !$0.isEmpty }
           .joined(separator: ", ")
         continuation.resume(returning: name.isEmpty ? nil : name)
-      }
-    }
-  }
-
-  private static func pointOfInterestName(for coordinate: CLLocationCoordinate2D) async -> String? {
-    if let categoryMatch = await categoryPointOfInterestName(for: coordinate) {
-      return categoryMatch
-    }
-    return await nearbyBusinessName(for: coordinate)
-  }
-
-  private static func categoryPointOfInterestName(for coordinate: CLLocationCoordinate2D) async -> String? {
-    await withCheckedContinuation { continuation in
-      let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 160)
-      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [
-        .restaurant,
-        .cafe,
-        .bakery,
-        .foodMarket,
-        .pharmacy,
-        .laundry,
-        .publicTransport,
-        .parking
-      ])
-      MKLocalSearch(request: request).start { response, _ in
-        let items = response?.mapItems ?? []
-        let stop = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        let nearest = items
-          .filter { ($0.name ?? "").isEmpty == false }
-          .min { lhs, rhs in
-            let lhsDistance = lhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-            let rhsDistance = rhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-            return lhsDistance < rhsDistance
-          }
-        let nearestDistance = nearest?.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-        continuation.resume(returning: nearestDistance <= 160 ? nearest?.name : nil)
-      }
-    }
-  }
-
-  private static func nearbyBusinessName(for coordinate: CLLocationCoordinate2D) async -> String? {
-    await withCheckedContinuation { continuation in
-      let request = MKLocalSearch.Request()
-      request.naturalLanguageQuery = "restaurant cafe shop store"
-      request.region = MKCoordinateRegion(
-        center: coordinate,
-        latitudinalMeters: 260,
-        longitudinalMeters: 260
-      )
-      MKLocalSearch(request: request).start { response, _ in
-        let items = response?.mapItems ?? []
-        let stop = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        let nearest = items
-          .filter { ($0.name ?? "").isEmpty == false }
-          .min { lhs, rhs in
-            let lhsDistance = lhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-            let rhsDistance = rhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-            return lhsDistance < rhsDistance
-          }
-        let nearestDistance = nearest?.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
-        continuation.resume(returning: nearestDistance <= 160 ? nearest?.name : nil)
       }
     }
   }
