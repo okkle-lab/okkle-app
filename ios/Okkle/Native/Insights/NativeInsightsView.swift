@@ -74,6 +74,7 @@ struct NativeShiftPatternsCard: View {
   @Binding var autoTrackTrips: Bool
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var exploreCandidates = NativeExploreCandidateStore.shared
+  @ObservedObject private var locator = NativeOneShotLocator.shared
   @Environment(\.openURL) private var openURL
   @State private var period: NativeInsightPeriod = .today
   @State private var pageHeights: [NativeInsightPeriod: CGFloat] = [:]
@@ -164,20 +165,30 @@ struct NativeShiftPatternsCard: View {
           // Otherwise the mid-build heatmap has no live-location fallback at
           // all until the high-confidence daily panel requests it — for
           // trips with no route points yet (manual entries), that meant no
-          // fallback except a hardcoded default coordinate.
+          // fallback except a hardcoded default coordinate. Also feeds the
+          // Home-address fallback below once it resolves (see onChange).
           NativeOneShotLocator.shared.request()
+        }
+        .onChange(of: locator.coordinate?.latitude) { _ in
+          discoverTentativeZoneIfNeeded()
         }
     }
   }
 
   /// A brand-new driver has no visits at all yet, so the normal background
   /// exploration (triggered by real passive visits) has nothing to run from.
-  /// Seed it once from Home, if set, so the cold-start card can still offer a
-  /// tentative "worth trying" area on day one instead of nothing at all.
+  /// Seed it once so the cold-start card can still offer a tentative "worth
+  /// trying" area on day one instead of nothing at all.
+  ///
+  /// Prefers Home, since that's a stable, deliberately-chosen point rather
+  /// than wherever the phone happens to be right now — but Home is a manual
+  /// Settings entry nobody's ever prompted to add, so falling back to live
+  /// location (already requested above) means this doesn't just silently do
+  /// nothing for every driver who hasn't found that screen.
   private func discoverTentativeZoneIfNeeded() {
     guard exploreCandidates.candidates.isEmpty else { return }
     let home = store.settings.excludedPlaces.first { $0.label == "Home" } ?? store.settings.excludedPlaces.first
-    guard let origin = home?.coordinate else { return }
+    guard let origin = home?.coordinate ?? locator.coordinate else { return }
     NativeAreaSuggester.refresh(near: origin, knownZones: [])
   }
 
