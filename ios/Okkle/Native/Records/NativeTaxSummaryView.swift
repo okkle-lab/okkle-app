@@ -24,7 +24,7 @@ struct NativeTaxDetailView: View {
         )
 
         NativeTaxOverviewGroup {
-          NativeTaxDeadlinesButton(upcomingDeadline: upcomingDeadline) {
+          NativeTaxDeadlinesButton {
             showsDeadlines = true
           }
         }
@@ -66,13 +66,6 @@ struct NativeTaxDetailView: View {
       && store.yearMiles < 10_000
   }
 
-  private var upcomingDeadline: (deadline: NativeTaxDeadline, days: Int)? {
-    nativeTaxDeadlines
-      .map { deadline in (deadline: deadline, days: nativeDaysUntil(deadline.nextOccurrence())) }
-      .filter { $0.days >= 0 && $0.days <= 30 }
-      .sorted { $0.days < $1.days }
-      .first
-  }
 }
 
 private enum NativeTaxOverviewDetail: String, Identifiable {
@@ -225,7 +218,6 @@ private struct NativeTaxOverviewGroup<Content: View>: View {
 }
 
 private struct NativeTaxDeadlinesButton: View {
-  let upcomingDeadline: (deadline: NativeTaxDeadline, days: Int)?
   let action: () -> Void
 
   var body: some View {
@@ -245,12 +237,6 @@ private struct NativeTaxDeadlinesButton: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .lineLimit(2)
-          if let deadlineMessage {
-            Text(deadlineMessage)
-              .font(.system(size: 13, weight: .bold))
-              .foregroundStyle(OkkleColor.amber)
-              .lineLimit(2)
-          }
         }
 
         Spacer()
@@ -262,15 +248,6 @@ private struct NativeTaxDeadlinesButton: View {
       .padding(16)
     }
     .buttonStyle(.plain)
-  }
-
-  private var deadlineMessage: String? {
-    guard let upcomingDeadline else {
-      return nil
-    }
-    return upcomingDeadline.days == 0
-      ? "\(upcomingDeadline.deadline.title) is today"
-      : "\(upcomingDeadline.days) days to \(upcomingDeadline.deadline.title.lowercased())"
   }
 }
 

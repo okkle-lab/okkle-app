@@ -138,7 +138,6 @@ struct NativeSettingsView: View {
         }
 
         Section {
-          menuRow("Appearance") { NativeAppearanceSettingsView() }
           menuRow("Tax profile") { NativeTaxSettingsView() }
           menuRow("Automatic tracking") { NativeAutoTrackSettingsView() }
           menuRow("Insights and Reminders") { NativeInsightsSettingsView() }
@@ -178,30 +177,6 @@ struct NativeSettingsView: View {
     } label: {
       Text(title)
     }
-  }
-}
-
-struct NativeAppearanceSettingsView: View {
-  @EnvironmentObject private var store: OkkleStore
-
-  var body: some View {
-    Form {
-      Section {
-        Picker("Mode", selection: Binding(
-          get: { store.settings.appearanceMode },
-          set: { store.settings.appearanceMode = $0 }
-        )) {
-          ForEach(NativeAppearanceMode.allCases) { mode in
-            Text(mode.label).tag(mode)
-          }
-        }
-        .pickerStyle(.segmented)
-      } footer: {
-        Text("Auto follows your device appearance.")
-      }
-    }
-    .navigationTitle("Appearance")
-    .navigationBarTitleDisplayMode(.inline)
   }
 }
 

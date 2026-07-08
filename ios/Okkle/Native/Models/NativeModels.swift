@@ -208,22 +208,6 @@ enum NativeLogFrequency: String, CaseIterable, Identifiable, Codable {
   var label: String { rawValue.capitalized }
 }
 
-enum NativeAppearanceMode: String, CaseIterable, Identifiable, Codable {
-  case automatic
-  case light
-  case dark
-
-  var id: String { rawValue }
-
-  var label: String {
-    switch self {
-    case .automatic: return "Auto"
-    case .light: return "Light"
-    case .dark: return "Dark"
-    }
-  }
-}
-
 /// A place the driver has told us isn't a work stop — home, a regular break
 /// spot, a partner's address — so it never gets suggested back to them as
 /// somewhere to go and earn.
@@ -292,7 +276,6 @@ struct NativeSettings: Codable, Equatable {
   var reminderDay = 1
   var logFrequency: NativeLogFrequency = .weekly
   var taxDeadlineReminders = true
-  var appearanceMode: NativeAppearanceMode = .automatic
   // Master switch for the AI Insights tab and insight-led prompts.
   var insightsEnabled = true
   // Optional iCloud sync. Kept in settings so the preference follows the
@@ -341,7 +324,6 @@ struct NativeSettings: Codable, Equatable {
     case reminderDay
     case logFrequency
     case taxDeadlineReminders
-    case appearanceMode
     case insightsEnabled
     case iCloudSyncEnabled
     case autoTrackTrips
@@ -371,7 +353,6 @@ struct NativeSettings: Codable, Equatable {
     reminderDay = try container.decodeIfPresent(Int.self, forKey: .reminderDay) ?? 1
     logFrequency = try container.decodeIfPresent(NativeLogFrequency.self, forKey: .logFrequency) ?? .weekly
     taxDeadlineReminders = try container.decodeIfPresent(Bool.self, forKey: .taxDeadlineReminders) ?? true
-    appearanceMode = try container.decodeIfPresent(NativeAppearanceMode.self, forKey: .appearanceMode) ?? .automatic
     insightsEnabled = try container.decodeIfPresent(Bool.self, forKey: .insightsEnabled) ?? true
     iCloudSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? false
     autoTrackTrips = try container.decodeIfPresent(Bool.self, forKey: .autoTrackTrips) ?? true

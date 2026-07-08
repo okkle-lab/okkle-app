@@ -59,7 +59,6 @@ struct OkkleNativeRootView: View {
     }
     .environmentObject(store)
     .tint(OkkleColor.brand)
-    .preferredColorScheme(store.settings.appearanceMode.preferredColorScheme)
     .onAppear {
       NativeAutoTrackEngine.shared.configure(store: store)
       NativePreShiftNotifier.refresh(store: store)
@@ -294,16 +293,6 @@ struct OkkleNativeRootView: View {
     guard store.settings.hasCompletedOnboarding, notificationRouter.pendingManualTripAutoCompleted else { return }
     notificationRouter.pendingManualTripAutoCompleted = false
     selectedTab = .records
-  }
-}
-
-private extension NativeAppearanceMode {
-  var preferredColorScheme: ColorScheme? {
-    switch self {
-    case .automatic: return nil
-    case .light: return .light
-    case .dark: return .dark
-    }
   }
 }
 
