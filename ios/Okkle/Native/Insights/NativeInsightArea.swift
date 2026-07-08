@@ -416,19 +416,34 @@ enum NativeAreaSuggester {
     await nativeFoodPOICount(near: coordinate, radiusMeters: 550)
   }
 
-  // Neighbourhood first, not the street: a single road is too narrow a
-  // patch for a courier to actually stake out ("Coombe Lane"?), and the
-  // named district it sits in ("Wimbledon") is exactly how drivers already
-  // think and talk about where to work — bigger than a road, nowhere near
-  // as broad as the borough/council area (subAdministrativeArea) or the
-  // whole town (locality) would be.
   private static func areaName(for coordinate: CLLocationCoordinate2D) async -> String? {
     await withCheckedContinuation { continuation in
       CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
-        continuation.resume(returning: placemarks?.first.flatMap { $0.subLocality ?? $0.thoroughfare ?? $0.locality })
+        continuation.resume(returning: placemarks?.first.flatMap(nativeNeighbourhoodName))
       }
     }
   }
+}
+
+/// Neighbourhood first, not the street: a single road is too narrow a
+/// patch for a courier to actually stake out ("Coombe Lane"?), and the
+/// named district it sits in ("Wimbledon") is exactly how drivers already
+/// think and talk about where to work — bigger than a road, nowhere near
+/// as broad as the borough/council area or the whole town would be.
+///
+/// The catch: Apple's own subLocality field sometimes just duplicates the
+/// borough name when it has no finer-grained tag for a given point — which
+/// reads exactly like a real neighbourhood ("Wandsworth") while being just
+/// as broad as the "whole borough" case this is supposed to avoid. Caught
+/// by comparing against subAdministrativeArea (the borough/council area
+/// itself): if subLocality matches it, it isn't telling us anything a real
+/// neighbourhood name would, so fall back to the street instead.
+func nativeNeighbourhoodName(from placemark: CLPlacemark) -> String? {
+  if let subLocality = placemark.subLocality,
+     subLocality.caseInsensitiveCompare(placemark.subAdministrativeArea ?? "") != .orderedSame {
+    return subLocality
+  }
+  return placemark.thoroughfare ?? placemark.locality
 }
 
 /// How many nearby points of interest look food/delivery-relevant (restaurant,
@@ -588,9 +603,11 @@ final class NativeAreaNamer: ObservableObject {
         // Aim for the named district/neighbourhood a driver can actually
         // head to ("Wimbledon"), not a single street ("The Broadway") —
         // too narrow a patch to stake out — and never a whole borough
-        // ("Merton", "City of Westminster") which is too broad to act on.
+        // ("Merton", "Wandsworth") which is too broad to act on. See
+        // nativeNeighbourhoodName for how a borough name masquerading as
+        // subLocality gets caught.
         if let p = placemarks?.first,
-           let area = p.subLocality ?? p.thoroughfare ?? p.locality {
+           let area = nativeNeighbourhoodName(from: p) {
           // A resolvable name isn't enough on its own — check there's
           // actually somewhere to deliver from/to nearby before naming it,
           // otherwise a quiet back road or a park street name can end up
