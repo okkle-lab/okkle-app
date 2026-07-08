@@ -27,6 +27,10 @@ struct NativeVisit: Codable, Identifiable, Equatable {
   // restaurant or customer address — so it's real signal for deliveries
   // count/mileage/active-hours, but not trustworthy for "where to go".
   var isEndpointGuess: Bool = false
+  // True when this visit was recorded while a known vehicle connection
+  // dropped. That is a stronger signal than motion alone because the driver
+  // probably left the car rather than waiting at lights.
+  var vehicleDisconnectConfirmed: Bool? = nil
 
   enum Kind: String, Codable, CaseIterable { case pickup, dropoff, other }
 
@@ -135,11 +139,14 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private let drivingDistanceFilter: CLLocationDistance = 20
   private let stationaryDistanceFilter: CLLocationDistance = 150
   private let stationaryResumeDistance: CLLocationDistance = 150
+  private let idleWakeDistance: CLLocationDistance = 450
   private let minimumConfidentStopDwell: TimeInterval = 90
   private let minimumConnectedVehicleStopDwell: TimeInterval = 4 * 60
   private let homeArrivalRadius: CLLocationDistance = 120
   private let homeDepartureRadius: CLLocationDistance = 220
   private var vehicleConnectionObservers: [NSObjectProtocol] = []
+  private var idleWakeLocation: CLLocation?
+  private var idleMotionQueryInFlight = false
 
   // A stop currently being timed — may resolve into a logged visit (driving
   // resumes) or trigger shift-end (the stationary timer expires).
@@ -225,17 +232,24 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       publishLiveShift()
     }
     startMotionMonitoring()
+    configureLocationForIdleWakeIfNeeded()
     // The primed first ask happens in the onboarding location-permission
     // step, not here — this only covers a driver who reaches this point
     // still undetermined (e.g. access was reset in Settings after the
     // fact, or automatic tracking got turned on some other way).
     if manager.authorizationStatus == .notDetermined {
       manager.requestWhenInUseAuthorization()
+    } else if manager.authorizationStatus == .authorizedWhenInUse {
+      requestAlwaysUpgradeIfNeeded()
     }
   }
 
   private func stopMonitoring() {
     stopMotionMonitoring()
+    if shiftPhase == .idle {
+      manager.stopMonitoringSignificantLocationChanges()
+      idleWakeLocation = nil
+    }
     // Turning tracking off mid-shift shouldn't throw away real, already-
     // recorded GPS miles — save what's there rather than silently lose it.
     if shiftPhase != .idle { concludeShift() }
@@ -246,7 +260,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-    Task { @MainActor in self.handleShiftLocationUpdates(locations) }
+    Task { @MainActor in self.handleLocationUpdates(locations) }
   }
 
   nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
@@ -396,6 +410,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationarySince = nil
     stationaryCoordinate = nil
     publishLiveShift()
+    refresh()
   }
 
   private func startVehicleConnectionMonitoring() {
@@ -412,16 +427,84 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleVehicleConnectionChanged() {
-    guard enhancedAutoTrackingEnabled, shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
+    guard enhancedAutoTrackingEnabled else { return }
     if NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle {
       shiftSawVehicleConnection = true
+      beginShiftFromVehicleConnectionIfNeeded()
       publishLiveShift()
     } else {
       _ = concludeShiftIfVehicleDisconnected()
     }
   }
 
+  private func beginShiftFromVehicleConnectionIfNeeded() {
+    guard shiftPhase == .idle else { return }
+    guard let settings = store?.settings,
+          settings.autoTrackTrips,
+          nativeIsWorkingDay(Date(), settings: settings) else { return }
+    guard NativeTripSession.shared.phase == .setup else { return }
+    let status = manager.authorizationStatus
+    guard status == .authorizedAlways || status == .authorizedWhenInUse else {
+      refresh()
+      return
+    }
+    beginShift()
+  }
+
   // MARK: Continuous route recording (mirrors NativeTripSession's approach)
+
+  private func handleLocationUpdates(_ locations: [CLLocation]) {
+    if shiftPhase == .idle {
+      handleIdleWakeLocationUpdates(locations)
+    } else {
+      handleShiftLocationUpdates(locations)
+    }
+  }
+
+  private func handleIdleWakeLocationUpdates(_ locations: [CLLocation]) {
+    guard let settings = store?.settings,
+          settings.autoTrackTrips,
+          nativeIsWorkingDay(Date(), settings: settings) else { return }
+    guard NativeTripSession.shared.phase == .setup else { return }
+
+    for location in locations where shouldUseIdleWakeLocation(location) {
+      if let idleWakeLocation, location.distance(from: idleWakeLocation) < idleWakeDistance { continue }
+      idleWakeLocation = location
+
+      if enhancedAutoTrackingEnabled, NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle {
+        shiftSawVehicleConnection = true
+        beginShiftFromVehicleConnectionIfNeeded()
+        return
+      }
+
+      if location.speed >= 6 {
+        handleDrivingSignal()
+        return
+      }
+
+      beginShiftIfRecentAutomotiveActivity()
+      return
+    }
+  }
+
+  private func beginShiftIfRecentAutomotiveActivity() {
+    guard !idleMotionQueryInFlight else { return }
+    guard CMMotionActivityManager.isActivityAvailable() else { return }
+    idleMotionQueryInFlight = true
+
+    let end = Date()
+    let start = end.addingTimeInterval(-3 * 60)
+    motionManager.queryActivityStarting(from: start, to: end, to: motionQueue) { [weak self] activities, _ in
+      let hasRecentDriving = activities?.contains(where: { $0.automotive && $0.confidence != .low }) ?? false
+      Task { @MainActor in
+        guard let self else { return }
+        self.idleMotionQueryInFlight = false
+        if hasRecentDriving {
+          self.handleDrivingSignal()
+        }
+      }
+    }
+  }
 
   private func handleShiftLocationUpdates(_ locations: [CLLocation]) {
     guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
@@ -453,6 +536,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     publishLiveShift()
   }
 
+  private func shouldUseIdleWakeLocation(_ location: CLLocation) -> Bool {
+    guard location.horizontalAccuracy >= 0 else { return false }
+    guard abs(location.timestamp.timeIntervalSinceNow) < 10 * 60 else { return false }
+    return location.horizontalAccuracy <= 1_000
+  }
+
   private func publishLiveShift() {
     liveShiftMiles = shiftMiles
     liveShiftStartedAt = shiftStartedAt
@@ -470,7 +559,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     if let shiftLastRoutePointLocation {
       guard location.distance(from: shiftLastRoutePointLocation) >= routePointDistance else { return }
     }
-    shiftPoints.append(RoutePoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude, timestamp: location.timestamp))
+    shiftPoints.append(RoutePoint(
+      location: location,
+      vehicleConnectionActive: enhancedAutoTrackingEnabled ? NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle : nil
+    ))
     shiftLastRoutePointLocation = location
   }
 
@@ -486,6 +578,16 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     manager.distanceFilter = stationaryDistanceFilter
     manager.pausesLocationUpdatesAutomatically = true
     manager.stopUpdatingLocation()
+    manager.startMonitoringSignificantLocationChanges()
+  }
+
+  private func configureLocationForIdleWakeIfNeeded() {
+    guard shiftPhase == .idle else { return }
+    let status = manager.authorizationStatus
+    guard status == .authorizedAlways || status == .authorizedWhenInUse else { return }
+    manager.desiredAccuracy = kCLLocationAccuracyKilometer
+    manager.distanceFilter = idleWakeDistance
+    manager.pausesLocationUpdatesAutomatically = true
     manager.startMonitoringSignificantLocationChanges()
   }
 
@@ -556,6 +658,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     var visit = NativeVisit(latitude: coordinate.latitude, longitude: coordinate.longitude,
                             arrival: stationarySince, departure: departure)
     let calibration = store?.settings.autoTrackCalibration ?? NativeAutoTrackCalibration()
+    visit.vehicleDisconnectConfirmed = shiftSawVehicleConnection && !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
     visit.kind = visit.dwell >= calibration.pickupDwellThreshold ? .pickup : .dropoff
     visits.append(visit)
     trim()
@@ -611,6 +714,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// work is the natural, low-friction moment to ask for the upgrade.
   private func requestAlwaysUpgradeIfNeeded() {
     guard manager.authorizationStatus == .authorizedWhenInUse else { return }
+    guard UIApplication.shared.applicationState == .active else { return }
     let key = "uk.okkle.native.autotrack.requestedAlwaysUpgrade"
     guard !UserDefaults.standard.bool(forKey: key) else { return }
     UserDefaults.standard.set(true, forKey: key)
@@ -704,6 +808,43 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         } else if self.visits[index].dwell < calibration.dropoffMaxDwellThreshold {
           self.visits[index].kind = .dropoff
         }
+        if self.visits[index].placeName == nil {
+          self.nameVisitWithNearbyPlace(id, coordinate: coordinate)
+        }
+        self.save()
+      }
+    }
+  }
+
+  private func nameVisitWithNearbyPlace(_ id: UUID, coordinate: CLLocationCoordinate2D) {
+    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 110)
+    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [
+      .restaurant,
+      .cafe,
+      .bakery,
+      .foodMarket,
+      .store,
+      .pharmacy,
+      .parking,
+      .publicTransport
+    ])
+    MKLocalSearch(request: request).start { [weak self] response, _ in
+      guard let self else { return }
+      let stopLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+      let nearest = (response?.mapItems ?? [])
+        .filter { ($0.name ?? "").isEmpty == false }
+        .min { lhs, rhs in
+          let lhsDistance = lhs.placemark.location.map { $0.distance(from: stopLocation) } ?? .greatestFiniteMagnitude
+          let rhsDistance = rhs.placemark.location.map { $0.distance(from: stopLocation) } ?? .greatestFiniteMagnitude
+          return lhsDistance < rhsDistance
+        }
+      guard let name = nearest?.name,
+            let distance = nearest?.placemark.location?.distance(from: stopLocation),
+            distance <= 110 else { return }
+      Task { @MainActor in
+        guard let index = self.visits.firstIndex(where: { $0.id == id }),
+              self.visits[index].placeName == nil else { return }
+        self.visits[index].placeName = name
         self.save()
       }
     }

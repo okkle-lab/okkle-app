@@ -10,6 +10,7 @@ final class OkkleCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDe
     _ templateApplicationScene: CPTemplateApplicationScene,
     didConnect interfaceController: CPInterfaceController
   ) {
+    NativeAutoTrackEngine.shared.configure(store: OkkleStore.shared)
     NativeVehicleConnectionMonitor.setCarPlayConnected(true)
     let controller = OkkleCarPlayTripController(interfaceController: interfaceController)
     tripController = controller

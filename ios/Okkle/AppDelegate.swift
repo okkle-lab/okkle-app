@@ -13,6 +13,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     UNUserNotificationCenter.current().delegate = NativeNotificationRouter.shared
     NativeManualTripStopNotification.registerCategory()
     NativeWatchTripConnector.shared.configure()
+    Task { @MainActor in
+      let store = OkkleStore.shared
+      if store.settings.hasCompletedOnboarding {
+        NativeAutoTrackEngine.shared.configure(store: store)
+      }
+    }
     return true
   }
 
