@@ -258,10 +258,18 @@ final class NativeExploreCandidateStore: ObservableObject {
   /// Once something validates it stops being a "candidate" at all (it's just
   /// a real zone now), so this naturally empties out as real data arrives.
   /// Requires a real cluster of food POIs, not just one — a lone pub inside
-  /// an industrial estate shouldn't out-rank "nothing to suggest yet".
+  /// an industrial estate shouldn't out-rank "nothing to suggest yet". Also
+  /// excludes borough-level names directly (not just at discovery time) —
+  /// candidates already saved before that fix existed would otherwise keep
+  /// showing "Wandsworth" forever, since merge() only ever adds new
+  /// candidates and never re-checks ones already stored.
   var bestUnvalidatedCandidate: NativeExploreCandidate? {
     candidates
-      .filter { !$0.isValidated && $0.poiScore >= nativeMinimumViableAreaPoiScore }
+      .filter {
+        !$0.isValidated
+          && $0.poiScore >= nativeMinimumViableAreaPoiScore
+          && !nativeLondonBoroughNames.contains($0.name.lowercased())
+      }
       .max { $0.poiScore < $1.poiScore }
   }
 
@@ -425,22 +433,38 @@ enum NativeAreaSuggester {
   }
 }
 
+/// The 32 London boroughs plus the City of London, lower-cased, with the
+/// common alternate forms Apple's geocoder actually returns. For UK/London
+/// addresses, subLocality itself is where a borough name shows up when
+/// Apple has no finer-grained neighbourhood tag for a point — subAdministrativeArea
+/// is typically empty or just "Greater London" for these addresses, so it
+/// can't be used to detect the duplication the way it might elsewhere.
+/// Okkle is UK-only, so a fixed list here is a reliable, direct fix rather
+/// than a guess at a general heuristic.
+private let nativeLondonBoroughNames: Set<String> = [
+  "barking and dagenham", "barnet", "bexley", "brent", "bromley", "camden",
+  "city of london", "croydon", "ealing", "enfield", "greenwich", "hackney",
+  "hammersmith and fulham", "haringey", "harrow", "havering", "hillingdon",
+  "hounslow", "islington", "kensington and chelsea",
+  "royal borough of kensington and chelsea", "kingston upon thames",
+  "royal borough of kingston upon thames", "lambeth", "lewisham", "merton",
+  "newham", "redbridge", "richmond upon thames",
+  "richmond-upon-thames", "southwark", "sutton", "tower hamlets",
+  "waltham forest", "wandsworth", "westminster", "city of westminster"
+]
+
 /// Neighbourhood first, not the street: a single road is too narrow a
 /// patch for a courier to actually stake out ("Coombe Lane"?), and the
 /// named district it sits in ("Wimbledon") is exactly how drivers already
 /// think and talk about where to work — bigger than a road, nowhere near
-/// as broad as the borough/council area or the whole town would be.
-///
-/// The catch: Apple's own subLocality field sometimes just duplicates the
-/// borough name when it has no finer-grained tag for a given point — which
-/// reads exactly like a real neighbourhood ("Wandsworth") while being just
-/// as broad as the "whole borough" case this is supposed to avoid. Caught
-/// by comparing against subAdministrativeArea (the borough/council area
-/// itself): if subLocality matches it, it isn't telling us anything a real
-/// neighbourhood name would, so fall back to the street instead.
+/// as broad as the borough/council area or the whole town would be. A
+/// borough name in subLocality ("Wandsworth", "Merton") reads exactly
+/// like a real neighbourhood while being just as broad as the "whole
+/// borough" case this is meant to avoid, so it's explicitly excluded
+/// rather than trusted just because it filled the field.
 func nativeNeighbourhoodName(from placemark: CLPlacemark) -> String? {
   if let subLocality = placemark.subLocality,
-     subLocality.caseInsensitiveCompare(placemark.subAdministrativeArea ?? "") != .orderedSame {
+     !nativeLondonBoroughNames.contains(subLocality.lowercased()) {
     return subLocality
   }
   return placemark.thoroughfare ?? placemark.locality
