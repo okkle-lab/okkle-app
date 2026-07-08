@@ -10,6 +10,7 @@ final class OkkleCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDe
     _ templateApplicationScene: CPTemplateApplicationScene,
     didConnect interfaceController: CPInterfaceController
   ) {
+    NativeVehicleConnectionMonitor.setCarPlayConnected(true)
     let controller = OkkleCarPlayTripController(interfaceController: interfaceController)
     tripController = controller
     controller.connect()
@@ -19,6 +20,7 @@ final class OkkleCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDe
     _ templateApplicationScene: CPTemplateApplicationScene,
     didDisconnectInterfaceController interfaceController: CPInterfaceController
   ) {
+    NativeVehicleConnectionMonitor.setCarPlayConnected(false)
     tripController = nil
   }
 }

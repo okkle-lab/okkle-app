@@ -66,6 +66,7 @@ struct OkkleNativeRootView: View {
       routeWidgetTripRequestIfNeeded()
       routeAutomaticTripIfNeeded()
       routeManualTripStopPromptIfNeeded()
+      routeManualTripAutoCompletedIfNeeded()
     }
     .sheet(isPresented: Binding(
       get: { notificationRouter.pendingAutoShiftReviewTripID != nil },
@@ -102,8 +103,10 @@ struct OkkleNativeRootView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
+      routeAutomaticStartNotificationIfNeeded()
       routeAutomaticTripIfNeeded()
       routeManualTripStopPromptIfNeeded()
+      routeManualTripAutoCompletedIfNeeded()
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
       NativeLoggingReminder.refresh(store: store)
@@ -114,6 +117,15 @@ struct OkkleNativeRootView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       routeWidgetTripRequestIfNeeded()
+    }
+    .onChange(of: notificationRouter.pendingAutoShiftStarted) { _ in
+      routeAutomaticStartNotificationIfNeeded()
+    }
+    .onChange(of: notificationRouter.pendingManualTripStopPrompt) { _ in
+      routeManualTripStopPromptIfNeeded()
+    }
+    .onChange(of: notificationRouter.pendingManualTripAutoCompleted) { _ in
+      routeManualTripAutoCompletedIfNeeded()
     }
     .onChange(of: autoTrack.shiftPhase) { _ in
       routeAutomaticTripIfNeeded()
@@ -244,10 +256,22 @@ struct OkkleNativeRootView: View {
     selectedTab = .trip
   }
 
+  private func routeAutomaticStartNotificationIfNeeded() {
+    guard store.settings.hasCompletedOnboarding, notificationRouter.pendingAutoShiftStarted else { return }
+    notificationRouter.pendingAutoShiftStarted = false
+    selectedTab = .trip
+  }
+
   private func routeManualTripStopPromptIfNeeded() {
     guard store.settings.hasCompletedOnboarding, notificationRouter.pendingManualTripStopPrompt else { return }
     notificationRouter.pendingManualTripStopPrompt = false
     selectedTab = .trip
+  }
+
+  private func routeManualTripAutoCompletedIfNeeded() {
+    guard store.settings.hasCompletedOnboarding, notificationRouter.pendingManualTripAutoCompleted else { return }
+    notificationRouter.pendingManualTripAutoCompleted = false
+    selectedTab = .records
   }
 }
 

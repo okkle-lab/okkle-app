@@ -86,8 +86,13 @@ struct NativeTripView: View {
         session.dismissStopPrompt()
         finishTripForReview()
       }
+      Button("Auto-complete trips") {
+        store.settings.manualTripAutoComplete = true
+        session.dismissStopPrompt()
+        finishTripForReview()
+      }
     } message: {
-      Text("You've been in one place for a while. Stop now, or keep tracking if you're waiting for an order.")
+      Text("You've been in one place for a while. Stop now, keep tracking, or let Okkle auto-complete stopped manual trips next time.")
     }
     .onAppear {
       selectedVehicle = store.settings.defaultVehicle

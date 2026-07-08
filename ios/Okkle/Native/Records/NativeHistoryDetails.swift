@@ -286,14 +286,7 @@ struct NativeTripDetailSheet: View {
   }
 
   private func stopTitle(for visit: NativeVisit) -> String {
-    switch visit.kind {
-    case .pickup:
-      return "Pick-up"
-    case .dropoff:
-      return "Drop-off"
-    case .other:
-      return "Stop"
-    }
+    "Stop"
   }
 
   private func stopSubtitle(for visit: NativeVisit) -> String {
@@ -329,25 +322,11 @@ struct NativeTripDetailSheet: View {
   }
 
   private func stopTint(for visit: NativeVisit) -> Color {
-    switch visit.kind {
-    case .pickup:
-      return OkkleColor.brand
-    case .dropoff:
-      return OkkleColor.blue
-    case .other:
-      return OkkleColor.amber
-    }
+    OkkleColor.amber
   }
 
   private func routeStopKind(for visit: NativeVisit) -> NativeRouteMapStop.Kind {
-    switch visit.kind {
-    case .pickup:
-      return .pickup
-    case .dropoff:
-      return .dropoff
-    case .other:
-      return .other
-    }
+    .other
   }
 
   @MainActor
@@ -1345,14 +1324,7 @@ struct NativeTripEditSheet: View {
   }
 
   private func editStopTitle(for visit: NativeVisit) -> String {
-    switch visit.kind {
-    case .pickup:
-      return "Pick-up"
-    case .dropoff:
-      return "Drop-off"
-    case .other:
-      return "Stop"
-    }
+    "Stop"
   }
 
   private func editStopSubtitle(for visit: NativeVisit) -> String {
@@ -1362,14 +1334,7 @@ struct NativeTripEditSheet: View {
   }
 
   private func editRouteStopKind(for visit: NativeVisit) -> NativeRouteMapStop.Kind {
-    switch visit.kind {
-    case .pickup:
-      return .pickup
-    case .dropoff:
-      return .dropoff
-    case .other:
-      return .other
-    }
+    .other
   }
 
   private func canRemoveRouteSegment(_ segment: NativeTripRouteEditSegment) -> Bool {

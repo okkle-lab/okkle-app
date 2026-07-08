@@ -11,6 +11,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     UNUserNotificationCenter.current().delegate = NativeNotificationRouter.shared
+    NativeManualTripStopNotification.registerCategory()
     NativeWatchTripConnector.shared.configure()
     return true
   }

@@ -3,6 +3,19 @@ import SwiftUI
 
 let nativeInsightPromptAnimation = Animation.spring(response: 0.46, dampingFraction: 0.72, blendDuration: 0.08)
 
+let nativeAIAccentPink = Color(red: 1.00, green: 0.22, blue: 0.72)
+let nativeAIAccentPurple = Color(red: 0.55, green: 0.30, blue: 1.00)
+let nativeAIAccentGradient = LinearGradient(
+  colors: [nativeAIAccentPink, nativeAIAccentPurple],
+  startPoint: .topLeading,
+  endPoint: .bottomTrailing
+)
+let nativeAIAccentHorizontalGradient = LinearGradient(
+  colors: [nativeAIAccentPink, nativeAIAccentPurple],
+  startPoint: .leading,
+  endPoint: .trailing
+)
+
 enum NativeInsightPeriod: Int, CaseIterable, Identifiable {
   case today, week, month, year
 
@@ -200,7 +213,7 @@ struct NativeShiftPatternsCard: View {
           Spacer()
           Text("\(Int((buildingProgress * 100).rounded()))%")
             .font(.system(size: 12, weight: .heavy))
-            .foregroundStyle(OkkleColor.brand)
+            .foregroundStyle(nativeAIAccentGradient)
         }
         NativeAIProgressBar(progress: buildingProgress)
         // The real heat map, mid-build — your own tracked routes and
@@ -291,7 +304,7 @@ struct NativeShiftPatternsCard: View {
       HStack(spacing: 12) {
         Image(systemName: symbol)
           .font(.system(size: 16, weight: .semibold))
-          .foregroundStyle(OkkleColor.brand)
+          .foregroundStyle(nativeAIAccentGradient)
           .frame(width: 24)
         VStack(alignment: .leading, spacing: 1) {
           Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(OkkleColor.ink)
@@ -375,7 +388,7 @@ struct NativeDailyInsightPanel: View {
       HStack(alignment: .bottom, spacing: 1.5) {
         ForEach(0..<3, id: \.self) { i in
           RoundedRectangle(cornerRadius: 0.5)
-            .fill(i < shift.confidence.dots ? OkkleColor.brand : OkkleColor.muted.opacity(0.25))
+            .fill(i < shift.confidence.dots ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.muted.opacity(0.25)))
             .frame(width: 3, height: 4 + CGFloat(i) * 3)
         }
       }
@@ -414,7 +427,7 @@ struct NativeDailyInsightPanel: View {
 
   /// One instruction, chosen by priority: big night → in a window now → window
   /// coming → wound down → next working day. Weather escalates, never competes.
-  private func heroContent(_ plan: NativeDayPlan) -> (symbol: String, color: Color, title: String, detail: String) {
+  private func heroContent(_ plan: NativeDayPlan) -> (symbol: String, color: AnyShapeStyle, title: String, detail: String) {
     let strongDay = shift.weekdayDetails.prefix(3).contains { $0.weekday == plan.weekday }
     let dayName = Calendar.current.weekdaySymbols[plan.weekday]
     let area = areaNamer.name(for: plan.zone ?? CLLocationCoordinate2D())
@@ -430,7 +443,7 @@ struct NativeDailyInsightPanel: View {
     // 1. Big night: bad weather on one of your strong days.
     if !boost.isEmpty, strongDay, let peak {
       let cond = wet ? "Wet" : "Cold"
-      return ("flame.fill", OkkleColor.brand,
+      return ("flame.fill", AnyShapeStyle(nativeAIAccentGradient),
               plan.isToday ? "Tonight could be a big one" : "\(dayName) could be a big one",
               "\(cond) on one of your strong days — \(peak.label)\(near) tends to pay best.")
     }
@@ -439,30 +452,30 @@ struct NativeDailyInsightPanel: View {
       let hour = Calendar.current.component(.hour, from: Date())
       // 2. In a busy window right now.
       if let current = plan.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
-        return ("bolt.fill", OkkleColor.brand,
+        return ("bolt.fill", AnyShapeStyle(nativeAIAccentGradient),
                 "Good time to be out",
                 area.map { "Busy till \(nativeHourLabel(current.endHour + 1))\(soft ? "" : " around \($0)")." } ?? "Busy till \(nativeHourLabel(current.endHour + 1)).")
       }
       // 3. A window still ahead today.
       if let next = plan.driveWindows.first(where: { $0.startHour > hour }) {
         let boostNote = boost.isEmpty ? "" : (wet ? " Rain should help." : " Cold should help.")
-        return ("figure.walk.arrival", OkkleColor.brand,
+        return ("figure.walk.arrival", AnyShapeStyle(nativeAIAccentGradient),
                 "Great to be out for \(nativeHourLabel(next.startHour))",
                 "\(next.label)\(near) \(soft ? "looks like" : "is usually") your strongest.\(boostNote)")
       }
       // 4. Peaks have passed.
-      return ("moon.stars.fill", OkkleColor.muted,
+      return ("moon.stars.fill", AnyShapeStyle(OkkleColor.muted),
               "Peaks are behind you",
               "Quieter from here — a good point to call it.")
     }
 
     // 5. Planning ahead for the next working day.
     if let peak {
-      return ("calendar", OkkleColor.brand,
+      return ("calendar", AnyShapeStyle(nativeAIAccentGradient),
               "\(dayName) looks best from \(nativeHourLabel(peak.startHour))",
               "\(peak.label)\(near) \(soft ? "looks" : "is usually") strongest.")
     }
-    return ("hourglass", OkkleColor.muted,
+    return ("hourglass", AnyShapeStyle(OkkleColor.muted),
             "Still learning \(dayName)s",
             "A couple more shifts and the timing sharpens up.")
   }
@@ -529,7 +542,7 @@ struct NativePlatformShareList: View {
         HStack(spacing: 12) {
           Image(systemName: nativePlatformSymbol(share.platform))
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(OkkleColor.brand)
+            .foregroundStyle(nativeAIAccentGradient)
             .frame(width: 24)
           Text(share.platform)
             .font(.system(size: 16, weight: .semibold))
@@ -538,7 +551,7 @@ struct NativePlatformShareList: View {
           if let delta = share.deltaPct {
             Image(systemName: delta > 0 ? "arrow.up.right" : "arrow.down.right")
               .font(.system(size: 12, weight: .bold))
-              .foregroundStyle(delta > 0 ? OkkleColor.brand : OkkleColor.muted)
+              .foregroundStyle(delta > 0 ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.muted))
           }
           Text("\(share.sharePct)%")
             .font(.system(size: 16, weight: .bold, design: .rounded))
@@ -589,7 +602,7 @@ struct NativeWeeklyInsightPanel: View {
         if let reliability {
           Text(reliability == .reliable ? "Reliable" : "Hit or miss")
             .font(.system(size: 10, weight: .heavy)).tracking(0.3)
-            .foregroundStyle(reliability == .reliable ? OkkleColor.brand : OkkleColor.amber)
+            .foregroundStyle(reliability == .reliable ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.amber))
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background((reliability == .reliable ? OkkleColor.brand : OkkleColor.amber).opacity(0.14), in: Capsule())
         }
@@ -623,7 +636,7 @@ struct NativeWeeklyInsightPanel: View {
     HStack(spacing: 10) {
       Image(systemName: symbol)
         .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(OkkleColor.brand)
+        .foregroundStyle(nativeAIAccentGradient)
         .frame(width: 20)
       Text(label)
         .font(.system(size: 14, weight: .medium))
@@ -646,17 +659,17 @@ struct NativeWeeklyInsightPanel: View {
 
   /// One specific, actionable line — grounded in the driver's own busiest area
   /// and time — that replaces the vague generic warning where we can.
-  private var specificAdvice: (symbol: String, color: Color, text: String)? {
+  private var specificAdvice: (symbol: String, color: AnyShapeStyle, text: String)? {
     if shift.deadMilePct >= 25, let spot = topSpot {
-      return ("exclamationmark.triangle.fill", OkkleColor.amber,
+      return ("exclamationmark.triangle.fill", AnyShapeStyle(OkkleColor.amber),
               "You cover a lot of empty miles between orders. Sit tight around \(spot.area) at \(spot.time) — that's where most of your pickups start.")
     }
     if let spot = topSpot {
-      return ("mappin.and.ellipse", OkkleColor.brand,
+      return ("mappin.and.ellipse", AnyShapeStyle(nativeAIAccentGradient),
               "Your strongest patch is \(spot.area) at \(spot.time) — base yourself there and let the orders come to you.")
     }
     if let warning = shift.warning {
-      return ("exclamationmark.triangle.fill", OkkleColor.amber, warning)
+      return ("exclamationmark.triangle.fill", AnyShapeStyle(OkkleColor.amber), warning)
     }
     return nil
   }
@@ -664,12 +677,12 @@ struct NativeWeeklyInsightPanel: View {
   /// Surfaces the self-correcting confidence loop — whether "your peak" has
   /// actually been paying off — so the check that runs silently in the
   /// background isn't invisible to the driver.
-  private var peakHitRateLine: (symbol: String, color: Color, text: String)? {
+  private var peakHitRateLine: (symbol: String, color: AnyShapeStyle, text: String)? {
     guard let rate = shift.peakHitRate else { return nil }
     if rate >= 0.55 {
-      return ("checkmark.seal.fill", OkkleColor.brand, "Your peak-day calls have been paying off lately.")
+      return ("checkmark.seal.fill", AnyShapeStyle(nativeAIAccentGradient), "Your peak-day calls have been paying off lately.")
     }
-    return ("arrow.triangle.2.circlepath", OkkleColor.muted, "Recent peak days haven't stood out much — we're adjusting.")
+    return ("arrow.triangle.2.circlepath", AnyShapeStyle(OkkleColor.muted), "Recent peak days haven't stood out much — we're adjusting.")
   }
 
   var body: some View {
@@ -797,7 +810,7 @@ struct NativeWeeklyInsightPanel: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  private func insightLine(symbol: String, color: Color, text: String) -> some View {
+  private func insightLine(symbol: String, color: AnyShapeStyle, text: String) -> some View {
     HStack(alignment: .top, spacing: 10) {
       Image(systemName: symbol)
         .font(.system(size: 15, weight: .bold))
@@ -830,7 +843,7 @@ private enum NativeStatSize {
   var points: CGFloat { self == .hero ? 42 : 30 }
 }
 
-private func nativeStatValue(_ value: String, size: NativeStatSize = .hero, color: Color = OkkleColor.ink) -> some View {
+private func nativeStatValue(_ value: String, size: NativeStatSize = .hero, color: AnyShapeStyle = AnyShapeStyle(OkkleColor.ink)) -> some View {
   Text(value)
     .font(.system(size: size.points, weight: .bold, design: .rounded))
     .foregroundStyle(color)
@@ -842,8 +855,8 @@ private func nativeStatValue(_ value: String, size: NativeStatSize = .hero, colo
     .fixedSize(horizontal: true, vertical: false)
 }
 
-private func nativeHeadlineStat(kicker: String, value: String, valueColor: Color = OkkleColor.ink,
-                                sub: (symbol: String, color: Color, text: String)?) -> some View {
+private func nativeHeadlineStat(kicker: String, value: String, valueColor: AnyShapeStyle = AnyShapeStyle(OkkleColor.ink),
+                                sub: (symbol: String, color: AnyShapeStyle, text: String)?) -> some View {
   VStack(alignment: .leading, spacing: 8) {
     nativeInsightKicker(kicker)
     nativeStatValue(value, color: valueColor)
@@ -931,16 +944,16 @@ struct NativeMonthlyInsightPanel: View {
     store.mileageTaxSavings(for: DateInterval(start: Date().addingTimeInterval(-30 * day), end: Date()))
   }
 
-  private var incomeTrend: (symbol: String, color: Color, text: String)? {
+  private var incomeTrend: (symbol: String, color: AnyShapeStyle, text: String)? {
     guard incomePrev > 0 else { return nil }
     let delta = (incomeThis - incomePrev) / incomePrev
     if abs(delta) < 0.05 {
-      return ("equal", OkkleColor.muted, "About the same as the 30 days before")
+      return ("equal", AnyShapeStyle(OkkleColor.muted), "About the same as the 30 days before")
     }
     let pct = Int((abs(delta) * 100).rounded())
     return delta > 0
-      ? ("arrow.up.right", OkkleColor.brand, "\(pct)% more than the 30 days before")
-      : ("arrow.down.right", OkkleColor.amber, "\(pct)% less than the 30 days before")
+      ? ("arrow.up.right", AnyShapeStyle(nativeAIAccentGradient), "\(pct)% more than the 30 days before")
+      : ("arrow.down.right", AnyShapeStyle(OkkleColor.amber), "\(pct)% less than the 30 days before")
   }
 
   private var bestDayLine: String? {
@@ -961,7 +974,7 @@ struct NativeMonthlyInsightPanel: View {
             kicker: "EARNED · LAST 30 DAYS",
             value: gbp(incomeThis, whole: true),
             sub: incomeThis == 0
-              ? ("square.and.pencil", OkkleColor.muted, "Log your pay to track your month")
+              ? ("square.and.pencil", AnyShapeStyle(OkkleColor.muted), "Log your pay to track your month")
               : incomeTrend
           )
           if nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) != nil || shift.deadMilePct > 0 {
@@ -977,7 +990,7 @@ struct NativeMonthlyInsightPanel: View {
             HStack(alignment: .top, spacing: 8) {
               Image(systemName: "calendar")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(OkkleColor.brand)
+                .foregroundStyle(nativeAIAccentGradient)
               Text(line)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OkkleColor.muted)
@@ -992,7 +1005,7 @@ struct NativeMonthlyInsightPanel: View {
       NativeAiCard {
         VStack(alignment: .leading, spacing: 6) {
           nativeInsightKicker("TAX RELIEF BANKED · 30 DAYS")
-          nativeStatValue(gbp(savings.taxSaved, whole: true), color: OkkleColor.brand)
+          nativeStatValue(gbp(savings.taxSaved, whole: true), color: AnyShapeStyle(nativeAIAccentGradient))
           Text("\(gbp(savings.mileageDeduction, whole: true)) off your taxable profit, from \(miles(savings.miles)) of business driving.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
@@ -1055,7 +1068,7 @@ struct NativeYearlyInsightPanel: View {
             kicker: "EARNED · THIS TAX YEAR",
             value: gbp(store.yearIncome, whole: true),
             sub: store.yearIncome == 0
-              ? ("square.and.pencil", OkkleColor.muted, "Log your pay to total your year")
+              ? ("square.and.pencil", AnyShapeStyle(OkkleColor.muted), "Log your pay to total your year")
               : nil
           )
           if nativePerHourBand(income: store.yearIncome, activeHours: shift.activeHours) != nil || shift.deadMilePct > 0 {
@@ -1074,7 +1087,7 @@ struct NativeYearlyInsightPanel: View {
       NativeAiCard {
         VStack(alignment: .leading, spacing: 6) {
           nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
-          nativeStatValue(gbp(store.taxSaved, whole: true), color: OkkleColor.brand)
+          nativeStatValue(gbp(store.taxSaved, whole: true), color: AnyShapeStyle(nativeAIAccentGradient))
           Text("A \(gbp(store.yearMileageDeduction, whole: true)) deduction off your Self Assessment profit, from \(miles(store.yearMiles)) driven. See the Tax tab.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
@@ -1161,7 +1174,7 @@ struct NativeYearlyInsightPanel: View {
     HStack(spacing: 10) {
       Image(systemName: symbol)
         .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(OkkleColor.brand)
+        .foregroundStyle(nativeAIAccentGradient)
         .frame(width: 20)
       Text(label)
         .font(.system(size: 14, weight: .medium))
@@ -1284,8 +1297,8 @@ private struct NativeAIProgressBar: View {
   private var fillGradient: LinearGradient {
     LinearGradient(
       colors: [
-        Color(red: 1.00, green: 0.22, blue: 0.72),
-        Color(red: 0.55, green: 0.30, blue: 1.00)
+        nativeAIAccentPink,
+        nativeAIAccentPurple
       ],
       startPoint: .leading,
       endPoint: .trailing
@@ -1310,8 +1323,8 @@ private struct NativeAIProgressBar: View {
           Capsule()
             .fill(fillGradient)
             .frame(width: max(10, fillWidth))
-            .shadow(color: Color(red: 1.00, green: 0.22, blue: 0.72).opacity(0.16), radius: 5)
-            .shadow(color: Color(red: 0.55, green: 0.30, blue: 1.00).opacity(0.12), radius: 9)
+            .shadow(color: nativeAIAccentPink.opacity(0.16), radius: 5)
+            .shadow(color: nativeAIAccentPurple.opacity(0.12), radius: 9)
             .overlay(alignment: .top) {
               Capsule()
                 .fill(.white.opacity(0.16))
