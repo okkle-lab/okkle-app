@@ -465,7 +465,7 @@ struct NativeTripView: View {
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(trackingStatusColor)
           if isAutomaticTrackingVisible {
-            Text("Based on movement and work schedule.")
+            Text(autoTrack.shiftPhase == .paused ? "Paused by you. Resume when you're ready." : "Based on movement and work schedule.")
               .font(.system(size: 12, weight: .semibold))
               .foregroundStyle(trackingSecondaryText)
               .fixedSize(horizontal: false, vertical: true)
@@ -502,7 +502,7 @@ struct NativeTripView: View {
           .background(OkkleColor.red.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
       }
 
-      if completedTrip == nil && !isAutomaticTrackingVisible {
+      if completedTrip == nil {
         trackingActionButtons
       }
     }
@@ -527,36 +527,72 @@ struct NativeTripView: View {
 
   private var trackingActionButtons: some View {
     HStack(spacing: 12) {
-      if session.phase == .live {
-        Button {
-          session.pause()
-        } label: {
-          Label("Pause", systemImage: "pause.fill")
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(OkkleColor.blue)
+      if isAutomaticTrackingVisible {
+        automaticTrackingActionButtons
       } else {
-        Button {
-          session.resume()
+        if session.phase == .live {
+          Button {
+            session.pause()
+          } label: {
+            Label("Pause", systemImage: "pause.fill")
+              .frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.borderedProminent)
+          .tint(OkkleColor.blue)
+        } else {
+          Button {
+            session.resume()
+          } label: {
+            Label("Resume", systemImage: "play.fill")
+              .frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.borderedProminent)
+          .tint(OkkleColor.brand)
+        }
+
+        Button(role: .destructive) {
+          finishTripForReview()
         } label: {
-          Label("Resume", systemImage: "play.fill")
+          Label("End", systemImage: "stop.fill")
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .tint(OkkleColor.brand)
+        .tint(OkkleColor.red)
       }
+    }
+    .font(.system(size: 16, weight: .bold))
+  }
 
-      Button(role: .destructive) {
-        finishTripForReview()
+  @ViewBuilder
+  private var automaticTrackingActionButtons: some View {
+    if autoTrack.shiftPhase == .paused {
+      Button {
+        autoTrack.resumeCurrentShift()
       } label: {
-        Label("End", systemImage: "stop.fill")
+        Label("Resume", systemImage: "play.fill")
           .frame(maxWidth: .infinity)
       }
       .buttonStyle(.borderedProminent)
-      .tint(OkkleColor.red)
+      .tint(OkkleColor.brand)
+    } else {
+      Button {
+        autoTrack.pauseCurrentShift()
+      } label: {
+        Label("Pause", systemImage: "pause.fill")
+          .frame(maxWidth: .infinity)
+      }
+      .buttonStyle(.borderedProminent)
+      .tint(OkkleColor.blue)
     }
-    .font(.system(size: 16, weight: .bold))
+
+    Button(role: .destructive) {
+      autoTrack.endCurrentShift()
+    } label: {
+      Label("End", systemImage: "stop.fill")
+        .frame(maxWidth: .infinity)
+    }
+    .buttonStyle(.borderedProminent)
+    .tint(OkkleColor.red)
   }
 
   // Swipe between the live coach and mileage deduction — each its own clean
@@ -611,6 +647,10 @@ struct NativeTripView: View {
   private func liveCoachTip() -> (symbol: String, color: Color, title: String, detail: String) {
     let hour = Calendar.current.component(.hour, from: Date())
     if isAutomaticTrackingVisible {
+      if autoTrack.shiftPhase == .paused {
+        return ("pause.fill", OkkleColor.blue, "Auto trip paused",
+                "Resume when you're back on the road.")
+      }
       return ("location.north.line.fill", OkkleColor.brand, "Automatically tracking",
               "Based on movement and work schedule.")
     }
@@ -687,6 +727,9 @@ struct NativeTripView: View {
 
   private var trackingStatusTitle: String {
     if isAutomaticTrackingVisible {
+      if autoTrack.shiftPhase == .paused {
+        return "Auto trip paused"
+      }
       return "Automatically tracking"
     }
     switch session.phase {
@@ -701,7 +744,10 @@ struct NativeTripView: View {
 
   private var trackingStatusSymbol: String {
     if isAutomaticTrackingVisible {
-      return autoTrack.shiftPhase == .stationaryPending ? "pause.circle.fill" : "location.north.line.fill"
+      if autoTrack.shiftPhase == .stationaryPending || autoTrack.shiftPhase == .paused {
+        return "pause.circle.fill"
+      }
+      return "location.north.line.fill"
     }
     switch session.phase {
     case .live:
@@ -715,7 +761,7 @@ struct NativeTripView: View {
 
   private var trackingStatusColor: Color {
     if isAutomaticTrackingVisible {
-      return OkkleColor.brand
+      return autoTrack.shiftPhase == .paused ? OkkleColor.blue : OkkleColor.brand
     }
     return session.phase == .paused ? OkkleColor.blue : OkkleColor.brand
   }
@@ -808,7 +854,10 @@ struct NativeTripView: View {
         session.resume()
       }
     case .end:
-      if session.phase == .live || session.phase == .paused {
+      if isAutomaticTrackingVisible {
+        autoTrack.endCurrentShift()
+        NativeTripWidgetStore.markTripEnded()
+      } else if session.phase == .live || session.phase == .paused {
         finishTripForReview()
       } else {
         NativeTripWidgetStore.markTripEnded()

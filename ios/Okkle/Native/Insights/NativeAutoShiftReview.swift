@@ -255,14 +255,7 @@ struct NativeAutoShiftReviewView: View {
   }
 
   private func stopTitle(for visit: NativeVisit) -> String {
-    switch visit.kind {
-    case .pickup:
-      return "Pick-up"
-    case .dropoff:
-      return "Drop-off"
-    case .other:
-      return "Stop"
-    }
+    "Stop"
   }
 
   private func stopSubtitle(for visit: NativeVisit) -> String {
@@ -274,24 +267,10 @@ struct NativeAutoShiftReviewView: View {
   }
 
   private func routeStopKind(for visit: NativeVisit) -> NativeRouteMapStop.Kind {
-    switch visit.kind {
-    case .pickup:
-      return .pickup
-    case .dropoff:
-      return .dropoff
-    case .other:
-      return .other
-    }
+    .other
   }
 
   private func stopTint(for visit: NativeVisit) -> Color {
-    switch visit.kind {
-    case .pickup:
-      return .indigo
-    case .dropoff:
-      return .orange
-    case .other:
-      return .secondary
-    }
+    .secondary
   }
 }

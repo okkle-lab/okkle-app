@@ -202,8 +202,7 @@ struct NativeShiftPatternsCard: View {
             .font(.system(size: 12, weight: .heavy))
             .foregroundStyle(OkkleColor.brand)
         }
-        ProgressView(value: buildingProgress)
-          .tint(OkkleColor.brand)
+        NativeAIProgressBar(progress: buildingProgress)
         // The real heat map, mid-build — your own tracked routes and
         // whatever zones have formed so far, however sparse. As it fills
         // in, this is the same map that shows on the finished panels; a
@@ -1272,6 +1271,64 @@ private struct NativeInsightSetupCardTransition: ViewModifier {
       .offset(y: -24 * progress)
       .rotationEffect(.degrees(-2.5 * progress), anchor: .topTrailing)
       .blur(radius: 8 * progress)
+  }
+}
+
+private struct NativeAIProgressBar: View {
+  let progress: Double
+
+  private var clampedProgress: CGFloat {
+    CGFloat(min(1, max(0, progress)))
+  }
+
+  private var fillGradient: LinearGradient {
+    LinearGradient(
+      colors: [
+        Color(red: 1.00, green: 0.22, blue: 0.72),
+        Color(red: 0.55, green: 0.30, blue: 1.00)
+      ],
+      startPoint: .leading,
+      endPoint: .trailing
+    )
+  }
+
+  var body: some View {
+    GeometryReader { proxy in
+      let fillWidth = proxy.size.width * clampedProgress
+
+      ZStack(alignment: .leading) {
+        Capsule()
+          .fill(Color(uiColor: .systemGray5).opacity(0.82))
+
+        if clampedProgress > 0 {
+          Capsule()
+            .fill(fillGradient)
+            .frame(width: max(10, fillWidth))
+            .blur(radius: 4)
+            .opacity(0.22)
+
+          Capsule()
+            .fill(fillGradient)
+            .frame(width: max(10, fillWidth))
+            .shadow(color: Color(red: 1.00, green: 0.22, blue: 0.72).opacity(0.16), radius: 5)
+            .shadow(color: Color(red: 0.55, green: 0.30, blue: 1.00).opacity(0.12), radius: 9)
+            .overlay(alignment: .top) {
+              Capsule()
+                .fill(.white.opacity(0.16))
+                .frame(height: 2)
+                .padding(.horizontal, 2)
+                .padding(.top, 1)
+                .blendMode(.screen)
+            }
+        }
+      }
+      .overlay {
+        Capsule()
+          .stroke(.white.opacity(0.36), lineWidth: 1)
+      }
+    }
+    .frame(height: 8)
+    .padding(.vertical, 3)
   }
 }
 

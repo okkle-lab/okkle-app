@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreMotion
 import CoreLocation
 import Foundation
@@ -54,6 +55,7 @@ enum NativeAutoShiftPhase: Equatable {
   case idle
   case driving
   case stationaryPending
+  case paused
 }
 
 /// Passive, hands-off shift tracking. On a working day, the moment Core
@@ -64,6 +66,30 @@ enum NativeAutoShiftPhase: Equatable {
 /// becomes a logged pick-up/drop-off and the same shift continues; if it
 /// expires, the shift ends, gets saved as a real trip, and the driver gets a
 /// notification to check it.
+@MainActor
+enum NativeVehicleConnectionMonitor {
+  private static var carPlayConnected = false
+
+  static func setCarPlayConnected(_ connected: Bool) {
+    carPlayConnected = connected
+  }
+
+  static var isLikelyConnectedToVehicle: Bool {
+    carPlayConnected || audioRouteLooksLikeVehicle
+  }
+
+  private static var audioRouteLooksLikeVehicle: Bool {
+    AVAudioSession.sharedInstance().currentRoute.outputs.contains { output in
+      switch output.portType {
+      case .carAudio, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
+        return true
+      default:
+        return false
+      }
+    }
+  }
+}
+
 @MainActor
 final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
   static let shared = NativeAutoTrackEngine()
@@ -94,7 +120,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private var shiftStartedAt: Date?
   private var shiftLastLocation: CLLocation?
   private var shiftLastRoutePointLocation: CLLocation?
+  private var shiftSawVehicleConnection = false
   private let routePointDistance: CLLocationDistance = 30
+  private let minimumConfidentStopDwell: TimeInterval = 90
+  private let minimumConnectedVehicleStopDwell: TimeInterval = 4 * 60
 
   // A stop currently being timed — may resolve into a logged visit (driving
   // resumes) or trigger shift-end (the stationary timer expires).
@@ -241,7 +270,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       beginShift()
     case .stationaryPending:
       resumeShift()
-    case .driving:
+    case .driving, .paused:
       break
     }
   }
@@ -271,10 +300,36 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftStartNotified = false
     shiftLastLocation = nil
     shiftLastRoutePointLocation = nil
+    shiftSawVehicleConnection = NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
     liveShiftVehicle = store?.settings.defaultVehicle ?? .car
     publishLiveShift()
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
+  }
+
+  func pauseCurrentShift() {
+    guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
+    stationaryTimer?.invalidate()
+    stationaryTimer = nil
+    stationarySince = nil
+    stationaryCoordinate = nil
+    shiftPhase = .paused
+    manager.stopUpdatingLocation()
+    setBackgroundTrackingEnabled(false)
+    publishLiveShift()
+  }
+
+  func resumeCurrentShift() {
+    guard shiftPhase == .paused else { return }
+    shiftPhase = .driving
+    setBackgroundTrackingEnabled(true)
+    manager.startUpdatingLocation()
+    publishLiveShift()
+  }
+
+  func endCurrentShift() {
+    guard shiftPhase != .idle else { return }
+    concludeShift()
   }
 
   /// Driving resumed before the stationary timer expired — the stop that was
@@ -304,6 +359,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftStartNotified = false
     shiftLastLocation = nil
     shiftLastRoutePointLocation = nil
+    shiftSawVehicleConnection = false
     stationarySince = nil
     stationaryCoordinate = nil
     publishLiveShift()
@@ -313,6 +369,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
 
   private func handleShiftLocationUpdates(_ locations: [CLLocation]) {
     guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
+    shiftSawVehicleConnection = shiftSawVehicleConnection || NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
     for location in locations where shouldUseShiftLocation(location) {
       if let shiftLastLocation {
         let delta = location.distance(from: shiftLastLocation) / 1_609.344
@@ -372,6 +429,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private func finalizePendingStop() {
     guard let stationarySince, let coordinate = stationaryCoordinate else { return }
     let departure = Date()
+    guard shouldRecordPendingStop(arrival: stationarySince, departure: departure) else {
+      self.stationarySince = nil
+      self.stationaryCoordinate = nil
+      return
+    }
     var visit = NativeVisit(latitude: coordinate.latitude, longitude: coordinate.longitude,
                             arrival: stationarySince, departure: departure)
     let calibration = store?.settings.autoTrackCalibration ?? NativeAutoTrackCalibration()
@@ -383,6 +445,18 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     runBackgroundExploration(for: visit)
     self.stationarySince = nil
     self.stationaryCoordinate = nil
+  }
+
+  private func shouldRecordPendingStop(arrival: Date, departure: Date) -> Bool {
+    let dwell = departure.timeIntervalSince(arrival)
+    guard dwell >= minimumConfidentStopDwell else { return false }
+
+    let disconnectedFromKnownVehicle = shiftSawVehicleConnection && !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
+    if disconnectedFromKnownVehicle {
+      return true
+    }
+
+    return dwell >= minimumConnectedVehicleStopDwell
   }
 
   private func saveShiftAsTrip() {
