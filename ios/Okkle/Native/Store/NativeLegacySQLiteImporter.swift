@@ -193,7 +193,8 @@ enum NativeLegacySQLiteImporter {
         deduction: storedDeduction > 0 ? storedDeduction : calculatedDeduction(miles: miles, vehicle: vehicle, date: startedAt),
         startedAt: startedAt,
         endedAt: endedAt,
-        points: routePoints(from: string(row["route_json"]))
+        points: routePoints(from: string(row["route_json"])),
+        feedback: string(row["feedback"]).flatMap(NativeTripFeedback.init(rawValue:))
       )
     }
   }

@@ -9,6 +9,46 @@ private struct NativeAutoShiftReviewStop: Identifiable {
   var id: UUID { visit.id }
 }
 
+private struct NativeTripFeedbackReviewRow: View {
+  let feedback: NativeTripFeedback?
+  let onSelect: (NativeTripFeedback?) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Text("How was this trip?")
+          .font(.system(size: 15, weight: .semibold))
+        Spacer()
+        if feedback != nil {
+          Button("Clear") { onSelect(nil) }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.secondary)
+        }
+      }
+      HStack(spacing: 10) {
+        feedbackButton(.good, tint: OkkleColor.brand)
+        feedbackButton(.bad, tint: OkkleColor.amber)
+      }
+    }
+    .padding(.vertical, 4)
+  }
+
+  private func feedbackButton(_ value: NativeTripFeedback, tint: Color) -> some View {
+    let selected = feedback == value
+    return Button {
+      onSelect(selected ? nil : value)
+    } label: {
+      Label(value.label, systemImage: value.symbol)
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(selected ? .white : tint)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(selected ? tint : tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    .buttonStyle(.plain)
+  }
+}
+
 /// Routes a tapped "Shift logged" notification to the review screen. No
 /// UNUserNotificationCenterDelegate existed anywhere in the app before this —
 /// set as the centre's delegate once, in AppDelegate.
@@ -94,25 +134,10 @@ struct NativeAutoShiftReviewView: View {
   let tripID: UUID
 
   @State private var adjustedEnd: Date = Date()
-  @State private var explicitFeedbackGiven = false
+  @State private var selectedFeedback: NativeTripFeedback?
 
   private var trip: NativeTrip? {
     store.trips.first { $0.id == tripID }
-  }
-
-  /// The zone that was recommended for this shift's weekday, if the shift's
-  /// own route actually passed near it — nil (no prompt shown) when there
-  /// was nothing to evaluate, e.g. too little history yet for a
-  /// recommendation, or the driver worked somewhere else entirely.
-  private var recommendedZoneNearby: CLLocationCoordinate2D? {
-    guard let trip else { return nil }
-    let weekday = Calendar.current.component(.weekday, from: trip.startedAt) - 1
-    guard let zone = NativeShiftInsights.build(visits: autoTrack.visits, store: store)
-      .weekdayDetails.first(where: { $0.weekday == weekday })?.coordinate else { return nil }
-    let zoneLocation = CLLocation(latitude: zone.latitude, longitude: zone.longitude)
-    let wasNear = stops.contains { $0.location.distance(from: zoneLocation) <= 600 }
-      || trip.points.contains { CLLocation(latitude: $0.latitude, longitude: $0.longitude).distance(from: zoneLocation) <= 600 }
-    return wasNear ? zone : nil
   }
 
   private var stops: [NativeVisit] {
@@ -177,6 +202,15 @@ struct NativeAutoShiftReviewView: View {
               Text("Adjust \"Ended\" if the shift actually ran longer or shorter than detected — this helps Okkle time future shifts more accurately.")
             }
 
+            Section {
+              NativeTripFeedbackReviewRow(
+                feedback: selectedFeedback,
+                onSelect: recordTripFeedback
+              )
+            } footer: {
+              Text("Optional. This helps Okkle learn which areas are genuinely worth recommending, not just where stops happen often.")
+            }
+
             if !stops.isEmpty {
               Section {
                 ForEach(numberedStops) { stop in
@@ -221,24 +255,11 @@ struct NativeAutoShiftReviewView: View {
                 Text("Use the remove button or swipe left to remove a stop that is not actually work.")
               }
             }
-
-            if !explicitFeedbackGiven, recommendedZoneNearby != nil {
-              Section {
-                HStack(spacing: 12) {
-                  Text("Was this area worth it?")
-                    .font(.system(size: 15, weight: .semibold))
-                  Spacer()
-                  Button("No") { recordZoneFeedback(false) }
-                    .buttonStyle(.bordered)
-                  Button("Yes") { recordZoneFeedback(true) }
-                    .buttonStyle(.borderedProminent)
-                }
-              } footer: {
-                Text("Helps Okkle learn whether a recommended area is actually paying off, not just how busy it looks.")
-              }
-            }
           }
-          .onAppear { adjustedEnd = trip.endedAt }
+          .onAppear {
+            adjustedEnd = trip.endedAt
+            selectedFeedback = trip.feedback
+          }
         } else {
           VStack(spacing: 12) {
             Image(systemName: "clock.arrow.circlepath")
@@ -279,9 +300,11 @@ struct NativeAutoShiftReviewView: View {
     autoTrack.discardVisit(visit.id)
   }
 
-  private func recordZoneFeedback(_ wasWorthIt: Bool) {
-    NativeZoneOutcomeTracker.shared.recordExplicitFeedback(wasWorthIt: wasWorthIt)
-    explicitFeedbackGiven = true
+  private func recordTripFeedback(_ feedback: NativeTripFeedback?) {
+    guard var trip else { return }
+    trip.feedback = feedback
+    selectedFeedback = feedback
+    store.updateTrip(trip)
   }
 
   private func shortTime(_ date: Date) -> String {

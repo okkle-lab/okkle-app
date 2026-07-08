@@ -31,15 +31,21 @@ struct NativeTripDetailSheet: View {
   @State private var didResolveRoute = false
   @State private var selectedRouteStopID: UUID?
   @State private var showingFullScreenRouteMap = false
+  @State private var selectedFeedback: NativeTripFeedback?
 
   var body: some View {
     ZStack {
       NavigationStack {
         ScrollView {
           VStack(alignment: .leading, spacing: 18) {
+            NativeTripFeedbackCard(
+              feedback: selectedFeedback,
+              onSelect: recordTripFeedback
+            )
+
             HStack(spacing: 12) {
-              NativeMetricTile(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
-              NativeMetricTile(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
+              NativeTripFlatMetric(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
+              NativeTripFlatMetric(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
             }
 
             NativeGlassCard {
@@ -80,6 +86,9 @@ struct NativeTripDetailSheet: View {
       }
     }
     .animation(.spring(response: 0.34, dampingFraction: 0.86), value: homeCandidate != nil)
+    .onAppear {
+      selectedFeedback = currentTrip.feedback
+    }
     .task(id: trip.id) {
       await resolveRouteDetails()
     }
@@ -187,6 +196,17 @@ struct NativeTripDetailSheet: View {
         glyphText: "\(stop.number)"
       )
     }
+  }
+
+  private var currentTrip: NativeTrip {
+    store.trips.first { $0.id == trip.id } ?? trip
+  }
+
+  private func recordTripFeedback(_ feedback: NativeTripFeedback?) {
+    var updated = currentTrip
+    updated.feedback = feedback
+    selectedFeedback = feedback
+    store.updateTrip(updated)
   }
 
   private func coordinateLabel(_ point: RoutePoint) -> String {
@@ -532,6 +552,99 @@ private struct NativeTripHomeCandidate {
   let point: RoutePoint
   let address: String?
   let dismissalKey: String
+}
+
+private struct NativeTripFlatMetric: View {
+  let title: String
+  let value: String
+  let symbol: String
+  var color: Color = OkkleColor.brand
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: symbol)
+        .font(.system(size: 15, weight: .bold))
+        .foregroundStyle(color)
+        .frame(width: 28, height: 28)
+        .background(color.opacity(0.12), in: Circle())
+
+      VStack(alignment: .leading, spacing: 1) {
+        Text(value)
+          .font(.system(size: 18, weight: .bold, design: .rounded))
+          .foregroundStyle(OkkleColor.ink)
+          .lineLimit(1)
+          .minimumScaleFactor(0.72)
+        Text(title)
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .lineLimit(1)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .background(OkkleColor.surface.opacity(0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .stroke(OkkleColor.muted.opacity(0.10), lineWidth: 1)
+    }
+  }
+}
+
+private struct NativeTripFeedbackCard: View {
+  let feedback: NativeTripFeedback?
+  let onSelect: (NativeTripFeedback?) -> Void
+
+  var body: some View {
+    NativeGlassCard {
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(alignment: .firstTextBaseline) {
+          VStack(alignment: .leading, spacing: 3) {
+            Text("How was this trip?")
+              .font(.system(size: 16, weight: .bold))
+              .foregroundStyle(OkkleColor.ink)
+            Text("Optional feedback helps Okkle learn which areas are actually worth recommending.")
+              .font(.system(size: 13, weight: .medium))
+              .foregroundStyle(OkkleColor.muted)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          Spacer(minLength: 8)
+          if feedback != nil {
+            Button("Clear") { onSelect(nil) }
+              .font(.system(size: 13, weight: .bold))
+              .foregroundStyle(OkkleColor.muted)
+              .buttonStyle(.plain)
+          }
+        }
+
+        HStack(spacing: 10) {
+          feedbackButton(.good, tint: OkkleColor.brand)
+          feedbackButton(.bad, tint: OkkleColor.amber)
+        }
+      }
+    }
+  }
+
+  private func feedbackButton(_ value: NativeTripFeedback, tint: Color) -> some View {
+    let selected = feedback == value
+    return Button {
+      onSelect(selected ? nil : value)
+    } label: {
+      HStack(spacing: 8) {
+        Image(systemName: value.symbol)
+          .font(.system(size: 14, weight: .bold))
+        Text(value.label)
+          .font(.system(size: 14, weight: .bold))
+      }
+      .foregroundStyle(selected ? .white : tint)
+      .frame(maxWidth: .infinity)
+      .padding(.vertical, 11)
+      .background(selected ? tint : tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Mark trip as \(value.label.lowercased())")
+  }
 }
 
 private struct NativeTripHomePrompt: View {

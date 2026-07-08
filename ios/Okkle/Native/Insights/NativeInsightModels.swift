@@ -277,6 +277,18 @@ struct NativePlatformShare: Identifiable {
   let deltaPct: Int?   // vs the same platform's share last period, if meaningful
 }
 
+extension NativeRecord {
+  /// Manual income logs are usually daily or weekly aggregates, so they are
+  /// useful for tax/reporting totals but too coarse for recommendation math.
+  /// Only legacy trip-derived earnings have a tight enough timestamp to
+  /// attribute to time windows and zones.
+  var isInsightRecommendationIncome: Bool {
+    guard kind == .income, (amount ?? 0) > 0 else { return false }
+    guard let legacyID else { return false }
+    return legacyID.hasPrefix("sqlite-trip-earnings-") || legacyID.hasPrefix("json-trip-earnings-")
+  }
+}
+
 /// How much evidence sits behind a recommendation. The engine should know when
 /// not to make a strong claim — thin data gets soft language, never certainty.
 enum NativeConfidence {
@@ -764,7 +776,7 @@ struct NativeShiftInsights {
     }
     var incomeByCell: [String: NativeZoneIncomeAccumulator] = [:]
     let trustworthyHits = deliveryHits.filter(\.isLocationTrustworthy)
-    let incomeRecords = store.records.filter { $0.kind == .income && ($0.amount ?? 0) > 0 }
+    let incomeRecords = store.records.filter(\.isInsightRecommendationIncome)
     for record in incomeRecords {
       guard let amount = record.amount else { continue }
       let periodStart = Calendar.current.startOfDay(for: record.periodStart ?? record.date)
@@ -790,6 +802,35 @@ struct NativeShiftInsights {
           acc.splitDeliveries += hitsInCell.count
         }
         incomeByCell[key] = acc
+      }
+    }
+
+    struct NativeZoneTripFeedbackAccumulator {
+      var positive = 0
+      var negative = 0
+
+      var total: Int { positive + negative }
+      var ratio: Double? {
+        guard total > 0 else { return nil }
+        return Double(positive) / Double(total)
+      }
+    }
+    var feedbackByCell: [String: NativeZoneTripFeedbackAccumulator] = [:]
+    for trip in store.trips {
+      guard let feedback = trip.feedback else { continue }
+      let hitsInTrip = trustworthyHits.filter { hit in
+        hit.date >= trip.startedAt && hit.date <= trip.endedAt
+      }
+      let keys = Set(hitsInTrip.map { hit in
+        "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
+      })
+      for key in keys where cells[key] != nil {
+        var acc = feedbackByCell[key] ?? NativeZoneTripFeedbackAccumulator()
+        switch feedback {
+        case .good: acc.positive += 1
+        case .bad: acc.negative += 1
+        }
+        feedbackByCell[key] = acc
       }
     }
     // Split-day attribution is a guess, so it counts for less than a day
@@ -882,7 +923,12 @@ struct NativeShiftInsights {
       } else {
         valueSignal = efficiency
       }
-      let realSignal = popularity * 0.55 + valueSignal * 0.45
+      let feedback = feedbackByCell[key]
+      let feedbackConfidence = min(0.35, Double(feedback?.total ?? 0) / 8.0)
+      let feedbackAdjustedValue = feedback?.ratio.map { ratio in
+        valueSignal * (1 - feedbackConfidence) + ratio * feedbackConfidence
+      } ?? valueSignal
+      let realSignal = popularity * 0.55 + feedbackAdjustedValue * 0.45
       // Fall back to the real signal itself while the async POI lookup is
       // still resolving, so a zone isn't held back just because the prior
       // hasn't loaded yet.
@@ -895,7 +941,7 @@ struct NativeShiftInsights {
     // £/hr over the last 14 days: logged income ÷ active hours in the window.
     let windowStart = Date().addingTimeInterval(-14 * 86_400)
     let income = store.records
-      .filter { $0.kind == .income && $0.date >= windowStart }
+      .filter { $0.isInsightRecommendationIncome && $0.date >= windowStart }
       .reduce(0.0) { $0 + ($1.amount ?? 0) }
     let recentActive = recentActiveHours(sorted, since: windowStart, shiftGap: shiftGap)
     // Only surface a rate we can stand behind. Passive hour-detection can be thin
@@ -911,8 +957,8 @@ struct NativeShiftInsights {
     // offer — every platform's real, logged share of this period's income,
     // and how each has shifted. Only worth showing once there's an actual mix
     // (2+ platforms) — a single platform logged isn't a "mix" insight.
-    let currentPlatformIncome = store.records.filter { $0.kind == .income && $0.date >= windowStart }
-    let previousPlatformIncome = store.records.filter { $0.kind == .income && $0.date >= prevWindowStart && $0.date < windowStart }
+    let currentPlatformIncome = store.records.filter { $0.isInsightRecommendationIncome && $0.date >= windowStart }
+    let previousPlatformIncome = store.records.filter { $0.isInsightRecommendationIncome && $0.date >= prevWindowStart && $0.date < windowStart }
     func platformTotals(_ records: [NativeRecord]) -> [String: Double] {
       var totals: [String: Double] = [:]
       for r in records { totals[r.platform ?? "Other", default: 0] += r.amount ?? 0 }
@@ -1050,7 +1096,7 @@ struct NativeShiftInsights {
     // Income by calendar day (last 14 days).
     let since = Date().addingTimeInterval(-14 * 86_400)
     var incomeByDay: [Date: Double] = [:]
-    for r in store.records where r.kind == .income && r.date >= since {
+    for r in store.records where r.isInsightRecommendationIncome && r.date >= since {
       incomeByDay[cal.startOfDay(for: r.date), default: 0] += r.amount ?? 0
     }
     guard !incomeByDay.isEmpty else { return nil }

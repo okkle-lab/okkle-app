@@ -373,14 +373,19 @@ struct NativeDailyInsightPanel: View {
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @ObservedObject private var weather = NativeWeatherService.shared
   @ObservedObject private var locator = NativeOneShotLocator.shared
+  @State private var generatedNarrative: NativeInsightNarrative?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       if let plan = shift.todayPlan {
+        let narrativeContext = narrativeContext(for: plan)
+        let narrative = generatedNarrative ?? narrativeContext.fallback
         // Panel 1 — WHEN: the one thing to do, plus the busy shape of the day.
         NativeAiCard {
           VStack(alignment: .leading, spacing: 16) {
-            heroSection(plan)
+            heroSection(plan, narrative: narrative)
+            Divider()
+            narrativeLine(text: narrative.summary)
             if let brk = plan.breakWindow {
               Label("Quiet \(brk.label) — a good window for your break.", systemImage: "cup.and.saucer.fill")
                 .font(.system(size: 13, weight: .medium))
@@ -399,6 +404,11 @@ struct NativeDailyInsightPanel: View {
               NativeHourStrip(hourCounts: plan.hourCounts)
             }
           }
+        }
+        .task(id: narrativeContext.key) {
+          generatedNarrative = nil
+          let result = await NativeInsightNarrator.generate(context: narrativeContext)
+          if !Task.isCancelled { generatedNarrative = result }
         }
 
         // Panel 2 — WHERE: your best patches for today (the heat map itself now
@@ -448,10 +458,31 @@ struct NativeDailyInsightPanel: View {
     .accessibilityLabel("Confidence: \(shift.confidence.level)")
   }
 
+  private func narrativeLine(text: String) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: "sparkles")
+        .font(.system(size: 15, weight: .bold))
+        .foregroundStyle(nativeAIAccentGradient)
+        .padding(.top, 1)
+      Text(text)
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(OkkleColor.ink)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+  }
+
+  private var topSpot: (area: String, time: String)? {
+    guard let zone = nativeTopZones(shift.zones, near: nil, limit: 1).first,
+          let area = areaNamer.name(for: zone.coordinate),
+          let time = zone.timeLabel else { return nil }
+    return (area, time)
+  }
+
   // MARK: Hero — one calm, confident instruction (Apple-style: type, not chrome)
 
-  private func heroSection(_ plan: NativeDayPlan) -> some View {
-    let hero = heroContent(plan)
+  private func heroSection(_ plan: NativeDayPlan, narrative: NativeInsightNarrative) -> some View {
+    let hero = defaultHeroContent(plan)
     return VStack(alignment: .leading, spacing: 7) {
       HStack(spacing: 7) {
         Text(plan.isToday ? "TODAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())"
@@ -461,11 +492,11 @@ struct NativeDailyInsightPanel: View {
         Spacer()
         confidenceChip
       }
-      Text(hero.title)
+      Text(narrative.headline)
         .font(.system(size: 27, weight: .bold, design: .rounded))
         .foregroundStyle(OkkleColor.ink)
         .fixedSize(horizontal: false, vertical: true)
-      Text(hero.detail)
+      Text(narrative.detail)
         .font(.system(size: 15, weight: .medium))
         .foregroundStyle(OkkleColor.muted)
         .fixedSize(horizontal: false, vertical: true)
@@ -474,7 +505,7 @@ struct NativeDailyInsightPanel: View {
 
   /// One instruction, chosen by priority: big night → in a window now → window
   /// coming → wound down → next working day. Weather escalates, never competes.
-  private func heroContent(_ plan: NativeDayPlan) -> (symbol: String, color: AnyShapeStyle, title: String, detail: String) {
+  private func defaultHeroContent(_ plan: NativeDayPlan) -> (symbol: String, color: AnyShapeStyle, title: String, detail: String) {
     let strongDay = shift.weekdayDetails.prefix(3).contains { $0.weekday == plan.weekday }
     let dayName = Calendar.current.weekdaySymbols[plan.weekday]
     let area = areaNamer.name(for: plan.zone ?? CLLocationCoordinate2D())
@@ -525,6 +556,78 @@ struct NativeDailyInsightPanel: View {
     return ("hourglass", AnyShapeStyle(OkkleColor.muted),
             "Still learning \(dayName)s",
             "A couple more shifts and the timing sharpens up.")
+  }
+
+  private func narrativeContext(for plan: NativeDayPlan) -> NativeInsightNarrativeContext {
+    let hero = defaultHeroContent(plan)
+    let area = areaNamer.name(for: plan.zone ?? CLLocationCoordinate2D())
+    let bestArea = area ?? topSpot?.area
+    let topSpotTime = topSpot?.time
+    let peak = plan.peakWindow?.label ?? plan.bestBand?.timeRange ?? "unknown"
+    let quiet = plan.breakWindow?.label ?? plan.breakBand?.timeRange
+    let fallbackSummary = fallbackSummary(plan: plan, area: bestArea, peak: peak)
+    let fallback = NativeInsightNarrative(headline: hero.title, detail: hero.detail, summary: fallbackSummary)
+    let strongDay = shift.weekdayDetails.prefix(3).contains { $0.weekday == plan.weekday }
+    let boost = weather.today?.hours.filter { (10...23).contains($0.hour) && $0.boostsDemand } ?? []
+    let weatherLine: String
+    if boost.contains(where: \.isWet) {
+      weatherLine = "Rain may boost demand."
+    } else if !boost.isEmpty {
+      weatherLine = "Cold weather may boost demand."
+    } else {
+      weatherLine = "No weather boost detected."
+    }
+    let hitRate = shift.peakHitRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "unknown"
+    let facts = [
+      "Day: \(Calendar.current.weekdaySymbols[plan.weekday])\(plan.isToday ? " today" : "").",
+      "Confidence: \(shift.confidence.level).",
+      "Deliveries in learned pattern: \(shift.deliveries).",
+      "Best working window: \(peak).",
+      "Quiet/break window: \(quiet ?? "unknown").",
+      "Best area: \(bestArea ?? "unknown").",
+      "Top area peak time: \(topSpotTime ?? "unknown").",
+      "Unpaid miles: \(shift.deadMilePct)%.",
+      "Peak-day hit rate: \(hitRate).",
+      "Strong day: \(strongDay ? "yes" : "no").",
+      "Weather: \(weatherLine)",
+      "Fallback headline: \(hero.title)",
+      "Fallback detail: \(hero.detail)",
+      "Fallback summary: \(fallbackSummary)"
+    ].joined(separator: "\n")
+    let prompt = """
+    Rewrite the Today insight copy from these facts.
+    HEADLINE: 4-8 words, action-focused.
+    DETAIL: one sentence, max 18 words, explain why.
+    SUMMARY: one sentence, max 22 words, plain-English takeaway.
+    Never mention unknown values. Do not claim real-time demand.
+
+    \(facts)
+    """
+    let key = [
+      "\(plan.weekday)",
+      plan.bestBand?.rawValue ?? "no-band",
+      "\(shift.deliveries)",
+      "\(shift.deadMilePct)",
+      bestArea ?? "no-area",
+      peak,
+      quiet ?? "no-quiet",
+      hitRate,
+      weatherLine
+    ].joined(separator: "|")
+    return NativeInsightNarrativeContext(key: key, fallback: fallback, prompt: prompt)
+  }
+
+  private func fallbackSummary(plan: NativeDayPlan, area: String?, peak: String) -> String {
+    if shift.deadMilePct >= 25, let area {
+      return "Your pattern is strongest around \(area), but empty miles are high, so waiting beats roaming."
+    }
+    if let area {
+      return "\(peak) around \(area) is the clearest pattern in your recent shifts."
+    }
+    if let warning = shift.warning {
+      return warning
+    }
+    return "\(peak) is the clearest working window in your recent shifts."
   }
 
 }
