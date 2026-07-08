@@ -60,14 +60,29 @@ struct OkkleNativeRootView: View {
     .environmentObject(store)
     .tint(OkkleColor.brand)
     .onAppear {
-      NativeAutoTrackEngine.shared.configure(store: store)
-      NativePreShiftNotifier.refresh(store: store)
-      NativeLoggingReminder.refresh(store: store)
+      // Both of these can trigger a system permission prompt (location,
+      // notifications) the moment their guard conditions are met — which
+      // defaults alone already satisfy before onboarding has shown the
+      // driver why. Waiting for onboarding to finish first (see onChange
+      // below for the moment it actually does) keeps every permission ask
+      // behind an explanation screen instead of firing cold on launch.
+      if store.settings.hasCompletedOnboarding {
+        NativeAutoTrackEngine.shared.configure(store: store)
+        NativePreShiftNotifier.refresh(store: store)
+        NativeLoggingReminder.refresh(store: store)
+      }
       store.refreshICloudSyncIfNeeded()
       routeWidgetTripRequestIfNeeded()
       routeAutomaticTripIfNeeded()
       routeManualTripStopPromptIfNeeded()
       routeManualTripAutoCompletedIfNeeded()
+    }
+    .onChange(of: store.settings.hasCompletedOnboarding) { completed in
+      if completed {
+        NativeAutoTrackEngine.shared.configure(store: store)
+        NativePreShiftNotifier.refresh(store: store)
+        NativeLoggingReminder.refresh(store: store)
+      }
     }
     .sheet(isPresented: Binding(
       get: { notificationRouter.pendingAutoShiftReviewTripID != nil },

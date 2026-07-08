@@ -20,7 +20,11 @@ enum NativeLoggingReminder {
     let center = UNUserNotificationCenter.current()
     center.removePendingNotificationRequests(withIdentifiers: [identifier])
 
-    guard store.settings.loggingReminder else { return }
+    // Requests notification permission below if none of this has run
+    // before — that ask needs to wait for onboarding's own explanation
+    // screen, not fire the moment a fresh install's default settings
+    // happen to already satisfy every other guard here.
+    guard store.settings.hasCompletedOnboarding, store.settings.loggingReminder else { return }
 
     let calendar = Calendar.current
     let autoTracking = store.settings.autoTrackTrips

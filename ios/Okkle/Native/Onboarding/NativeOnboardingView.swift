@@ -9,8 +9,62 @@ enum NativeOnboardingStep: Int, CaseIterable {
   case region
   case incomeBracket
   case automaticTracking
+  case locationPermission
   case iCloudSync
   case ready
+}
+
+/// Requests When In Use location access from a dedicated onboarding step —
+/// primed by an explanation screen first, rather than the system prompt
+/// firing on its own later from wherever NativeAutoTrackEngine happens to
+/// start monitoring. Deliberately asks for When In Use, not Always: iOS
+/// shows the same first-ask sheet either way, but leading with the
+/// broader "Always" request reads as more invasive and is more likely to
+/// be declined outright. The upgrade to Always is asked for later, once
+/// automatic tracking has actually proven itself.
+final class NativeOnboardingLocationRequester: NSObject, ObservableObject, CLLocationManagerDelegate {
+  enum Outcome { case granted, denied }
+
+  @Published var outcome: Outcome?
+
+  private let manager = CLLocationManager()
+  private var isRequesting = false
+
+  override init() {
+    super.init()
+    manager.delegate = self
+  }
+
+  func request() {
+    switch manager.authorizationStatus {
+    case .notDetermined:
+      isRequesting = true
+      manager.requestWhenInUseAuthorization()
+    case .authorizedAlways, .authorizedWhenInUse:
+      outcome = .granted
+    case .denied, .restricted:
+      outcome = .denied
+    @unknown default:
+      outcome = .denied
+    }
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    guard isRequesting else { return }
+    switch manager.authorizationStatus {
+    case .authorizedAlways, .authorizedWhenInUse:
+      isRequesting = false
+      outcome = .granted
+    case .denied, .restricted:
+      isRequesting = false
+      outcome = .denied
+    case .notDetermined:
+      break
+    @unknown default:
+      isRequesting = false
+      outcome = .denied
+    }
+  }
 }
 
 final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -104,6 +158,7 @@ struct NativeOnboardingView: View {
   @EnvironmentObject private var store: OkkleStore
   @Binding var selectedTab: NativeTab
   @StateObject private var detector = NativeOnboardingRegionDetector()
+  @StateObject private var locationRequester = NativeOnboardingLocationRequester()
   @State private var step: NativeOnboardingStep = .welcome
   @State private var name = ""
   @State private var vehicle: NativeVehicle = .car
@@ -479,6 +534,75 @@ struct NativeOnboardingView: View {
         }
       }
 
+    case .locationPermission:
+      VStack(alignment: .leading, spacing: 18) {
+        NativeOnboardingHeader(
+          eyebrow: "Location access",
+          title: "Turn on location access",
+          subtitle: "Okkle uses this only to detect driving and log trip mileage in the background. Never sold, never shared."
+        )
+
+        NativeGlassCard {
+          VStack(alignment: .leading, spacing: 14) {
+            NativeOnboardingBullet(symbol: "1.circle.fill", title: "Tap \"Allow location access\" below")
+            NativeOnboardingBullet(symbol: "2.circle.fill", title: "iOS will ask to confirm - choose \"Allow While Using App\"")
+            NativeOnboardingBullet(symbol: "3.circle.fill", title: "We'll ask to upgrade to \"Always Allow\" later, once tracking's proven useful")
+          }
+        }
+
+        switch locationRequester.outcome {
+        case nil:
+          Button {
+            locationRequester.request()
+          } label: {
+            HStack(spacing: 10) {
+              Image(systemName: "location.fill")
+              Text("Allow location access")
+                .font(.system(size: 16, weight: .bold))
+              Spacer()
+            }
+            .foregroundStyle(.white)
+            .padding(16)
+            .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+          }
+          .buttonStyle(.plain)
+
+        case .granted:
+          HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(OkkleColor.brand)
+            Text("Location enabled - Okkle can now catch trips automatically.")
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(OkkleColor.ink)
+          }
+          .padding(14)
+          .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+        case .denied:
+          VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+              Image(systemName: "location.slash.fill")
+                .foregroundStyle(OkkleColor.amber)
+              Text("Location is off. Automatic tracking needs it to work.")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(OkkleColor.ink)
+            }
+            Button {
+              if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+              }
+            } label: {
+              Text("Open Settings")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(OkkleColor.brandDark)
+            }
+            .buttonStyle(.plain)
+          }
+          .padding(14)
+          .background(OkkleColor.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+      }
+
     case .iCloudSync:
       VStack(alignment: .leading, spacing: 18) {
         NativeOnboardingHeader(
@@ -735,13 +859,23 @@ struct NativeOnboardingView: View {
 
   private func advance() {
     guard canContinue,
-          let next = NativeOnboardingStep(rawValue: step.rawValue + 1) else { return }
+          var next = NativeOnboardingStep(rawValue: step.rawValue + 1) else { return }
+    // No point asking for location access for a feature the driver just
+    // turned off on the step before.
+    if next == .locationPermission, !autoTrackTrips,
+       let skipped = NativeOnboardingStep(rawValue: next.rawValue + 1) {
+      next = skipped
+    }
     hideKeyboard()
     step = next
   }
 
   private func goBack() {
-    guard let previous = NativeOnboardingStep(rawValue: step.rawValue - 1) else { return }
+    guard var previous = NativeOnboardingStep(rawValue: step.rawValue - 1) else { return }
+    if previous == .locationPermission, !autoTrackTrips,
+       let skipped = NativeOnboardingStep(rawValue: previous.rawValue - 1) {
+      previous = skipped
+    }
     hideKeyboard()
     step = previous
   }

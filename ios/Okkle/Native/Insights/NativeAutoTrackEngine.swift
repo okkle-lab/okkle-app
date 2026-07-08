@@ -225,8 +225,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       publishLiveShift()
     }
     startMotionMonitoring()
+    // The primed first ask happens in the onboarding location-permission
+    // step, not here — this only covers a driver who reaches this point
+    // still undetermined (e.g. access was reset in Settings after the
+    // fact, or automatic tracking got turned on some other way).
     if manager.authorizationStatus == .notDetermined {
-      manager.requestAlwaysAuthorization()
+      manager.requestWhenInUseAuthorization()
     }
   }
 
@@ -596,6 +600,21 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     // Push the logging reminder off today if it was about to fire today —
     // don't wait for the app to be reopened to notice a shift just logged.
     NativeLoggingReminder.refresh(store: store)
+    requestAlwaysUpgradeIfNeeded()
+  }
+
+  /// Asked once, the first time automatic tracking actually catches and
+  /// saves a real trip — not upfront during onboarding. Background
+  /// tracking needs Always access to keep working once the app isn't in
+  /// the foreground, but leading with that broader request reads as
+  /// invasive; asking right after the driver has just seen the feature
+  /// work is the natural, low-friction moment to ask for the upgrade.
+  private func requestAlwaysUpgradeIfNeeded() {
+    guard manager.authorizationStatus == .authorizedWhenInUse else { return }
+    let key = "uk.okkle.native.autotrack.requestedAlwaysUpgrade"
+    guard !UserDefaults.standard.bool(forKey: key) else { return }
+    UserDefaults.standard.set(true, forKey: key)
+    manager.requestAlwaysAuthorization()
   }
 
   // Insights (NativeShiftInsights) treats a pickup→dropoff visit pair as the

@@ -18,7 +18,11 @@ enum NativePreShiftNotifier {
     let center = UNUserNotificationCenter.current()
     center.removePendingNotificationRequests(withIdentifiers: [identifier, followUpIdentifier])
 
-    guard store.settings.insightsEnabled,
+    // Same reasoning as NativeLoggingReminder.refresh: this can request
+    // notification permission below, which needs to wait for onboarding's
+    // own explanation screen rather than firing cold before it.
+    guard store.settings.hasCompletedOnboarding,
+          store.settings.insightsEnabled,
           store.settings.autoTrackTrips,
           store.settings.preShiftAlerts,
           nativeIsWorkingDay(Date(), settings: store.settings) else { return }
