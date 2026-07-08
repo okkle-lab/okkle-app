@@ -59,6 +59,7 @@ struct OkkleNativeRootView: View {
     }
     .environmentObject(store)
     .tint(OkkleColor.brand)
+    .preferredColorScheme(store.settings.appearanceMode.preferredColorScheme)
     .onAppear {
       NativeAutoTrackEngine.shared.configure(store: store)
       NativePreShiftNotifier.refresh(store: store)
@@ -80,10 +81,17 @@ struct OkkleNativeRootView: View {
           .environmentObject(store)
       }
     }
-    .onChange(of: store.settings.autoTrackTrips) { _ in
+    .onChange(of: store.settings.autoTrackTrips) { enabled in
+      if enabled, !store.settings.enhancedAutoTracking {
+        store.settings.enhancedAutoTracking = true
+      }
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
       NativeLoggingReminder.refresh(store: store)
+      store.refreshICloudSyncIfNeeded()
+    }
+    .onChange(of: store.settings.enhancedAutoTracking) { _ in
+      NativeAutoTrackEngine.shared.refresh()
       store.refreshICloudSyncIfNeeded()
     }
     .onChange(of: store.settings.workingDays) { _ in
@@ -91,6 +99,9 @@ struct OkkleNativeRootView: View {
       NativePreShiftNotifier.refresh(store: store)
     }
     .onChange(of: store.settings.preShiftAlerts) { _ in
+      NativePreShiftNotifier.refresh(store: store)
+    }
+    .onChange(of: store.settings.insightsEnabled) { _ in
       NativePreShiftNotifier.refresh(store: store)
     }
     .onChange(of: store.settings.loggingReminder) { _ in
@@ -283,6 +294,16 @@ struct OkkleNativeRootView: View {
     guard store.settings.hasCompletedOnboarding, notificationRouter.pendingManualTripAutoCompleted else { return }
     notificationRouter.pendingManualTripAutoCompleted = false
     selectedTab = .records
+  }
+}
+
+private extension NativeAppearanceMode {
+  var preferredColorScheme: ColorScheme? {
+    switch self {
+    case .automatic: return nil
+    case .light: return .light
+    case .dark: return .dark
+    }
   }
 }
 

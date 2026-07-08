@@ -24,7 +24,7 @@ struct NativeTaxDetailView: View {
         )
 
         NativeTaxOverviewGroup {
-          NativeTaxDeadlinesButton {
+          NativeTaxDeadlinesButton(upcomingDeadline: upcomingDeadline) {
             showsDeadlines = true
           }
         }
@@ -55,11 +55,7 @@ struct NativeTaxDetailView: View {
 
   @ViewBuilder
   private func priorityBanner(savings: NativeMileageTaxSavings) -> some View {
-    if let deadline = upcomingDeadline {
-      NativeTaxDeadlineBanner(deadline: deadline.deadline, days: deadline.days) {
-        showsDeadlines = true
-      }
-    } else if shouldShowMileageBandNudge {
+    if shouldShowMileageBandNudge {
       NativeTaxMileageNudge(miles: savings.miles)
     }
   }
@@ -95,32 +91,6 @@ private enum NativeTaxOverviewDetail: String, Identifiable {
     case .year:
       return "This year"
     }
-  }
-}
-
-private struct NativeTaxDeadlineBanner: View {
-  let deadline: NativeTaxDeadline
-  let days: Int
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 10) {
-        Image(systemName: "calendar")
-          .font(.system(size: 14, weight: .bold))
-        Text(days == 0 ? "\(deadline.title) is today" : "\(days) days to \(deadline.title.lowercased())")
-          .font(.system(size: 14, weight: .bold))
-          .lineLimit(2)
-        Spacer(minLength: 8)
-        Image(systemName: "chevron.right")
-          .font(.system(size: 12, weight: .bold))
-      }
-      .foregroundStyle(OkkleColor.amber)
-      .padding(.horizontal, 14)
-      .padding(.vertical, 10)
-      .background(OkkleColor.amber.opacity(0.14), in: Capsule())
-    }
-    .buttonStyle(.plain)
   }
 }
 
@@ -255,6 +225,7 @@ private struct NativeTaxOverviewGroup<Content: View>: View {
 }
 
 private struct NativeTaxDeadlinesButton: View {
+  let upcomingDeadline: (deadline: NativeTaxDeadline, days: Int)?
   let action: () -> Void
 
   var body: some View {
@@ -274,6 +245,12 @@ private struct NativeTaxDeadlinesButton: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .lineLimit(2)
+          if let deadlineMessage {
+            Text(deadlineMessage)
+              .font(.system(size: 13, weight: .bold))
+              .foregroundStyle(OkkleColor.amber)
+              .lineLimit(2)
+          }
         }
 
         Spacer()
@@ -285,6 +262,15 @@ private struct NativeTaxDeadlinesButton: View {
       .padding(16)
     }
     .buttonStyle(.plain)
+  }
+
+  private var deadlineMessage: String? {
+    guard let upcomingDeadline else {
+      return nil
+    }
+    return upcomingDeadline.days == 0
+      ? "\(upcomingDeadline.deadline.title) is today"
+      : "\(upcomingDeadline.days) days to \(upcomingDeadline.deadline.title.lowercased())"
   }
 }
 

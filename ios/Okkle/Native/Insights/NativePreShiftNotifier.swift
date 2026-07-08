@@ -18,7 +18,8 @@ enum NativePreShiftNotifier {
     let center = UNUserNotificationCenter.current()
     center.removePendingNotificationRequests(withIdentifiers: [identifier, followUpIdentifier])
 
-    guard store.settings.autoTrackTrips,
+    guard store.settings.insightsEnabled,
+          store.settings.autoTrackTrips,
           store.settings.preShiftAlerts,
           nativeIsWorkingDay(Date(), settings: store.settings) else { return }
 

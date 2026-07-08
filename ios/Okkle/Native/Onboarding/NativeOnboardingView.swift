@@ -8,6 +8,8 @@ enum NativeOnboardingStep: Int, CaseIterable {
   case platforms
   case region
   case incomeBracket
+  case automaticTracking
+  case iCloudSync
   case ready
 }
 
@@ -109,8 +111,11 @@ struct NativeOnboardingView: View {
   @State private var customPlatformName = ""
   @State private var region: NativeRegion = .ruk
   @State private var incomeBracket: NativeIncomeBracket = .basic
+  @State private var autoTrackTrips = true
+  @State private var enhancedAutoTracking = true
+  @State private var workingDays: [Int] = Array(0...6)
+  @State private var iCloudSyncEnabled = true
   @State private var didSeed = false
-  @State private var showBackupImporter = false
   @State private var restoreMessage: String?
   @State private var iCloudCheckState: NativeOnboardingICloudCheckState = .idle
   @State private var iCloudSnapshotSummary: NativeICloudRemoteSnapshotSummary?
@@ -156,14 +161,7 @@ struct NativeOnboardingView: View {
       seedFromStore()
       checkForExistingICloudDataIfNeeded()
     }
-    .fileImporter(
-      isPresented: $showBackupImporter,
-      allowedContentTypes: [.json],
-      allowsMultipleSelection: false
-    ) { result in
-      restoreBackup(from: result)
-    }
-    .alert("Load backup", isPresented: Binding(
+    .alert("iCloud sync", isPresented: Binding(
       get: { restoreMessage != nil },
       set: { if !$0 { restoreMessage = nil } }
     )) {
@@ -232,17 +230,6 @@ struct NativeOnboardingView: View {
         }
 
         iCloudSyncOffer
-
-        Button {
-          showBackupImporter = true
-        } label: {
-          Label("Import backup file", systemImage: "doc.badge.arrow.up")
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(OkkleColor.muted)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
       }
 
     case .name:
@@ -421,6 +408,110 @@ struct NativeOnboardingView: View {
           .fixedSize(horizontal: false, vertical: true)
       }
 
+    case .automaticTracking:
+      VStack(alignment: .leading, spacing: 18) {
+        NativeOnboardingHeader(
+          eyebrow: "Automatic tracking",
+          title: "Let Okkle catch trips for you.",
+          subtitle: "Recommended for delivery work. Okkle can start trips from driving movement and keep your mileage records building in the background."
+        )
+
+        NativeGlassCard {
+          VStack(alignment: .leading, spacing: 16) {
+            Toggle(isOn: Binding(
+              get: { autoTrackTrips },
+              set: { enabled in
+                autoTrackTrips = enabled
+                if enabled {
+                  enhancedAutoTracking = true
+                }
+              }
+            )) {
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Automatic trip tracking")
+                  .font(.system(size: 17, weight: .bold))
+                  .foregroundStyle(OkkleColor.ink)
+                Text("Starts tracking when driving is detected on your working days.")
+                  .font(.system(size: 13, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+            }
+            .tint(OkkleColor.brand)
+
+            Divider()
+
+            Toggle(isOn: Binding(
+              get: { autoTrackTrips && enhancedAutoTracking },
+              set: { enabled in
+                guard autoTrackTrips else { return }
+                enhancedAutoTracking = enabled
+              }
+            )) {
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Enhanced automatic tracking")
+                  .font(.system(size: 17, weight: .bold))
+                  .foregroundStyle(autoTrackTrips ? OkkleColor.ink : OkkleColor.muted)
+                Text("Uses CarPlay and car Bluetooth signals to improve accuracy and end trips sooner.")
+                  .font(.system(size: 13, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+            }
+            .tint(autoTrackTrips ? OkkleColor.brand : OkkleColor.muted.opacity(0.35))
+            .disabled(!autoTrackTrips)
+            .opacity(autoTrackTrips ? 1 : 0.48)
+
+            if autoTrackTrips {
+              Divider()
+
+              NativeWorkingDaysPicker(days: $workingDays)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+          }
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: autoTrackTrips)
+
+        NativeGlassCard {
+          VStack(alignment: .leading, spacing: 14) {
+            NativeOnboardingBullet(symbol: "location.north.line.fill", title: "No need to remember every start")
+            NativeOnboardingBullet(symbol: "car.fill", title: "Car signals help detect real trip endings")
+            NativeOnboardingBullet(symbol: "house.fill", title: "Saved Home locations can end a shift cleanly")
+          }
+        }
+      }
+
+    case .iCloudSync:
+      VStack(alignment: .leading, spacing: 18) {
+        NativeOnboardingHeader(
+          eyebrow: "iCloud sync",
+          title: "Keep your records backed up.",
+          subtitle: "Okkle can automatically sync your trips, records, and settings through your private iCloud Drive."
+        )
+
+        NativeGlassCard {
+          VStack(alignment: .leading, spacing: 16) {
+            Toggle(isOn: $iCloudSyncEnabled) {
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Enable iCloud sync")
+                  .font(.system(size: 17, weight: .bold))
+                  .foregroundStyle(OkkleColor.ink)
+                Text("Automatically keeps this device backed up without manual export files.")
+                  .font(.system(size: 13, weight: .semibold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+            }
+            .tint(OkkleColor.brand)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 14) {
+              NativeOnboardingBullet(symbol: "icloud.fill", title: "Syncs records and trips")
+              NativeOnboardingBullet(symbol: "arrow.triangle.2.circlepath", title: "Runs automatically in the background")
+              NativeOnboardingBullet(symbol: "lock.shield.fill", title: "Uses your private iCloud Drive")
+            }
+          }
+        }
+      }
+
     case .ready:
       VStack(alignment: .leading, spacing: 22) {
         Image(systemName: "checkmark.circle.fill")
@@ -434,7 +525,10 @@ struct NativeOnboardingView: View {
 
         NativeGlassCard {
           VStack(alignment: .leading, spacing: 16) {
-            NativeOnboardingBullet(symbol: "location.north.fill", title: "Start a trip when you set off")
+            NativeOnboardingBullet(symbol: autoTrackTrips ? "location.north.line.fill" : "location.north.fill",
+                                   title: autoTrackTrips ? "Automatic tracking is ready" : "Start a trip when you set off")
+            NativeOnboardingBullet(symbol: iCloudSyncEnabled ? "icloud.fill" : "internaldrive.fill",
+                                   title: iCloudSyncEnabled ? "iCloud sync is ready" : "Records will stay on this device")
             NativeOnboardingBullet(symbol: "sterlingsign.circle.fill", title: "Log pay when it arrives")
             NativeOnboardingBullet(symbol: "sparkles", title: "Check Insights once you have data")
           }
@@ -506,24 +600,18 @@ struct NativeOnboardingView: View {
     vehicle = store.settings.defaultVehicle
     region = store.settings.region
     incomeBracket = store.settings.incomeBracket
+    autoTrackTrips = store.settings.autoTrackTrips
+    enhancedAutoTracking = store.settings.autoTrackTrips ? store.settings.enhancedAutoTracking : true
+    workingDays = store.settings.workingDays.isEmpty ? Array(0...6) : store.settings.workingDays
+    iCloudSyncEnabled = store.settings.iCloudSyncEnabled
     selectedPlatforms = Set(store.settings.platforms.isEmpty ? ["Uber Eats"] : store.settings.platforms)
   }
 
   @ViewBuilder
   private var iCloudSyncOffer: some View {
     switch iCloudCheckState {
-    case .idle, .none, .declined:
-      Button {
-        loadICloudSyncFile()
-      } label: {
-        iCloudSyncOfferContent(
-          symbol: "icloud.and.arrow.down.fill",
-          title: "Load iCloud sync file",
-          subtitle: iCloudCheckState == .none ? "No sync file found yet. Tap to check again." : "Check iCloud for your Okkle sync data",
-          showsChevron: true
-        )
-      }
-      .buttonStyle(.plain)
+    case .idle, .none, .declined, .failed(_):
+      EmptyView()
     case .checking:
       NativeGlassCard {
         HStack(spacing: 12) {
@@ -561,7 +649,7 @@ struct NativeOnboardingView: View {
       .allowsHitTesting(false)
     case .downloading:
       Button {
-        checkForExistingICloudDataIfNeeded(force: true, reportsMissingData: true)
+        checkForExistingICloudDataIfNeeded(force: true)
       } label: {
         iCloudSyncOfferContent(
           symbol: "icloud.and.arrow.down",
@@ -571,27 +659,7 @@ struct NativeOnboardingView: View {
         )
       }
       .buttonStyle(.plain)
-    case .failed(let message):
-      Button {
-        checkForExistingICloudDataIfNeeded(force: true, reportsMissingData: true)
-      } label: {
-        iCloudSyncOfferContent(
-          symbol: "exclamationmark.icloud.fill",
-          title: "Try loading iCloud sync file",
-          subtitle: message,
-          showsChevron: true
-        )
-      }
-      .buttonStyle(.plain)
     }
-  }
-
-  private func loadICloudSyncFile() {
-    if iCloudCheckState == .available {
-      showICloudSyncPrompt = true
-      return
-    }
-    checkForExistingICloudDataIfNeeded(force: true, reportsMissingData: true)
   }
 
   private func iCloudSyncOfferContent(symbol: String, title: String, subtitle: String, showsChevron: Bool) -> some View {
@@ -632,7 +700,7 @@ struct NativeOnboardingView: View {
     return "Found \(summary.name)'s \(itemSummary) in iCloud"
   }
 
-  private func checkForExistingICloudDataIfNeeded(force: Bool = false, reportsMissingData: Bool = false) {
+  private func checkForExistingICloudDataIfNeeded(force: Bool = false) {
     guard force || iCloudCheckState == .idle else { return }
     guard store.isFreshInstallForICloudOffer else { return }
     iCloudCheckState = .checking
@@ -640,22 +708,14 @@ struct NativeOnboardingView: View {
       switch await store.existingICloudDataCheck() {
       case .none:
         iCloudCheckState = .none
-        if reportsMissingData {
-          restoreMessage = "No Okkle iCloud sync file was found for this iCloud account."
-        }
       case .downloading:
         iCloudCheckState = .downloading
       case .available(let summary):
         iCloudSnapshotSummary = summary
         iCloudCheckState = .available
         showICloudSyncPrompt = true
-      case .unavailable(let message):
-        if reportsMissingData {
-          iCloudCheckState = .failed(message)
-          restoreMessage = message
-        } else {
-          iCloudCheckState = .none
-        }
+      case .unavailable:
+        iCloudCheckState = .none
       }
     }
   }
@@ -694,27 +754,13 @@ struct NativeOnboardingView: View {
       defaultVehicle: vehicle,
       platforms: orderedPlatforms,
       region: region,
-      incomeBracket: incomeBracket
+      incomeBracket: incomeBracket,
+      autoTrackTrips: autoTrackTrips,
+      enhancedAutoTracking: autoTrackTrips && enhancedAutoTracking,
+      workingDays: workingDays
     )
-  }
-
-  private func restoreBackup(from result: Result<[URL], Error>) {
-    do {
-      guard let url = try result.get().first else { return }
-      let didAccess = url.startAccessingSecurityScopedResource()
-      defer {
-        if didAccess {
-          url.stopAccessingSecurityScopedResource()
-        }
-      }
-      let data = try Data(contentsOf: url)
-      let summary = try store.restoreBackupData(data)
-      selectedTab = .trip
-      didSeed = false
-      seedFromStore()
-      restoreMessage = summary.message
-    } catch {
-      restoreMessage = "Could not load backup. \(error.localizedDescription)"
+    if iCloudSyncEnabled {
+      store.setICloudSyncEnabled(true)
     }
   }
 

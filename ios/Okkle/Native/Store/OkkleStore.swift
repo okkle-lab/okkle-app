@@ -289,7 +289,14 @@ final class OkkleStore: ObservableObject {
     save()
   }
 
-  func completeOnboarding(name: String, defaultVehicle: NativeVehicle, platforms: [String], region: NativeRegion, incomeBracket: NativeIncomeBracket) {
+  func completeOnboarding(name: String,
+                          defaultVehicle: NativeVehicle,
+                          platforms: [String],
+                          region: NativeRegion,
+                          incomeBracket: NativeIncomeBracket,
+                          autoTrackTrips: Bool,
+                          enhancedAutoTracking: Bool,
+                          workingDays: [Int]) {
     var updated = settings
     updated.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
     updated.defaultVehicle = defaultVehicle
@@ -299,6 +306,9 @@ final class OkkleStore: ObservableObject {
     }
     updated.region = region
     updated.incomeBracket = incomeBracket
+    updated.autoTrackTrips = autoTrackTrips
+    updated.enhancedAutoTracking = autoTrackTrips && enhancedAutoTracking
+    updated.workingDays = workingDays.isEmpty ? Array(0...6) : workingDays
     updated.hasCompletedOnboarding = true
     settings = updated
   }

@@ -9,7 +9,7 @@ enum OkkleColor {
   })
   static let mint = Color(UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.09, green: 0.24, blue: 0.21, alpha: 1)
+      ? UIColor(red: 0.12, green: 0.12, blue: 0.13, alpha: 1)
       : UIColor(red: 0.83, green: 0.97, blue: 0.94, alpha: 1)
   })
   static let ink = Color(uiColor: .label)
@@ -20,20 +20,24 @@ enum OkkleColor {
   static let blue = Color(red: 0.18, green: 0.39, blue: 0.86)
   static let fieldBackground = Color(uiColor: .secondarySystemBackground).opacity(0.82)
 
-  // App background — clean white in light mode (no tint); panels float on top via their halos.
+  // App background — clean white in light mode, true black in dark mode.
   static let surface = Color(UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.063, green: 0.094, blue: 0.086, alpha: 1)
+      ? UIColor.black
       : UIColor.white
   })
   // Solid card surface — sits a touch off the white background so its halo reads as depth.
   static let card = Color(UIColor { traits in
     traits.userInterfaceStyle == .dark
-      ? UIColor(red: 0.118, green: 0.157, blue: 0.149, alpha: 1)
+      ? UIColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
       : UIColor.white
   })
   // Deep forest green for the Apple News-style kicker band (fades into brand).
-  static let bannerDark = Color(red: 0.043, green: 0.227, blue: 0.157)
+  static let bannerDark = Color(UIColor { traits in
+    traits.userInterfaceStyle == .dark
+      ? UIColor.black
+      : UIColor(red: 0.043, green: 0.227, blue: 0.157, alpha: 1)
+  })
 }
 
 let gbpFormatter: NumberFormatter = {

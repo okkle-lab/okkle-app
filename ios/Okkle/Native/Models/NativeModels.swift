@@ -208,6 +208,22 @@ enum NativeLogFrequency: String, CaseIterable, Identifiable, Codable {
   var label: String { rawValue.capitalized }
 }
 
+enum NativeAppearanceMode: String, CaseIterable, Identifiable, Codable {
+  case automatic
+  case light
+  case dark
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .automatic: return "Auto"
+    case .light: return "Light"
+    case .dark: return "Dark"
+    }
+  }
+}
+
 /// A place the driver has told us isn't a work stop — home, a regular break
 /// spot, a partner's address — so it never gets suggested back to them as
 /// somewhere to go and earn.
@@ -276,6 +292,9 @@ struct NativeSettings: Codable, Equatable {
   var reminderDay = 1
   var logFrequency: NativeLogFrequency = .weekly
   var taxDeadlineReminders = true
+  var appearanceMode: NativeAppearanceMode = .automatic
+  // Master switch for the AI Insights tab and insight-led prompts.
+  var insightsEnabled = true
   // Optional iCloud sync. Kept in settings so the preference follows the
   // user's Okkle snapshot once sync is enabled.
   var iCloudSyncEnabled = false
@@ -283,6 +302,10 @@ struct NativeSettings: Codable, Equatable {
   // holds the weekdays (0 = Sunday … 6 = Saturday, matching Calendar's symbol
   // index) on which trips auto-start; default is every day.
   var autoTrackTrips = true
+  // Adds stronger vehicle signals to automatic tracking. When enabled, Okkle
+  // can use CarPlay / car Bluetooth disconnects and saved Home arrival to end
+  // trips with less GPS tail.
+  var enhancedAutoTracking = true
   // Opt-in voice automation: lets Siri and Shortcuts start or resume tracking
   // with the driver's default vehicle.
   var siriTripTrackingEnabled = false
@@ -318,8 +341,11 @@ struct NativeSettings: Codable, Equatable {
     case reminderDay
     case logFrequency
     case taxDeadlineReminders
+    case appearanceMode
+    case insightsEnabled
     case iCloudSyncEnabled
     case autoTrackTrips
+    case enhancedAutoTracking
     case siriTripTrackingEnabled
     case workingDays
     case preShiftAlerts
@@ -345,8 +371,11 @@ struct NativeSettings: Codable, Equatable {
     reminderDay = try container.decodeIfPresent(Int.self, forKey: .reminderDay) ?? 1
     logFrequency = try container.decodeIfPresent(NativeLogFrequency.self, forKey: .logFrequency) ?? .weekly
     taxDeadlineReminders = try container.decodeIfPresent(Bool.self, forKey: .taxDeadlineReminders) ?? true
+    appearanceMode = try container.decodeIfPresent(NativeAppearanceMode.self, forKey: .appearanceMode) ?? .automatic
+    insightsEnabled = try container.decodeIfPresent(Bool.self, forKey: .insightsEnabled) ?? true
     iCloudSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? false
     autoTrackTrips = try container.decodeIfPresent(Bool.self, forKey: .autoTrackTrips) ?? true
+    enhancedAutoTracking = try container.decodeIfPresent(Bool.self, forKey: .enhancedAutoTracking) ?? true
     siriTripTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .siriTripTrackingEnabled) ?? false
     workingDays = try container.decodeIfPresent([Int].self, forKey: .workingDays) ?? Array(0...6)
     preShiftAlerts = try container.decodeIfPresent(Bool.self, forKey: .preShiftAlerts) ?? true

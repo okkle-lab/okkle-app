@@ -178,13 +178,10 @@ struct NativeShiftPatternsCard: View {
       Text("Know exactly when and where to work")
         .font(.system(size: 22, weight: .bold, design: .rounded))
         .foregroundStyle(OkkleColor.ink)
-      Text("Turn on automatic tracking and Okkle learns your best times and areas passively — no screenshots, no shortcuts.")
+      Text("Enable automatic tracking in Settings so Okkle can learn your best times and areas passively.")
         .font(.system(size: 15, weight: .medium))
         .foregroundStyle(OkkleColor.muted)
         .fixedSize(horizontal: false, vertical: true)
-      Toggle("Automatic trip tracking", isOn: $autoTrackTrips)
-        .font(.system(size: 17, weight: .bold))
-        .tint(OkkleColor.brand)
     }
   }
 
@@ -1208,60 +1205,72 @@ struct NativeInsightsView: View {
   var body: some View {
     NativeScreen(title: "Insights", collapsedTitle: "Insights",
                  subtitle: "From your trips: when to head out and where to go. Sharper the more you drive.") {
-      NativeShiftPatternsCard(
-        shift: shift,
-        visits: insightVisits,
-        trips: store.trips,
-        autoTrackTrips: Binding(
-          get: { store.settings.autoTrackTrips },
-          set: { value in
-            withAnimation(nativeInsightPromptAnimation) {
-              store.settings.autoTrackTrips = value
-            }
-          }
+      if !store.settings.insightsEnabled {
+        NativeEmptyState(
+          symbol: "sparkles",
+          title: "Insights are off",
+          message: "Enable Insights in Settings to use AI insights from your trips and records."
         )
-      )
-
-      // These cards are one-time set-up prompts: they only appear while
-      // the feature is off. Once you turn one on it disappears here — the on/off
-      // switch then lives in Settings.
-      if !store.settings.siriTripTrackingEnabled {
-        NativeSiriTripTrackingPrompt()
-          .transition(.nativeInsightSetupCard)
-      }
-
-      if !store.settings.loggingReminder {
-        NativeAiCard(banner: "REMINDERS") {
-          VStack(alignment: .leading, spacing: 16) {
-            Text("Keep your records fresh")
-              .font(.system(size: 26, weight: .bold, design: .rounded))
-            Text("Get a gentle nudge to log your miles and pay so nothing slips through the week.")
-              .font(.system(size: 15, weight: .medium))
-              .foregroundStyle(OkkleColor.muted)
-            Toggle("Logging reminder", isOn: Binding(
-              get: { store.settings.loggingReminder },
-              set: { value in
-                withAnimation(nativeInsightPromptAnimation) {
-                  store.settings.loggingReminder = value
+      } else {
+        NativeShiftPatternsCard(
+          shift: shift,
+          visits: insightVisits,
+          trips: store.trips,
+          autoTrackTrips: Binding(
+            get: { store.settings.autoTrackTrips },
+            set: { value in
+              withAnimation(nativeInsightPromptAnimation) {
+                store.settings.autoTrackTrips = value
+                if value {
+                  store.settings.enhancedAutoTracking = true
                 }
               }
-            ))
-            .font(.system(size: 17, weight: .bold))
-            .tint(OkkleColor.brand)
-          }
+            }
+          )
+        )
+
+        // These cards are one-time set-up prompts: they only appear while
+        // the feature is off. Once you turn one on it disappears here — the on/off
+        // switch then lives in Settings.
+        if !store.settings.siriTripTrackingEnabled {
+          NativeSiriTripTrackingPrompt()
+            .transition(.nativeInsightSetupCard)
         }
-        .transition(.nativeInsightSetupCard)
-      }
 
-      if !store.settings.taxDeadlineReminders {
-        NativeKeyTaxDatesPanel()
+        if !store.settings.loggingReminder {
+          NativeAiCard(banner: "REMINDERS") {
+            VStack(alignment: .leading, spacing: 16) {
+              Text("Keep your records fresh")
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+              Text("Get a gentle nudge to log your miles and pay so nothing slips through the week.")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(OkkleColor.muted)
+              Toggle("Logging reminder", isOn: Binding(
+                get: { store.settings.loggingReminder },
+                set: { value in
+                  withAnimation(nativeInsightPromptAnimation) {
+                    store.settings.loggingReminder = value
+                  }
+                }
+              ))
+              .font(.system(size: 17, weight: .bold))
+              .tint(OkkleColor.brand)
+            }
+          }
           .transition(.nativeInsightSetupCard)
-      }
+        }
 
-      if store.history.isEmpty {
-        NativeEmptyState(symbol: "sparkles", title: "Insights will grow with your data", message: "Track trips and log pay to unlock best zones, hours, platform mix and tax-aware suggestions.")
+        if !store.settings.taxDeadlineReminders {
+          NativeKeyTaxDatesPanel()
+            .transition(.nativeInsightSetupCard)
+        }
+
+        if store.history.isEmpty {
+          NativeEmptyState(symbol: "sparkles", title: "Insights will grow with your data", message: "Track trips and log pay to unlock best zones, hours, platform mix and tax-aware suggestions.")
+        }
       }
     }
+    .animation(nativeInsightPromptAnimation, value: store.settings.insightsEnabled)
     .animation(nativeInsightPromptAnimation, value: store.settings.autoTrackTrips)
     .animation(nativeInsightPromptAnimation, value: store.settings.siriTripTrackingEnabled)
     .animation(nativeInsightPromptAnimation, value: store.settings.loggingReminder)
