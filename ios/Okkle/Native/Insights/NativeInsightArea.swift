@@ -422,6 +422,19 @@ enum NativeAreaSuggester {
 /// suggester and the area namer below, so both agree on what counts as
 /// "somewhere worth recommending" rather than any resolvable place name.
 func nativeFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: CLLocationDistance) async -> Int {
+  // Two independent, differently-sourced counts, taken together as
+  // whichever sees more — Apple's own POI database and OSM's community
+  // one have different gaps (Apple's is often thinner in outer suburbs;
+  // OSM's coverage varies by how actively an area's been mapped), so
+  // this is closer to "how many food places are really here" than
+  // either alone, without double-counting the ones both happen to know
+  // about the way a straight sum would.
+  async let mapKit = nativeMapKitFoodPOICount(near: coordinate, radiusMeters: radiusMeters)
+  async let overpass = nativeOverpassFoodPOICount(near: coordinate, radiusMeters: radiusMeters)
+  return await max(mapKit, overpass)
+}
+
+private func nativeMapKitFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: CLLocationDistance) async -> Int {
   await withCheckedContinuation { continuation in
     let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: radiusMeters)
     request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
@@ -429,6 +442,50 @@ func nativeFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: C
       continuation.resume(returning: response?.mapItems.count ?? 0)
     }
   }
+}
+
+/// Free, no-key, community-maintained supplement to Apple's own POI
+/// database via OpenStreetMap's public Overpass API — some entries here
+/// even carry explicit takeaway/delivery tags Apple's database doesn't
+/// expose at all. Silently returns 0 on any failure (timeout, no
+/// network, the public instance being over capacity) so an Overpass
+/// outage only ever loses this one signal, never blocks the
+/// already-best-effort area-suggestion scoring around it.
+private func nativeOverpassFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: CLLocationDistance) async -> Int {
+  let radius = Int(radiusMeters)
+  let query = """
+  [out:json][timeout:8];
+  (
+    node["amenity"~"^(restaurant|fast_food|cafe|pub|bar)$"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));
+    node["shop"="bakery"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));
+  );
+  out count;
+  """
+  guard let url = URL(string: "https://overpass-api.de/api/interpreter"),
+        let body = "data=\(query)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return 0 }
+
+  var request = URLRequest(url: url)
+  request.httpMethod = "POST"
+  request.httpBody = Data(body.utf8)
+  request.timeoutInterval = 8
+
+  do {
+    let (data, _) = try await URLSession.shared.data(for: request)
+    let decoded = try JSONDecoder().decode(NativeOverpassCountResponse.self, from: data)
+    return decoded.elements.first.flatMap { Int($0.tags.total) } ?? 0
+  } catch {
+    return 0
+  }
+}
+
+private struct NativeOverpassCountResponse: Decodable {
+  struct Element: Decodable {
+    struct Tags: Decodable {
+      let total: String
+    }
+    let tags: Tags
+  }
+  let elements: [Element]
 }
 
 /// A coloured overlay circle for one zone — a plain MKCircle plus the weight
