@@ -321,18 +321,20 @@ enum NativeAreaSuggester {
   private static var fetchedForKey: String?
   private static var fetching = false
 
-  /// Lay out two rings of candidates (1.2km and 2.5km out) around the
-  /// driver, score them by restaurant density, and hand the top three to
-  /// the store — excluding anywhere that resolves to a name the driver
+  /// Lay out three rings of candidates (1.2km, 2.5km, and 4km out) around
+  /// the driver, score them by restaurant density, and hand the top three
+  /// to the store — excluding anywhere that resolves to a name the driver
   /// already knows. Streets can run for over a kilometre, so excluding by
   /// *name* (not raw distance) is what stops re-suggesting a street the
   /// driver already partly works.
   ///
   /// A single ring at a fixed distance/bearing set is a coarse sample — it's
   /// easy for every point to land on a quiet back road or a park even when
-  /// a busy high street sits just a few hundred metres off one of them. Two
-  /// rings at different radii roughly doubles the chance at least one point
-  /// actually lands near real density.
+  /// a busy high street sits just a few hundred metres off one of them, or
+  /// for the real cluster to sit just past a single ring's radius (a park
+  /// or open land between the driver and the nearest town centre is common
+  /// on the edge of a city). Multiple rings at different radii meaningfully
+  /// raise the chance at least one point actually lands near real density.
   @MainActor
   static func refresh(near origin: CLLocationCoordinate2D, knownZones: [CLLocationCoordinate2D]) {
     let key = "\(Int((origin.latitude * 200).rounded())),\(Int((origin.longitude * 200).rounded()))"
@@ -355,7 +357,7 @@ enum NativeAreaSuggester {
     }
 
     let bearings = stride(from: 0.0, to: 360.0, by: 45.0)
-    let candidates = [1.2, 2.5].flatMap { radiusKm in
+    let candidates = [1.2, 2.5, 4.0].flatMap { radiusKm in
       bearings.map { nativeOffsetCoordinate(origin, distanceKm: radiusKm, bearingDeg: $0) }
     }
 
@@ -381,6 +383,18 @@ enum NativeAreaSuggester {
 
     var scored = sampled.filter { $0.1 >= bar }
     scored.sort { $0.1 > $1.1 }
+
+    // A genuinely quiet area (a driver near a park, or the edge of town)
+    // can have real but modest density everywhere — nothing "stands out"
+    // from a low, flat baseline, so the relative bar above finds nothing
+    // even though there's still somewhere better than average nearby.
+    // Falling back to the flat floor here means "still looking" only ever
+    // shows when there's truly nothing worth a modest mention, not just
+    // when nothing is a standout.
+    if scored.isEmpty {
+      scored = sampled.filter { $0.1 >= nativeMinimumViableAreaPoiScore }
+      scored.sort { $0.1 > $1.1 }
+    }
 
     var out: [(name: String, coordinate: CLLocationCoordinate2D, poiScore: Int)] = []
     var seenNames = Set<String>()
