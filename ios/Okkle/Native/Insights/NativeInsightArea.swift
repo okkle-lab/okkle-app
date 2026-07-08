@@ -206,6 +206,15 @@ final class NativeZoneOutcomeTracker: ObservableObject {
 
 /// One candidate the background layer discovered — persisted so trial
 /// evidence survives across launches.
+/// A single restaurant within range isn't "restaurant-dense" — it's one
+/// venue that happens to sit inside whatever's actually there (a business
+/// park, a housing estate). Below this many nearby food POIs, a candidate
+/// isn't worth surfacing as a delivery-area guess at all, even if it's the
+/// least-bad of a weak batch. Applied both when a candidate is first
+/// discovered and again when picking which one to show, so a legacy
+/// candidate saved before this threshold existed doesn't linger either.
+let nativeMinimumViableAreaPoiScore = 3
+
 struct NativeExploreCandidate: Codable, Identifiable {
   var id = UUID()
   let name: String
@@ -248,8 +257,12 @@ final class NativeExploreCandidateStore: ObservableObject {
   /// clearly hedged, while the driver has no earned zones of their own yet.
   /// Once something validates it stops being a "candidate" at all (it's just
   /// a real zone now), so this naturally empties out as real data arrives.
+  /// Requires a real cluster of food POIs, not just one — a lone pub inside
+  /// an industrial estate shouldn't out-rank "nothing to suggest yet".
   var bestUnvalidatedCandidate: NativeExploreCandidate? {
-    candidates.filter { !$0.isValidated }.max { $0.poiScore < $1.poiScore }
+    candidates
+      .filter { !$0.isValidated && $0.poiScore >= nativeMinimumViableAreaPoiScore }
+      .max { $0.poiScore < $1.poiScore }
   }
 
   /// Called on every real passive visit — the feedback half of the loop. If
@@ -351,7 +364,7 @@ enum NativeAreaSuggester {
     var scored: [(CLLocationCoordinate2D, Int)] = []
     for candidate in candidates {
       let count = await poiCount(near: candidate)
-      if count > 0 { scored.append((candidate, count)) }
+      if count >= nativeMinimumViableAreaPoiScore { scored.append((candidate, count)) }
     }
     scored.sort { $0.1 > $1.1 }
 
