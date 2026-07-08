@@ -295,7 +295,6 @@ struct NativeOnboardingView: View {
             NativeOnboardingBullet(symbol: "location.fill", title: "Track every trip with GPS")
             NativeOnboardingBullet(symbol: "chart.line.uptrend.xyaxis", title: "See where your work performs best")
             NativeOnboardingBullet(symbol: "shield.lefthalf.filled", title: "Keep tax-ready records on your phone")
-            NativeOnboardingBullet(symbol: "medal.fill", title: "Build streaks and progress")
           }
         }
 
