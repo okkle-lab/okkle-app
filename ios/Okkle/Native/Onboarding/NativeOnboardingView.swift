@@ -266,14 +266,29 @@ struct NativeOnboardingView: View {
     switch step {
     case .welcome:
       VStack(alignment: .leading, spacing: 22) {
-        Image(systemName: "location.north.circle.fill")
-          .font(.system(size: 62, weight: .bold))
-          .foregroundStyle(OkkleColor.brand)
-        NativeOnboardingHeader(
-          eyebrow: "Okkle",
-          title: "Drive smarter.\nKeep more of it.",
-          subtitle: "Built for UK delivery couriers. Track trips, log pay, and stay ready for tax without the spreadsheet."
-        )
+        HStack(spacing: 10) {
+          Image("OkkleMark")
+            .resizable()
+            .scaledToFit()
+            .frame(width: 44, height: 44)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+          Text("OKKLE")
+            .font(.system(size: 15, weight: .heavy))
+            .foregroundStyle(OkkleColor.brandDark)
+            .tracking(0.5)
+        }
+
+        VStack(alignment: .leading, spacing: 10) {
+          Text("Drive smarter.\nKeep more of it.")
+            .font(.system(size: 42, weight: .heavy, design: .rounded))
+            .foregroundStyle(OkkleColor.ink)
+            .fixedSize(horizontal: false, vertical: true)
+            .minimumScaleFactor(0.82)
+          Text("Built for UK delivery couriers. Track trips, log pay, and stay ready for tax without the spreadsheet.")
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
 
         NativeGlassCard {
           VStack(alignment: .leading, spacing: 14) {
