@@ -375,10 +375,16 @@ enum NativeAreaSuggester {
     await nativeFoodPOICount(near: coordinate, radiusMeters: 550)
   }
 
+  // Neighbourhood first, not the street: a single road is too narrow a
+  // patch for a courier to actually stake out ("Coombe Lane"?), and the
+  // named district it sits in ("Wimbledon") is exactly how drivers already
+  // think and talk about where to work — bigger than a road, nowhere near
+  // as broad as the borough/council area (subAdministrativeArea) or the
+  // whole town (locality) would be.
   private static func areaName(for coordinate: CLLocationCoordinate2D) async -> String? {
     await withCheckedContinuation { continuation in
       CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
-        continuation.resume(returning: placemarks?.first.flatMap { $0.thoroughfare ?? $0.subLocality ?? $0.locality })
+        continuation.resume(returning: placemarks?.first.flatMap { $0.subLocality ?? $0.thoroughfare ?? $0.locality })
       }
     }
   }
@@ -481,11 +487,12 @@ final class NativeAreaNamer: ObservableObject {
     geocoder.reverseGeocodeLocation(CLLocation(latitude: job.coordinate.latitude, longitude: job.coordinate.longitude)) { [weak self] placemarks, _ in
       guard let self else { return }
       Task { @MainActor in
-        // Aim for the tightest patch a driver can actually head to: a street
-        // ("The Broadway") or a small district, never a whole borough ("Merton",
-        // "City of Westminster") which is too broad to act on.
+        // Aim for the named district/neighbourhood a driver can actually
+        // head to ("Wimbledon"), not a single street ("The Broadway") —
+        // too narrow a patch to stake out — and never a whole borough
+        // ("Merton", "City of Westminster") which is too broad to act on.
         if let p = placemarks?.first,
-           let area = p.thoroughfare ?? p.subLocality ?? p.locality {
+           let area = p.subLocality ?? p.thoroughfare ?? p.locality {
           // A resolvable name isn't enough on its own — check there's
           // actually somewhere to deliver from/to nearby before naming it,
           // otherwise a quiet back road or a park street name can end up
