@@ -597,7 +597,10 @@ struct NativeHistoryRow: View {
 
 struct NativeShareItem: Identifiable {
   let id = UUID()
-  let url: URL
+  let urls: [URL]
+
+  init(urls: [URL]) { self.urls = urls }
+  init(url: URL) { self.urls = [url] }
 }
 
 struct NativeShareSheet: UIViewControllerRepresentable {
@@ -735,23 +738,32 @@ func nativeBackupFileName() -> String {
   return "Okkle_Backup_\(formatter.string(from: Date())).json"
 }
 
-enum NativeTaxExportKind: String, CaseIterable, Identifiable {
+enum NativeExportFormat: String, CaseIterable, Identifiable {
+  case pdf
+  case csv
+
+  var id: String { rawValue }
+  var label: String { self == .pdf ? "PDF" : "CSV" }
+}
+
+/// The five exportable documents. Some (accountant pack, self assessment,
+/// mileage) are available in either format — the picker asks PDF, CSV, or
+/// both — while the raw-data pair only ever existed as CSV.
+enum NativeExportDocument: String, CaseIterable, Identifiable {
   case accountantPack
-  case freeAgent
   case selfAssessment
-  case mileageReportPdf
-  case mileageLog
+  case mileage
+  case freeAgent
   case allData
 
   var id: String { rawValue }
 
   var title: String {
     switch self {
-    case .accountantPack: return "Accountant pack PDF"
-    case .freeAgent: return "FreeAgent CSV"
+    case .accountantPack: return "Accountant pack"
     case .selfAssessment: return "Self Assessment summary"
-    case .mileageReportPdf: return "Mileage report PDF"
-    case .mileageLog: return "HMRC mileage log (CSV)"
+    case .mileage: return "Mileage"
+    case .freeAgent: return "FreeAgent CSV"
     case .allData: return "All data CSV"
     }
   }
@@ -759,10 +771,9 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
   var subtitle: String {
     switch self {
     case .accountantPack: return "Mileage, expenses & receipts"
-    case .freeAgent: return "Ready for bank import"
     case .selfAssessment: return "Turnover, profit and tax due"
-    case .mileageReportPdf: return "By rate band, plus full log"
-    case .mileageLog: return "Every mileage entry, as CSV"
+    case .mileage: return "Rate-band report or full CSV log"
+    case .freeAgent: return "Ready for bank import"
     case .allData: return "Trips, earnings and expenses"
     }
   }
@@ -770,38 +781,38 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
   var symbol: String {
     switch self {
     case .accountantPack: return "doc.richtext.fill"
-    case .freeAgent: return "arrow.up.doc.fill"
     case .selfAssessment: return "doc.text.fill"
-    case .mileageReportPdf: return "chart.bar.doc.horizontal.fill"
-    case .mileageLog: return "map.fill"
+    case .mileage: return "map.fill"
+    case .freeAgent: return "arrow.up.doc.fill"
     case .allData: return "externaldrive.fill"
-    }
-  }
-
-  var fileStem: String {
-    switch self {
-    case .accountantPack: return "Accountant-Pack"
-    case .freeAgent: return "FreeAgent-Import"
-    case .selfAssessment: return "SelfAssessment-Summary"
-    case .mileageReportPdf: return "Mileage-Report"
-    case .mileageLog: return "HMRC-Mileage-Log"
-    case .allData: return "All-Data"
-    }
-  }
-
-  var fileExtension: String {
-    switch self {
-    case .accountantPack, .mileageReportPdf: return "pdf"
-    case .selfAssessment: return "txt"
-    case .freeAgent, .mileageLog, .allData: return "csv"
     }
   }
 
   var group: NativeTaxExportGroup {
     switch self {
     case .accountantPack, .selfAssessment: return .accountant
-    case .mileageReportPdf, .mileageLog: return .mileage
+    case .mileage: return .mileage
     case .freeAgent, .allData: return .rawData
+    }
+  }
+
+  var formats: [NativeExportFormat] {
+    switch self {
+    case .accountantPack, .selfAssessment, .mileage: return [.pdf, .csv]
+    case .freeAgent, .allData: return [.csv]
+    }
+  }
+
+  func kind(for format: NativeExportFormat) -> NativeTaxExportKind {
+    switch (self, format) {
+    case (.accountantPack, .pdf): return .accountantPackPdf
+    case (.accountantPack, .csv): return .accountantPackCsv
+    case (.selfAssessment, .pdf): return .selfAssessmentPdf
+    case (.selfAssessment, .csv): return .selfAssessmentCsv
+    case (.mileage, .pdf): return .mileageReportPdf
+    case (.mileage, .csv): return .mileageLogCsv
+    case (.freeAgent, _): return .freeAgent
+    case (.allData, _): return .allData
     }
   }
 }
@@ -818,20 +829,37 @@ enum NativeTaxExportGroup: CaseIterable {
     case .rawData: return "Raw data"
     }
   }
+}
 
-  var subtitle: String {
+enum NativeTaxExportKind: String, CaseIterable, Identifiable {
+  case accountantPackPdf
+  case accountantPackCsv
+  case selfAssessmentPdf
+  case selfAssessmentCsv
+  case mileageReportPdf
+  case mileageLogCsv
+  case freeAgent
+  case allData
+
+  var id: String { rawValue }
+
+  var format: NativeExportFormat {
     switch self {
-    case .accountant: return "PDF pack or Self Assessment summary"
-    case .mileage: return "PDF report or HMRC CSV log"
-    case .rawData: return "FreeAgent or full CSV export"
+    case .accountantPackPdf, .selfAssessmentPdf, .mileageReportPdf: return .pdf
+    case .accountantPackCsv, .selfAssessmentCsv, .mileageLogCsv, .freeAgent, .allData: return .csv
     }
   }
 
-  var symbol: String {
+  var fileStem: String {
     switch self {
-    case .accountant: return "doc.richtext.fill"
-    case .mileage: return "map.fill"
-    case .rawData: return "externaldrive.fill"
+    case .accountantPackPdf, .accountantPackCsv: return "Accountant-Pack"
+    case .selfAssessmentPdf, .selfAssessmentCsv: return "SelfAssessment-Summary"
+    case .mileageReportPdf: return "Mileage-Report"
+    case .mileageLogCsv: return "HMRC-Mileage-Log"
+    case .freeAgent: return "FreeAgent-Import"
+    case .allData: return "All-Data"
     }
   }
+
+  var fileExtension: String { format == .pdf ? "pdf" : "csv" }
 }

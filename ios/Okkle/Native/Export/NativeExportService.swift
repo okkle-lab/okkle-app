@@ -3,9 +3,11 @@ struct NativeExportCard: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var shareItem: NativeShareItem?
   @State private var exportFailed = false
-  // One row per group, format choice on tap, rather than a fixed row per
-  // file kind — same six exports, a third of the list to scan.
+  // Group row -> document (when a group holds more than one) -> format,
+  // rather than a fixed row per file kind — same underlying exports, far
+  // less to scan, and PDF/CSV/both is only asked where more than one exists.
   @State private var pendingGroup: NativeTaxExportGroup?
+  @State private var pendingDocument: NativeExportDocument?
 
   var body: some View {
     NativeGlassCard(cornerRadius: 30) {
@@ -29,13 +31,28 @@ struct NativeExportCard: View {
       isPresented: Binding(get: { pendingGroup != nil }, set: { if !$0 { pendingGroup = nil } }),
       titleVisibility: .visible
     ) {
-      ForEach(NativeTaxExportKind.allCases.filter { $0.group == pendingGroup }) { kind in
-        Button(kind.title) { export(kind) }
+      ForEach(NativeExportDocument.allCases.filter { $0.group == pendingGroup }) { document in
+        Button(document.title) { selectDocument(document) }
+      }
+      Button("Cancel", role: .cancel) {}
+    }
+    .confirmationDialog(
+      "Export \(pendingDocument?.title ?? "") as",
+      isPresented: Binding(get: { pendingDocument != nil }, set: { if !$0 { pendingDocument = nil } }),
+      titleVisibility: .visible
+    ) {
+      if let document = pendingDocument {
+        ForEach(document.formats) { format in
+          Button(format.label) { export(document, formats: [format]) }
+        }
+        if document.formats.count > 1 {
+          Button("Both") { export(document, formats: document.formats) }
+        }
       }
       Button("Cancel", role: .cancel) {}
     }
     .sheet(item: $shareItem) { item in
-      NativeShareSheet(items: [item.url])
+      NativeShareSheet(items: item.urls)
     }
     .alert("Could not create export", isPresented: $exportFailed) {
       Button("OK", role: .cancel) {}
@@ -45,11 +62,16 @@ struct NativeExportCard: View {
   }
 
   private func groupRow(_ group: NativeTaxExportGroup) -> some View {
-    Button {
-      pendingGroup = group
+    let documents = NativeExportDocument.allCases.filter { $0.group == group }
+    return Button {
+      if documents.count == 1, let only = documents.first {
+        selectDocument(only)
+      } else {
+        pendingGroup = group
+      }
     } label: {
       HStack(spacing: 12) {
-        Image(systemName: group.symbol)
+        Image(systemName: documents.first?.symbol ?? "doc.fill")
           .font(.system(size: 17, weight: .bold))
           .foregroundStyle(OkkleColor.brand)
           .frame(width: 38, height: 38)
@@ -58,7 +80,7 @@ struct NativeExportCard: View {
           Text(group.title)
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(OkkleColor.ink)
-          Text(group.subtitle)
+          Text(documents.map(\.title).joined(separator: " · "))
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .lineLimit(1)
@@ -73,8 +95,17 @@ struct NativeExportCard: View {
     .buttonStyle(.plain)
   }
 
-  private func export(_ kind: NativeTaxExportKind) {
-    if let item = nativeMakeExport(kind, store: store) {
+  private func selectDocument(_ document: NativeExportDocument) {
+    if document.formats.count > 1 {
+      pendingDocument = document
+    } else if let format = document.formats.first {
+      export(document, formats: [format])
+    }
+  }
+
+  private func export(_ document: NativeExportDocument, formats: [NativeExportFormat]) {
+    let kinds = formats.map { document.kind(for: $0) }
+    if let item = nativeMakeExport(kinds, store: store) {
       shareItem = item
     } else {
       exportFailed = true
@@ -83,76 +114,77 @@ struct NativeExportCard: View {
 }
 
 @MainActor
-func nativeMakeExport(_ kind: NativeTaxExportKind, store: OkkleStore) -> NativeShareItem? {
+func nativeMakeExport(_ kinds: [NativeTaxExportKind], store: OkkleStore) -> NativeShareItem? {
+  let urls = kinds.compactMap { nativeMakeExportFile($0, store: store) }
+  guard !urls.isEmpty else { return nil }
+  return NativeShareItem(urls: urls)
+}
+
+@MainActor
+private func nativeMakeExportFile(_ kind: NativeTaxExportKind, store: OkkleStore) -> URL? {
   let fileName = "Okkle_\(kind.fileStem)_TaxYear-\(nativeTaxYearLabel(for: store.taxYear))_\(nativeTodayStamp()).\(kind.fileExtension)"
     .replacingOccurrences(of: "/", with: "-")
   let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
   do {
     switch kind {
-    case .accountantPack:
+    case .accountantPackPdf:
       try nativeAccountantPackPdfData(store: store).write(to: url, options: [.atomic])
     case .mileageReportPdf:
       try nativeMileageReportPdfData(store: store).write(to: url, options: [.atomic])
-    default:
-      let content = nativeExportContents(kind, store: store)
-      try content.write(to: url, atomically: true, encoding: .utf8)
+    case .selfAssessmentPdf:
+      try nativeSelfAssessmentPdfData(store: store).write(to: url, options: [.atomic])
+    case .accountantPackCsv:
+      try nativeAccountantPackCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .selfAssessmentCsv:
+      try nativeSelfAssessmentCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .mileageLogCsv:
+      try nativeMileageCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .freeAgent:
+      try nativeFreeAgentCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .allData:
+      try nativeAllDataCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     }
-    return NativeShareItem(url: url)
+    return url
   } catch {
     return nil
   }
 }
 
 @MainActor
-func nativeExportContents(_ kind: NativeTaxExportKind, store: OkkleStore) -> String {
-  switch kind {
-  case .accountantPack:
-    return [
-      nativeSelfAssessmentText(store: store),
-      "",
-      "Mileage log",
-      nativeMileageCsv(store: store),
-      "",
-      "All records",
-      nativeAllDataCsv(store: store)
-    ].joined(separator: "\n")
-  case .freeAgent:
-    return nativeFreeAgentCsv(store: store)
-  case .selfAssessment:
-    return nativeSelfAssessmentText(store: store)
-  case .mileageReportPdf:
-    return ""   // PDF kind, handled directly in nativeMakeExport
-  case .mileageLog:
-    return nativeMileageCsv(store: store)
-  case .allData:
-    return nativeAllDataCsv(store: store)
+func nativeSelfAssessmentCsv(store: OkkleStore) -> String {
+  let tax = store.taxPosition
+  var rows: [[String]] = [
+    ["Field", "Value"],
+    ["Tax year", nativeTaxYearLabel(for: store.taxYear)],
+    ["Turnover (income)", nativeDecimal(tax.turnover)],
+    ["Logged expenses", nativeDecimal(tax.expenses)],
+    ["Deduction applied", nativeDecimal(tax.deductionApplied)],
+    ["Taxable profit", nativeDecimal(tax.profit)],
+    ["Income tax band", store.settings.incomeBracket.label],
+    ["Other income", nativeDecimal(store.settings.otherIncome)],
+    ["Estimated Income Tax", nativeDecimal(tax.incomeTax)],
+    ["Estimated Class 4 NIC", nativeDecimal(tax.class4)],
+    ["Estimated total due", nativeDecimal(tax.totalDue)]
+  ]
+  if tax.paymentOnAccount > 0 {
+    rows.append(["Payment on account (each)", nativeDecimal(tax.paymentOnAccount)])
   }
+  rows.append(["Business miles", nativeDecimal(store.yearMiles)])
+  rows.append(["Mileage deduction", nativeDecimal(store.yearMileageDeduction)])
+  return rows.map { $0.map(nativeCsvField).joined(separator: ",") }.joined(separator: "\n")
 }
 
 @MainActor
-func nativeSelfAssessmentText(store: OkkleStore) -> String {
-  let tax = store.taxPosition
-  let lines = [
-    "Okkle - Self Assessment summary \(nativeTaxYearLabel(for: store.taxYear))",
+func nativeAccountantPackCsv(store: OkkleStore) -> String {
+  [
+    nativeSelfAssessmentCsv(store: store),
     "",
-    "Turnover (income):        \(gbp(tax.turnover))",
-    "Logged expenses:          \(gbp(tax.expenses))",
-    "Deduction applied:        \(gbp(tax.deductionApplied))",
-    "Taxable profit:           \(gbp(tax.profit))",
-    "Income tax band:          \(store.settings.incomeBracket.label)",
-    "Other income:             \(gbp(store.settings.otherIncome))",
+    "Mileage log",
+    nativeMileageCsv(store: store),
     "",
-    "Estimated Income Tax:     \(gbp(tax.incomeTax))",
-    "Estimated Class 4 NIC:    \(gbp(tax.class4))",
-    "Estimated total due:      \(gbp(tax.totalDue))",
-    tax.paymentOnAccount > 0 ? "Payment on account (x2):  \(gbp(tax.paymentOnAccount)) each" : "",
-    "",
-    "Business miles:           \(miles(store.yearMiles))",
-    "Mileage deduction:        \(gbp(store.yearMileageDeduction))",
-    "",
-    "Estimates only, not tax advice. Confirm with your accountant."
-  ]
-  return lines.filter { !$0.isEmpty }.joined(separator: "\n")
+    "All records",
+    nativeAllDataCsv(store: store)
+  ].joined(separator: "\n")
 }
 
 @MainActor

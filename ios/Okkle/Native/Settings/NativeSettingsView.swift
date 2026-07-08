@@ -819,7 +819,7 @@ struct NativeDataSettingsView: View {
       store.refreshICloudSyncIfNeeded()
     }
     .sheet(item: $backupShareItem) { item in
-      NativeShareSheet(items: [item.url])
+      NativeShareSheet(items: item.urls)
     }
     .fileExporter(
       isPresented: $showBackupExporter,

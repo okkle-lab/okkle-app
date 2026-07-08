@@ -308,11 +308,18 @@ enum NativeAreaSuggester {
   private static var fetchedForKey: String?
   private static var fetching = false
 
-  /// Lay out a ring of candidates 2km out around the driver, score them by
-  /// restaurant density, and hand the top two to the store — excluding
-  /// anywhere that resolves to a name the driver already knows. Streets can
-  /// run for over a kilometre, so excluding by *name* (not raw distance) is
-  /// what stops a re-suggesting a street the driver already partly works.
+  /// Lay out two rings of candidates (1.2km and 2.5km out) around the
+  /// driver, score them by restaurant density, and hand the top three to
+  /// the store — excluding anywhere that resolves to a name the driver
+  /// already knows. Streets can run for over a kilometre, so excluding by
+  /// *name* (not raw distance) is what stops re-suggesting a street the
+  /// driver already partly works.
+  ///
+  /// A single ring at a fixed distance/bearing set is a coarse sample — it's
+  /// easy for every point to land on a quiet back road or a park even when
+  /// a busy high street sits just a few hundred metres off one of them. Two
+  /// rings at different radii roughly doubles the chance at least one point
+  /// actually lands near real density.
   @MainActor
   static func refresh(near origin: CLLocationCoordinate2D, knownZones: [CLLocationCoordinate2D]) {
     let key = "\(Int((origin.latitude * 200).rounded())),\(Int((origin.longitude * 200).rounded()))"
@@ -334,8 +341,10 @@ enum NativeAreaSuggester {
       if let name = await areaName(for: zone) { known.insert(name.lowercased()) }
     }
 
-    let candidates = stride(from: 0.0, to: 360.0, by: 45.0)
-      .map { nativeOffsetCoordinate(origin, distanceKm: 2.0, bearingDeg: $0) }
+    let bearings = stride(from: 0.0, to: 360.0, by: 45.0)
+    let candidates = [1.2, 2.5].flatMap { radiusKm in
+      bearings.map { nativeOffsetCoordinate(origin, distanceKm: radiusKm, bearingDeg: $0) }
+    }
 
     // Sequential, not concurrent — MKLocalSearch (like CLGeocoder) cancels
     // overlapping requests, so parallel calls would silently drop results.
@@ -354,13 +363,16 @@ enum NativeAreaSuggester {
       if seenNames.insert(name.lowercased()).inserted {
         out.append((name: name, coordinate: coordinate, poiScore: count))
       }
-      if out.count >= 2 { break }
+      if out.count >= 3 { break }
     }
     return out
   }
 
+  // Wider than the 400m used for the daily-plan area namer (NativeAreaNamer)
+  // — a cold-start guess with only 16 sample points needs a bit more recall
+  // per point than a live geocode of somewhere the driver is already at.
   private static func poiCount(near coordinate: CLLocationCoordinate2D) async -> Int {
-    await nativeFoodPOICount(near: coordinate, radiusMeters: 400)
+    await nativeFoodPOICount(near: coordinate, radiusMeters: 550)
   }
 
   private static func areaName(for coordinate: CLLocationCoordinate2D) async -> String? {

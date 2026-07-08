@@ -59,6 +59,7 @@
 		EFB29A0C18DB58B2B7065BD1 /* NativeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F305144FBFF499D0171ED96C /* NativeModels.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F4D8AB70ABF84B06A1C6C4D9 /* NativeMileageReportPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451B572069C14D2C51AE89CD /* NativeMileageReportPdfRenderer.swift */; };
+		8540CB7EA9EC4BC3A7C6B0A1 /* NativeSelfAssessmentPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A6E3592E814AC8B1DC4329 /* NativeSelfAssessmentPdfRenderer.swift */; };
 		F6B402C87A82903782D1CC14 /* NativeInsightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C87F7A21DED00BFBC7794E /* NativeInsightModels.swift */; };
 		F6BD210B4BDE81D801BAAADC /* NativeOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E4AD8D685F34F5071DFB016 /* NativeOnboardingView.swift */; };
 		F8F483635DF782492C3978B9 /* NativeHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */; };
@@ -128,6 +129,7 @@
 		37E08F9C0CE14C3DB802356C /* NativeProgressSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProgressSummary.swift; sourceTree = "<group>"; };
 		38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHomeView.swift; sourceTree = "<group>"; };
 		451B572069C14D2C51AE89CD /* NativeMileageReportPdfRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeMileageReportPdfRenderer.swift; sourceTree = "<group>"; };
+		99A6E3592E814AC8B1DC4329 /* NativeSelfAssessmentPdfRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeSelfAssessmentPdfRenderer.swift; sourceTree = "<group>"; };
 		49A628D4BFD2B5C16D136B62 /* NativeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSupport.swift; sourceTree = "<group>"; };
 		4E4AD8D685F34F5071DFB016 /* NativeOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOnboardingView.swift; sourceTree = "<group>"; };
 		56C87F7A21DED00BFBC7794E /* NativeInsightModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightModels.swift; sourceTree = "<group>"; };
@@ -312,6 +314,7 @@
 				8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */,
 				6FCB2220388F7D57B4A3CEF3 /* NativePdfDocumentRenderer.swift */,
 				451B572069C14D2C51AE89CD /* NativeMileageReportPdfRenderer.swift */,
+				99A6E3592E814AC8B1DC4329 /* NativeSelfAssessmentPdfRenderer.swift */,
 				900E20793004ECB20E38A07A /* NativeTripAddressResolver.swift */,
 			);
 			path = Export;
@@ -673,6 +676,7 @@
 				764745A26CC7406DD271FCFA /* NativeLoggingReminder.swift in Sources */,
 				8AC319BFA10D96F07E2BAB00 /* NativePdfDocumentRenderer.swift in Sources */,
 				F4D8AB70ABF84B06A1C6C4D9 /* NativeMileageReportPdfRenderer.swift in Sources */,
+				8540CB7EA9EC4BC3A7C6B0A1 /* NativeSelfAssessmentPdfRenderer.swift in Sources */,
 				21561511FF97EDEF82EB30D4 /* NativeTripAddressResolver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
