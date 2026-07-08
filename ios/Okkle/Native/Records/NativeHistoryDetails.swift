@@ -26,8 +26,11 @@ struct NativeTripDetailSheet: View {
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var startAddress: String?
   @State private var endAddress: String?
+  @State private var stopPlaceNames: [UUID: String] = [:]
   @State private var homeCandidate: NativeTripHomeCandidate?
   @State private var didResolveRoute = false
+  @State private var selectedRouteStopID: UUID?
+  @State private var showingFullScreenRouteMap = false
 
   var body: some View {
     ZStack {
@@ -80,6 +83,13 @@ struct NativeTripDetailSheet: View {
     .task(id: trip.id) {
       await resolveRouteDetails()
     }
+    .fullScreenCover(isPresented: $showingFullScreenRouteMap) {
+      NativeTripRouteFullScreenMap(
+        points: trip.points,
+        stops: routeStops,
+        selectedStopID: $selectedRouteStopID
+      )
+    }
   }
 
   private var routeSection: some View {
@@ -89,13 +99,17 @@ struct NativeTripDetailSheet: View {
           .font(.system(size: 16, weight: .bold))
           .foregroundStyle(OkkleColor.ink)
 
-        NativeRouteMapView(points: trip.points, stops: routeStops)
-          .frame(height: 250)
-          .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-
-        tripDetailRow("Route points", value: "\(trip.points.count)", symbol: "point.3.connected.trianglepath.dotted")
-
-        Divider()
+        NativeRouteMapView(
+          points: trip.points,
+          stops: routeStops,
+          selectedStopID: $selectedRouteStopID
+        )
+        .frame(height: 250)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .onTapGesture {
+          showingFullScreenRouteMap = true
+        }
 
         VStack(alignment: .leading, spacing: 12) {
           if let startPoint {
@@ -110,7 +124,14 @@ struct NativeTripDetailSheet: View {
           }
 
           ForEach(numberedStops) { stop in
-            routeStopLocationRow(stop)
+            Button {
+              withAnimation(.easeInOut(duration: 0.18)) {
+                selectedRouteStopID = stop.id
+              }
+            } label: {
+              routeStopLocationRow(stop, isSelected: selectedRouteStopID == stop.id)
+            }
+            .buttonStyle(.plain)
           }
 
           if let endPoint {
@@ -213,8 +234,8 @@ struct NativeTripDetailSheet: View {
     }
   }
 
-  private func routeStopLocationRow(_ stop: NativeTripDetailStop) -> some View {
-    HStack(alignment: .top, spacing: 12) {
+  private func routeStopLocationRow(_ stop: NativeTripDetailStop, isSelected: Bool) -> some View {
+    HStack(alignment: .center, spacing: 12) {
       Text("\(stop.number)")
         .font(.system(size: 12, weight: .heavy, design: .rounded))
         .foregroundStyle(.white)
@@ -238,6 +259,12 @@ struct NativeTripDetailSheet: View {
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
+    .padding(.vertical, 6)
+    .padding(.horizontal, 8)
+    .background(
+      isSelected ? stopTint(for: stop.visit).opacity(0.10) : Color.clear,
+      in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+    )
   }
 
   private func tripDetailRow(_ title: String, value: String, symbol: String) -> some View {
@@ -270,9 +297,22 @@ struct NativeTripDetailSheet: View {
   }
 
   private func stopSubtitle(for visit: NativeVisit) -> String {
-    let place = visit.placeName ?? "Detected from movement"
+    let place = stopDisplayName(for: visit)
     let dwellMinutes = max(1, Int((visit.dwell / 60).rounded()))
     return "\(place) • \(dwellMinutes)m"
+  }
+
+  private func stopDisplayName(for visit: NativeVisit) -> String {
+    stopPlaceNames[visit.id] ?? meaningfulPlaceName(visit.placeName) ?? "Detected from movement"
+  }
+
+  private func meaningfulPlaceName(_ name: String?) -> String? {
+    guard let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !trimmed.isEmpty,
+          trimmed != "Detected from movement" else {
+      return nil
+    }
+    return trimmed
   }
 
   private func timeLabel(for date: Date) -> String {
@@ -317,14 +357,32 @@ struct NativeTripDetailSheet: View {
     var startResolved: String?
     var endResolved: String?
     if let startPoint {
-      startResolved = await Self.address(for: startPoint.coordinate)
+      if let existingAddress = trip.startAddress {
+        startResolved = existingAddress
+      } else {
+        startResolved = await Self.address(for: startPoint.coordinate)
+      }
       startAddress = startResolved
     }
     if let endPoint {
-      endResolved = await Self.address(for: endPoint.coordinate)
+      if let existingAddress = trip.endAddress {
+        endResolved = existingAddress
+      } else {
+        endResolved = await Self.address(for: endPoint.coordinate)
+      }
       endAddress = endResolved
     }
+    await resolveStopPlaceNames()
     detectHomeCandidate(startAddress: startResolved, endAddress: endResolved)
+  }
+
+  @MainActor
+  private func resolveStopPlaceNames() async {
+    for visit in stops where stopPlaceNames[visit.id] == nil {
+      if let name = await Self.placeName(for: visit.coordinate) {
+        stopPlaceNames[visit.id] = name
+      }
+    }
   }
 
   @MainActor
@@ -410,6 +468,74 @@ struct NativeTripDetailSheet: View {
     await withCheckedContinuation { continuation in
       CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
         continuation.resume(returning: placemarks?.first.flatMap(formattedAddress))
+      }
+    }
+  }
+
+  private static func placeName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    if let poi = await pointOfInterestName(for: coordinate) {
+      return poi
+    }
+    return await address(for: coordinate)
+  }
+
+  private static func pointOfInterestName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    if let categoryMatch = await categoryPointOfInterestName(for: coordinate) {
+      return categoryMatch
+    }
+    return await nearbyBusinessName(for: coordinate)
+  }
+
+  private static func categoryPointOfInterestName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    await withCheckedContinuation { continuation in
+      let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 160)
+      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [
+        .restaurant,
+        .cafe,
+        .bakery,
+        .foodMarket,
+        .pharmacy,
+        .laundry,
+        .publicTransport,
+        .parking
+      ])
+      MKLocalSearch(request: request).start { response, _ in
+        let items = response?.mapItems ?? []
+        let stop = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let nearest = items
+          .filter { ($0.name ?? "").isEmpty == false }
+          .min { lhs, rhs in
+            let lhsDistance = lhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+            let rhsDistance = rhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+            return lhsDistance < rhsDistance
+          }
+        let nearestDistance = nearest?.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+        continuation.resume(returning: nearestDistance <= 160 ? nearest?.name : nil)
+      }
+    }
+  }
+
+  private static func nearbyBusinessName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    await withCheckedContinuation { continuation in
+      let request = MKLocalSearch.Request()
+      request.naturalLanguageQuery = "restaurant cafe shop store"
+      request.region = MKCoordinateRegion(
+        center: coordinate,
+        latitudinalMeters: 260,
+        longitudinalMeters: 260
+      )
+      MKLocalSearch(request: request).start { response, _ in
+        let items = response?.mapItems ?? []
+        let stop = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let nearest = items
+          .filter { ($0.name ?? "").isEmpty == false }
+          .min { lhs, rhs in
+            let lhsDistance = lhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+            let rhsDistance = rhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+            return lhsDistance < rhsDistance
+          }
+        let nearestDistance = nearest?.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+        continuation.resume(returning: nearestDistance <= 160 ? nearest?.name : nil)
       }
     }
   }
@@ -534,6 +660,40 @@ private struct NativeTripDetailStop: Identifiable {
   let visit: NativeVisit
 
   var id: UUID { visit.id }
+}
+
+private struct NativeTripRouteFullScreenMap: View {
+  let points: [RoutePoint]
+  let stops: [NativeRouteMapStop]
+  @Binding var selectedStopID: UUID?
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    ZStack(alignment: .topTrailing) {
+      NativeRouteMapView(
+        points: points,
+        stops: stops,
+        showsEndMarker: true,
+        isInteractive: true,
+        selectedStopID: $selectedStopID
+      )
+      .ignoresSafeArea()
+
+      Button {
+        dismiss()
+      } label: {
+        Text("Done")
+          .font(.system(size: 17, weight: .bold))
+          .foregroundStyle(OkkleColor.brand)
+          .padding(.horizontal, 18)
+          .padding(.vertical, 12)
+          .background(.regularMaterial, in: Capsule())
+      }
+      .buttonStyle(.plain)
+      .padding(.top, 18)
+      .padding(.trailing, 18)
+    }
+  }
 }
 
 struct NativeRecordDetailSheet: View {
@@ -1041,15 +1201,6 @@ struct NativeTripEditSheet: View {
               .frame(height: 180)
               .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-            HStack {
-              Label("\(routePoints.count) points", systemImage: "point.3.connected.trianglepath.dotted")
-              Spacer()
-              Text(miles(routeMiles(from: routePoints)))
-                .fontWeight(.bold)
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
             ForEach(routeSegments) { segment in
               HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -1174,7 +1325,7 @@ struct NativeTripEditSheet: View {
   }
 
   private func routeSegmentSubtitle(_ segment: NativeTripRouteEditSegment) -> String {
-    "\(miles(segment.miles)) • \(segment.pointCount) route points"
+    miles(segment.miles)
   }
 
   private func routeFallbackName(for index: Int, segment: NativeTripRouteEditSegment) -> String {
@@ -1270,7 +1421,10 @@ struct NativeTripEditSheet: View {
   }
 
   private static func placeName(for coordinate: CLLocationCoordinate2D) async -> String? {
-    await withCheckedContinuation { continuation in
+    if let poi = await pointOfInterestName(for: coordinate) {
+      return poi
+    }
+    return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
       CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
         guard let placemark = placemarks?.first else {
           continuation.resume(returning: nil)
@@ -1285,6 +1439,67 @@ struct NativeTripEditSheet: View {
           .filter { !$0.isEmpty }
           .joined(separator: ", ")
         continuation.resume(returning: name.isEmpty ? nil : name)
+      }
+    }
+  }
+
+  private static func pointOfInterestName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    if let categoryMatch = await categoryPointOfInterestName(for: coordinate) {
+      return categoryMatch
+    }
+    return await nearbyBusinessName(for: coordinate)
+  }
+
+  private static func categoryPointOfInterestName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    await withCheckedContinuation { continuation in
+      let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 160)
+      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [
+        .restaurant,
+        .cafe,
+        .bakery,
+        .foodMarket,
+        .pharmacy,
+        .laundry,
+        .publicTransport,
+        .parking
+      ])
+      MKLocalSearch(request: request).start { response, _ in
+        let items = response?.mapItems ?? []
+        let stop = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let nearest = items
+          .filter { ($0.name ?? "").isEmpty == false }
+          .min { lhs, rhs in
+            let lhsDistance = lhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+            let rhsDistance = rhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+            return lhsDistance < rhsDistance
+          }
+        let nearestDistance = nearest?.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+        continuation.resume(returning: nearestDistance <= 160 ? nearest?.name : nil)
+      }
+    }
+  }
+
+  private static func nearbyBusinessName(for coordinate: CLLocationCoordinate2D) async -> String? {
+    await withCheckedContinuation { continuation in
+      let request = MKLocalSearch.Request()
+      request.naturalLanguageQuery = "restaurant cafe shop store"
+      request.region = MKCoordinateRegion(
+        center: coordinate,
+        latitudinalMeters: 260,
+        longitudinalMeters: 260
+      )
+      MKLocalSearch(request: request).start { response, _ in
+        let items = response?.mapItems ?? []
+        let stop = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let nearest = items
+          .filter { ($0.name ?? "").isEmpty == false }
+          .min { lhs, rhs in
+            let lhsDistance = lhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+            let rhsDistance = rhs.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+            return lhsDistance < rhsDistance
+          }
+        let nearestDistance = nearest?.placemark.location.map { $0.distance(from: stop) } ?? .greatestFiniteMagnitude
+        continuation.resume(returning: nearestDistance <= 160 ? nearest?.name : nil)
       }
     }
   }
@@ -1405,9 +1620,24 @@ struct NativeRouteMapView: UIViewRepresentable {
   var stops: [NativeRouteMapStop] = []
   var showsEndMarker = true
   var isInteractive = false
+  var selectedStopID: Binding<UUID?>
+
+  init(
+    points: [RoutePoint],
+    stops: [NativeRouteMapStop] = [],
+    showsEndMarker: Bool = true,
+    isInteractive: Bool = false,
+    selectedStopID: Binding<UUID?> = .constant(nil)
+  ) {
+    self.points = points
+    self.stops = stops
+    self.showsEndMarker = showsEndMarker
+    self.isInteractive = isInteractive
+    self.selectedStopID = selectedStopID
+  }
 
   func makeCoordinator() -> Coordinator {
-    Coordinator()
+    Coordinator(self)
   }
 
   func makeUIView(context: Context) -> MKMapView {
@@ -1421,10 +1651,9 @@ struct NativeRouteMapView: UIViewRepresentable {
   }
 
   func updateUIView(_ mapView: MKMapView, context: Context) {
+    context.coordinator.parent = self
     mapView.isUserInteractionEnabled = isInteractive
     mapView.showsScale = isInteractive
-    mapView.removeOverlays(mapView.overlays)
-    mapView.removeAnnotations(mapView.annotations)
 
     let coordinates = points.map(\.coordinate)
     guard let first = coordinates.first else {
@@ -1432,35 +1661,46 @@ struct NativeRouteMapView: UIViewRepresentable {
         center: CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276),
         span: MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
       ), animated: false)
+      context.coordinator.hasSetInitialRegion = true
       return
     }
 
-    mapView.addAnnotation(NativeRouteMapAnnotation(
-      coordinate: first,
-      title: "Start",
-      subtitle: nil,
-      kind: .start,
-      glyphText: nil
-    ))
+    let signature = dataSignature(coordinates: coordinates)
+    let shouldRebuildMap = context.coordinator.dataSignature != signature
+    if shouldRebuildMap {
+      context.coordinator.dataSignature = signature
+      context.coordinator.hasSetInitialRegion = false
+      mapView.removeOverlays(mapView.overlays)
+      mapView.removeAnnotations(mapView.annotations)
 
-    stops.forEach { stop in
       mapView.addAnnotation(NativeRouteMapAnnotation(
-        coordinate: stop.coordinate,
-        title: stop.title,
-        subtitle: stop.subtitle,
-        kind: NativeRouteMapAnnotation.Kind(stop.kind),
-        glyphText: stop.glyphText
+        coordinate: first,
+        title: "Start",
+        subtitle: nil,
+        kind: .start,
+        glyphText: nil,
+        stopID: nil
       ))
-    }
 
-    if let last = coordinates.last, coordinates.count > 1 {
-      if showsEndMarker {
+      stops.forEach { stop in
+        mapView.addAnnotation(NativeRouteMapAnnotation(
+          coordinate: stop.coordinate,
+          title: stop.title,
+          subtitle: stop.subtitle,
+          kind: NativeRouteMapAnnotation.Kind(stop.kind),
+          glyphText: stop.glyphText,
+          stopID: stop.id
+        ))
+      }
+
+      if let last = coordinates.last, coordinates.count > 1, showsEndMarker {
         mapView.addAnnotation(NativeRouteMapAnnotation(
           coordinate: last,
           title: "End",
           subtitle: nil,
           kind: .end,
-          glyphText: nil
+          glyphText: nil,
+          stopID: nil
         ))
       }
 
@@ -1469,13 +1709,48 @@ struct NativeRouteMapView: UIViewRepresentable {
         let polyline = MKPolyline(coordinates: run, count: run.count)
         mapView.addOverlay(polyline)
       }
+    }
+
+    if let selectedStopID = selectedStopID.wrappedValue,
+       let stop = stops.first(where: { $0.id == selectedStopID }) {
+      let selectedChanged = context.coordinator.selectedStopID != selectedStopID
+      context.coordinator.selectedStopID = selectedStopID
+      focus(mapView, on: stop, animated: selectedChanged)
+    } else if coordinates.count > 1, shouldRebuildMap || !context.coordinator.hasSetInitialRegion {
+      context.coordinator.selectedStopID = nil
       mapView.setVisibleMapRect(
         visibleMapRect(routeCoordinates: coordinates, stopCoordinates: stops.map(\.coordinate)),
         edgePadding: UIEdgeInsets(top: 38, left: 30, bottom: 38, right: 30),
         animated: false
       )
+      context.coordinator.hasSetInitialRegion = true
     } else {
-      mapView.setRegion(MKCoordinateRegion(center: first, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)), animated: false)
+      context.coordinator.selectedStopID = nil
+      if shouldRebuildMap || !context.coordinator.hasSetInitialRegion {
+        mapView.setRegion(MKCoordinateRegion(center: first, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)), animated: false)
+        context.coordinator.hasSetInitialRegion = true
+      }
+    }
+  }
+
+  private func dataSignature(coordinates: [CLLocationCoordinate2D]) -> String {
+    let first = coordinates.first.map { "\($0.latitude),\($0.longitude)" } ?? "none"
+    let last = coordinates.last.map { "\($0.latitude),\($0.longitude)" } ?? "none"
+    let stopIDs = stops.map(\.id.uuidString).joined(separator: ",")
+    return "\(coordinates.count)|\(first)|\(last)|\(showsEndMarker)|\(stopIDs)"
+  }
+
+  private func focus(_ mapView: MKMapView, on stop: NativeRouteMapStop, animated: Bool) {
+    mapView.setRegion(
+      MKCoordinateRegion(
+        center: stop.coordinate,
+        latitudinalMeters: 650,
+        longitudinalMeters: 650
+      ),
+      animated: animated
+    )
+    if let annotation = mapView.annotations.compactMap({ $0 as? NativeRouteMapAnnotation }).first(where: { $0.stopID == stop.id }) {
+      mapView.selectAnnotation(annotation, animated: animated)
     }
   }
 
@@ -1499,6 +1774,15 @@ struct NativeRouteMapView: UIViewRepresentable {
   }
 
   final class Coordinator: NSObject, MKMapViewDelegate {
+    var parent: NativeRouteMapView
+    var dataSignature: String?
+    var selectedStopID: UUID?
+    var hasSetInitialRegion = false
+
+    init(_ parent: NativeRouteMapView) {
+      self.parent = parent
+    }
+
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
       guard let polyline = overlay as? MKPolyline else {
         return MKOverlayRenderer(overlay: overlay)
@@ -1524,6 +1808,12 @@ struct NativeRouteMapView: UIViewRepresentable {
       view.glyphImage = annotation.glyphImage
       view.displayPriority = annotation.displayPriority
       return view
+    }
+
+    func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+      guard let annotation = view.annotation as? NativeRouteMapAnnotation,
+            let stopID = annotation.stopID else { return }
+      parent.selectedStopID.wrappedValue = stopID
     }
   }
 }
@@ -1553,13 +1843,15 @@ private final class NativeRouteMapAnnotation: NSObject, MKAnnotation {
   let subtitle: String?
   let kind: Kind
   let glyphText: String?
+  let stopID: UUID?
 
-  init(coordinate: CLLocationCoordinate2D, title: String?, subtitle: String?, kind: Kind, glyphText: String?) {
+  init(coordinate: CLLocationCoordinate2D, title: String?, subtitle: String?, kind: Kind, glyphText: String?, stopID: UUID?) {
     self.coordinate = coordinate
     self.title = title
     self.subtitle = subtitle
     self.kind = kind
     self.glyphText = glyphText
+    self.stopID = stopID
   }
 
   var markerTintColor: UIColor {
