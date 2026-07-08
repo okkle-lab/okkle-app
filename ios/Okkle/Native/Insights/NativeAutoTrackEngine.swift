@@ -169,7 +169,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// day, and hand the outcome to the tracker. Entirely silent — this never
   /// shows anything, it just quietly keeps the confidence label honest.
   private func checkOutcome(for record: NativeRecord) {
-    guard record.kind == .income, let amount = record.amount, let store else { return }
+    guard record.isInsightRecommendationIncome, let amount = record.amount, let store else { return }
     let insights = NativeShiftInsights.build(visits: visits, store: store)
 
     // Every weekday this record's own period actually spans — a "Week" entry
@@ -681,7 +681,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     guard let store else { return }
     let today = Calendar.current.startOfDay(for: visit.arrival)
     let dayIncome = store.records
-      .filter { $0.kind == .income && Calendar.current.isDate($0.date, inSameDayAs: today) }
+      .filter { $0.isInsightRecommendationIncome && Calendar.current.isDate($0.date, inSameDayAs: today) }
       .reduce(0.0) { $0 + ($1.amount ?? 0) }
     NativeExploreCandidateStore.shared.recordVisit(visit.coordinate, dayIncome: dayIncome)
 

@@ -13,6 +13,7 @@
 		19005EB983B81A24C63B8DD3 /* NativeWeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E0E24C7F9927CA1A494C91C /* NativeWeatherService.swift */; };
 		209F3359ED511A0BC9D64DB7 /* NativeInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */; };
 		21561511FF97EDEF82EB30D4 /* NativeTripAddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900E20793004ECB20E38A07A /* NativeTripAddressResolver.swift */; };
+		294BFB88C50249CE9FC1B977 /* NativeInsightNarrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91FC845F47E44BA4A2CE60F2 /* NativeInsightNarrator.swift */; };
 		343A8C0342A9A5D0710B2970 /* TaxCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 304A0809B3D20910AAEAA20C /* TaxCalculatorTests.swift */; };
 		37E08F9D0CE14C3DB802356D /* NativeProgressSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37E08F9C0CE14C3DB802356C /* NativeProgressSummary.swift */; };
 		3ACB078A0E440BE440FC023F /* OkkleNativeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7840FA4691610C5A1ECDBB5B /* OkkleNativeRootView.swift */; };
@@ -147,6 +148,7 @@
 		8DAE2D16EF49CF415577E154 /* NativeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSettingsView.swift; sourceTree = "<group>"; };
 		8E0E24C7F9927CA1A494C91C /* NativeWeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWeatherService.swift; sourceTree = "<group>"; };
 		900E20793004ECB20E38A07A /* NativeTripAddressResolver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeTripAddressResolver.swift; sourceTree = "<group>"; };
+		91FC845F47E44BA4A2CE60F2 /* NativeInsightNarrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightNarrator.swift; sourceTree = "<group>"; };
 		99F6F33FCC220B2D976D3CAA /* NativeInsightArea.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightArea.swift; sourceTree = "<group>"; };
 		9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSession.swift; sourceTree = "<group>"; };
 		9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacySQLiteExporter.swift; sourceTree = "<group>"; };
@@ -218,6 +220,7 @@
 			children = (
 				7D09974F3913FC9F20D5C278 /* NativeInsightsView.swift */,
 				56C87F7A21DED00BFBC7794E /* NativeInsightModels.swift */,
+				91FC845F47E44BA4A2CE60F2 /* NativeInsightNarrator.swift */,
 				99F6F33FCC220B2D976D3CAA /* NativeInsightArea.swift */,
 				8E0E24C7F9927CA1A494C91C /* NativeWeatherService.swift */,
 				AAA72D617231D3C6717321E0 /* NativeShiftMap.swift */,
@@ -660,6 +663,7 @@
 				CF15ED97A8AEDE5D3D61ABA2 /* NativeHistoryDetails.swift in Sources */,
 				209F3359ED511A0BC9D64DB7 /* NativeInsightsView.swift in Sources */,
 				F6B402C87A82903782D1CC14 /* NativeInsightModels.swift in Sources */,
+				294BFB88C50249CE9FC1B977 /* NativeInsightNarrator.swift in Sources */,
 				E454F93F40BE326A60E93295 /* NativeInsightArea.swift in Sources */,
 				19005EB983B81A24C63B8DD3 /* NativeWeatherService.swift in Sources */,
 				D064A003845AB92AD0D13D5F /* NativeShiftMap.swift in Sources */,

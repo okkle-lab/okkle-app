@@ -190,6 +190,28 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   // for trips saved before this existed.
   var startAddress: String? = nil
   var endAddress: String? = nil
+  var feedback: NativeTripFeedback? = nil
+}
+
+enum NativeTripFeedback: String, CaseIterable, Identifiable, Codable {
+  case good
+  case bad
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .good: return "Good"
+    case .bad: return "Bad"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .good: return "hand.thumbsup.fill"
+    case .bad: return "hand.thumbsdown.fill"
+    }
+  }
 }
 
 enum NativePayPeriod: String, CaseIterable, Identifiable, Codable {

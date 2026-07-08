@@ -85,6 +85,7 @@ enum NativeLegacySQLiteExporter {
         started_at TEXT NOT NULL,
         ended_at TEXT NOT NULL,
         route_json TEXT,
+        feedback TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       );
 
@@ -117,6 +118,7 @@ enum NativeLegacySQLiteExporter {
       addColumnIfMissing("reminder_day TEXT DEFAULT 'sun'", named: "reminder_day", to: "user", in: db) &&
       addColumnIfMissing("log_frequency TEXT DEFAULT 'weekly'", named: "log_frequency", to: "user", in: db) &&
       addColumnIfMissing("zone TEXT", named: "zone", to: "trips", in: db) &&
+      addColumnIfMissing("feedback TEXT", named: "feedback", to: "trips", in: db) &&
       addColumnIfMissing("vehicles TEXT", named: "vehicles", to: "user", in: db) &&
       addColumnIfMissing("vehicle TEXT", named: "vehicle", to: "records", in: db)
   }
@@ -169,8 +171,8 @@ enum NativeLegacySQLiteExporter {
     for trip in trips.sorted(by: { $0.startedAt < $1.startedAt }) {
       let ok = withStatement(
         """
-        INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at, route_json, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?)
+        INSERT INTO trips (platform, vehicle, miles, deduction, earnings, started_at, ended_at, route_json, feedback, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
         """,
         in: db
       ) { statement in
@@ -182,7 +184,8 @@ enum NativeLegacySQLiteExporter {
         bindText(legacyDateTime(trip.startedAt), at: 6, in: statement)
         bindText(legacyDateTime(trip.endedAt), at: 7, in: statement)
         bindNullableText(routeJSON(trip.points), at: 8, in: statement)
-        bindText(legacyDateTime(trip.startedAt), at: 9, in: statement)
+        bindNullableText(trip.feedback?.rawValue, at: 9, in: statement)
+        bindText(legacyDateTime(trip.startedAt), at: 10, in: statement)
         return sqlite3_step(statement) == SQLITE_DONE
       }
       guard ok else { return false }

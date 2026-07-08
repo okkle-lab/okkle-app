@@ -79,7 +79,8 @@ enum NativeLegacyBackupImporter {
       deduction: storedDeduction > 0 ? storedDeduction : calculatedDeduction(miles: miles, vehicle: tripVehicle, date: startedAt),
       startedAt: startedAt,
       endedAt: date(row["ended_at"]) ?? startedAt,
-      points: routePoints(from: string(row["route_json"]))
+      points: routePoints(from: string(row["route_json"])),
+      feedback: string(row["feedback"]).flatMap(NativeTripFeedback.init(rawValue:))
     )
   }
 
