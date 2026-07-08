@@ -55,11 +55,7 @@ struct NativeTaxDetailView: View {
 
   @ViewBuilder
   private func priorityBanner(savings: NativeMileageTaxSavings) -> some View {
-    if let deadline = upcomingDeadline {
-      NativeTaxDeadlineBanner(deadline: deadline.deadline, days: deadline.days) {
-        showsDeadlines = true
-      }
-    } else if shouldShowMileageBandNudge {
+    if shouldShowMileageBandNudge {
       NativeTaxMileageNudge(miles: savings.miles)
     }
   }
@@ -70,13 +66,6 @@ struct NativeTaxDetailView: View {
       && store.yearMiles < 10_000
   }
 
-  private var upcomingDeadline: (deadline: NativeTaxDeadline, days: Int)? {
-    nativeTaxDeadlines
-      .map { deadline in (deadline: deadline, days: nativeDaysUntil(deadline.nextOccurrence())) }
-      .filter { $0.days >= 0 && $0.days <= 30 }
-      .sorted { $0.days < $1.days }
-      .first
-  }
 }
 
 private enum NativeTaxOverviewDetail: String, Identifiable {
@@ -95,32 +84,6 @@ private enum NativeTaxOverviewDetail: String, Identifiable {
     case .year:
       return "This year"
     }
-  }
-}
-
-private struct NativeTaxDeadlineBanner: View {
-  let deadline: NativeTaxDeadline
-  let days: Int
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: 10) {
-        Image(systemName: "calendar")
-          .font(.system(size: 14, weight: .bold))
-        Text(days == 0 ? "\(deadline.title) is today" : "\(days) days to \(deadline.title.lowercased())")
-          .font(.system(size: 14, weight: .bold))
-          .lineLimit(2)
-        Spacer(minLength: 8)
-        Image(systemName: "chevron.right")
-          .font(.system(size: 12, weight: .bold))
-      }
-      .foregroundStyle(OkkleColor.amber)
-      .padding(.horizontal, 14)
-      .padding(.vertical, 10)
-      .background(OkkleColor.amber.opacity(0.14), in: Capsule())
-    }
-    .buttonStyle(.plain)
   }
 }
 

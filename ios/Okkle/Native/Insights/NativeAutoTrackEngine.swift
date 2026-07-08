@@ -71,7 +71,11 @@ enum NativeVehicleConnectionMonitor {
   private static var carPlayConnected = false
 
   static func setCarPlayConnected(_ connected: Bool) {
+    let changed = carPlayConnected != connected
     carPlayConnected = connected
+    if changed {
+      NotificationCenter.default.post(name: .nativeVehicleConnectionDidChange, object: nil)
+    }
   }
 
   static var isLikelyConnectedToVehicle: Bool {
@@ -90,6 +94,10 @@ enum NativeVehicleConnectionMonitor {
   }
 }
 
+extension Notification.Name {
+  static let nativeVehicleConnectionDidChange = Notification.Name("uk.okkle.native.vehicleConnectionDidChange")
+}
+
 @MainActor
 final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
   static let shared = NativeAutoTrackEngine()
@@ -101,6 +109,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   @Published private(set) var liveShiftMiles: Double = 0
   @Published private(set) var liveShiftStartedAt: Date?
   @Published private(set) var liveShiftPoints: [RoutePoint] = []
+  @Published private(set) var liveShiftUsesEnhancedTracking = false
 
   private let manager = CLLocationManager()
   private let motionManager = CMMotionActivityManager()
@@ -121,9 +130,16 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private var shiftLastLocation: CLLocation?
   private var shiftLastRoutePointLocation: CLLocation?
   private var shiftSawVehicleConnection = false
+  private var shiftArmedForHomeArrival = false
   private let routePointDistance: CLLocationDistance = 30
+  private let drivingDistanceFilter: CLLocationDistance = 20
+  private let stationaryDistanceFilter: CLLocationDistance = 150
+  private let stationaryResumeDistance: CLLocationDistance = 150
   private let minimumConfidentStopDwell: TimeInterval = 90
   private let minimumConnectedVehicleStopDwell: TimeInterval = 4 * 60
+  private let homeArrivalRadius: CLLocationDistance = 120
+  private let homeDepartureRadius: CLLocationDistance = 220
+  private var vehicleConnectionObservers: [NSObjectProtocol] = []
 
   // A stop currently being timed — may resolve into a logged visit (driving
   // resumes) or trigger shift-end (the stationary timer expires).
@@ -134,10 +150,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   override init() {
     super.init()
     manager.delegate = self
-    manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-    manager.distanceFilter = 20
     manager.activityType = .automotiveNavigation
-    manager.pausesLocationUpdatesAutomatically = false
+    configureLocationForDriving()
     motionQueue.name = "uk.okkle.native.auto-track-motion"
     motionQueue.qualityOfService = .utility
     load()
@@ -146,6 +160,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   func configure(store: OkkleStore) {
     self.store = store
     store.onRecordAdded = { [weak self] record in self?.checkOutcome(for: record) }
+    startVehicleConnectionMonitoring()
     refresh()
   }
 
@@ -205,6 +220,9 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
           nativeIsWorkingDay(Date(), settings: settings) else {
       stopMonitoring()
       return
+    }
+    if shiftPhase != .idle {
+      publishLiveShift()
     }
     startMotionMonitoring()
     if manager.authorizationStatus == .notDetermined {
@@ -280,6 +298,9 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftPhase = .stationaryPending
     stationarySince = Date()
     stationaryCoordinate = shiftLastLocation?.coordinate
+    configureLocationForStationaryWaiting()
+    if let shiftLastLocation, concludeShiftIfArrivedHome(at: shiftLastLocation) { return }
+    if concludeShiftIfVehicleDisconnected() { return }
     scheduleStationaryTimeout()
   }
 
@@ -300,9 +321,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftStartNotified = false
     shiftLastLocation = nil
     shiftLastRoutePointLocation = nil
-    shiftSawVehicleConnection = NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
+    shiftSawVehicleConnection = enhancedAutoTrackingEnabled && NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
+    shiftArmedForHomeArrival = false
     liveShiftVehicle = store?.settings.defaultVehicle ?? .car
     publishLiveShift()
+    configureLocationForDriving()
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
   }
@@ -315,6 +338,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationaryCoordinate = nil
     shiftPhase = .paused
     manager.stopUpdatingLocation()
+    manager.stopMonitoringSignificantLocationChanges()
     setBackgroundTrackingEnabled(false)
     publishLiveShift()
   }
@@ -322,6 +346,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   func resumeCurrentShift() {
     guard shiftPhase == .paused else { return }
     shiftPhase = .driving
+    configureLocationForDriving()
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     publishLiveShift()
@@ -340,6 +365,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationaryTimer?.invalidate()
     stationaryTimer = nil
     shiftPhase = .driving
+    configureLocationForDriving()
+    manager.startUpdatingLocation()
   }
 
   /// The stationary timer expired (or tracking got turned off mid-shift) —
@@ -349,6 +376,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     finalizePendingStop()
     saveShiftAsTrip()
     manager.stopUpdatingLocation()
+    manager.stopMonitoringSignificantLocationChanges()
     setBackgroundTrackingEnabled(false)
     stationaryTimer?.invalidate()
     stationaryTimer = nil
@@ -360,17 +388,46 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftLastLocation = nil
     shiftLastRoutePointLocation = nil
     shiftSawVehicleConnection = false
+    shiftArmedForHomeArrival = false
     stationarySince = nil
     stationaryCoordinate = nil
     publishLiveShift()
+  }
+
+  private func startVehicleConnectionMonitoring() {
+    guard vehicleConnectionObservers.isEmpty else { return }
+    let center = NotificationCenter.default
+    vehicleConnectionObservers = [
+      center.addObserver(forName: .nativeVehicleConnectionDidChange, object: nil, queue: .main) { [weak self] _ in
+        Task { @MainActor in self?.handleVehicleConnectionChanged() }
+      },
+      center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+        Task { @MainActor in self?.handleVehicleConnectionChanged() }
+      },
+    ]
+  }
+
+  private func handleVehicleConnectionChanged() {
+    guard enhancedAutoTrackingEnabled, shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
+    if NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle {
+      shiftSawVehicleConnection = true
+      publishLiveShift()
+    } else {
+      _ = concludeShiftIfVehicleDisconnected()
+    }
   }
 
   // MARK: Continuous route recording (mirrors NativeTripSession's approach)
 
   private func handleShiftLocationUpdates(_ locations: [CLLocation]) {
     guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
-    shiftSawVehicleConnection = shiftSawVehicleConnection || NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
+    if enhancedAutoTrackingEnabled {
+      shiftSawVehicleConnection = shiftSawVehicleConnection || NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
+    }
     for location in locations where shouldUseShiftLocation(location) {
+      if shiftPhase == .stationaryPending, shouldResumeFromStationaryLocation(location) {
+        resumeShift()
+      }
       if let shiftLastLocation {
         let delta = location.distance(from: shiftLastLocation) / 1_609.344
         if delta > 0.002 && delta < 1 { shiftMiles += delta }
@@ -378,6 +435,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       shiftLastLocation = location
       appendShiftRoutePoint(for: location)
       if shiftPhase == .stationaryPending { stationaryCoordinate = location.coordinate }
+      if concludeShiftIfArrivedHome(at: location) { return }
+      if concludeShiftIfVehicleDisconnected() { return }
     }
     // Tell the driver recording has started — but only once the shift shows
     // real recorded distance, not on the raw driving signal. A bus ride or a
@@ -394,6 +453,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     liveShiftMiles = shiftMiles
     liveShiftStartedAt = shiftStartedAt
     liveShiftPoints = shiftPoints
+    liveShiftUsesEnhancedTracking = enhancedAutoTrackingEnabled && shiftSawVehicleConnection
   }
 
   private func shouldUseShiftLocation(_ location: CLLocation) -> Bool {
@@ -410,10 +470,65 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftLastRoutePointLocation = location
   }
 
+  private func configureLocationForDriving() {
+    manager.stopMonitoringSignificantLocationChanges()
+    manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+    manager.distanceFilter = drivingDistanceFilter
+    manager.pausesLocationUpdatesAutomatically = false
+  }
+
+  private func configureLocationForStationaryWaiting() {
+    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    manager.distanceFilter = stationaryDistanceFilter
+    manager.pausesLocationUpdatesAutomatically = true
+    manager.stopUpdatingLocation()
+    manager.startMonitoringSignificantLocationChanges()
+  }
+
   private func setBackgroundTrackingEnabled(_ enabled: Bool) {
     guard supportsBackgroundLocation else { return }
     manager.allowsBackgroundLocationUpdates = enabled
     manager.showsBackgroundLocationIndicator = enabled
+  }
+
+  private func shouldResumeFromStationaryLocation(_ location: CLLocation) -> Bool {
+    guard let stationaryCoordinate else { return false }
+    let stationaryLocation = CLLocation(latitude: stationaryCoordinate.latitude, longitude: stationaryCoordinate.longitude)
+    return location.distance(from: stationaryLocation) >= stationaryResumeDistance
+  }
+
+  private func concludeShiftIfVehicleDisconnected() -> Bool {
+    guard enhancedAutoTrackingEnabled else { return false }
+    guard shiftSawVehicleConnection, !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle else { return false }
+    concludeShift()
+    return true
+  }
+
+  private func concludeShiftIfArrivedHome(at location: CLLocation) -> Bool {
+    guard enhancedAutoTrackingEnabled else { return false }
+    guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return false }
+    let homes = selectedHomeLocations
+    guard !homes.isEmpty else { return false }
+    let nearestHomeDistance = homes.map { location.distance(from: $0) }.min() ?? .greatestFiniteMagnitude
+    if nearestHomeDistance > homeDepartureRadius {
+      shiftArmedForHomeArrival = true
+      return false
+    }
+    guard shiftArmedForHomeArrival, nearestHomeDistance <= homeArrivalRadius else { return false }
+    concludeShift()
+    return true
+  }
+
+  private var selectedHomeLocations: [CLLocation] {
+    guard let store else { return [] }
+    return store.settings.excludedPlaces
+      .filter { $0.label.range(of: "home", options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+      .map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+  }
+
+  private var enhancedAutoTrackingEnabled: Bool {
+    guard let settings = store?.settings else { return true }
+    return settings.autoTrackTrips && settings.enhancedAutoTracking
   }
 
   private var supportsBackgroundLocation: Bool {

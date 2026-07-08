@@ -474,7 +474,7 @@ struct NativeTripView: View {
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(trackingStatusColor)
           if isAutomaticTrackingVisible {
-            Text(autoTrack.shiftPhase == .paused ? "Paused by you. Resume when you're ready." : "Based on movement and work schedule.")
+            Text(automaticTrackingDetail)
               .font(.system(size: 12, weight: .semibold))
               .foregroundStyle(trackingSecondaryText)
               .fixedSize(horizontal: false, vertical: true)
@@ -668,6 +668,10 @@ struct NativeTripView: View {
         return ("pause.fill", OkkleColor.blue, "Auto trip paused",
                 "Resume when you're back on the road.")
       }
+      if autoTrack.liveShiftUsesEnhancedTracking {
+        return ("car.fill", OkkleColor.brand, "Enhanced automatic tracking",
+                "Ends when your car disconnects or you arrive home.")
+      }
       return ("location.north.line.fill", OkkleColor.brand, "Automatically tracking",
               "Based on movement and work schedule.")
     }
@@ -747,6 +751,9 @@ struct NativeTripView: View {
       if autoTrack.shiftPhase == .paused {
         return "Auto trip paused"
       }
+      if autoTrack.liveShiftUsesEnhancedTracking {
+        return "Enhanced automatic tracking"
+      }
       return "Automatically tracking"
     }
     switch session.phase {
@@ -763,6 +770,9 @@ struct NativeTripView: View {
     if isAutomaticTrackingVisible {
       if autoTrack.shiftPhase == .stationaryPending || autoTrack.shiftPhase == .paused {
         return "pause.circle.fill"
+      }
+      if autoTrack.liveShiftUsesEnhancedTracking {
+        return "car.fill"
       }
       return "location.north.line.fill"
     }
@@ -781,6 +791,16 @@ struct NativeTripView: View {
       return autoTrack.shiftPhase == .paused ? OkkleColor.blue : OkkleColor.brand
     }
     return session.phase == .paused ? OkkleColor.blue : OkkleColor.brand
+  }
+
+  private var automaticTrackingDetail: String {
+    if autoTrack.shiftPhase == .paused {
+      return "Paused by you. Resume when you're ready."
+    }
+    if autoTrack.liveShiftUsesEnhancedTracking {
+      return "Ends when your car disconnects or you arrive home."
+    }
+    return "Based on movement and work schedule."
   }
 
   private var trackingGlassMaterial: Material {

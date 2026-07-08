@@ -138,10 +138,9 @@ struct NativeSettingsView: View {
         }
 
         Section {
-          menuRow("Tax settings") { NativeTaxSettingsView() }
+          menuRow("Tax profile") { NativeTaxSettingsView() }
           menuRow("Automatic tracking") { NativeAutoTrackSettingsView() }
-          menuRow("Siri & Shortcuts") { NativeSiriSettingsView() }
-          menuRow("Reminders") { NativeRemindersSettingsView() }
+          menuRow("Insights and Reminders") { NativeInsightsSettingsView() }
           menuRow("Export & share") { NativeExportSettingsView() }
         } header: {
           Text("Settings")
@@ -278,7 +277,7 @@ struct NativeTaxSettingsView: View {
         Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
       }
     }
-    .navigationTitle("Tax settings")
+    .navigationTitle("Tax profile")
     .navigationBarTitleDisplayMode(.inline)
   }
 }
@@ -293,7 +292,12 @@ struct NativeAutoTrackSettingsView: View {
       Section {
         Toggle("Automatic trip tracking", isOn: Binding(
           get: { store.settings.autoTrackTrips },
-          set: { store.settings.autoTrackTrips = $0 }
+          set: { enabled in
+            store.settings.autoTrackTrips = enabled
+            if enabled {
+              store.settings.enhancedAutoTracking = true
+            }
+          }
         ))
 
         if store.settings.autoTrackTrips {
@@ -308,15 +312,13 @@ struct NativeAutoTrackSettingsView: View {
 
       if store.settings.autoTrackTrips {
         Section {
-          Toggle("Pre-shift heads-up", isOn: Binding(
-            get: { store.settings.preShiftAlerts },
-            set: { store.settings.preShiftAlerts = $0 }
+          Toggle("Enhanced automatic tracking", isOn: Binding(
+            get: { store.settings.enhancedAutoTracking },
+            set: { store.settings.enhancedAutoTracking = $0 }
           ))
         } footer: {
-          Text("A notification about an hour before your busy window starts, telling you when and roughly where to head — plus a nudge on your classic big nights.")
+          Text("Improves automatic trip accuracy by using CarPlay and car Bluetooth signals, so Okkle can end trips sooner when your car disconnects.")
         }
-
-        NativeExcludedPlacesSection()
       }
 
       Section {
@@ -329,8 +331,103 @@ struct NativeAutoTrackSettingsView: View {
       } footer: {
         Text("When a trip you started by hand has been stationary for a while, Okkle can save it automatically instead of asking you to end it.")
       }
+
+      if store.settings.autoTrackTrips {
+        NativeExcludedPlacesSection()
+      }
     }
     .navigationTitle("Automatic tracking")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+// MARK: Insights
+
+struct NativeInsightsSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
+  var body: some View {
+    Form {
+      Section {
+        Toggle("Insights", isOn: Binding(
+          get: { store.settings.insightsEnabled },
+          set: { store.settings.insightsEnabled = $0 }
+        ))
+      } header: {
+        Text("AI insights")
+      } footer: {
+        Text("Shows AI guidance in the Insights tab using your trips and records.")
+      }
+
+      Section {
+        Toggle("Pre-shift heads-up", isOn: Binding(
+          get: { store.settings.insightsEnabled && store.settings.autoTrackTrips && store.settings.preShiftAlerts },
+          set: { enabled in
+            guard store.settings.insightsEnabled, store.settings.autoTrackTrips else { return }
+            store.settings.preShiftAlerts = enabled
+          }
+        ))
+        .disabled(!store.settings.insightsEnabled || !store.settings.autoTrackTrips)
+        .opacity(store.settings.insightsEnabled && store.settings.autoTrackTrips ? 1 : 0.48)
+
+        Toggle("Logging reminder", isOn: Binding(
+          get: { store.settings.loggingReminder },
+          set: { store.settings.loggingReminder = $0 }
+        ))
+
+        if store.settings.loggingReminder {
+          Picker("Frequency", selection: Binding(
+            get: { store.settings.logFrequency },
+            set: { store.settings.logFrequency = $0 }
+          )) {
+            ForEach(NativeLogFrequency.allCases) { frequency in
+              Text(frequency.label).tag(frequency)
+            }
+          }
+
+          Picker("Reminder day", selection: Binding(
+            get: { store.settings.reminderDay },
+            set: { store.settings.reminderDay = $0 }
+          )) {
+            ForEach(0..<Calendar.current.shortWeekdaySymbols.count, id: \.self) { index in
+              Text(Calendar.current.shortWeekdaySymbols[index]).tag(index)
+            }
+          }
+        }
+
+        Toggle("Tax deadline reminders", isOn: Binding(
+          get: { store.settings.taxDeadlineReminders },
+          set: { store.settings.taxDeadlineReminders = $0 }
+        ))
+      } header: {
+        Text("Insight notifications")
+      } footer: {
+        Text(!store.settings.insightsEnabled
+             ? "Turn on Insights to use pre-shift heads-up suggestions."
+             : store.settings.autoTrackTrips
+             ? "Pre-shift heads-up uses your trip patterns to suggest when and roughly where to head. Logging and tax reminders keep the data behind Insights fresh."
+             : "Turn on automatic trip tracking to use pre-shift heads-up suggestions.")
+      }
+
+      Section {
+        Toggle("Siri trip tracking", isOn: Binding(
+          get: { store.settings.siriTripTrackingEnabled },
+          set: { store.settings.siriTripTrackingEnabled = $0 }
+        ))
+      } header: {
+        Text("Voice automation")
+      } footer: {
+        Text("Allow Siri and Shortcuts to start or resume trip tracking with your default vehicle.")
+      }
+
+      Section {
+        Label("Hey Siri, track this trip with Okkle", systemImage: "quote.bubble")
+        Label("Hey Siri, start tracking this trip with Okkle", systemImage: "quote.bubble")
+      } header: {
+        Text("Example phrases")
+      }
+    }
+    .navigationTitle("Insights and Reminders")
     .navigationBarTitleDisplayMode(.inline)
   }
 }

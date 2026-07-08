@@ -80,10 +80,17 @@ struct OkkleNativeRootView: View {
           .environmentObject(store)
       }
     }
-    .onChange(of: store.settings.autoTrackTrips) { _ in
+    .onChange(of: store.settings.autoTrackTrips) { enabled in
+      if enabled, !store.settings.enhancedAutoTracking {
+        store.settings.enhancedAutoTracking = true
+      }
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
       NativeLoggingReminder.refresh(store: store)
+      store.refreshICloudSyncIfNeeded()
+    }
+    .onChange(of: store.settings.enhancedAutoTracking) { _ in
+      NativeAutoTrackEngine.shared.refresh()
       store.refreshICloudSyncIfNeeded()
     }
     .onChange(of: store.settings.workingDays) { _ in
@@ -91,6 +98,9 @@ struct OkkleNativeRootView: View {
       NativePreShiftNotifier.refresh(store: store)
     }
     .onChange(of: store.settings.preShiftAlerts) { _ in
+      NativePreShiftNotifier.refresh(store: store)
+    }
+    .onChange(of: store.settings.insightsEnabled) { _ in
       NativePreShiftNotifier.refresh(store: store)
     }
     .onChange(of: store.settings.loggingReminder) { _ in
