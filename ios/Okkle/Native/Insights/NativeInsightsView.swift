@@ -74,6 +74,7 @@ struct NativeShiftPatternsCard: View {
   @Binding var autoTrackTrips: Bool
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var exploreCandidates = NativeExploreCandidateStore.shared
+  @Environment(\.openURL) private var openURL
   @State private var period: NativeInsightPeriod = .today
   @State private var pageHeights: [NativeInsightPeriod: CGFloat] = [:]
 
@@ -276,24 +277,40 @@ struct NativeShiftPatternsCard: View {
   /// not generic advice, but it's still unproven, so it says so rather than
   /// borrowing the confidence of an earned recommendation.
   private func tentativeZoneRow(_ candidate: NativeExploreCandidate) -> some View {
-    HStack(spacing: 12) {
-      Image(systemName: "sparkle.magnifyingglass")
-        .font(.system(size: 16, weight: .semibold))
-        .foregroundStyle(OkkleColor.muted)
-        .frame(width: 24)
-      VStack(alignment: .leading, spacing: 1) {
-        Text("Worth trying: \(candidate.name)")
-          .font(.system(size: 15, weight: .semibold))
-          .foregroundStyle(OkkleColor.ink)
-        Text("Restaurant-dense nearby — unproven, not from your own data yet")
-          .font(.system(size: 13, weight: .medium))
+    Button {
+      openInMaps(candidate)
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: "sparkle.magnifyingglass")
+          .font(.system(size: 16, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+          .frame(width: 24)
+        VStack(alignment: .leading, spacing: 1) {
+          Text("Worth trying: \(candidate.name)")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(OkkleColor.ink)
+          Text("Restaurant-dense nearby — unproven, not from your own data yet")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+        }
+        Spacer(minLength: 0)
+        Image(systemName: "arrow.up.right")
+          .font(.system(size: 12, weight: .bold))
           .foregroundStyle(OkkleColor.muted)
       }
-      Spacer(minLength: 0)
+      .padding(.vertical, 10)
+      .padding(.horizontal, 10)
+      .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
-    .padding(.vertical, 10)
-    .padding(.horizontal, 10)
-    .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .buttonStyle(.plain)
+  }
+
+  /// Hands the candidate straight to Apple Maps rather than trying to build
+  /// any in-app map view — the driver just wants directions.
+  private func openInMaps(_ candidate: NativeExploreCandidate) {
+    let query = candidate.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? candidate.name
+    guard let url = URL(string: "https://maps.apple.com/?ll=\(candidate.latitude),\(candidate.longitude)&q=\(query)") else { return }
+    openURL(url)
   }
 
   private func baselineRow(_ symbol: String, _ title: String, _ sub: String, _ divider: Bool) -> some View {

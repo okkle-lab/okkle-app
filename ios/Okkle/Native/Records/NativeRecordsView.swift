@@ -818,4 +818,20 @@ enum NativeTaxExportGroup: CaseIterable {
     case .rawData: return "Raw data"
     }
   }
+
+  var subtitle: String {
+    switch self {
+    case .accountant: return "PDF pack or Self Assessment summary"
+    case .mileage: return "PDF report or HMRC CSV log"
+    case .rawData: return "FreeAgent or full CSV export"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .accountant: return "doc.richtext.fill"
+    case .mileage: return "map.fill"
+    case .rawData: return "externaldrive.fill"
+    }
+  }
 }

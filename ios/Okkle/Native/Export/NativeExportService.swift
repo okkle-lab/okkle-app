@@ -3,6 +3,9 @@ struct NativeExportCard: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var shareItem: NativeShareItem?
   @State private var exportFailed = false
+  // One row per group, format choice on tap, rather than a fixed row per
+  // file kind — same six exports, a third of the list to scan.
+  @State private var pendingGroup: NativeTaxExportGroup?
 
   var body: some View {
     NativeGlassCard(cornerRadius: 30) {
@@ -11,27 +14,25 @@ struct NativeExportCard: View {
           .font(.system(size: 24, weight: .heavy, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
 
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
           ForEach(NativeTaxExportGroup.allCases, id: \.self) { group in
-            let kinds = NativeTaxExportKind.allCases.filter { $0.group == group }
-            VStack(alignment: .leading, spacing: 4) {
-              Text(group.title)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(OkkleColor.muted)
-                .padding(.leading, 2)
-
-              VStack(spacing: 0) {
-                ForEach(kinds) { kind in
-                  exportRow(kind)
-                  if kind != kinds.last {
-                    Divider().padding(.leading, 50)
-                  }
-                }
-              }
+            groupRow(group)
+            if group != NativeTaxExportGroup.allCases.last {
+              Divider().padding(.leading, 50)
             }
           }
         }
       }
+    }
+    .confirmationDialog(
+      pendingGroup?.title ?? "",
+      isPresented: Binding(get: { pendingGroup != nil }, set: { if !$0 { pendingGroup = nil } }),
+      titleVisibility: .visible
+    ) {
+      ForEach(NativeTaxExportKind.allCases.filter { $0.group == pendingGroup }) { kind in
+        Button(kind.title) { export(kind) }
+      }
+      Button("Cancel", role: .cancel) {}
     }
     .sheet(item: $shareItem) { item in
       NativeShareSheet(items: [item.url])
@@ -43,25 +44,21 @@ struct NativeExportCard: View {
     }
   }
 
-  private func exportRow(_ kind: NativeTaxExportKind) -> some View {
+  private func groupRow(_ group: NativeTaxExportGroup) -> some View {
     Button {
-      if let item = nativeMakeExport(kind, store: store) {
-        shareItem = item
-      } else {
-        exportFailed = true
-      }
+      pendingGroup = group
     } label: {
       HStack(spacing: 12) {
-        Image(systemName: kind.symbol)
+        Image(systemName: group.symbol)
           .font(.system(size: 17, weight: .bold))
           .foregroundStyle(OkkleColor.brand)
           .frame(width: 38, height: 38)
           .background(OkkleColor.brand.opacity(0.12), in: Circle())
         VStack(alignment: .leading, spacing: 3) {
-          Text(kind.title)
+          Text(group.title)
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(OkkleColor.ink)
-          Text(kind.subtitle)
+          Text(group.subtitle)
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .lineLimit(1)
@@ -74,6 +71,14 @@ struct NativeExportCard: View {
       .padding(.vertical, 11)
     }
     .buttonStyle(.plain)
+  }
+
+  private func export(_ kind: NativeTaxExportKind) {
+    if let item = nativeMakeExport(kind, store: store) {
+      shareItem = item
+    } else {
+      exportFailed = true
+    }
   }
 }
 
