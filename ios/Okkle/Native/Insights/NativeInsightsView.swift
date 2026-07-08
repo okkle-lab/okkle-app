@@ -239,10 +239,11 @@ struct NativeShiftPatternsCard: View {
         baselineRow("fork.knife", "Dinner beats mid-afternoon", "5–9pm is usually your window", true)
         baselineRow("calendar", "Weekend evenings are strongest", "Friday to Sunday", true)
         baselineRow("cloud.rain.fill", "Rain and cold pay better", "More orders, fewer drivers", true)
-        baselineRow("fuelpump.fill", "Cut the roaming", "Idle miles quietly eat profit", exploreCandidates.bestUnvalidatedCandidate != nil)
       }
       if let candidate = exploreCandidates.bestUnvalidatedCandidate {
         tentativeZoneRow(candidate)
+      } else {
+        stillLookingRow
       }
     }
   }
@@ -310,6 +311,31 @@ struct NativeShiftPatternsCard: View {
       .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
     .buttonStyle(.plain)
+  }
+
+  /// Shown instead of tentativeZoneRow while nothing nearby has cleared the
+  /// area-suggester's bar yet — without this, the row just silently
+  /// disappears, which reads as broken rather than as the honest "no real
+  /// standout nearby (yet)" it actually is.
+  private var stillLookingRow: some View {
+    HStack(spacing: 12) {
+      Image(systemName: "sparkle.magnifyingglass")
+        .font(.system(size: 16, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+        .frame(width: 24)
+      VStack(alignment: .leading, spacing: 1) {
+        Text("Still looking for a standout area")
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(OkkleColor.ink)
+        Text("Nothing nearby stands out yet — keep driving and this fills in")
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 10)
+    .padding(.horizontal, 10)
+    .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 
   /// Hands the candidate straight to Apple Maps rather than trying to build
