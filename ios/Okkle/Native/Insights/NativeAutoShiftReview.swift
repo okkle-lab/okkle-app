@@ -135,6 +135,7 @@ struct NativeAutoShiftReviewView: View {
 
   @State private var adjustedEnd: Date = Date()
   @State private var selectedFeedback: NativeTripFeedback?
+  @State private var showsFeedbackPrompt = false
 
   private var trip: NativeTrip? {
     store.trips.first { $0.id == tripID }
@@ -202,13 +203,16 @@ struct NativeAutoShiftReviewView: View {
               Text("Adjust \"Ended\" if the shift actually ran longer or shorter than detected — this helps Okkle time future shifts more accurately.")
             }
 
-            Section {
-              NativeTripFeedbackReviewRow(
-                feedback: selectedFeedback,
-                onSelect: recordTripFeedback
-              )
-            } footer: {
-              Text("Optional. This helps Okkle learn which areas are genuinely worth recommending, not just where stops happen often.")
+            if showsFeedbackPrompt {
+              Section {
+                NativeTripFeedbackReviewRow(
+                  feedback: selectedFeedback,
+                  onSelect: recordTripFeedback
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+              } footer: {
+                Text("Optional. This helps Okkle learn which areas are genuinely worth recommending, not just where stops happen often.")
+              }
             }
 
             if !stops.isEmpty {
@@ -259,6 +263,7 @@ struct NativeAutoShiftReviewView: View {
           .onAppear {
             adjustedEnd = trip.endedAt
             selectedFeedback = trip.feedback
+            showsFeedbackPrompt = trip.feedback == nil
           }
         } else {
           VStack(spacing: 12) {
@@ -305,6 +310,10 @@ struct NativeAutoShiftReviewView: View {
     trip.feedback = feedback
     selectedFeedback = feedback
     store.updateTrip(trip)
+    guard feedback != nil else { return }
+    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+      showsFeedbackPrompt = false
+    }
   }
 
   private func shortTime(_ date: Date) -> String {

@@ -32,16 +32,20 @@ struct NativeTripDetailSheet: View {
   @State private var selectedRouteStopID: UUID?
   @State private var showingFullScreenRouteMap = false
   @State private var selectedFeedback: NativeTripFeedback?
+  @State private var showsFeedbackPrompt = false
 
   var body: some View {
     ZStack {
       NavigationStack {
         ScrollView {
           VStack(alignment: .leading, spacing: 18) {
-            NativeTripFeedbackCard(
-              feedback: selectedFeedback,
-              onSelect: recordTripFeedback
-            )
+            if showsFeedbackPrompt {
+              NativeTripFeedbackCard(
+                feedback: selectedFeedback,
+                onSelect: recordTripFeedback
+              )
+              .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
             HStack(spacing: 12) {
               NativeTripFlatMetric(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
@@ -63,6 +67,7 @@ struct NativeTripDetailSheet: View {
             NativeDetailActionButtons(onEdit: onEdit, onDelete: onDelete)
           }
           .padding(22)
+          .animation(.spring(response: 0.32, dampingFraction: 0.86), value: showsFeedbackPrompt)
         }
         .background(NativeBackground())
         .navigationTitle("Trip details")
@@ -88,6 +93,7 @@ struct NativeTripDetailSheet: View {
     .animation(.spring(response: 0.34, dampingFraction: 0.86), value: homeCandidate != nil)
     .onAppear {
       selectedFeedback = currentTrip.feedback
+      showsFeedbackPrompt = currentTrip.feedback == nil
     }
     .task(id: trip.id) {
       await resolveRouteDetails()
@@ -207,6 +213,10 @@ struct NativeTripDetailSheet: View {
     updated.feedback = feedback
     selectedFeedback = feedback
     store.updateTrip(updated)
+    guard feedback != nil else { return }
+    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+      showsFeedbackPrompt = false
+    }
   }
 
   private func coordinateLabel(_ point: RoutePoint) -> String {
@@ -644,6 +654,46 @@ private struct NativeTripFeedbackCard: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel("Mark trip as \(value.label.lowercased())")
+  }
+}
+
+private struct NativeTripEditFeedbackPicker: View {
+  @Binding var feedback: NativeTripFeedback?
+
+  var body: some View {
+    HStack(spacing: 10) {
+      feedbackButton(nil, label: "Not set", symbol: "minus.circle.fill", tint: OkkleColor.muted)
+      feedbackButton(.good, label: NativeTripFeedback.good.label, symbol: NativeTripFeedback.good.symbol, tint: OkkleColor.brand)
+      feedbackButton(.bad, label: NativeTripFeedback.bad.label, symbol: NativeTripFeedback.bad.symbol, tint: OkkleColor.amber)
+    }
+    .padding(.vertical, 4)
+  }
+
+  private func feedbackButton(
+    _ value: NativeTripFeedback?,
+    label: String,
+    symbol: String,
+    tint: Color
+  ) -> some View {
+    let selected = feedback == value
+    return Button {
+      feedback = value
+    } label: {
+      VStack(spacing: 6) {
+        Image(systemName: symbol)
+          .font(.system(size: 15, weight: .bold))
+        Text(label)
+          .font(.system(size: 12, weight: .bold))
+          .lineLimit(1)
+          .minimumScaleFactor(0.76)
+      }
+      .foregroundStyle(selected ? .white : tint)
+      .frame(maxWidth: .infinity)
+      .frame(height: 58)
+      .background(selected ? tint : tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(label == "Not set" ? "Clear trip feedback" : "Mark trip as \(label.lowercased())")
   }
 }
 
@@ -1257,6 +1307,7 @@ struct NativeTripEditSheet: View {
   @State private var endedAt: Date
   @State private var routePoints: [RoutePoint]
   @State private var routeEndpointNames: [Int: String] = [:]
+  @State private var feedback: NativeTripFeedback?
 
   init(trip: NativeTrip, onSave: @escaping (NativeTrip) -> Void) {
     self.trip = trip
@@ -1266,6 +1317,7 @@ struct NativeTripEditSheet: View {
     _startedAt = State(initialValue: trip.startedAt)
     _endedAt = State(initialValue: trip.endedAt)
     _routePoints = State(initialValue: trip.points)
+    _feedback = State(initialValue: trip.feedback)
   }
 
   var body: some View {
@@ -1285,6 +1337,14 @@ struct NativeTripEditSheet: View {
         Section("Time") {
           DatePicker("Started", selection: $startedAt)
           DatePicker("Ended", selection: $endedAt)
+        }
+
+        Section {
+          NativeTripEditFeedbackPicker(feedback: $feedback)
+        } header: {
+          Text("Trip feedback")
+        } footer: {
+          Text("This updates the Good/Bad signal used by Insights recommendations.")
         }
 
         if !routeSegments.isEmpty {
@@ -1406,6 +1466,7 @@ struct NativeTripEditSheet: View {
     updated.endedAt = endedAt
     updated.deduction = previewDeduction
     updated.points = routePoints
+    updated.feedback = feedback
     onSave(updated)
     dismiss()
   }

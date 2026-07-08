@@ -119,6 +119,12 @@ struct RoutePoint: Identifiable, Codable, Equatable {
   // Marks a visible gap before this point, used when a driver removes a
   // middle route segment. Old trips decode with no gaps.
   var breakBefore = false
+  // Optional raw CLLocation context. Older trips decode without this; newer
+  // trips use it to avoid turning traffic-light waits into delivery stops.
+  var horizontalAccuracy: Double? = nil
+  var speed: Double? = nil
+  var course: Double? = nil
+  var vehicleConnectionActive: Bool? = nil
 
   var coordinate: CLLocationCoordinate2D {
     CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -130,6 +136,10 @@ struct RoutePoint: Identifiable, Codable, Equatable {
     case longitude
     case timestamp
     case breakBefore
+    case horizontalAccuracy
+    case speed
+    case course
+    case vehicleConnectionActive
   }
 
   init(
@@ -137,13 +147,34 @@ struct RoutePoint: Identifiable, Codable, Equatable {
     latitude: Double,
     longitude: Double,
     timestamp: Date? = nil,
-    breakBefore: Bool = false
+    breakBefore: Bool = false,
+    horizontalAccuracy: Double? = nil,
+    speed: Double? = nil,
+    course: Double? = nil,
+    vehicleConnectionActive: Bool? = nil
   ) {
     self.id = id
     self.latitude = latitude
     self.longitude = longitude
     self.timestamp = timestamp
     self.breakBefore = breakBefore
+    self.horizontalAccuracy = horizontalAccuracy
+    self.speed = speed
+    self.course = course
+    self.vehicleConnectionActive = vehicleConnectionActive
+  }
+
+  init(location: CLLocation, vehicleConnectionActive: Bool? = nil, breakBefore: Bool = false) {
+    self.init(
+      latitude: location.coordinate.latitude,
+      longitude: location.coordinate.longitude,
+      timestamp: location.timestamp,
+      breakBefore: breakBefore,
+      horizontalAccuracy: location.horizontalAccuracy >= 0 ? location.horizontalAccuracy : nil,
+      speed: location.speed >= 0 ? location.speed : nil,
+      course: location.course >= 0 ? location.course : nil,
+      vehicleConnectionActive: vehicleConnectionActive
+    )
   }
 
   init(from decoder: Decoder) throws {
@@ -153,6 +184,10 @@ struct RoutePoint: Identifiable, Codable, Equatable {
     longitude = try container.decode(Double.self, forKey: .longitude)
     timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp)
     breakBefore = try container.decodeIfPresent(Bool.self, forKey: .breakBefore) ?? false
+    horizontalAccuracy = try container.decodeIfPresent(Double.self, forKey: .horizontalAccuracy)
+    speed = try container.decodeIfPresent(Double.self, forKey: .speed)
+    course = try container.decodeIfPresent(Double.self, forKey: .course)
+    vehicleConnectionActive = try container.decodeIfPresent(Bool.self, forKey: .vehicleConnectionActive)
   }
 }
 
