@@ -416,6 +416,12 @@ struct NativeTripDetailSheet: View {
 
   private func shouldSuggestHome(for point: RoutePoint) -> Bool {
     guard !isKnownHome(point.coordinate) else { return false }
+    // Once a Home is saved, a second frequent point elsewhere reads as a
+    // regular delivery stop, not a second home — offering it as "maybe
+    // home?" is how two different addresses both end up labelled "Home"
+    // on different trips. A driver who's genuinely moved can still update
+    // Home manually in Settings.
+    guard !hasExistingHome else { return false }
     let coordinate = point.coordinate
     let nearbyEndpointCount = store.trips.reduce(0) { count, trip in
       var count = count
@@ -438,9 +444,18 @@ struct NativeTripDetailSheet: View {
     }
   }
 
+  private var hasExistingHome: Bool {
+    store.settings.excludedPlaces.contains { $0.label.caseInsensitiveCompare("Home") == .orderedSame }
+  }
+
   private func saveHomeCandidate() {
     guard let homeCandidate else { return }
     if !isKnownHome(homeCandidate.point.coordinate) {
+      // Defensive dedup, not just the shouldSuggestHome guard above — this
+      // is the only place a "Home" place actually gets written, so it's
+      // the backstop that guarantees at most one exists no matter which
+      // path got here.
+      store.settings.excludedPlaces.removeAll { $0.label.caseInsensitiveCompare("Home") == .orderedSame }
       store.settings.excludedPlaces.append(NativeExcludedPlace(
         label: "Home",
         latitude: homeCandidate.point.latitude,
