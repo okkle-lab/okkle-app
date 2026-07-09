@@ -134,7 +134,6 @@ struct NativeSettingsView: View {
 
         Section {
           menuRow("Profile details") { NativeProfileSettingsView() }
-          menuRow("Accountant details") { NativeAccountantDetailsSettingsView() }
         }
 
         Section {
@@ -276,9 +275,39 @@ struct NativeTaxSettingsView: View {
       } footer: {
         Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
       }
+
+      Section {
+        NativeNumberDoneTextField(text: Binding(
+          get: { store.settings.accountantUTR },
+          set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
+        .frame(height: 34)
+
+        TextField("QQ 12 34 56 C", text: Binding(
+          get: { store.settings.accountantNINumber },
+          set: { store.settings.accountantNINumber = $0.uppercased() }
+        ))
+        .textInputAutocapitalization(.characters)
+
+        TextField("Home or business address", text: Binding(
+          get: { store.settings.accountantAddress },
+          set: { store.settings.accountantAddress = $0 }
+        ), axis: .vertical)
+        .lineLimit(2...4)
+
+        TextField("Delivery courier", text: Binding(
+          get: { store.settings.accountantBusinessDescription },
+          set: { store.settings.accountantBusinessDescription = $0 }
+        ))
+      } header: {
+        Text("Accountant pack details")
+      } footer: {
+        Text("Optional. These stay on this phone and appear on the accountant pack PDF cover page when you export it.")
+      }
     }
     .navigationTitle("Tax profile")
     .navigationBarTitleDisplayMode(.inline)
+    .nativeKeyboardDoneToolbar()
   }
 }
 
@@ -535,6 +564,13 @@ struct NativeExcludedPlacesSection: View {
   }
 
   private func save(label: String, coordinate: CLLocationCoordinate2D, address: String?) {
+    // "Home" is treated as a singleton — matching by anything at all keyed
+    // off it (auto-detection, area-suggestion origin) only makes sense if
+    // there's exactly one. Saving a new one replaces the old rather than
+    // quietly stacking up a second "Home" pin at a different address.
+    if label.caseInsensitiveCompare("Home") == .orderedSame {
+      store.settings.excludedPlaces.removeAll { $0.label.caseInsensitiveCompare("Home") == .orderedSame }
+    }
     store.settings.excludedPlaces.append(NativeExcludedPlace(
       label: label, latitude: coordinate.latitude, longitude: coordinate.longitude, address: address
     ))
@@ -994,46 +1030,6 @@ struct NativeAboutSettingsView: View {
     }
     .navigationTitle("About Okkle")
     .navigationBarTitleDisplayMode(.inline)
-  }
-}
-
-struct NativeAccountantDetailsSettingsView: View {
-  @EnvironmentObject private var store: OkkleStore
-
-  var body: some View {
-    Form {
-      Section {
-        NativeNumberDoneTextField(text: Binding(
-          get: { store.settings.accountantUTR },
-          set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
-        .frame(height: 34)
-
-        TextField("QQ 12 34 56 C", text: Binding(
-          get: { store.settings.accountantNINumber },
-          set: { store.settings.accountantNINumber = $0.uppercased() }
-        ))
-        .textInputAutocapitalization(.characters)
-
-        TextField("Home or business address", text: Binding(
-          get: { store.settings.accountantAddress },
-          set: { store.settings.accountantAddress = $0 }
-        ), axis: .vertical)
-        .lineLimit(2...4)
-
-        TextField("Delivery courier", text: Binding(
-          get: { store.settings.accountantBusinessDescription },
-          set: { store.settings.accountantBusinessDescription = $0 }
-        ))
-      } header: {
-        Text("Accountant pack details")
-      } footer: {
-        Text("Optional. These stay on this phone and appear on the accountant pack PDF cover page when you export it.")
-      }
-    }
-    .navigationTitle("Accountant details")
-    .navigationBarTitleDisplayMode(.inline)
-    .nativeKeyboardDoneToolbar()
   }
 }
 
