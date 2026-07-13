@@ -1661,25 +1661,48 @@ struct NativeRouteMapStop: Identifiable {
   let glyphText: String?
 }
 
+private extension MKCoordinateRegion {
+  var toMapRect: MKMapRect {
+    let halfLat = span.latitudeDelta / 2
+    let halfLon = span.longitudeDelta / 2
+    let topLeft = MKMapPoint(CLLocationCoordinate2D(latitude: center.latitude + halfLat, longitude: center.longitude - halfLon))
+    let bottomRight = MKMapPoint(CLLocationCoordinate2D(latitude: center.latitude - halfLat, longitude: center.longitude + halfLon))
+    return MKMapRect(
+      x: min(topLeft.x, bottomRight.x),
+      y: min(topLeft.y, bottomRight.y),
+      width: abs(topLeft.x - bottomRight.x),
+      height: abs(topLeft.y - bottomRight.y)
+    )
+  }
+}
+
 struct NativeRouteMapView: UIViewRepresentable {
   let points: [RoutePoint]
   var stops: [NativeRouteMapStop] = []
   var showsEndMarker = true
   var isInteractive = false
   var selectedStopID: Binding<UUID?>
+  // Extra bottom padding for callers with an overlaid bottom panel (the
+  // live-tracking screen) — without it, the auto-fit region centres on the
+  // full view including the area a bottom sheet actually covers, so the
+  // current/start position can end up rendered right at or under the
+  // panel's top edge.
+  var bottomInset: CGFloat = 0
 
   init(
     points: [RoutePoint],
     stops: [NativeRouteMapStop] = [],
     showsEndMarker: Bool = true,
     isInteractive: Bool = false,
-    selectedStopID: Binding<UUID?> = .constant(nil)
+    selectedStopID: Binding<UUID?> = .constant(nil),
+    bottomInset: CGFloat = 0
   ) {
     self.points = points
     self.stops = stops
     self.showsEndMarker = showsEndMarker
     self.isInteractive = isInteractive
     self.selectedStopID = selectedStopID
+    self.bottomInset = bottomInset
   }
 
   func makeCoordinator() -> Coordinator {
@@ -1762,20 +1785,20 @@ struct NativeRouteMapView: UIViewRepresentable {
       let selectedChanged = context.coordinator.selectedStopID != selectedStopID
       context.coordinator.selectedStopID = selectedStopID
       focus(mapView, on: stop, animated: selectedChanged)
-    } else if coordinates.count > 1, shouldRebuildMap || !context.coordinator.hasSetInitialRegion {
+    } else if shouldRebuildMap || !context.coordinator.hasSetInitialRegion {
+      // Always goes through setVisibleMapRect, even for a single point —
+      // unlike setRegion, it honours edgePadding, which is what keeps a
+      // fresh "just started" trip's Start pin from landing under a bottom
+      // panel (see bottomInset). visibleMapRect pads a lone/tight cluster
+      // out to a sane minimum span itself, rather than zooming to MapKit's
+      // maximum for a near-zero-size rect.
       context.coordinator.selectedStopID = nil
       mapView.setVisibleMapRect(
         visibleMapRect(routeCoordinates: coordinates, stopCoordinates: stops.map(\.coordinate)),
-        edgePadding: UIEdgeInsets(top: 38, left: 30, bottom: 38, right: 30),
+        edgePadding: UIEdgeInsets(top: 38, left: 30, bottom: 38 + bottomInset, right: 30),
         animated: false
       )
       context.coordinator.hasSetInitialRegion = true
-    } else {
-      context.coordinator.selectedStopID = nil
-      if shouldRebuildMap || !context.coordinator.hasSetInitialRegion {
-        mapView.setRegion(MKCoordinateRegion(center: first, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)), animated: false)
-        context.coordinator.hasSetInitialRegion = true
-      }
     }
   }
 
@@ -1802,11 +1825,20 @@ struct NativeRouteMapView: UIViewRepresentable {
 
   private func visibleMapRect(routeCoordinates: [CLLocationCoordinate2D], stopCoordinates: [CLLocationCoordinate2D]) -> MKMapRect {
     let coordinates = routeCoordinates + stopCoordinates
-    return coordinates.reduce(MKMapRect.null) { rect, coordinate in
+    var rect = coordinates.reduce(MKMapRect.null) { rect, coordinate in
       let point = MKMapPoint(coordinate)
       let pointRect = MKMapRect(x: point.x, y: point.y, width: 1, height: 1)
       return rect.union(pointRect)
     }
+    // A single point (or a tight cluster right at a trip's start) unions
+    // down to a near-zero-size rect, which setVisibleMapRect would zoom to
+    // MapKit's maximum for — pad it out to a sane minimum span so a
+    // fresh trip shows real surrounding streets, not a featureless close-up.
+    if let anchor = coordinates.first {
+      let minimumRegion = MKCoordinateRegion(center: anchor, latitudinalMeters: 1800, longitudinalMeters: 1800)
+      rect = rect.union(minimumRegion.toMapRect)
+    }
+    return rect
   }
 
   private func routeCoordinateRuns(from points: [RoutePoint]) -> [[CLLocationCoordinate2D]] {

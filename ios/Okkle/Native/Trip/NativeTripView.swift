@@ -2,6 +2,16 @@ import MapKit
 import SwiftUI
 import UIKit
 
+/// Reports the live-tracking bottom panel's actual rendered height, since it
+/// varies with content (permission message, action buttons) — used to keep
+/// the map's auto-fit region from hiding the current position under it.
+private struct NativeTrackingPanelHeightKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = max(value, nextValue())
+  }
+}
+
 private struct NativeTopRoundedRectangle: Shape {
   let radius: CGFloat
 
@@ -28,6 +38,10 @@ struct NativeTripView: View {
   @State private var infoCard = 0
   @State private var showProfile = false
   @State private var now = Date()
+  // Reasonable pre-measurement default (roughly matches the panel's usual
+  // height) so the very first map layout isn't unpadded before the real
+  // height reports back.
+  @State private var trackingPanelHeight: CGFloat = 260
 
   init(session: NativeTripSession = .shared, selectedTab: Binding<NativeTab> = .constant(.trip)) {
     self.session = session
@@ -420,7 +434,12 @@ struct NativeTripView: View {
       let sidebarInset = trackingSidebarAvoidanceInset(for: proxy)
 
       ZStack(alignment: .bottom) {
-        NativeRouteMapView(points: trackingPoints, showsEndMarker: completedTrip != nil)
+        NativeRouteMapView(
+          points: trackingPoints,
+          showsEndMarker: completedTrip != nil,
+          isInteractive: true,
+          bottomInset: trackingPanelHeight
+        )
           .ignoresSafeArea()
           .overlay(alignment: .top) {
             LinearGradient(
@@ -443,9 +462,13 @@ struct NativeTripView: View {
         .allowsHitTesting(false)
 
         trackingPanel(bottomInset: proxy.safeAreaInsets.bottom, leadingInset: sidebarInset)
+          .background(GeometryReader { panelProxy in
+            Color.clear.preference(key: NativeTrackingPanelHeightKey.self, value: panelProxy.size.height)
+          })
       }
       .background(Color(uiColor: .systemBackground))
       .ignoresSafeArea()
+      .onPreferenceChange(NativeTrackingPanelHeightKey.self) { trackingPanelHeight = $0 }
     }
     .transition(.opacity)
   }
