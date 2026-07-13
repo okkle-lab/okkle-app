@@ -42,6 +42,10 @@ struct NativeTripView: View {
   // height) so the very first map layout isn't unpadded before the real
   // height reports back.
   @State private var trackingPanelHeight: CGFloat = 260
+  // Manually managed (not a stored/autoconnected Combine timer) so it can
+  // actually stop firing when no trip is being tracked or reviewed, rather
+  // than waking up every 5s for the app's whole foreground lifetime.
+  @State private var trackingTimer: Timer?
 
   init(session: NativeTripSession = .shared, selectedTab: Binding<NativeTab> = .constant(.trip)) {
     self.session = session
@@ -113,6 +117,11 @@ struct NativeTripView: View {
       selectedVehicle = store.settings.defaultVehicle
       now = Date()
       applyWidgetRequestIfNeeded()
+      updateTrackingTimer(active: shouldShowTrackingMap)
+    }
+    .onDisappear {
+      trackingTimer?.invalidate()
+      trackingTimer = nil
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       applyWidgetRequestIfNeeded()
@@ -120,13 +129,26 @@ struct NativeTripView: View {
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       applyWidgetRequestIfNeeded()
     }
-    .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { tick in
-      guard shouldShowTrackingMap else { return }
-      now = tick
+    .onChange(of: shouldShowTrackingMap) { active in
+      updateTrackingTimer(active: active)
     }
     // The live trip map owns the screen while recording or reviewing the end
     // state; bring the tab bar back on the normal start screen.
     .toolbar(shouldShowTrackingMap ? .hidden : .visible, for: .tabBar)
+  }
+
+  private func updateTrackingTimer(active: Bool) {
+    guard active else {
+      trackingTimer?.invalidate()
+      trackingTimer = nil
+      return
+    }
+    guard trackingTimer == nil else { return }
+    let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+      Task { @MainActor in now = Date() }
+    }
+    timer.tolerance = 1
+    trackingTimer = timer
   }
 
   private var setupScreen: some View {

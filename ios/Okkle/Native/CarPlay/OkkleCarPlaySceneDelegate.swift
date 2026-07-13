@@ -34,6 +34,12 @@ private final class OkkleCarPlayTripController {
   private let tripTemplate = CPListTemplate(title: "Okkle Trip", sections: [])
   private var cancellable: AnyCancellable?
   private var lastSavedSummary: String?
+  // session.objectWillChange fires every 5s from the elapsed-time ticker
+  // alone; rebuilding/diffing the CarPlay template that often is wasted
+  // work when nothing actually displayed has changed (elapsedLabel only
+  // has minute granularity), so skip the rebuild unless the rendered
+  // content itself differs from what's already on screen.
+  private var lastRenderedSignature: String?
 
   init(interfaceController: CPInterfaceController) {
     self.interfaceController = interfaceController
@@ -68,7 +74,14 @@ private final class OkkleCarPlayTripController {
       return
     }
 
+    let signature = tripTemplateSignature
+    guard signature != lastRenderedSignature else { return }
+    lastRenderedSignature = signature
     tripTemplate.updateSections(tripSections)
+  }
+
+  private var tripTemplateSignature: String {
+    "\(templateTitle)|\(miles(session.miles))|\(elapsedLabel(session.elapsed))|\(session.vehicle.label)|\(lastSavedSummary ?? "")"
   }
 
   private func startTrip() {

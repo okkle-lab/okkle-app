@@ -8,6 +8,15 @@ final class NativeWatchTripConnector: NSObject, WCSessionDelegate {
   private let watchSession: WCSession?
   private let tripSession = NativeTripSession.shared
   private var cancellable: AnyCancellable?
+  // objectWillChange fires every 5s purely from the trip's own elapsed-time
+  // ticker, which would otherwise mean a Bluetooth wake every 5s for the
+  // full duration of a live trip. Only push immediately on a real change
+  // (phase, or miles crossing a tenth-of-a-mile); otherwise coalesce to
+  // this interval so the Watch's elapsed display still stays roughly live.
+  private var lastPublishedPhase: String?
+  private var lastPublishedMilesBucket: Int?
+  private var lastPublishedAt: Date = .distantPast
+  private let publishMinInterval: TimeInterval = 30
 
   @MainActor
   private var store: OkkleStore { OkkleStore.shared }
@@ -25,9 +34,21 @@ final class NativeWatchTripConnector: NSObject, WCSessionDelegate {
       .receive(on: RunLoop.main)
       .sink { [weak self] _ in
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-          self?.publishState()
+          self?.publishStateIfNeeded()
         }
       }
+    publishState()
+  }
+
+  private func publishStateIfNeeded() {
+    let phase = tripSession.watchPhaseName
+    let milesBucket = Int((tripSession.miles * 10).rounded())
+    let now = Date()
+    let changed = phase != lastPublishedPhase || milesBucket != lastPublishedMilesBucket
+    guard changed || now.timeIntervalSince(lastPublishedAt) >= publishMinInterval else { return }
+    lastPublishedPhase = phase
+    lastPublishedMilesBucket = milesBucket
+    lastPublishedAt = now
     publishState()
   }
 

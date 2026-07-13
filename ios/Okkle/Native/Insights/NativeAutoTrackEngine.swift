@@ -55,11 +55,33 @@ func nativeIsWorkingDay(_ date: Date, settings: NativeSettings) -> Bool {
 /// recording a continuous GPS route; `stationaryPending` means motion says
 /// we've stopped and we're waiting to see whether that's a delivery stop
 /// (driving resumes) or the end of the shift (the stationary timer expires).
-enum NativeAutoShiftPhase: Equatable {
+enum NativeAutoShiftPhase: String, Equatable {
   case idle
   case driving
   case stationaryPending
   case paused
+}
+
+/// Snapshot of an in-progress automatic shift, persisted so a crash, memory-
+/// pressure eviction, or reboot mid-shift doesn't silently lose the miles
+/// already recorded — restored and re-armed on the next launch.
+private struct NativeAutoShiftSnapshot: Codable {
+  var phaseRaw: String
+  var points: [RoutePoint]
+  var miles: Double
+  var startedAt: Date
+  var vehicleRaw: String
+  var sawVehicleConnection: Bool
+  var armedForHomeArrival: Bool
+  var lastLocationLat: Double?
+  var lastLocationLon: Double?
+  var lastLocationTimestamp: Date?
+  var lastLocationAccuracy: Double?
+  var lastRoutePointLat: Double?
+  var lastRoutePointLon: Double?
+  var stationarySince: Date?
+  var stationaryLat: Double?
+  var stationaryLon: Double?
 }
 
 /// Passive, hands-off shift tracking. On a working day, the moment Core
@@ -119,6 +141,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private let motionManager = CMMotionActivityManager()
   private let motionQueue = OperationQueue()
   private let storageKey = "uk.okkle.native.autotrack.visits.v1"
+  private let shiftSnapshotKey = "uk.okkle.native.autotrack.liveShift.v1"
   private let shiftNotificationIdentifier = "uk.okkle.native.shift-logged"
   private let shiftStartNotificationIdentifier = "uk.okkle.native.shift-started"
   private var shiftStartNotified = false
@@ -149,6 +172,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   // (e.g. driving past home on the way to another stop) isn't enough on
   // its own, see concludeShiftIfArrivedHome.
   private let homeArrivalDwellSeconds: TimeInterval = 15 * 60
+  // How fresh shiftLastLocation must be for the dwell-timer recheck to trust
+  // it as "still home right now" — the significant-location-change service
+  // used while waiting can go quiet for a while, so a location older than
+  // this can't prove the driver hasn't already left.
+  private let homeArrivalStalenessThreshold: TimeInterval = 3 * 60
+  private let homeArrivalRecheckDelay: TimeInterval = 3 * 60
   private var vehicleConnectionObservers: [NSObjectProtocol] = []
   private var idleWakeLocation: CLLocation?
   private var idleMotionQueryInFlight = false
@@ -168,6 +197,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     motionQueue.name = "uk.okkle.native.auto-track-motion"
     motionQueue.qualityOfService = .utility
     load()
+    restoreShiftIfNeeded()
   }
 
   func configure(store: OkkleStore) {
@@ -213,7 +243,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       insights.weekdayDetails.first(where: { $0.weekday == wd })?.coordinate
     }
     if !recommendedZonesInPeriod.isEmpty {
-      let periodEndExclusive = periodEnd.addingTimeInterval(86_400)
+      let periodEndExclusive = Calendar.current.date(byAdding: .day, value: 1, to: periodEnd) ?? periodEnd.addingTimeInterval(86_400)
       let wasNear = visits.contains { visit in
         guard visit.arrival >= periodStart, visit.arrival < periodEndExclusive else { return false }
         return recommendedZonesInPeriod.contains { zone in
@@ -323,6 +353,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationarySince = Date()
     stationaryCoordinate = shiftLastLocation?.coordinate
     configureLocationForStationaryWaiting()
+    persistShiftSnapshot()
     if let shiftLastLocation { trackHomeArrival(at: shiftLastLocation) }
     if concludeShiftIfVehicleDisconnected() { return }
     scheduleStationaryTimeout()
@@ -350,6 +381,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     cancelHomeDwellTimer()
     liveShiftVehicle = store?.settings.defaultVehicle ?? .car
     publishLiveShift()
+    persistShiftSnapshot()
     configureLocationForDriving()
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
@@ -367,6 +399,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     manager.stopMonitoringSignificantLocationChanges()
     setBackgroundTrackingEnabled(false)
     publishLiveShift()
+    persistShiftSnapshot()
   }
 
   func resumeCurrentShift() {
@@ -376,6 +409,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     publishLiveShift()
+    persistShiftSnapshot()
   }
 
   func endCurrentShift() {
@@ -394,6 +428,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftPhase = .driving
     configureLocationForDriving()
     manager.startUpdatingLocation()
+    persistShiftSnapshot()
   }
 
   /// The stationary timer expired (or tracking got turned off mid-shift) —
@@ -420,6 +455,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationarySince = nil
     stationaryCoordinate = nil
     publishLiveShift()
+    clearShiftSnapshot()
     refresh()
   }
 
@@ -544,6 +580,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       sendShiftStartedNotification()
     }
     publishLiveShift()
+    persistShiftSnapshot()
   }
 
   private func shouldUseIdleWakeLocation(_ location: CLLocation) -> Bool {
@@ -666,6 +703,15 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     let homes = selectedHomeLocations
     let nearestHomeDistance = homes.map { shiftLastLocation.distance(from: $0) }.min() ?? .greatestFiniteMagnitude
     guard nearestHomeDistance <= homeArrivalRadius else { return }
+    guard abs(shiftLastLocation.timestamp.timeIntervalSinceNow) <= homeArrivalStalenessThreshold else {
+      // Can't confirm against a fix this old — check again shortly instead
+      // of locking in a possibly-false "still home" read.
+      homeDwellTimer = Timer.scheduledTimer(withTimeInterval: homeArrivalRecheckDelay, repeats: false) { [weak self] _ in
+        Task { @MainActor in self?.confirmHomeArrivalIfStillNearby() }
+      }
+      homeDwellTimer?.tolerance = 15
+      return
+    }
     concludeShift()
   }
 
@@ -677,7 +723,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private var selectedHomeLocations: [CLLocation] {
     guard let store else { return [] }
     return store.settings.excludedPlaces
-      .filter { $0.label.range(of: "home", options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+      .filter { $0.label.caseInsensitiveCompare("Home") == .orderedSame }
       .map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
   }
 
@@ -843,57 +889,42 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   /// Use Apple Maps as an information layer: if there's a food place right by the
-  /// stop it's a pick-up; otherwise it's most likely a customer drop-off.
+  /// stop it's a pick-up; otherwise it's most likely a customer drop-off. A
+  /// single search covers both the tight food-radius classification and the
+  /// wider any-POI naming fallback, instead of two sequential network calls.
   private func classifyWithMapKit(_ id: UUID, coordinate: CLLocationCoordinate2D, calibration: NativeAutoTrackCalibration) {
-    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: calibration.foodPoiRadiusMeters)
-    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
+    let foodCategories: Set<MKPointOfInterestCategory> = [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife]
+    let namingRadius: CLLocationDistance = 110
+    let namingCategories = foodCategories.union([.store, .pharmacy, .parking, .publicTransport])
+    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: max(calibration.foodPoiRadiusMeters, namingRadius))
+    request.pointOfInterestFilter = MKPointOfInterestFilter(including: Array(namingCategories))
+    let stopLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+
+    func distance(_ item: MKMapItem) -> CLLocationDistance {
+      item.placemark.location?.distance(from: stopLocation) ?? .greatestFiniteMagnitude
+    }
+
     MKLocalSearch(request: request).start { [weak self] response, _ in
       guard let self else { return }
+      let items = response?.mapItems ?? []
+      let nearestFood = items
+        .filter { ($0.pointOfInterestCategory.map(foodCategories.contains) ?? false) && distance($0) <= calibration.foodPoiRadiusMeters }
+        .min { distance($0) < distance($1) }
+      let nearestNamed = items
+        .filter { ($0.name ?? "").isEmpty == false && distance($0) <= namingRadius }
+        .min { distance($0) < distance($1) }
+
       Task { @MainActor in
         guard let index = self.visits.firstIndex(where: { $0.id == id }) else { return }
-        if let food = response?.mapItems.first {
+        if let food = nearestFood {
           self.visits[index].kind = .pickup
           self.visits[index].placeName = food.name
         } else if self.visits[index].dwell < calibration.dropoffMaxDwellThreshold {
           self.visits[index].kind = .dropoff
         }
         if self.visits[index].placeName == nil {
-          self.nameVisitWithNearbyPlace(id, coordinate: coordinate)
+          self.visits[index].placeName = nearestNamed?.name
         }
-        self.save()
-      }
-    }
-  }
-
-  private func nameVisitWithNearbyPlace(_ id: UUID, coordinate: CLLocationCoordinate2D) {
-    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 110)
-    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [
-      .restaurant,
-      .cafe,
-      .bakery,
-      .foodMarket,
-      .store,
-      .pharmacy,
-      .parking,
-      .publicTransport
-    ])
-    MKLocalSearch(request: request).start { [weak self] response, _ in
-      guard let self else { return }
-      let stopLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-      let nearest = (response?.mapItems ?? [])
-        .filter { ($0.name ?? "").isEmpty == false }
-        .min { lhs, rhs in
-          let lhsDistance = lhs.placemark.location.map { $0.distance(from: stopLocation) } ?? .greatestFiniteMagnitude
-          let rhsDistance = rhs.placemark.location.map { $0.distance(from: stopLocation) } ?? .greatestFiniteMagnitude
-          return lhsDistance < rhsDistance
-        }
-      guard let name = nearest?.name,
-            let distance = nearest?.placemark.location?.distance(from: stopLocation),
-            distance <= 110 else { return }
-      Task { @MainActor in
-        guard let index = self.visits.firstIndex(where: { $0.id == id }),
-              self.visits[index].placeName == nil else { return }
-        self.visits[index].placeName = name
         self.save()
       }
     }
@@ -917,6 +948,98 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private func save() {
     if let data = try? JSONEncoder().encode(visits) {
       UserDefaults.standard.set(data, forKey: storageKey)
+    }
+  }
+
+  /// Called on every meaningful shift-state change so a killed/crashed app
+  /// doesn't lose an in-progress shift's recorded miles — see
+  /// restoreShiftIfNeeded, which reads this back on the next launch.
+  private func persistShiftSnapshot() {
+    guard shiftPhase != .idle, let shiftStartedAt else {
+      clearShiftSnapshot()
+      return
+    }
+    let snapshot = NativeAutoShiftSnapshot(
+      phaseRaw: shiftPhase.rawValue,
+      points: shiftPoints,
+      miles: shiftMiles,
+      startedAt: shiftStartedAt,
+      vehicleRaw: liveShiftVehicle.rawValue,
+      sawVehicleConnection: shiftSawVehicleConnection,
+      armedForHomeArrival: shiftArmedForHomeArrival,
+      lastLocationLat: shiftLastLocation?.coordinate.latitude,
+      lastLocationLon: shiftLastLocation?.coordinate.longitude,
+      lastLocationTimestamp: shiftLastLocation?.timestamp,
+      lastLocationAccuracy: shiftLastLocation?.horizontalAccuracy,
+      lastRoutePointLat: shiftLastRoutePointLocation?.coordinate.latitude,
+      lastRoutePointLon: shiftLastRoutePointLocation?.coordinate.longitude,
+      stationarySince: stationarySince,
+      stationaryLat: stationaryCoordinate?.latitude,
+      stationaryLon: stationaryCoordinate?.longitude
+    )
+    if let data = try? JSONEncoder().encode(snapshot) {
+      UserDefaults.standard.set(data, forKey: shiftSnapshotKey)
+    }
+  }
+
+  private func clearShiftSnapshot() {
+    UserDefaults.standard.removeObject(forKey: shiftSnapshotKey)
+  }
+
+  /// Reads back a shift snapshot left by a previous run that never reached
+  /// concludeShift (crash, memory-pressure eviction, reboot) and re-arms
+  /// location tracking for it, instead of silently starting fresh at .idle
+  /// and losing whatever mileage was already recorded.
+  private func restoreShiftIfNeeded() {
+    guard let data = UserDefaults.standard.data(forKey: shiftSnapshotKey),
+          let snapshot = try? JSONDecoder().decode(NativeAutoShiftSnapshot.self, from: data),
+          let phase = NativeAutoShiftPhase(rawValue: snapshot.phaseRaw),
+          phase != .idle else { return }
+
+    shiftPhase = phase
+    shiftPoints = snapshot.points
+    shiftMiles = snapshot.miles
+    shiftStartedAt = snapshot.startedAt
+    liveShiftVehicle = NativeVehicle(rawValue: snapshot.vehicleRaw) ?? .car
+    shiftSawVehicleConnection = snapshot.sawVehicleConnection
+    shiftArmedForHomeArrival = snapshot.armedForHomeArrival
+    // Already told the driver this shift started, in the run that recorded
+    // this snapshot — don't repeat the notification after a silent restore.
+    shiftStartNotified = true
+
+    if let lat = snapshot.lastLocationLat, let lon = snapshot.lastLocationLon {
+      shiftLastLocation = CLLocation(
+        coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+        altitude: 0,
+        horizontalAccuracy: snapshot.lastLocationAccuracy ?? 10,
+        verticalAccuracy: -1,
+        timestamp: snapshot.lastLocationTimestamp ?? snapshot.startedAt
+      )
+    }
+    if let lat = snapshot.lastRoutePointLat, let lon = snapshot.lastRoutePointLon {
+      shiftLastRoutePointLocation = CLLocation(latitude: lat, longitude: lon)
+    }
+    stationarySince = snapshot.stationarySince
+    if let lat = snapshot.stationaryLat, let lon = snapshot.stationaryLon {
+      stationaryCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+
+    publishLiveShift()
+
+    switch phase {
+    case .driving:
+      configureLocationForDriving()
+      setBackgroundTrackingEnabled(true)
+      manager.startUpdatingLocation()
+    case .stationaryPending:
+      // The original countdown's remaining time wasn't persisted — restart a
+      // full timeout rather than guessing, so a restored shift never
+      // auto-concludes sooner than it would have.
+      configureLocationForStationaryWaiting()
+      setBackgroundTrackingEnabled(true)
+      scheduleStationaryTimeout()
+    case .paused, .idle:
+      break
     }
   }
 

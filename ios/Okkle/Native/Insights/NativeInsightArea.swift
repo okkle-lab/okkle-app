@@ -241,10 +241,19 @@ final class NativeExploreCandidateStore: ObservableObject {
   init() { load() }
 
   /// Add newly discovered candidates, keeping any trial evidence already
-  /// collected for ones we're already tracking (matched by name).
+  /// collected for ones we're already tracking (matched by name *and*
+  /// proximity — common UK street/area names like "High Street" repeat
+  /// across many towns, so a name match alone would permanently suppress a
+  /// genuinely new candidate just because a same-named one exists elsewhere).
   func merge(_ discovered: [(name: String, coordinate: CLLocationCoordinate2D, poiScore: Int)]) {
-    let known = Set(candidates.map { $0.name.lowercased() })
-    for area in discovered where !known.contains(area.name.lowercased()) {
+    for area in discovered {
+      let newLocation = CLLocation(latitude: area.coordinate.latitude, longitude: area.coordinate.longitude)
+      let alreadyKnown = candidates.contains { existing in
+        guard existing.name.caseInsensitiveCompare(area.name) == .orderedSame else { return false }
+        let existingLocation = CLLocation(latitude: existing.latitude, longitude: existing.longitude)
+        return existingLocation.distance(from: newLocation) < 2_000
+      }
+      guard !alreadyKnown else { continue }
       candidates.append(NativeExploreCandidate(name: area.name, latitude: area.coordinate.latitude,
                                                longitude: area.coordinate.longitude, poiScore: area.poiScore,
                                                discoveredAt: Date()))
@@ -326,8 +335,25 @@ func nativeOffsetCoordinate(_ origin: CLLocationCoordinate2D, distanceKm: Double
 /// Discovers nearby candidates and hands them to `NativeExploreCandidateStore`.
 /// Runs silently — nothing here is ever rendered.
 enum NativeAreaSuggester {
-  private static var fetchedForKey: String?
   private static var fetching = false
+  // Persisted (not just in-memory) so relaunching the app or bouncing
+  // between two working areas doesn't re-trigger the ~48-request
+  // MapKit/Overpass scan for a cell that was already scanned recently.
+  private static let fetchedKeysStorageKey = "uk.okkle.native.explore.fetchedKeys.v1"
+  private static let fetchedKeyCooldown: TimeInterval = 24 * 60 * 60
+
+  private static var fetchedKeys: [String: Date] {
+    get {
+      guard let data = UserDefaults.standard.data(forKey: fetchedKeysStorageKey),
+            let saved = try? JSONDecoder().decode([String: Date].self, from: data) else { return [:] }
+      return saved
+    }
+    set {
+      if let data = try? JSONEncoder().encode(newValue) {
+        UserDefaults.standard.set(data, forKey: fetchedKeysStorageKey)
+      }
+    }
+  }
 
   /// Lay out three rings of candidates (1.2km, 2.5km, and 4km out) around
   /// the driver, score them by restaurant density, and hand the top three
@@ -346,8 +372,15 @@ enum NativeAreaSuggester {
   @MainActor
   static func refresh(near origin: CLLocationCoordinate2D, knownZones: [CLLocationCoordinate2D]) {
     let key = "\(Int((origin.latitude * 200).rounded())),\(Int((origin.longitude * 200).rounded()))"
-    guard key != fetchedForKey, !fetching else { return }
-    fetchedForKey = key
+    var keys = fetchedKeys
+    keys = keys.filter { Date().timeIntervalSince($0.value) < fetchedKeyCooldown }
+    if let last = keys[key], Date().timeIntervalSince(last) < fetchedKeyCooldown {
+      fetchedKeys = keys
+      return
+    }
+    guard !fetching else { return }
+    keys[key] = Date()
+    fetchedKeys = keys
     fetching = true
     Task {
       let found = await discover(near: origin, knownZones: knownZones)
@@ -359,9 +392,9 @@ enum NativeAreaSuggester {
   }
 
   private static func discover(near origin: CLLocationCoordinate2D, knownZones: [CLLocationCoordinate2D]) async -> [(name: String, coordinate: CLLocationCoordinate2D, poiScore: Int)] {
-    var known = Set<String>()
+    var known: [(name: String, coordinate: CLLocationCoordinate2D)] = []
     for zone in knownZones {
-      if let name = await areaName(for: zone) { known.insert(name.lowercased()) }
+      if let name = await areaName(for: zone) { known.append((name.lowercased(), zone)) }
     }
 
     let bearings = stride(from: 0.0, to: 360.0, by: 45.0)
@@ -408,7 +441,13 @@ enum NativeAreaSuggester {
     var seenNames = Set<String>()
     for (coordinate, count) in scored {
       guard let name = await areaName(for: coordinate) else { continue }
-      guard !known.contains(name.lowercased()) else { continue }
+      let candidateLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+      let matchesKnownZone = known.contains { existing in
+        guard existing.name == name.lowercased() else { return false }
+        let existingLocation = CLLocation(latitude: existing.coordinate.latitude, longitude: existing.coordinate.longitude)
+        return existingLocation.distance(from: candidateLocation) < 2_000
+      }
+      guard !matchesKnownZone else { continue }
       if seenNames.insert(name.lowercased()).inserted {
         out.append((name: name, coordinate: coordinate, poiScore: count))
       }

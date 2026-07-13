@@ -196,7 +196,12 @@ struct NativeAutoShiftReviewView: View {
             Section {
               LabeledContent("Miles", value: miles(trip.miles))
               LabeledContent("Started", value: shortTime(trip.startedAt))
-              DatePicker("Ended", selection: $adjustedEnd, displayedComponents: [.hourAndMinute])
+              DatePicker(
+                "Ended",
+                selection: $adjustedEnd,
+                in: trip.startedAt...Date(),
+                displayedComponents: [.date, .hourAndMinute]
+              )
             } header: {
               Text("Shift summary")
             } footer: {
@@ -291,6 +296,11 @@ struct NativeAutoShiftReviewView: View {
 
   private func applyCorrections() {
     guard var trip = self.trip else { return }
+    // Guards against a corrected end time that would make the shift's
+    // duration negative or nonsensical — the DatePicker's own `in:` range
+    // already prevents this in the UI, but this is the last line of
+    // defense before it's saved.
+    guard adjustedEnd > trip.startedAt else { return }
     let delta = adjustedEnd.timeIntervalSince(trip.endedAt)
     // A few seconds' difference from opening the DatePicker isn't a real
     // correction — only treat a deliberate change as calibration signal.

@@ -80,7 +80,13 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     manager.pausesLocationUpdatesAutomatically = true
   }
 
+  @MainActor
   func start(vehicle: NativeVehicle) {
+    // Auto-tracking and manual tracking each run their own CLLocationManager;
+    // if an automatic shift is already live/paused, conclude it (saving
+    // whatever it already recorded) rather than letting two managers race
+    // for GPS at once.
+    NativeAutoTrackEngine.shared.endCurrentShift()
     self.vehicle = vehicle
     configureLocationManager(for: vehicle)
     permissionMessage = nil
