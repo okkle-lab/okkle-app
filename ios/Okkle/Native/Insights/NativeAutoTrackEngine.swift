@@ -144,9 +144,15 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private let minimumConnectedVehicleStopDwell: TimeInterval = 4 * 60
   private let homeArrivalRadius: CLLocationDistance = 120
   private let homeDepartureRadius: CLLocationDistance = 220
+  // How long the driver must actually stay within homeArrivalRadius before
+  // a shift concludes via home-arrival — a single GPS ping within range
+  // (e.g. driving past home on the way to another stop) isn't enough on
+  // its own, see concludeShiftIfArrivedHome.
+  private let homeArrivalDwellSeconds: TimeInterval = 15 * 60
   private var vehicleConnectionObservers: [NSObjectProtocol] = []
   private var idleWakeLocation: CLLocation?
   private var idleMotionQueryInFlight = false
+  private var homeDwellTimer: Timer?
 
   // A stop currently being timed — may resolve into a logged visit (driving
   // resumes) or trigger shift-end (the stationary timer expires).
@@ -317,7 +323,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationarySince = Date()
     stationaryCoordinate = shiftLastLocation?.coordinate
     configureLocationForStationaryWaiting()
-    if let shiftLastLocation, concludeShiftIfArrivedHome(at: shiftLastLocation) { return }
+    if let shiftLastLocation { trackHomeArrival(at: shiftLastLocation) }
     if concludeShiftIfVehicleDisconnected() { return }
     scheduleStationaryTimeout()
   }
@@ -341,6 +347,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftLastRoutePointLocation = nil
     shiftSawVehicleConnection = enhancedAutoTrackingEnabled && NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
     shiftArmedForHomeArrival = false
+    cancelHomeDwellTimer()
     liveShiftVehicle = store?.settings.defaultVehicle ?? .car
     publishLiveShift()
     configureLocationForDriving()
@@ -354,6 +361,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationaryTimer = nil
     stationarySince = nil
     stationaryCoordinate = nil
+    cancelHomeDwellTimer()
     shiftPhase = .paused
     manager.stopUpdatingLocation()
     manager.stopMonitoringSignificantLocationChanges()
@@ -382,6 +390,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     finalizePendingStop()
     stationaryTimer?.invalidate()
     stationaryTimer = nil
+    cancelHomeDwellTimer()
     shiftPhase = .driving
     configureLocationForDriving()
     manager.startUpdatingLocation()
@@ -407,6 +416,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftLastRoutePointLocation = nil
     shiftSawVehicleConnection = false
     shiftArmedForHomeArrival = false
+    cancelHomeDwellTimer()
     stationarySince = nil
     stationaryCoordinate = nil
     publishLiveShift()
@@ -522,7 +532,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       shiftLastLocation = location
       appendShiftRoutePoint(for: location)
       if shiftPhase == .stationaryPending { stationaryCoordinate = location.coordinate }
-      if concludeShiftIfArrivedHome(at: location) { return }
+      trackHomeArrival(at: location)
       if concludeShiftIfVehicleDisconnected() { return }
     }
     // Tell the driver recording has started — but only once the shift shows
@@ -610,19 +620,58 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     return true
   }
 
-  private func concludeShiftIfArrivedHome(at location: CLLocation) -> Bool {
-    guard enhancedAutoTrackingEnabled else { return false }
-    guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return false }
+  /// A single GPS ping inside homeArrivalRadius isn't enough to call the
+  /// shift over — driving past home on the way to another stop reads
+  /// identically to actually stopping there. This starts a dwell timer on
+  /// the first such ping instead, and only concludes (via
+  /// confirmHomeArrivalIfStillNearby) once the driver has stayed put for
+  /// homeArrivalDwellSeconds; any ping in between showing they've left
+  /// cancels it.
+  private func trackHomeArrival(at location: CLLocation) {
+    guard enhancedAutoTrackingEnabled else { return }
+    guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
     let homes = selectedHomeLocations
-    guard !homes.isEmpty else { return false }
+    guard !homes.isEmpty else { return }
     let nearestHomeDistance = homes.map { location.distance(from: $0) }.min() ?? .greatestFiniteMagnitude
     if nearestHomeDistance > homeDepartureRadius {
       shiftArmedForHomeArrival = true
-      return false
+      cancelHomeDwellTimer()
+      return
     }
-    guard shiftArmedForHomeArrival, nearestHomeDistance <= homeArrivalRadius else { return false }
+    guard shiftArmedForHomeArrival, nearestHomeDistance <= homeArrivalRadius else {
+      // Within the wider departure band but not tight enough to count as
+      // "at home" (e.g. 150m out) — not a real arrival either.
+      cancelHomeDwellTimer()
+      return
+    }
+    if homeDwellTimer == nil {
+      scheduleHomeDwellTimer()
+    }
+  }
+
+  private func scheduleHomeDwellTimer() {
+    homeDwellTimer?.invalidate()
+    homeDwellTimer = Timer.scheduledTimer(withTimeInterval: homeArrivalDwellSeconds, repeats: false) { [weak self] _ in
+      Task { @MainActor in self?.confirmHomeArrivalIfStillNearby() }
+    }
+    homeDwellTimer?.tolerance = 30
+  }
+
+  /// The dwell timer fired — re-checks against the most recent known
+  /// location rather than trusting the ping that started the timer, so a
+  /// single stale/inaccurate fix can't lock in a false "still home".
+  private func confirmHomeArrivalIfStillNearby() {
+    homeDwellTimer = nil
+    guard let shiftLastLocation else { return }
+    let homes = selectedHomeLocations
+    let nearestHomeDistance = homes.map { shiftLastLocation.distance(from: $0) }.min() ?? .greatestFiniteMagnitude
+    guard nearestHomeDistance <= homeArrivalRadius else { return }
     concludeShift()
-    return true
+  }
+
+  private func cancelHomeDwellTimer() {
+    homeDwellTimer?.invalidate()
+    homeDwellTimer = nil
   }
 
   private var selectedHomeLocations: [CLLocation] {
