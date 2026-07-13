@@ -460,6 +460,7 @@ struct NativeTripView: View {
           points: trackingPoints,
           showsEndMarker: completedTrip != nil,
           isInteractive: true,
+          allowsPanning: false,
           bottomInset: trackingPanelHeight
         )
           .ignoresSafeArea()

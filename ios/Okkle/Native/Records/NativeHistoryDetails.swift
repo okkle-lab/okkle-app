@@ -1681,6 +1681,11 @@ struct NativeRouteMapView: UIViewRepresentable {
   var stops: [NativeRouteMapStop] = []
   var showsEndMarker = true
   var isInteractive = false
+  // When false (the live-tracking map), interaction is limited to
+  // pinch/double-tap zoom — no drag-to-pan or rotate/tilt, since the map
+  // auto-follows the current position and free panning would fight that.
+  // Review/full-screen maps leave this true for unrestricted exploration.
+  var allowsPanning = true
   var selectedStopID: Binding<UUID?>
   // Extra bottom padding for callers with an overlaid bottom panel (the
   // live-tracking screen) — without it, the auto-fit region centres on the
@@ -1694,6 +1699,7 @@ struct NativeRouteMapView: UIViewRepresentable {
     stops: [NativeRouteMapStop] = [],
     showsEndMarker: Bool = true,
     isInteractive: Bool = false,
+    allowsPanning: Bool = true,
     selectedStopID: Binding<UUID?> = .constant(nil),
     bottomInset: CGFloat = 0
   ) {
@@ -1701,6 +1707,7 @@ struct NativeRouteMapView: UIViewRepresentable {
     self.stops = stops
     self.showsEndMarker = showsEndMarker
     self.isInteractive = isInteractive
+    self.allowsPanning = allowsPanning
     self.selectedStopID = selectedStopID
     self.bottomInset = bottomInset
   }
@@ -1713,6 +1720,10 @@ struct NativeRouteMapView: UIViewRepresentable {
     let mapView = MKMapView()
     mapView.delegate = context.coordinator
     mapView.isUserInteractionEnabled = isInteractive
+    mapView.isScrollEnabled = isInteractive && allowsPanning
+    mapView.isZoomEnabled = isInteractive
+    mapView.isRotateEnabled = isInteractive && allowsPanning
+    mapView.isPitchEnabled = isInteractive && allowsPanning
     mapView.pointOfInterestFilter = .excludingAll
     mapView.showsCompass = false
     mapView.showsScale = isInteractive
@@ -1722,6 +1733,10 @@ struct NativeRouteMapView: UIViewRepresentable {
   func updateUIView(_ mapView: MKMapView, context: Context) {
     context.coordinator.parent = self
     mapView.isUserInteractionEnabled = isInteractive
+    mapView.isScrollEnabled = isInteractive && allowsPanning
+    mapView.isZoomEnabled = isInteractive
+    mapView.isRotateEnabled = isInteractive && allowsPanning
+    mapView.isPitchEnabled = isInteractive && allowsPanning
     mapView.showsScale = isInteractive
 
     let coordinates = points.map(\.coordinate)
