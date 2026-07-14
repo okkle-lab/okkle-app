@@ -26,7 +26,7 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "63"
+      "buildNumber": "6"
     },
     "android": {
       "icon": "./assets/icon.png",
