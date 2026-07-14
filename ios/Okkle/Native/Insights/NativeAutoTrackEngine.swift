@@ -178,10 +178,18 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   // this can't prove the driver hasn't already left.
   private let homeArrivalStalenessThreshold: TimeInterval = 3 * 60
   private let homeArrivalRecheckDelay: TimeInterval = 3 * 60
+  // A vehicle (CarPlay/Bluetooth) disconnect used to end the shift the
+  // instant it happened — no dwell at all. That's wrong for the same reason
+  // a single home GPS ping is: stepping out for a minute, a flaky Bluetooth
+  // drop, or briefly parking to run in somewhere all look identical to
+  // "shift over" at the moment of disconnect. Wait this long, still
+  // disconnected, before actually concluding.
+  private let vehicleDisconnectDwellSeconds: TimeInterval = 5 * 60
   private var vehicleConnectionObservers: [NSObjectProtocol] = []
   private var idleWakeLocation: CLLocation?
   private var idleMotionQueryInFlight = false
   private var homeDwellTimer: Timer?
+  private var vehicleDisconnectDwellTimer: Timer?
 
   // A stop currently being timed — may resolve into a logged visit (driving
   // resumes) or trigger shift-end (the stationary timer expires).
@@ -355,7 +363,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     configureLocationForStationaryWaiting()
     persistShiftSnapshot()
     if let shiftLastLocation { trackHomeArrival(at: shiftLastLocation) }
-    if concludeShiftIfVehicleDisconnected() { return }
+    armVehicleDisconnectDwellIfNeeded()
     scheduleStationaryTimeout()
   }
 
@@ -379,6 +387,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftSawVehicleConnection = enhancedAutoTrackingEnabled && NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
     shiftArmedForHomeArrival = false
     cancelHomeDwellTimer()
+    cancelVehicleDisconnectDwellTimer()
     liveShiftVehicle = store?.settings.defaultVehicle ?? .car
     publishLiveShift()
     persistShiftSnapshot()
@@ -394,6 +403,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationarySince = nil
     stationaryCoordinate = nil
     cancelHomeDwellTimer()
+    cancelVehicleDisconnectDwellTimer()
     shiftPhase = .paused
     manager.stopUpdatingLocation()
     manager.stopMonitoringSignificantLocationChanges()
@@ -425,6 +435,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationaryTimer?.invalidate()
     stationaryTimer = nil
     cancelHomeDwellTimer()
+    cancelVehicleDisconnectDwellTimer()
     shiftPhase = .driving
     configureLocationForDriving()
     manager.startUpdatingLocation()
@@ -452,6 +463,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftSawVehicleConnection = false
     shiftArmedForHomeArrival = false
     cancelHomeDwellTimer()
+    cancelVehicleDisconnectDwellTimer()
     stationarySince = nil
     stationaryCoordinate = nil
     publishLiveShift()
@@ -476,10 +488,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     guard enhancedAutoTrackingEnabled else { return }
     if NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle {
       shiftSawVehicleConnection = true
+      cancelVehicleDisconnectDwellTimer()
       beginShiftFromVehicleConnectionIfNeeded()
       publishLiveShift()
     } else {
-      _ = concludeShiftIfVehicleDisconnected()
+      armVehicleDisconnectDwellIfNeeded()
     }
   }
 
@@ -569,7 +582,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       appendShiftRoutePoint(for: location)
       if shiftPhase == .stationaryPending { stationaryCoordinate = location.coordinate }
       trackHomeArrival(at: location)
-      if concludeShiftIfVehicleDisconnected() { return }
+      armVehicleDisconnectDwellIfNeeded()
     }
     // Tell the driver recording has started — but only once the shift shows
     // real recorded distance, not on the raw driving signal. A bus ride or a
@@ -603,6 +616,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func appendShiftRoutePoint(for location: CLLocation) {
+    guard nativeIsPlausibleRoutePoint(location, since: shiftLastRoutePointLocation) else { return }
     if let shiftLastRoutePointLocation {
       guard location.distance(from: shiftLastRoutePointLocation) >= routePointDistance else { return }
     }
@@ -650,11 +664,36 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     return location.distance(from: stationaryLocation) >= stationaryResumeDistance
   }
 
-  private func concludeShiftIfVehicleDisconnected() -> Bool {
-    guard enhancedAutoTrackingEnabled else { return false }
-    guard shiftSawVehicleConnection, !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle else { return false }
+  /// A vehicle disconnect alone isn't proof the shift is over — stepping out
+  /// briefly, a Bluetooth hiccup, or a quick errand all disconnect too. Arms
+  /// a dwell timer on the first disconnect instead of concluding right away;
+  /// reconnecting before it fires cancels it (see handleVehicleConnectionChanged).
+  private func armVehicleDisconnectDwellIfNeeded() {
+    guard enhancedAutoTrackingEnabled else { return }
+    guard shiftSawVehicleConnection, !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle else {
+      cancelVehicleDisconnectDwellTimer()
+      return
+    }
+    guard vehicleDisconnectDwellTimer == nil else { return }
+    vehicleDisconnectDwellTimer = Timer.scheduledTimer(withTimeInterval: vehicleDisconnectDwellSeconds, repeats: false) { [weak self] _ in
+      Task { @MainActor in self?.confirmVehicleStillDisconnected() }
+    }
+    vehicleDisconnectDwellTimer?.tolerance = 15
+  }
+
+  /// The dwell timer fired — re-checks the connection is still actually
+  /// disconnected (not just trusting the ping that started the timer) before
+  /// concluding the shift.
+  private func confirmVehicleStillDisconnected() {
+    vehicleDisconnectDwellTimer = nil
+    guard enhancedAutoTrackingEnabled else { return }
+    guard shiftSawVehicleConnection, !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle else { return }
     concludeShift()
-    return true
+  }
+
+  private func cancelVehicleDisconnectDwellTimer() {
+    vehicleDisconnectDwellTimer?.invalidate()
+    vehicleDisconnectDwellTimer = nil
   }
 
   /// A single GPS ping inside homeArrivalRadius isn't enough to call the

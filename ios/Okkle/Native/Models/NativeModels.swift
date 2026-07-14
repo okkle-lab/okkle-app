@@ -108,6 +108,28 @@ enum NativeLogKind: String, CaseIterable, Identifiable, Codable {
   }
 }
 
+/// Whether `location` is trustworthy enough to become a permanent vertex in
+/// a recorded route (as opposed to just being accurate enough to update live
+/// mileage/position). A single low-accuracy or GPS-multipath fix — accepted
+/// by the much looser live-tracking filters — can otherwise bake a visible
+/// zigzag spike into the route: the polyline jumps out to the bad point and
+/// back on the very next real fix. Two independent checks: the fix itself
+/// can't be too imprecise, and getting from the last recorded point to this
+/// one can't imply an impossible speed (a GPS teleport, not real movement).
+func nativeIsPlausibleRoutePoint(
+  _ location: CLLocation,
+  since lastRoutePointLocation: CLLocation?,
+  maxAccuracyMeters: CLLocationDistance = 65,
+  maxImpliedSpeedMetersPerSecond: Double = 45
+) -> Bool {
+  guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= maxAccuracyMeters else { return false }
+  guard let lastRoutePointLocation else { return true }
+  let elapsed = location.timestamp.timeIntervalSince(lastRoutePointLocation.timestamp)
+  guard elapsed > 0 else { return true }
+  let distance = location.distance(from: lastRoutePointLocation)
+  return distance / elapsed <= maxImpliedSpeedMetersPerSecond
+}
+
 struct RoutePoint: Identifiable, Codable, Equatable {
   var id = UUID()
   var latitude: Double

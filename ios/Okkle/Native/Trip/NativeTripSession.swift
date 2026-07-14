@@ -293,6 +293,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   }
 
   private func appendRoutePoint(for location: CLLocation, force: Bool = false) {
+    guard force || nativeIsPlausibleRoutePoint(location, since: lastRoutePointLocation) else { return }
     if let lastRoutePointLocation {
       let distance = location.distance(from: lastRoutePointLocation)
       guard force ? distance > 1 : distance >= routePointDistance else { return }
