@@ -146,7 +146,7 @@ struct NativeTripDetailSheet: View {
           ForEach(numberedStops) { stop in
             NativeVisitSwipeRow(
               isPersonal: stop.visit.isPersonal,
-              onToggle: { markStopPersonal(stop.visit, isPersonal: !stop.visit.isPersonal) }
+              onSetPersonal: { markStopPersonal(stop.visit, isPersonal: $0) }
             ) {
               Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
@@ -823,14 +823,14 @@ private struct NativeTripDetailStop: Identifiable {
   var id: UUID { visit.id }
 }
 
-/// Swipe a single stop within a multi-stop trip to flag it personal (or
-/// revert it) — same leading-edge, full-swipe-commits gesture as the Data
-/// tab's whole-trip row, so the interaction is already familiar. No
-/// trailing/delete action here: a detected stop isn't something to delete,
-/// only reclassify.
+/// Swipe a single stop within a multi-stop trip to flag it personal or
+/// business — two fixed edges, not one dynamic toggle: swiping right
+/// (leading edge) always reveals Business, swiping left (trailing edge)
+/// always reveals Personal, matching the Data tab's whole-trip row. Full
+/// swipe on either side commits immediately since this is reversible.
 private struct NativeVisitSwipeRow<Content: View>: View {
   let isPersonal: Bool
-  let onToggle: () -> Void
+  let onSetPersonal: (Bool) -> Void
   @ViewBuilder var content: () -> Content
 
   @State private var dragOffset: CGFloat = 0
@@ -839,17 +839,17 @@ private struct NativeVisitSwipeRow<Content: View>: View {
   private let revealWidth: CGFloat = 92
   private let fullSwipeCommitDistance: CGFloat = 150
 
-  private var toggleLabel: String { isPersonal ? "Business" : "Personal" }
-  private var toggleSymbol: String { isPersonal ? "briefcase.fill" : "person.fill" }
-  private var toggleTint: Color { isPersonal ? OkkleColor.brand : .gray }
-
   var body: some View {
     ZStack {
       HStack(spacing: 0) {
         if dragOffset > 0 {
-          swipeButton
+          swipeButton(label: "Business", symbol: "briefcase.fill", tint: OkkleColor.brand) { commit(setPersonal: false) }
             .frame(width: max(dragOffset, revealWidth), alignment: .leading)
           Spacer(minLength: 0)
+        } else if dragOffset < 0 {
+          Spacer(minLength: 0)
+          swipeButton(label: "Personal", symbol: "person.fill", tint: .gray) { commit(setPersonal: true) }
+            .frame(width: max(-dragOffset, revealWidth), alignment: .trailing)
         }
       }
 
@@ -864,9 +864,9 @@ private struct NativeVisitSwipeRow<Content: View>: View {
           DragGesture(minimumDistance: 14)
             .onChanged { value in
               guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
-              let base: CGFloat = isOpen ? revealWidth : 0
+              let base: CGFloat = isOpen ? (dragOffset >= 0 ? revealWidth : -revealWidth) : 0
               let proposed = base + value.translation.width
-              dragOffset = max(0, min(fullSwipeCommitDistance + 30, proposed))
+              dragOffset = max(-fullSwipeCommitDistance - 30, min(fullSwipeCommitDistance + 30, proposed))
             }
             .onEnded { value in
               handleDragEnd(value.translation.width)
@@ -876,29 +876,36 @@ private struct NativeVisitSwipeRow<Content: View>: View {
     .clipped()
   }
 
-  private var swipeButton: some View {
-    Button(action: commit) {
+  private func swipeButton(label: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
       VStack(spacing: 4) {
-        Image(systemName: toggleSymbol)
+        Image(systemName: symbol)
           .font(.system(size: 16, weight: .bold))
-        Text(toggleLabel)
+        Text(label)
           .font(.system(size: 11, weight: .bold))
       }
       .foregroundStyle(.white)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .buttonStyle(.plain)
-    .background(toggleTint)
+    .background(tint)
   }
 
   private func handleDragEnd(_ translation: CGFloat) {
+    if translation <= -fullSwipeCommitDistance {
+      commit(setPersonal: true)
+      return
+    }
     if translation >= fullSwipeCommitDistance {
-      commit()
+      commit(setPersonal: false)
       return
     }
     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
       if dragOffset > revealWidth / 2 {
         dragOffset = revealWidth
+        isOpen = true
+      } else if dragOffset < -revealWidth / 2 {
+        dragOffset = -revealWidth
         isOpen = true
       } else {
         dragOffset = 0
@@ -907,10 +914,10 @@ private struct NativeVisitSwipeRow<Content: View>: View {
     }
   }
 
-  private func commit() {
+  private func commit(setPersonal: Bool) {
     let generator = UIImpactFeedbackGenerator(style: .medium)
     generator.impactOccurred()
-    onToggle()
+    onSetPersonal(setPersonal)
     close()
   }
 

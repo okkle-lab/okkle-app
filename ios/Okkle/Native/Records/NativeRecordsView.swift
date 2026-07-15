@@ -283,10 +283,9 @@ struct NativeRecordsView: View {
                 NativeSelectableHistoryRow(
                   item: item,
                   onSelect: { selectFromAllHistory(item) },
-                  onToggleTripCategory: {
+                  onSetTripCategory: { category in
                     if let trip = item.trip {
-                      let next: NativeTripCategory = trip.category == .business ? .personal : .business
-                      store.setTripCategory(trip, to: next)
+                      store.setTripCategory(trip, to: category)
                     }
                   },
                   onDeleteTrip: {
@@ -623,15 +622,14 @@ private struct NativeAddRecordPanel: View {
 struct NativeSelectableHistoryRow: View {
   let item: NativeHistoryItem
   let onSelect: () -> Void
-  var onToggleTripCategory: (() -> Void)? = nil
+  var onSetTripCategory: ((NativeTripCategory) -> Void)? = nil
   var onDeleteTrip: (() -> Void)? = nil
 
   var body: some View {
     if let trip = item.trip {
       NativeTripSwipeRow(
         trip: trip,
-        onToggleCategory: { onToggleTripCategory?() },
-        onDelete: { onDeleteTrip?() }
+        onSetCategory: { onSetTripCategory?($0) }
       ) {
         row
       }
@@ -649,20 +647,30 @@ struct NativeSelectableHistoryRow: View {
     .buttonStyle(.plain)
     .accessibilityAddTraits(.isButton)
     .accessibilityHint("Opens details.")
+    .contextMenu {
+      if item.trip != nil, let onDeleteTrip {
+        Button(role: .destructive, action: onDeleteTrip) {
+          Label("Delete", systemImage: "trash")
+        }
+      }
+    }
   }
 }
 
-/// Swipe left/right to reclassify or delete a trip — leading edge flips
-/// business/personal (safe and reversible, so a full swipe commits it
-/// immediately); trailing edge deletes (destructive, so it always needs an
-/// explicit tap on the revealed button, never a full swipe). Built by hand
-/// rather than SwiftUI's native `.swipeActions` because this list lives in a
+/// Swipe a trip to reclassify it — two fixed edges, not one dynamic toggle:
+/// swiping right (leading edge) always reveals Business, swiping left
+/// (trailing edge) always reveals Personal. Full swipe on either side
+/// commits immediately since this is reversible. Delete moved to a
+/// long-press context menu on the row (see NativeSelectableHistoryRow) so
+/// the swipe gesture means the same thing everywhere it appears — this
+/// exact same left/right convention repeats on individual stop rows inside
+/// a trip's detail screen (NativeVisitSwipeRow). Built by hand rather than
+/// SwiftUI's native `.swipeActions` because this list lives in a
 /// `LazyVStack` inside `NativeScreen`'s outer ScrollView, not a `List` —
 /// `.swipeActions` only works on List rows.
 private struct NativeTripSwipeRow<Content: View>: View {
   let trip: NativeTrip
-  let onToggleCategory: () -> Void
-  let onDelete: () -> Void
+  let onSetCategory: (NativeTripCategory) -> Void
   @ViewBuilder var content: () -> Content
 
   @State private var dragOffset: CGFloat = 0
@@ -671,21 +679,16 @@ private struct NativeTripSwipeRow<Content: View>: View {
   private let revealWidth: CGFloat = 92
   private let fullSwipeCommitDistance: CGFloat = 150
 
-  private var isBusiness: Bool { trip.category == .business }
-  private var toggleLabel: String { isBusiness ? "Personal" : "Business" }
-  private var toggleSymbol: String { isBusiness ? "person.fill" : "briefcase.fill" }
-  private var toggleTint: Color { isBusiness ? .gray : OkkleColor.brand }
-
   var body: some View {
     ZStack {
       HStack(spacing: 0) {
         if dragOffset > 0 {
-          swipeButton(label: toggleLabel, symbol: toggleSymbol, tint: toggleTint, action: commitToggle)
+          swipeButton(label: "Business", symbol: "briefcase.fill", tint: OkkleColor.brand) { commit(.business) }
             .frame(width: max(dragOffset, revealWidth), alignment: .leading)
           Spacer(minLength: 0)
         } else if dragOffset < 0 {
           Spacer(minLength: 0)
-          swipeButton(label: "Delete", symbol: "trash.fill", tint: .red, action: commitDelete)
+          swipeButton(label: "Personal", symbol: "person.fill", tint: .gray) { commit(.personal) }
             .frame(width: max(-dragOffset, revealWidth), alignment: .trailing)
         }
       }
@@ -730,11 +733,11 @@ private struct NativeTripSwipeRow<Content: View>: View {
 
   private func handleDragEnd(_ translation: CGFloat) {
     if translation <= -fullSwipeCommitDistance {
-      commitDelete()
+      commit(.personal)
       return
     }
     if translation >= fullSwipeCommitDistance {
-      commitToggle()
+      commit(.business)
       return
     }
     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
@@ -751,17 +754,10 @@ private struct NativeTripSwipeRow<Content: View>: View {
     }
   }
 
-  private func commitToggle() {
+  private func commit(_ category: NativeTripCategory) {
     let generator = UIImpactFeedbackGenerator(style: .medium)
     generator.impactOccurred()
-    onToggleCategory()
-    close()
-  }
-
-  private func commitDelete() {
-    let generator = UIImpactFeedbackGenerator(style: .medium)
-    generator.impactOccurred()
-    onDelete()
+    onSetCategory(category)
     close()
   }
 
