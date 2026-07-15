@@ -310,7 +310,14 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
   /// Provisional pickup guess: dwell at or above this reads as a pick-up.
   var pickupDwellThreshold: TimeInterval = 150
   /// Below this dwell, with no nearby food venue, MapKit confirms drop-off.
-  var dropoffMaxDwellThreshold: TimeInterval = 240
+  /// Must stay comfortably above NativeAutoTrackEngine's
+  /// minimumConnectedVehicleStopDwell (4 min) — that's the floor a stop has
+  /// to clear before it's recorded at all when there's no vehicle-Bluetooth
+  /// signal, so if this ceiling were at or below that floor, every such
+  /// stop would already dwell past it and this branch could never fire,
+  /// leaving every non-Bluetooth stop permanently misclassified as a
+  /// pick-up. Verified via a real-day simulation that hit exactly that.
+  var dropoffMaxDwellThreshold: TimeInterval = 600
   /// Search radius for a nearby restaurant/cafe when refining a stop's kind.
   var foodPoiRadiusMeters: Double = 45
 
@@ -327,7 +334,7 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     stationaryTimeoutSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .stationaryTimeoutSeconds) ?? 20 * 60
     pickupDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .pickupDwellThreshold) ?? 150
-    dropoffMaxDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .dropoffMaxDwellThreshold) ?? 240
+    dropoffMaxDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .dropoffMaxDwellThreshold) ?? 600
     foodPoiRadiusMeters = try container.decodeIfPresent(Double.self, forKey: .foodPoiRadiusMeters) ?? 45
   }
 
