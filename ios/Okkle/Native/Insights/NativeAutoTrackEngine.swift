@@ -31,6 +31,13 @@ struct NativeVisit: Codable, Identifiable, Equatable {
   // dropped. That is a stronger signal than motion alone because the driver
   // probably left the car rather than waiting at lights.
   var vehicleDisconnectConfirmed: Bool? = nil
+  // Flagged by the driver from the trip-detail screen — a personal errand
+  // mid-shift, not a delivery. Kept in the log (see NativeTrip.category for
+  // the same "don't delete" reasoning) but excluded from NativeShiftInsights
+  // entirely, same as an excluded place. Doesn't touch the trip's own
+  // mileage/deduction — those stay a whole-trip figure from the real GPS
+  // route, not attributed per leg.
+  var isPersonal: Bool = false
 
   enum Kind: String, Codable, CaseIterable { case pickup, dropoff, other }
 
@@ -1374,6 +1381,22 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// Removes a stop the driver flagged as wrong in the shift-review screen.
   func discardVisit(_ id: UUID) {
     visits.removeAll { $0.id == id }
+    save()
+  }
+
+  /// Flags one stop within a trip as personal (or reverts it) from the
+  /// trip-detail screen. `stop` may be a real recorded visit already in
+  /// `visits`, or a GPS-detected-but-never-persisted stop (NativeRouteStop-
+  /// Detector can surface those without ever adding them here) — either
+  /// way it needs to end up as a real, persisted visit so the flag sticks.
+  func setVisitPersonal(_ stop: NativeVisit, isPersonal: Bool) {
+    if let index = visits.firstIndex(where: { $0.id == stop.id }) {
+      visits[index].isPersonal = isPersonal
+    } else {
+      var promoted = stop
+      promoted.isPersonal = isPersonal
+      visits.append(promoted)
+    }
     save()
   }
 }
