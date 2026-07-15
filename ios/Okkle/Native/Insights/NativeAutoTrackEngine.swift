@@ -355,11 +355,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         try? await Task.sleep(nanoseconds: 1_200_000_000)
       }
 
-      // A realistic 6-day working week (Saturday off), spanning 7 calendar
-      // days so it can actually reach Medium confidence (needs daySpan>=7,
-      // activeDays>=3) without also reaching High (needs daySpan>=14,
-      // activeDays>=8) — exactly "a week worth of data," not two.
-      let daysAgo = [7, 6, 5, 3, 2, 1, 0]
+      // Two realistic working weeks (one rest day each), spanning 14
+      // calendar days so it can actually reach High confidence (needs
+      // daySpan>=14, activeDays>=8, deliveries>=20) rather than stopping at
+      // Medium — lets a full Insights build (zones, best window etc.) be
+      // inspected instead of just the "still building" gate.
+      let daysAgo = [14, 13, 12, 11, 10, 9, 7, 6, 5, 4, 3, 2, 0]
       var totalDeliveries = 0
 
       for (dayIndex, dOffset) in daysAgo.enumerated() {
