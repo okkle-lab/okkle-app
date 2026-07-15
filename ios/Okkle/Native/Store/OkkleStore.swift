@@ -277,6 +277,11 @@ final class OkkleStore: ObservableObject {
     trips[index] = trip
   }
 
+  func setTripCategory(_ trip: NativeTrip, to category: NativeTripCategory) {
+    guard let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
+    trips[index].category = category
+  }
+
   func updateRecord(_ record: NativeRecord) {
     guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
     records[index] = record
@@ -337,8 +342,15 @@ final class OkkleStore: ObservableObject {
     records.filter { recordOverlapsTaxYear($0) }
   }
 
+  // Personal trips are kept for the audit trail (see NativeTrip.category)
+  // but never count toward mileage deductions, Insights, or work stats —
+  // this is the single filter every one of those reads through.
+  var businessTrips: [NativeTrip] {
+    trips.filter { $0.category == .business }
+  }
+
   var yearTrips: [NativeTrip] {
-    trips.filter { taxYear.contains($0.startedAt) }
+    businessTrips.filter { taxYear.contains($0.startedAt) }
   }
 
   var yearMiles: Double {
@@ -662,7 +674,7 @@ final class OkkleStore: ObservableObject {
   }
 
   private var allMileageEntries: [TaxYearMileageEntry] {
-    let tripEntries = trips.compactMap { trip -> TaxYearMileageEntry? in
+    let tripEntries = businessTrips.compactMap { trip -> TaxYearMileageEntry? in
       let miles = max(0, trip.miles)
       guard miles > 0 else { return nil }
       return TaxYearMileageEntry(date: trip.startedAt, miles: miles, vehicle: trip.vehicle)

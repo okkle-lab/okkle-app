@@ -350,12 +350,12 @@ enum NativeMedalEngine {
       )
       return (
         store.records.filter { interval.contains($0.date) },
-        store.trips.filter { interval.contains($0.startedAt) }
+        store.businessTrips.filter { interval.contains($0.startedAt) }
       )
     case .yearToDate:
       return (store.yearRecords, store.yearTrips)
     case .allTime:
-      return (store.records, store.trips)
+      return (store.records, store.businessTrips)
     }
   }
 
