@@ -163,8 +163,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private let stationaryDistanceFilter: CLLocationDistance = 150
   private let stationaryResumeDistance: CLLocationDistance = 150
   private let idleWakeDistance: CLLocationDistance = 450
-  private let minimumConfidentStopDwell: TimeInterval = 90
-  private let minimumConnectedVehicleStopDwell: TimeInterval = 4 * 60
+  private let minimumConfidentStopDwell: TimeInterval = 8 // TEMPORARY for verification, revert to 90
+  private let minimumConnectedVehicleStopDwell: TimeInterval = 8 // TEMPORARY for verification, revert to 4 * 60
   private let homeArrivalRadius: CLLocationDistance = 120
   private let homeDepartureRadius: CLLocationDistance = 220
   // How long the driver must actually stay within homeArrivalRadius before
@@ -215,6 +215,103 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     }
     NotificationCenter.default.addObserver(forName: .nativeLiveActivityStillDrivingRequested, object: nil, queue: .main) { [weak self] _ in
       Task { @MainActor in self?.confirmStillDriving() }
+    }
+    runRealisticDaySimulationIfRequested()
+  }
+
+  /// TEMPORARY verification-only hook — drives the real beginShift/
+  /// handleShiftLocationUpdates/handleStationarySignal/handleDrivingSignal
+  /// pipeline through 10 shop-pickup→house-dropoff cycles, following real
+  /// roads via MKDirections (not straight-line teleporting) and using a
+  /// real, MapKit-confirmed food venue as the shop so pickup classification
+  /// resolves correctly instead of landing on an arbitrary coordinate.
+  /// Playback is time-compressed (real routes, faster-than-real-time
+  /// breadcrumbs) since a genuinely real-time day would take hours to
+  /// verify. Will be removed after verification, along with the
+  /// temporarily-shortened dwell thresholds above.
+  private func runRealisticDaySimulationIfRequested() {
+    guard ProcessInfo.processInfo.arguments.contains("OKKLE_TEST_REALISTIC_DAY") else { return }
+    Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 5_000_000_000)
+      print("OKKLE-SIM: starting shift")
+      self.beginShift()
+
+      // A real restaurant — confirmed in an earlier run to resolve as a
+      // food-category MapKit POI, so pickup classification actually fires.
+      let shop = CLLocationCoordinate2D(latitude: 51.4387, longitude: -0.1966)
+      let home = CLLocationCoordinate2D(latitude: 51.4275, longitude: -0.1875)
+
+      @MainActor func driveRoute(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) async {
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
+        request.transportType = .automobile
+
+        var routeCoordinates: [CLLocationCoordinate2D] = []
+        if let route = try? await MKDirections(request: request).calculate().routes.first {
+          let count = route.polyline.pointCount
+          var raw = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: count)
+          route.polyline.getCoordinates(&raw, range: NSRange(location: 0, length: count))
+          routeCoordinates = raw
+          print("OKKLE-SIM: route \(origin) -> \(destination): \(count) points, \(String(format: "%.2f", route.distance / 1000))km")
+        } else {
+          print("OKKLE-SIM: MKDirections failed, falling back to straight line")
+          routeCoordinates = [origin, destination]
+        }
+
+        // Sample down to ~8 breadcrumbs along the real road path, not a
+        // straight line through buildings.
+        let step = max(1, routeCoordinates.count / 8)
+        var i = 0
+        while i < routeCoordinates.count {
+          let loc = CLLocation(
+            coordinate: routeCoordinates[i], altitude: 0, horizontalAccuracy: 8, verticalAccuracy: -1,
+            course: 0, speed: 10, timestamp: Date()
+          )
+          self.handleShiftLocationUpdates([loc])
+          try? await Task.sleep(nanoseconds: 500_000_000)
+          i += step
+        }
+        let final = CLLocation(
+          coordinate: destination, altitude: 0, horizontalAccuracy: 8, verticalAccuracy: -1, timestamp: Date()
+        )
+        self.handleShiftLocationUpdates([final])
+      }
+
+      var previous = home
+      for cycle in 1...1 {
+        await driveRoute(from: previous, to: shop)
+        print("OKKLE-SIM: cycle \(cycle) arrived at shop for pickup")
+        self.handleStationarySignal()
+        print("OKKLE-SIM: DEBUG after handleStationarySignal phase=\(self.shiftPhase) stationarySince=\(String(describing: self.stationarySince)) stationaryCoordinate=\(String(describing: self.stationaryCoordinate)) shiftLastLocation=\(String(describing: self.shiftLastLocation?.coordinate))")
+        try? await Task.sleep(nanoseconds: 10_000_000_000)
+        let visitsBefore = self.visits.count
+        print("OKKLE-SIM: DEBUG before resume phase=\(self.shiftPhase) elapsedDwell=\(String(describing: self.stationarySince.map { Date().timeIntervalSince($0) }))")
+        self.handleDrivingSignal()
+        print("OKKLE-SIM: DEBUG after resume phase=\(self.shiftPhase) visits \(visitsBefore) -> \(self.visits.count)")
+
+        // A different, realistically-scattered delivery address each cycle
+        // — varied compass bearing and distance, not a monotonic line.
+        let bearing = Double(cycle - 1) * 36.0
+        let distanceKm = 0.5 + Double(cycle % 4) * 0.4
+        let house = nativeOffsetCoordinate(shop, distanceKm: distanceKm, bearingDeg: bearing)
+
+        await driveRoute(from: shop, to: house)
+        print("OKKLE-SIM: cycle \(cycle) arrived at house for dropoff")
+        self.handleStationarySignal()
+        try? await Task.sleep(nanoseconds: 10_000_000_000)
+        self.handleDrivingSignal()
+        previous = house
+      }
+
+      await driveRoute(from: previous, to: home)
+      print("OKKLE-SIM: ending shift, visits=\(self.visits.count) miles=\(self.shiftMiles)")
+      self.endCurrentShift()
+      try? await Task.sleep(nanoseconds: 3_000_000_000)
+      print("OKKLE-SIM: FINAL visits.count=\(self.visits.count)")
+      for v in self.visits {
+        print("OKKLE-SIM: visit kind=\(v.kind) dwell=\(Int(v.dwell))s place=\(v.placeName ?? "nil") coord=\(v.coordinate)")
+      }
     }
   }
 
@@ -988,14 +1085,16 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     NativeAreaSuggester.refresh(near: visit.coordinate, knownZones: zones)
   }
 
-  /// Use Apple Maps as an information layer: if there's a food place right by the
-  /// stop it's a pick-up; otherwise it's most likely a customer drop-off. A
-  /// single search covers both the tight food-radius classification and the
-  /// wider any-POI naming fallback, instead of two sequential network calls.
+  /// Use Apple Maps as an information layer: if there's a food place *or a
+  /// shop* right by the stop it's a pick-up (couriers collect from
+  /// supermarkets, pharmacies and general retail, not just restaurants);
+  /// otherwise it's most likely a customer drop-off. A single search covers
+  /// both the tight pickup-radius classification and the wider any-POI
+  /// naming fallback, instead of two sequential network calls.
   private func classifyWithMapKit(_ id: UUID, coordinate: CLLocationCoordinate2D, calibration: NativeAutoTrackCalibration) {
-    let foodCategories: Set<MKPointOfInterestCategory> = [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife]
+    let pickupCategories: Set<MKPointOfInterestCategory> = [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife, .store, .pharmacy]
     let namingRadius: CLLocationDistance = 110
-    let namingCategories = foodCategories.union([.store, .pharmacy, .parking, .publicTransport])
+    let namingCategories = pickupCategories.union([.parking, .publicTransport])
     let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: max(calibration.foodPoiRadiusMeters, namingRadius))
     request.pointOfInterestFilter = MKPointOfInterestFilter(including: Array(namingCategories))
     let stopLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
@@ -1007,8 +1106,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     MKLocalSearch(request: request).start { [weak self] response, _ in
       guard let self else { return }
       let items = response?.mapItems ?? []
-      let nearestFood = items
-        .filter { ($0.pointOfInterestCategory.map(foodCategories.contains) ?? false) && distance($0) <= calibration.foodPoiRadiusMeters }
+      let nearestPickupPlace = items
+        .filter { ($0.pointOfInterestCategory.map(pickupCategories.contains) ?? false) && distance($0) <= calibration.foodPoiRadiusMeters }
         .min { distance($0) < distance($1) }
       let nearestNamed = items
         .filter { ($0.name ?? "").isEmpty == false && distance($0) <= namingRadius }
@@ -1016,9 +1115,9 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
 
       Task { @MainActor in
         guard let index = self.visits.firstIndex(where: { $0.id == id }) else { return }
-        if let food = nearestFood {
+        if let place = nearestPickupPlace {
           self.visits[index].kind = .pickup
-          self.visits[index].placeName = food.name
+          self.visits[index].placeName = place.name
         } else if self.visits[index].dwell < calibration.dropoffMaxDwellThreshold {
           self.visits[index].kind = .dropoff
         }
