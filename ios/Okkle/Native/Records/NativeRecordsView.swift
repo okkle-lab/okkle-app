@@ -152,10 +152,12 @@ struct NativeRecordsView: View {
   }
 
   // Personal trips never count toward the headline miles figure — unless
-  // the driver has explicitly filtered down to Personal, in which case that
-  // is exactly the figure they're asking to see.
+  // the driver has explicitly filtered down to Personal while looking at
+  // Trips, in which case that's exactly the figure they're asking to see.
+  // Same gating as filteredHistory: the trip-type control only has a
+  // visible effect while filter == .journeys.
   private var summaryMilesCategory: NativeTripCategory {
-    tripCategoryFilter == .personal ? .personal : .business
+    filter == .journeys && tripCategoryFilter == .personal ? .personal : .business
   }
 
   private var summaryMiles: Double {
@@ -463,7 +465,10 @@ struct NativeRecordsView: View {
         if case .record(let record) = item { typeOk = record.kind == .expense } else { typeOk = false }
       }
       guard typeOk else { return false }
-      if tripCategoryFilter != .all, case .trip(let trip) = item {
+      // Trip type only ever has a visible control while looking at Trips
+      // (see historyFilterBar) — it must not silently keep narrowing "All"
+      // (or Income/Expense) after switching away from Trips with it set.
+      if filter == .journeys, tripCategoryFilter != .all, case .trip(let trip) = item {
         let wantsBusiness = tripCategoryFilter == .business
         guard (trip.category == .business) == wantsBusiness else { return false }
       }
