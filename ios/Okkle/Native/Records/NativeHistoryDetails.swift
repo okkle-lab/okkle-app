@@ -209,7 +209,8 @@ struct NativeTripDetailSheet: View {
         title: "\(stop.number). \(stopTitle(for: stop.visit))",
         subtitle: stopSubtitle(for: stop.visit),
         kind: routeStopKind(for: stop.visit),
-        glyphText: "\(stop.number)"
+        glyphText: "\(stop.number)",
+        isPersonal: stop.visit.isPersonal
       )
     }
   }
@@ -838,7 +839,11 @@ private struct NativeVisitSwipeRow<Content: View>: View {
 
   private let revealWidth: CGFloat = 92
   private let fullSwipeCommitDistance: CGFloat = 150
-  private let cornerRadius: CGFloat = 20
+  // Matches routeStopLocationRow's own selected-state highlight radius
+  // (14pt) so the row's resting and selected shapes agree — 20 read as
+  // too round, a plain rectangle (0) as the chopped-off look this
+  // replaced.
+  private let cornerRadius: CGFloat = 14
 
   var body: some View {
     ZStack {
@@ -1570,7 +1575,8 @@ struct NativeTripEditSheet: View {
         title: "\(stop.number). \(editStopTitle(for: stop.visit))",
         subtitle: editStopSubtitle(for: stop.visit),
         kind: editRouteStopKind(for: stop.visit),
-        glyphText: "\(stop.number)"
+        glyphText: "\(stop.number)",
+        isPersonal: stop.visit.isPersonal
       )
     }
   }
@@ -1817,6 +1823,7 @@ struct NativeRouteMapStop: Identifiable {
   let subtitle: String?
   let kind: Kind
   let glyphText: String?
+  var isPersonal: Bool = false
 }
 
 private extension MKCoordinateRegion {
@@ -1931,7 +1938,8 @@ struct NativeRouteMapView: UIViewRepresentable {
           subtitle: stop.subtitle,
           kind: NativeRouteMapAnnotation.Kind(stop.kind),
           glyphText: stop.glyphText,
-          stopID: stop.id
+          stopID: stop.id,
+          isPersonal: stop.isPersonal
         ))
       }
 
@@ -1978,7 +1986,10 @@ struct NativeRouteMapView: UIViewRepresentable {
   private func dataSignature(coordinates: [CLLocationCoordinate2D]) -> String {
     let first = coordinates.first.map { "\($0.latitude),\($0.longitude)" } ?? "none"
     let last = coordinates.last.map { "\($0.latitude),\($0.longitude)" } ?? "none"
-    let stopIDs = stops.map(\.id.uuidString).joined(separator: ",")
+    // Includes isPersonal so swiping a stop's category while this same map
+    // is on screen rebuilds the pin colour immediately, instead of only
+    // picking it up the next time the screen appears.
+    let stopIDs = stops.map { "\($0.id.uuidString):\($0.isPersonal)" }.joined(separator: ",")
     return "\(coordinates.count)|\(first)|\(last)|\(showsEndMarker)|\(stopIDs)"
   }
 
@@ -2095,28 +2106,29 @@ private final class NativeRouteMapAnnotation: NSObject, MKAnnotation {
   let kind: Kind
   let glyphText: String?
   let stopID: UUID?
+  let isPersonal: Bool
 
-  init(coordinate: CLLocationCoordinate2D, title: String?, subtitle: String?, kind: Kind, glyphText: String?, stopID: UUID?) {
+  init(coordinate: CLLocationCoordinate2D, title: String?, subtitle: String?, kind: Kind, glyphText: String?, stopID: UUID?, isPersonal: Bool = false) {
     self.coordinate = coordinate
     self.title = title
     self.subtitle = subtitle
     self.kind = kind
     self.glyphText = glyphText
     self.stopID = stopID
+    self.isPersonal = isPersonal
   }
 
+  // Same business/personal convention as the stop list and the Data tab's
+  // trip rows (orange for business, gray for personal) — a stop is either
+  // one or the other, so pickup/dropoff no longer gets its own colour here.
   var markerTintColor: UIColor {
     switch kind {
     case .start:
       return UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 1)
     case .end:
       return UIColor.systemRed
-    case .pickup:
-      return UIColor.systemIndigo
-    case .dropoff:
-      return UIColor.systemOrange
-    case .other:
-      return UIColor.systemGray
+    case .pickup, .dropoff, .other:
+      return isPersonal ? .systemGray : UIColor(red: 0.86, green: 0.50, blue: 0.08, alpha: 1)
     }
   }
 
