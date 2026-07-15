@@ -262,7 +262,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       }
       print("OKKLE-SIM: found \(shops.count) real food venues around Wimbledon")
 
-      @MainActor func driveRoute(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) async -> TimeInterval {
+      @MainActor func driveRoute(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D, startingAt clockStart: Date) async -> TimeInterval {
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
@@ -283,19 +283,45 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         // Sample down to ~8 breadcrumbs along the real road path, not a
         // straight line through buildings.
         let step = max(1, routeCoordinates.count / 8)
+        var sampled: [CLLocationCoordinate2D] = [origin]
         var i = 0
         while i < routeCoordinates.count {
-          let loc = CLLocation(
-            coordinate: routeCoordinates[i], altitude: 0, horizontalAccuracy: 8, verticalAccuracy: -1,
-            course: 0, speed: 10, timestamp: Date()
-          )
-          self.handleShiftLocationUpdates([loc])
+          sampled.append(routeCoordinates[i])
           i += step
         }
-        let final = CLLocation(
-          coordinate: destination, altitude: 0, horizontalAccuracy: 8, verticalAccuracy: -1, timestamp: Date()
-        )
-        self.handleShiftLocationUpdates([final])
+        sampled.append(destination)
+
+        var cumulative: [CLLocationDistance] = [0]
+        for idx in 1..<sampled.count {
+          let a = CLLocation(latitude: sampled[idx - 1].latitude, longitude: sampled[idx - 1].longitude)
+          let b = CLLocation(latitude: sampled[idx].latitude, longitude: sampled[idx].longitude)
+          cumulative.append(cumulative[idx - 1] + b.distance(from: a))
+        }
+        let totalDistance = max(cumulative.last ?? 1, 1)
+
+        // Feeds shiftPoints/shiftMiles directly instead of going through
+        // handleShiftLocationUpdates -> appendShiftRoutePoint, whose
+        // plausibility check (implied speed between consecutive *stored*
+        // timestamps) and 30-second-recency guard both assume a real GPS
+        // ping arriving every few seconds. A backdated, instantly-delivered
+        // simulation breadcrumb can satisfy at most one of those without
+        // genuinely waiting tens of seconds per leg in real time — this is
+        // what silently dropped nearly every route point in an earlier run
+        // (trips ended up with only 2-3 points and no visible line on the
+        // map). Mirrors the same distance-delta accumulation those guards
+        // would have done, just without re-deriving it from a live feed.
+        for idx in 1..<sampled.count {
+          let coordinate = sampled[idx]
+          let deltaMeters = cumulative[idx] - cumulative[idx - 1]
+          let deltaMiles = deltaMeters / 1_609.344
+          if deltaMiles > 0.002 && deltaMiles < 1 { self.shiftMiles += deltaMiles }
+          let fraction = cumulative[idx] / totalDistance
+          self.shiftPoints.append(RoutePoint(
+            latitude: coordinate.latitude, longitude: coordinate.longitude,
+            timestamp: clockStart.addingTimeInterval(travelTime * fraction)
+          ))
+        }
+        self.shiftLastLocation = CLLocation(latitude: destination.latitude, longitude: destination.longitude)
         return travelTime
       }
 
@@ -344,7 +370,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         for cycle in 1...cycleCount {
           let shop = shops[(dayIndex * 7 + cycle) % shops.count]
 
-          let driveToShop = await driveRoute(from: previous, to: shop.coordinate)
+          let driveToShop = await driveRoute(from: previous, to: shop.coordinate, startingAt: clock)
           clock = clock.addingTimeInterval(driveToShop)
           let pickupDwell = TimeInterval.random(in: 260...420)
           await simulateStop(at: shop.coordinate, arrival: clock, dwell: pickupDwell)
@@ -357,7 +383,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
           let distanceKm = 0.4 + Double((dayIndex + cycle) % 5) * 0.35
           let dropoff = nativeOffsetCoordinate(shop.coordinate, distanceKm: distanceKm, bearingDeg: bearing)
 
-          let driveToDropoff = await driveRoute(from: shop.coordinate, to: dropoff)
+          let driveToDropoff = await driveRoute(from: shop.coordinate, to: dropoff, startingAt: clock)
           clock = clock.addingTimeInterval(driveToDropoff)
           let dropoffDwell = TimeInterval.random(in: 250...340)
           await simulateStop(at: dropoff, arrival: clock, dwell: dropoffDwell)
@@ -370,7 +396,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
           previous = dropoff
         }
 
-        _ = await driveRoute(from: previous, to: home)
+        _ = await driveRoute(from: previous, to: home, startingAt: clock)
         print("OKKLE-SIM: day -\(dOffset) ending shift, visits so far=\(self.visits.count) miles=\(self.shiftMiles)")
         self.endCurrentShift()
 

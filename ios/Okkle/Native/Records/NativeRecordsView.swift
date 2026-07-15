@@ -317,68 +317,60 @@ struct NativeRecordsView: View {
       .pickerStyle(.segmented)
 
       Menu {
-        Button {
-          selectedMonth = nil
-        } label: {
-          if selectedMonth == nil {
-            Label("All time", systemImage: "checkmark")
-          } else {
-            Text("All time")
+        Section("Month") {
+          Button {
+            selectedMonth = nil
+          } label: {
+            if selectedMonth == nil {
+              Label("All time", systemImage: "checkmark")
+            } else {
+              Text("All time")
+            }
+          }
+
+          ForEach(availableMonths, id: \.self) { month in
+            Button {
+              selectedMonth = month
+            } label: {
+              if selectedMonth == month {
+                Label(monthLabel(for: month), systemImage: "checkmark")
+              } else {
+                Text(monthLabel(for: month))
+              }
+            }
           }
         }
 
-        ForEach(availableMonths, id: \.self) { month in
-          Button {
-            selectedMonth = month
-          } label: {
-            if selectedMonth == month {
-              Label(monthLabel(for: month), systemImage: "checkmark")
-            } else {
-              Text(monthLabel(for: month))
+        // Business/personal only makes sense while looking at trips —
+        // income and expense records have no such concept.
+        if filter == .journeys {
+          Section("Trip type") {
+            ForEach(NativeTripCategoryFilter.allCases) { option in
+              Button {
+                tripCategoryFilter = option
+              } label: {
+                if tripCategoryFilter == option {
+                  Label(option.label, systemImage: "checkmark")
+                } else {
+                  Text(option.label)
+                }
+              }
             }
           }
         }
       } label: {
-        Label(monthButtonLabel, systemImage: "line.3.horizontal.decrease")
+        Label(filterButtonLabel, systemImage: "line.3.horizontal.decrease")
           .labelStyle(.iconOnly)
           .font(.system(size: 15, weight: .semibold))
           .foregroundStyle(OkkleColor.brand)
           .padding(10)
-          .background(OkkleColor.brand.opacity(selectedMonth != nil ? 0.22 : 0.14), in: Circle())
+          .background(OkkleColor.brand.opacity(isFilterActive ? 0.22 : 0.14), in: Circle())
           .overlay {
             Circle()
-              .stroke(OkkleColor.brand.opacity(selectedMonth != nil ? 0.38 : 0), lineWidth: 1)
+              .stroke(OkkleColor.brand.opacity(isFilterActive ? 0.38 : 0), lineWidth: 1)
           }
       }
-      .accessibilityLabel(selectedMonth != nil ? "Showing \(monthButtonLabel)" : "Showing all time")
-
-      if filter == .all || filter == .journeys {
-        Menu {
-          ForEach(NativeTripCategoryFilter.allCases) { option in
-            Button {
-              tripCategoryFilter = option
-            } label: {
-              if tripCategoryFilter == option {
-                Label(option.label, systemImage: "checkmark")
-              } else {
-                Text(option.label)
-              }
-            }
-          }
-        } label: {
-          Label("Trip category", systemImage: "briefcase.fill")
-            .labelStyle(.iconOnly)
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(OkkleColor.brand)
-            .padding(10)
-            .background(OkkleColor.brand.opacity(tripCategoryFilter != .all ? 0.22 : 0.14), in: Circle())
-            .overlay {
-              Circle()
-                .stroke(OkkleColor.brand.opacity(tripCategoryFilter != .all ? 0.38 : 0), lineWidth: 1)
-            }
-        }
-        .accessibilityLabel("Showing \(tripCategoryFilter.label) trips")
-      }
+      .accessibilityLabel(filterButtonLabel)
     }
     .padding(.vertical, 8)
     .padding(.horizontal, 8)
@@ -434,6 +426,15 @@ struct NativeRecordsView: View {
 
   private var monthButtonLabel: String {
     selectedMonth.map(monthLabel) ?? "All time"
+  }
+
+  private var isFilterActive: Bool {
+    selectedMonth != nil || (filter == .journeys && tripCategoryFilter != .all)
+  }
+
+  private var filterButtonLabel: String {
+    guard filter == .journeys, tripCategoryFilter != .all else { return monthButtonLabel }
+    return "\(monthButtonLabel), \(tripCategoryFilter.label)"
   }
 
   private func delete(_ item: NativeHistoryItem) {
