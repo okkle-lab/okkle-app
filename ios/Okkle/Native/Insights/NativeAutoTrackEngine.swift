@@ -216,46 +216,67 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     NotificationCenter.default.addObserver(forName: .nativeLiveActivityStillDrivingRequested, object: nil, queue: .main) { [weak self] _ in
       Task { @MainActor in self?.confirmStillDriving() }
     }
-    runRealisticDaySimulationIfRequested()
+    runRealisticWeekSimulationIfRequested()
   }
 
   /// TEMPORARY verification-only hook — drives the real beginShift/
   /// handleShiftLocationUpdates/handleStationarySignal/handleDrivingSignal
-  /// pipeline through 10 shop-pickup→house-dropoff cycles, following real
-  /// roads via MKDirections (not straight-line teleporting) and using a
-  /// real, MapKit-confirmed food venue as the shop so pickup classification
-  /// resolves correctly instead of landing on an arbitrary coordinate.
-  /// Playback is time-compressed (real routes, faster-than-real-time
-  /// breadcrumbs) since a genuinely real-time day would take hours to
-  /// verify. Will be removed after verification, along with the
-  /// temporarily-shortened dwell thresholds above.
-  private func runRealisticDaySimulationIfRequested() {
+  /// pipeline through a realistic week: several working days, several
+  /// pickup→dropoff cycles per day, real roads via MKDirections (not
+  /// straight-line teleporting), and real MapKit-confirmed food venues
+  /// fetched live around Wimbledon so pickup classification resolves the
+  /// way it would for a real driver instead of landing on one fixed
+  /// coordinate every time.
+  ///
+  /// Dwell is faked by backdating `stationarySince` right before resuming,
+  /// rather than actually waiting minutes per stop — real minimumConfident-
+  /// StopDwell/minimumConnectedVehicleStopDwell thresholds still gate
+  /// whether a stop records at all, so the *decision* is genuine, it's only
+  /// the wall-clock wait that's skipped. Each visit/trip's stored
+  /// timestamps are then rewritten onto a fully synthetic calendar so a
+  /// whole week's worth of realistic data lands in minutes of real time
+  /// instead of days. Will be removed after verification, along with the
+  /// dwell-threshold fix above.
+  private func runRealisticWeekSimulationIfRequested() {
     guard ProcessInfo.processInfo.arguments.contains("OKKLE_TEST_REALISTIC_DAY") else { return }
     Task { @MainActor in
-      try? await Task.sleep(nanoseconds: 5_000_000_000)
-      print("OKKLE-SIM: starting shift")
-      self.beginShift()
-
-      // A real restaurant — confirmed in an earlier run to resolve as a
-      // food-category MapKit POI, so pickup classification actually fires.
-      let shop = CLLocationCoordinate2D(latitude: 51.4387, longitude: -0.1966)
+      try? await Task.sleep(nanoseconds: 3_000_000_000)
       let home = CLLocationCoordinate2D(latitude: 51.4275, longitude: -0.1875)
+      let wimbledonCentre = CLLocationCoordinate2D(latitude: 51.4214, longitude: -0.2064)
 
-      @MainActor func driveRoute(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) async {
+      // Real, MapKit-confirmed food venues around Wimbledon, fetched once
+      // and reused across the week — pickups land on genuine POIs the
+      // classifier can actually match, not an arbitrary coordinate.
+      var shops: [(name: String, coordinate: CLLocationCoordinate2D)] = []
+      let poiRequest = MKLocalPointsOfInterestRequest(center: wimbledonCentre, radius: 1_400)
+      poiRequest.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket])
+      if let response = try? await MKLocalSearch(request: poiRequest).start() {
+        shops = response.mapItems.compactMap { item in
+          guard let coordinate = item.placemark.location?.coordinate, let name = item.name else { return nil }
+          return (name, coordinate)
+        }
+      }
+      if shops.isEmpty {
+        // Confirmed in an earlier run to resolve as a food-category POI.
+        shops = [("Fallback venue", CLLocationCoordinate2D(latitude: 51.4387, longitude: -0.1966))]
+      }
+      print("OKKLE-SIM: found \(shops.count) real food venues around Wimbledon")
+
+      @MainActor func driveRoute(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) async -> TimeInterval {
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
         request.transportType = .automobile
 
         var routeCoordinates: [CLLocationCoordinate2D] = []
+        var travelTime: TimeInterval = 5 * 60
         if let route = try? await MKDirections(request: request).calculate().routes.first {
           let count = route.polyline.pointCount
           var raw = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: count)
           route.polyline.getCoordinates(&raw, range: NSRange(location: 0, length: count))
           routeCoordinates = raw
-          print("OKKLE-SIM: route \(origin) -> \(destination): \(count) points, \(String(format: "%.2f", route.distance / 1000))km")
+          travelTime = route.expectedTravelTime
         } else {
-          print("OKKLE-SIM: MKDirections failed, falling back to straight line")
           routeCoordinates = [origin, destination]
         }
 
@@ -269,48 +290,106 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
             course: 0, speed: 10, timestamp: Date()
           )
           self.handleShiftLocationUpdates([loc])
-          try? await Task.sleep(nanoseconds: 500_000_000)
           i += step
         }
         let final = CLLocation(
           coordinate: destination, altitude: 0, horizontalAccuracy: 8, verticalAccuracy: -1, timestamp: Date()
         )
         self.handleShiftLocationUpdates([final])
+        return travelTime
       }
 
-      var previous = home
-      for cycle in 1...1 {
-        await driveRoute(from: previous, to: shop)
-        print("OKKLE-SIM: cycle \(cycle) arrived at shop for pickup")
+      // Runs a real stop through the genuine detection pipeline (dwell
+      // gating, dwell-based provisional kind, async MapKit reclassification)
+      // then rewrites the resulting visit's arrival/departure onto the
+      // fully synthetic simulated clock, so the *decision* is real but the
+      // *timestamp* lands wherever the week's schedule needs it.
+      @MainActor func simulateStop(at coordinate: CLLocationCoordinate2D, arrival: Date, dwell: TimeInterval) async {
         self.handleStationarySignal()
-        print("OKKLE-SIM: DEBUG after handleStationarySignal phase=\(self.shiftPhase) stationarySince=\(String(describing: self.stationarySince)) stationaryCoordinate=\(String(describing: self.stationaryCoordinate)) shiftLastLocation=\(String(describing: self.shiftLastLocation?.coordinate))")
-        try? await Task.sleep(nanoseconds: 10_000_000_000)
+        self.stationarySince = Date().addingTimeInterval(-dwell)
+        self.stationaryCoordinate = coordinate
         let visitsBefore = self.visits.count
-        print("OKKLE-SIM: DEBUG before resume phase=\(self.shiftPhase) elapsedDwell=\(String(describing: self.stationarySince.map { Date().timeIntervalSince($0) }))")
         self.handleDrivingSignal()
-        print("OKKLE-SIM: DEBUG after resume phase=\(self.shiftPhase) visits \(visitsBefore) -> \(self.visits.count)")
-
-        // A different, realistically-scattered delivery address each cycle
-        // — varied compass bearing and distance, not a monotonic line.
-        let bearing = Double(cycle - 1) * 36.0
-        let distanceKm = 0.5 + Double(cycle % 4) * 0.4
-        let house = nativeOffsetCoordinate(shop, distanceKm: distanceKm, bearingDeg: bearing)
-
-        await driveRoute(from: shop, to: house)
-        print("OKKLE-SIM: cycle \(cycle) arrived at house for dropoff")
-        self.handleStationarySignal()
-        try? await Task.sleep(nanoseconds: 10_000_000_000)
-        self.handleDrivingSignal()
-        previous = house
+        if self.visits.count > visitsBefore, let idx = self.visits.indices.last {
+          self.visits[idx].arrival = arrival
+          self.visits[idx].departure = arrival.addingTimeInterval(dwell)
+        } else {
+          print("OKKLE-SIM: WARNING stop at \(coordinate) with dwell=\(Int(dwell))s was NOT recorded")
+        }
+        // Let classifyWithMapKit's real network round-trip land before the
+        // next stop starts — it matches by visit id, so the arrival/
+        // departure rewrite above doesn't interfere with it.
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
       }
 
-      await driveRoute(from: previous, to: home)
-      print("OKKLE-SIM: ending shift, visits=\(self.visits.count) miles=\(self.shiftMiles)")
-      self.endCurrentShift()
-      try? await Task.sleep(nanoseconds: 3_000_000_000)
-      print("OKKLE-SIM: FINAL visits.count=\(self.visits.count)")
+      // A realistic 6-day working week (Saturday off), spanning 7 calendar
+      // days so it can actually reach Medium confidence (needs daySpan>=7,
+      // activeDays>=3) without also reaching High (needs daySpan>=14,
+      // activeDays>=8) — exactly "a week worth of data," not two.
+      let daysAgo = [7, 6, 5, 3, 2, 1, 0]
+      var totalDeliveries = 0
+
+      for (dayIndex, dOffset) in daysAgo.enumerated() {
+        guard let dayAnchor = Calendar.current.date(byAdding: .day, value: -dOffset, to: Date()),
+              var clock = Calendar.current.date(bySettingHour: 11, minute: 0, second: 0, of: dayAnchor)
+        else { continue }
+
+        print("OKKLE-SIM: === day -\(dOffset) starting \(clock) ===")
+        self.beginShift()
+        self.shiftStartedAt = clock
+        self.shiftMiles = 0
+
+        var previous = home
+        let cycleCount = 3 + (dayIndex % 3)   // 3-5 deliveries a day, varied like a real week
+        for cycle in 1...cycleCount {
+          let shop = shops[(dayIndex * 7 + cycle) % shops.count]
+
+          let driveToShop = await driveRoute(from: previous, to: shop.coordinate)
+          clock = clock.addingTimeInterval(driveToShop)
+          let pickupDwell = TimeInterval.random(in: 260...420)
+          await simulateStop(at: shop.coordinate, arrival: clock, dwell: pickupDwell)
+          clock = clock.addingTimeInterval(pickupDwell)
+          print("OKKLE-SIM: day -\(dOffset) cycle \(cycle) picked up at \(shop.name)")
+
+          // A different, realistically-scattered delivery address each
+          // cycle — varied compass bearing and distance, not a monotonic line.
+          let bearing = Double((dayIndex * 5 + cycle) * 47 % 360)
+          let distanceKm = 0.4 + Double((dayIndex + cycle) % 5) * 0.35
+          let dropoff = nativeOffsetCoordinate(shop.coordinate, distanceKm: distanceKm, bearingDeg: bearing)
+
+          let driveToDropoff = await driveRoute(from: shop.coordinate, to: dropoff)
+          clock = clock.addingTimeInterval(driveToDropoff)
+          let dropoffDwell = TimeInterval.random(in: 250...340)
+          await simulateStop(at: dropoff, arrival: clock, dwell: dropoffDwell)
+          clock = clock.addingTimeInterval(dropoffDwell)
+          totalDeliveries += 1
+          print("OKKLE-SIM: day -\(dOffset) cycle \(cycle) dropped off")
+
+          // A realistic gap waiting for the next order.
+          clock = clock.addingTimeInterval(TimeInterval.random(in: 120...480))
+          previous = dropoff
+        }
+
+        _ = await driveRoute(from: previous, to: home)
+        print("OKKLE-SIM: day -\(dOffset) ending shift, visits so far=\(self.visits.count) miles=\(self.shiftMiles)")
+        self.endCurrentShift()
+
+        // saveShiftAsTrip() (inside endCurrentShift/concludeShift) used
+        // shiftStartedAt — already backdated above — for the trip's
+        // startedAt, but endedAt is real Date(); rewrite it onto the
+        // simulated clock so the trip's duration and calendar placement are
+        // both realistic instead of "started a week ago, ended just now."
+        if let store = self.store, let idx = store.trips.firstIndex(where: { $0.id == self.lastAutoShiftID }) {
+          store.trips[idx].endedAt = clock
+        }
+        self.save()
+        self.store?.save()
+      }
+
+      try? await Task.sleep(nanoseconds: 2_000_000_000)
+      print("OKKLE-SIM: FINAL visits.count=\(self.visits.count) totalDeliveries=\(totalDeliveries) trips=\(self.store?.trips.count ?? -1)")
       for v in self.visits {
-        print("OKKLE-SIM: visit kind=\(v.kind) dwell=\(Int(v.dwell))s place=\(v.placeName ?? "nil") coord=\(v.coordinate)")
+        print("OKKLE-SIM: visit kind=\(v.kind) arrival=\(v.arrival) dwell=\(Int(v.dwell))s place=\(v.placeName ?? "nil") coord=\(v.coordinate)")
       }
     }
   }

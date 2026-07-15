@@ -74,8 +74,24 @@ final class OkkleStore: ObservableObject {
     if normalizeOnboardingState() {
       shouldPersist = true
     }
+    if migrateStuckDropoffMaxDwellThreshold() {
+      shouldPersist = true
+    }
 
     iCloudSyncState = settings.iCloudSyncEnabled ? .syncing : .disabled
+  }
+
+  // dropoffMaxDwellThreshold's old default (240) collided with
+  // NativeAutoTrackEngine's minimumConnectedVehicleStopDwell (also 240),
+  // making its "no nearby food venue → drop-off" branch unreachable for any
+  // stop without a vehicle-Bluetooth signal — every such stop silently
+  // classified as a pick-up. There's no settings UI for this value and it's
+  // never nudged, so every existing install has exactly the old 240 default
+  // persisted; bump it once so already-installed users pick up the fix too.
+  private func migrateStuckDropoffMaxDwellThreshold() -> Bool {
+    guard settings.autoTrackCalibration.dropoffMaxDwellThreshold == 240 else { return false }
+    settings.autoTrackCalibration.dropoffMaxDwellThreshold = 600
+    return true
   }
 
   @objc private func appDidEnterBackground() {
