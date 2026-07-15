@@ -163,8 +163,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private let stationaryDistanceFilter: CLLocationDistance = 150
   private let stationaryResumeDistance: CLLocationDistance = 150
   private let idleWakeDistance: CLLocationDistance = 450
-  private let minimumConfidentStopDwell: TimeInterval = 8 // TEMPORARY for verification, revert to 90
-  private let minimumConnectedVehicleStopDwell: TimeInterval = 8 // TEMPORARY for verification, revert to 4 * 60
+  private let minimumConfidentStopDwell: TimeInterval = 90
+  private let minimumConnectedVehicleStopDwell: TimeInterval = 4 * 60
   private let homeArrivalRadius: CLLocationDistance = 120
   private let homeDepartureRadius: CLLocationDistance = 220
   // How long the driver must actually stay within homeArrivalRadius before
