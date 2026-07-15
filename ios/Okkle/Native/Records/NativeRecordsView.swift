@@ -270,11 +270,67 @@ struct NativeRecordsView: View {
     }
   }
 
+  // A filter combination narrowing everything to zero results (e.g. "Trips"
+  // + "Personal" when no whole trip has been marked personal — only a stop
+  // within one has, a different, more granular thing) used to fall through
+  // to the generic "log something" empty state, which reads as "the app
+  // lost my data" rather than "this filter matched nothing." Distinguishing
+  // the two, with a one-tap way back to "All", was reported as confusing.
+  @ViewBuilder
+  private var emptyStateView: some View {
+    if store.history.isEmpty {
+      NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Mileage, earnings and expenses appear here after you save them.")
+    } else {
+      NativeGlassCard {
+        VStack(spacing: 12) {
+          Image(systemName: "line.3.horizontal.decrease.circle")
+            .font(.system(size: 30, weight: .bold))
+            .foregroundStyle(OkkleColor.brand)
+            .frame(width: 68, height: 68)
+            .background(OkkleColor.mint, in: Circle())
+          Text("No matches for this filter")
+            .font(.system(size: 20, weight: .bold))
+            .foregroundStyle(OkkleColor.ink)
+          Text(noMatchesMessage)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .multilineTextAlignment(.center)
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+              filter = .all
+              selectedMonth = nil
+              tripCategoryFilter = .all
+            }
+          } label: {
+            Text("Clear filters")
+              .font(.system(size: 15, weight: .bold))
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(OkkleColor.brand)
+          .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+      }
+    }
+  }
+
+  private var noMatchesMessage: String {
+    let monthSuffix = selectedMonth != nil ? " in \(monthButtonLabel)" : ""
+    if filter == .journeys, tripCategoryFilter != .all {
+      return "No \(tripCategoryFilter.label.lowercased()) trips\(monthSuffix)."
+    }
+    if filter != .all {
+      return "No \(filter.label.lowercased()) logged\(monthSuffix)."
+    }
+    return "Nothing logged\(monthSuffix)."
+  }
+
   private var historyContent: some View {
     LazyVStack(spacing: 14, pinnedViews: [.sectionHeaders]) {
       Section {
         if filteredHistory.isEmpty {
-          NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Mileage, earnings and expenses appear here after you save them.")
+          emptyStateView
             .padding(.top, 20)
         } else {
           NativeGlassCard {
@@ -306,6 +362,11 @@ struct NativeRecordsView: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .top)
+    // Extra clearance below the last row so it doesn't sit visually cropped
+    // under the floating "Add record" button — that button is a second,
+    // taller safe-area inset on top of NativeScreen's generic bottom
+    // padding, which alone wasn't enough on this screen.
+    .padding(.bottom, 90)
   }
 
   private var historyFilterBar: some View {
