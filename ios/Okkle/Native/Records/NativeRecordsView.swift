@@ -879,7 +879,10 @@ struct NativeHistoryRow: View {
 
   private var tint: Color {
     switch item {
-    case .trip: return OkkleColor.blue
+    // Matches the same convention used for individual stops inside a trip's
+    // detail screen (routeStopLocationRow/stopTint) — orange for business,
+    // gray for personal — instead of a fixed blue regardless of category.
+    case .trip(let trip): return trip.category == .personal ? .gray : OkkleColor.amber
     case .record(let record):
       switch record.kind {
       case .income: return .green

@@ -838,6 +838,7 @@ private struct NativeVisitSwipeRow<Content: View>: View {
 
   private let revealWidth: CGFloat = 92
   private let fullSwipeCommitDistance: CGFloat = 150
+  private let cornerRadius: CGFloat = 20
 
   var body: some View {
     ZStack {
@@ -873,7 +874,10 @@ private struct NativeVisitSwipeRow<Content: View>: View {
             }
         )
     }
-    .clipped()
+    // Rounds both the content and the reveal buttons underneath it as one
+    // shape — .clipped() alone only clips to the rectangular bounds, which
+    // is why these panels read as square before this.
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
   }
 
   private func swipeButton(label: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
