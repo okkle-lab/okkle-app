@@ -28,6 +28,7 @@
 		764745A26CC7406DD271FCFA /* NativeLoggingReminder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8936B37E0604C829E392E1 /* NativeLoggingReminder.swift */; };
 		79D4A9B56FBC4E7DA1B3C221 /* NativeRouteStopDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */; };
 		7B5B2B01A61D4C01A9F83C10 /* NativeICloudSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B5B2B00A61D4C01A9F83C0F /* NativeICloudSync.swift */; };
+		8540CB7EA9EC4BC3A7C6B0A1 /* NativeSelfAssessmentPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A6E3592E814AC8B1DC4329 /* NativeSelfAssessmentPdfRenderer.swift */; };
 		8559784546AD4021B63E2C13 /* NativeAccountantPackPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8559784446AD4021B63E2C12 /* NativeAccountantPackPdfRenderer.swift */; };
 		8AC319BFA10D96F07E2BAB00 /* NativePdfDocumentRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FCB2220388F7D57B4A3CEF3 /* NativePdfDocumentRenderer.swift */; };
 		9F88AF1F7A4C49F6A7D0F841 /* NativeLegacySQLiteExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */; };
@@ -44,13 +45,13 @@
 		A7C000000000000000000052 /* Okkle Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = A7C000000000000000000010 /* Okkle Watch App.app */; };
 		B5E90F322D5F4D43B37C9B02 /* NativeTripWidgetState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E90F312D5F4D43B37C9B01 /* NativeTripWidgetState.swift */; };
 		B5E90F332D5F4D43B37C9B03 /* NativeTripWidgetState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E90F312D5F4D43B37C9B01 /* NativeTripWidgetState.swift */; };
+		B5E90F382D5F4D43B37C9B08 /* OkkleWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E90F352D5F4D43B37C9B05 /* OkkleWidget.swift */; };
+		B5E90F392D5F4D43B37C9B09 /* OkkleWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B5E90F342D5F4D43B37C9B04 /* OkkleWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B5E9AF022D5F4D43B37C9C02 /* OkkleTripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E9AF012D5F4D43B37C9C01 /* OkkleTripActivityAttributes.swift */; };
 		B5E9AF032D5F4D43B37C9C03 /* OkkleTripActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E9AF012D5F4D43B37C9C01 /* OkkleTripActivityAttributes.swift */; };
 		B5E9AF052D5F4D43B37C9C05 /* NativeTripLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E9AF042D5F4D43B37C9C04 /* NativeTripLiveActivityController.swift */; };
 		B5E9AF072D5F4D43B37C9C07 /* OkkleTripLiveActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E9AF062D5F4D43B37C9C06 /* OkkleTripLiveActivityIntents.swift */; };
 		B5E9AF082D5F4D43B37C9C08 /* OkkleTripLiveActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E9AF062D5F4D43B37C9C06 /* OkkleTripLiveActivityIntents.swift */; };
-		B5E90F382D5F4D43B37C9B08 /* OkkleWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E90F352D5F4D43B37C9B05 /* OkkleWidget.swift */; };
-		B5E90F392D5F4D43B37C9B09 /* OkkleWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B5E90F342D5F4D43B37C9B04 /* OkkleWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BBB4B55DF19698F456A9A1FB /* NativeLegacySQLiteImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99D2172005489541FC78A0C /* NativeLegacySQLiteImporter.swift */; };
 		C70CF123C82959ECB53644BC /* NativeExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD6EE03F6A4F4FDC01B37848 /* NativeExportService.swift */; };
 		C8D60FE240C5DB5C383F3083 /* NativeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DAE2D16EF49CF415577E154 /* NativeSettingsView.swift */; };
@@ -65,7 +66,6 @@
 		EFB29A0C18DB58B2B7065BD1 /* NativeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F305144FBFF499D0171ED96C /* NativeModels.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F4D8AB70ABF84B06A1C6C4D9 /* NativeMileageReportPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451B572069C14D2C51AE89CD /* NativeMileageReportPdfRenderer.swift */; };
-		8540CB7EA9EC4BC3A7C6B0A1 /* NativeSelfAssessmentPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A6E3592E814AC8B1DC4329 /* NativeSelfAssessmentPdfRenderer.swift */; };
 		F6B402C87A82903782D1CC14 /* NativeInsightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C87F7A21DED00BFBC7794E /* NativeInsightModels.swift */; };
 		F6BD210B4BDE81D801BAAADC /* NativeOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E4AD8D685F34F5071DFB016 /* NativeOnboardingView.swift */; };
 		F8F483635DF782492C3978B9 /* NativeHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */; };
@@ -135,7 +135,6 @@
 		37E08F9C0CE14C3DB802356C /* NativeProgressSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProgressSummary.swift; sourceTree = "<group>"; };
 		38FE0420A2F5F46E1F79C6FC /* NativeHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHomeView.swift; sourceTree = "<group>"; };
 		451B572069C14D2C51AE89CD /* NativeMileageReportPdfRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeMileageReportPdfRenderer.swift; sourceTree = "<group>"; };
-		99A6E3592E814AC8B1DC4329 /* NativeSelfAssessmentPdfRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeSelfAssessmentPdfRenderer.swift; sourceTree = "<group>"; };
 		49A628D4BFD2B5C16D136B62 /* NativeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSupport.swift; sourceTree = "<group>"; };
 		4E4AD8D685F34F5071DFB016 /* NativeOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOnboardingView.swift; sourceTree = "<group>"; };
 		56C87F7A21DED00BFBC7794E /* NativeInsightModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightModels.swift; sourceTree = "<group>"; };
@@ -154,6 +153,7 @@
 		8E0E24C7F9927CA1A494C91C /* NativeWeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWeatherService.swift; sourceTree = "<group>"; };
 		900E20793004ECB20E38A07A /* NativeTripAddressResolver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeTripAddressResolver.swift; sourceTree = "<group>"; };
 		91FC845F47E44BA4A2CE60F2 /* NativeInsightNarrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightNarrator.swift; sourceTree = "<group>"; };
+		99A6E3592E814AC8B1DC4329 /* NativeSelfAssessmentPdfRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeSelfAssessmentPdfRenderer.swift; sourceTree = "<group>"; };
 		99F6F33FCC220B2D976D3CAA /* NativeInsightArea.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInsightArea.swift; sourceTree = "<group>"; };
 		9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSession.swift; sourceTree = "<group>"; };
 		9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacySQLiteExporter.swift; sourceTree = "<group>"; };
@@ -173,13 +173,13 @@
 		B190E1D6D6B546898FFD440D /* okkle-icon.icon */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = "okkle-icon.icon"; path = "Okkle/okkle-icon.icon"; sourceTree = "<group>"; };
 		B488443B25BC5ED20A3CBD6C /* NativeComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeComponents.swift; sourceTree = "<group>"; };
 		B5E90F312D5F4D43B37C9B01 /* NativeTripWidgetState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripWidgetState.swift; sourceTree = "<group>"; };
-		B5E9AF012D5F4D43B37C9C01 /* OkkleTripActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleTripActivityAttributes.swift; sourceTree = "<group>"; };
-		B5E9AF042D5F4D43B37C9C04 /* NativeTripLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripLiveActivityController.swift; sourceTree = "<group>"; };
-		B5E9AF062D5F4D43B37C9C06 /* OkkleTripLiveActivityIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleTripLiveActivityIntents.swift; sourceTree = "<group>"; };
 		B5E90F342D5F4D43B37C9B04 /* OkkleWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OkkleWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5E90F352D5F4D43B37C9B05 /* OkkleWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleWidget.swift; sourceTree = "<group>"; };
 		B5E90F362D5F4D43B37C9B06 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B5E90F372D5F4D43B37C9B07 /* OkkleWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OkkleWidget.entitlements; sourceTree = "<group>"; };
+		B5E9AF012D5F4D43B37C9C01 /* OkkleTripActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleTripActivityAttributes.swift; sourceTree = "<group>"; };
+		B5E9AF042D5F4D43B37C9C04 /* NativeTripLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripLiveActivityController.swift; sourceTree = "<group>"; };
+		B5E9AF062D5F4D43B37C9C06 /* OkkleTripLiveActivityIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleTripLiveActivityIntents.swift; sourceTree = "<group>"; };
 		C4D5B140F6D024F07166769E /* OkkleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleStore.swift; sourceTree = "<group>"; };
 		CA7CF6DC51582C5B309BCC83 /* NativeHistoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryItem.swift; sourceTree = "<group>"; };
 		CA931E53CF76B03966392C32 /* NativeHistoryDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryDetails.swift; sourceTree = "<group>"; };

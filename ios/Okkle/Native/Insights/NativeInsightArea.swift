@@ -509,10 +509,12 @@ func nativeNeighbourhoodName(from placemark: CLPlacemark) -> String? {
   return placemark.thoroughfare ?? placemark.locality
 }
 
-/// How many nearby points of interest look food/delivery-relevant (restaurant,
-/// cafe, bakery, food market, brewery, nightlife) — shared by the explore-area
-/// suggester and the area namer below, so both agree on what counts as
-/// "somewhere worth recommending" rather than any resolvable place name.
+/// How many nearby points of interest look delivery-relevant — food places
+/// (restaurant, cafe, bakery, food market, brewery, nightlife) plus general
+/// shops and pharmacies, since couriers pick up from supermarkets and
+/// retail as often as restaurants — shared by the explore-area suggester
+/// and the area namer below, so both agree on what counts as "somewhere
+/// worth recommending" rather than any resolvable place name.
 func nativeFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: CLLocationDistance) async -> Int {
   // Two independent, differently-sourced counts, taken together as
   // whichever sees more — Apple's own POI database and OSM's community
@@ -529,7 +531,7 @@ func nativeFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: C
 private func nativeMapKitFoodPOICount(near coordinate: CLLocationCoordinate2D, radiusMeters: CLLocationDistance) async -> Int {
   await withCheckedContinuation { continuation in
     let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: radiusMeters)
-    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
+    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife, .store, .pharmacy])
     MKLocalSearch(request: request).start { response, _ in
       continuation.resume(returning: response?.mapItems.count ?? 0)
     }
@@ -548,8 +550,8 @@ private func nativeOverpassFoodPOICount(near coordinate: CLLocationCoordinate2D,
   let query = """
   [out:json][timeout:8];
   (
-    node["amenity"~"^(restaurant|fast_food|cafe|pub|bar)$"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));
-    node["shop"="bakery"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));
+    node["amenity"~"^(restaurant|fast_food|cafe|pub|bar|pharmacy)$"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));
+    node["shop"~"^(bakery|supermarket|convenience|department_store|general|variety_store|mall|kiosk|chemist)$"](around:\(radius),\(coordinate.latitude),\(coordinate.longitude));
   );
   out count;
   """
