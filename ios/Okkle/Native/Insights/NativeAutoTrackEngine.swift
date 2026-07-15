@@ -1085,16 +1085,26 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     NativeAreaSuggester.refresh(near: visit.coordinate, knownZones: zones)
   }
 
-  /// Use Apple Maps as an information layer: if there's a food place *or a
-  /// shop* right by the stop it's a pick-up (couriers collect from
-  /// supermarkets, pharmacies and general retail, not just restaurants);
-  /// otherwise it's most likely a customer drop-off. A single search covers
-  /// both the tight pickup-radius classification and the wider any-POI
-  /// naming fallback, instead of two sequential network calls.
+  /// Use Apple Maps as an information layer: if there's a food place or
+  /// pharmacy right by the stop it's a pick-up; otherwise it's most likely
+  /// a customer drop-off. A single search covers both the tight
+  /// pickup-radius classification and the wider any-POI naming fallback,
+  /// instead of two sequential network calls.
+  ///
+  /// Deliberately excludes the generic .store category here — a real-day
+  /// simulation (10 pickup/drop-off cycles, real MapKit POIs) showed it's
+  /// too broad for a hard single-stop classification: 6 of 10 drop-off
+  /// addresses landed near an unrelated .store-tagged business (a beauty
+  /// studio, a pet shop, a sports-rental shop) purely by proximity, which
+  /// flipped them to "pickup" and broke the pickup→dropoff pairing that
+  /// counts deliveries — Insights saw 4 deliveries out of 10 real ones.
+  /// .store stays in the *zone-density* signal below, where being wrong
+  /// occasionally just softens one input to an aggregate score instead of
+  /// silently discarding 60% of a shift.
   private func classifyWithMapKit(_ id: UUID, coordinate: CLLocationCoordinate2D, calibration: NativeAutoTrackCalibration) {
-    let pickupCategories: Set<MKPointOfInterestCategory> = [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife, .store, .pharmacy]
+    let pickupCategories: Set<MKPointOfInterestCategory> = [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife, .pharmacy]
     let namingRadius: CLLocationDistance = 110
-    let namingCategories = pickupCategories.union([.parking, .publicTransport])
+    let namingCategories = pickupCategories.union([.store, .parking, .publicTransport])
     let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: max(calibration.foodPoiRadiusMeters, namingRadius))
     request.pointOfInterestFilter = MKPointOfInterestFilter(including: Array(namingCategories))
     let stopLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
