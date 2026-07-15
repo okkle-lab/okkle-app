@@ -428,8 +428,25 @@ final class OkkleStore: ObservableObject {
     yearRecords.reduce(0) { $0 + expenseForTaxYear($1) } + yearMileageDeduction
   }
 
+  // A flat mileageDeduction * marginalRate used to overstate this whenever
+  // the trading allowance (or a tapered personal allowance, or the Class 4
+  // NIC threshold) already absorbs some or all of that deduction's effect —
+  // e.g. a driver whose total expenses including mileage are still under
+  // the £1,000 trading allowance owes the same £0 whether or not mileage
+  // was ever logged, so there's nothing to have "saved." Comparing the real
+  // total due with and without the mileage deduction, through the same
+  // TaxCalculator.estimate() the actual bill is computed from, is the only
+  // way to get a figure that can't show a saving larger than the bill.
   var taxSaved: Double {
-    yearMileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
+    let withMileage = taxPosition
+    let withoutMileage = TaxCalculator.estimate(
+      turnover: yearIncome,
+      expenses: max(0, yearExpenses - yearMileageDeduction),
+      region: settings.region,
+      incomeBracket: settings.incomeBracket,
+      otherIncome: settings.otherIncome
+    )
+    return max(0, withoutMileage.totalDue - withMileage.totalDue)
   }
 
   func mileageTaxSavings(for interval: DateInterval?) -> NativeMileageTaxSavings {
@@ -462,10 +479,22 @@ final class OkkleStore: ObservableObject {
       }
     }
 
+    // Same counterfactual as taxSaved above, scoped to just this slice's
+    // contribution to the whole tax year's deduction, so a period view
+    // (week/month) can't show a saving the year's actual bill wouldn't
+    // support either.
+    let withMileage = taxPosition
+    let withoutSlice = TaxCalculator.estimate(
+      turnover: yearIncome,
+      expenses: max(0, yearExpenses - mileageDeduction),
+      region: settings.region,
+      incomeBracket: settings.incomeBracket,
+      otherIncome: settings.otherIncome
+    )
     return NativeMileageTaxSavings(
       miles: miles,
       mileageDeduction: mileageDeduction,
-      taxSaved: mileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
+      taxSaved: max(0, withoutSlice.totalDue - withMileage.totalDue)
     )
   }
 

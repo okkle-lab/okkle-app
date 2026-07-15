@@ -415,6 +415,22 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         if let store = self.store, let idx = store.trips.firstIndex(where: { $0.id == self.lastAutoShiftID }) {
           store.trips[idx].endedAt = clock
         }
+
+        // A realistic day's earnings/expenses too, so Reports has real
+        // income/expense data to reconcile against, not just mileage.
+        if let store = self.store {
+          let dayIncome = Double(cycleCount) * Double.random(in: 8.5...11.5)
+          store.addRecord(NativeRecord(
+            kind: .income, platform: ["Uber Eats", "Deliveroo", "Just Eat"][dayIndex % 3],
+            amount: (dayIncome * 100).rounded() / 100, date: clock, period: .day
+          ))
+          if dayIndex % 3 == 0 {
+            store.addRecord(NativeRecord(
+              kind: .expense, amount: Double.random(in: 18...32).rounded(), category: "Fuel",
+              date: clock, period: .day
+            ))
+          }
+        }
         self.save()
         self.store?.save()
       }
