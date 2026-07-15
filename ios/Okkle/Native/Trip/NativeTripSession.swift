@@ -78,6 +78,31 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     manager.distanceFilter = 20
     manager.activityType = .automotiveNavigation
     manager.pausesLocationUpdatesAutomatically = true
+    // The Live Activity's "Done driving"/"Still driving" buttons run
+    // in-process (LiveActivityIntent) but can't reference this singleton
+    // directly — see OkkleTripLiveActivityIntents.swift for why — so they
+    // signal over NotificationCenter instead.
+    NotificationCenter.default.addObserver(forName: .nativeLiveActivityStopTrackingRequested, object: nil, queue: .main) { [weak self] _ in
+      Task { @MainActor in self?.handleLiveActivityStopTrackingRequest() }
+    }
+    NotificationCenter.default.addObserver(forName: .nativeLiveActivityStillDrivingRequested, object: nil, queue: .main) { [weak self] _ in
+      Task { @MainActor in self?.handleLiveActivityStillDrivingRequest() }
+    }
+  }
+
+  @MainActor
+  private func handleLiveActivityStopTrackingRequest() {
+    guard phase == .live || phase == .paused else { return }
+    if let trip = end(store: OkkleStore.shared) {
+      OkkleStore.shared.addTrip(trip)
+    }
+    discard()
+  }
+
+  @MainActor
+  private func handleLiveActivityStillDrivingRequest() {
+    guard phase == .paused else { return }
+    resume()
   }
 
   @MainActor
@@ -117,6 +142,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     startedAt = Date()
     phase = .live
     NativeTripWidgetStore.markTripStarted(startedAt: startedAt ?? Date())
+    NativeTripLiveActivityController.start(source: "manual", vehicleLabel: vehicle.label, miles: 0, elapsed: 0, isDriving: true)
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
@@ -129,6 +155,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     if let startedAt {
       NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
     }
+    NativeTripLiveActivityController.update(miles: miles, elapsed: elapsed, isDriving: false, vehicleLabel: vehicle.label, force: true)
     manager.stopUpdatingLocation()
     setBackgroundTrackingEnabled(false)
     stopTimer()
@@ -140,6 +167,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     if let startedAt {
       NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
     }
+    NativeTripLiveActivityController.update(miles: miles, elapsed: elapsed, isDriving: true, vehicleLabel: vehicle.label, force: true)
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
@@ -151,6 +179,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     if let startedAt {
       NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
     }
+    NativeTripLiveActivityController.start(source: "manual", vehicleLabel: vehicle.label, miles: miles, elapsed: elapsed, isDriving: true)
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
@@ -164,6 +193,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     stopTimer()
     phase = .summary
     NativeTripWidgetStore.markTripEnded()
+    NativeTripLiveActivityController.end()
     UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [stopPromptNotificationIdentifier])
     if let lastLocation {
       appendRoutePoint(for: lastLocation, force: true)
@@ -196,6 +226,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     startedAt = nil
     phase = .setup
     NativeTripWidgetStore.markTripEnded()
+    NativeTripLiveActivityController.end()
     UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [stopPromptNotificationIdentifier])
   }
 
@@ -265,6 +296,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     timer = Timer.scheduledTimer(withTimeInterval: timerInterval, repeats: true) { [weak self] _ in
       guard let self, let startedAt = self.startedAt else { return }
       self.elapsed = Date().timeIntervalSince(startedAt)
+      NativeTripLiveActivityController.update(miles: self.miles, elapsed: self.elapsed, isDriving: true, vehicleLabel: self.vehicle.label)
       Task { @MainActor in
         self.promptToStopIfStationary(now: Date())
       }

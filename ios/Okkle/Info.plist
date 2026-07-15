@@ -61,6 +61,8 @@
 	<string>Okkle uses your location to track delivery trip distance.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Okkle uses motion to tell when you've started driving, so it can offer to track the trip.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Okkle saves receipts to your photo library.</string>
 	<key>NSUbiquitousContainers</key>

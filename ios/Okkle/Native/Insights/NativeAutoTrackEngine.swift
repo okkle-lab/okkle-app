@@ -206,6 +206,24 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     motionQueue.qualityOfService = .utility
     load()
     restoreShiftIfNeeded()
+    // The Live Activity's "Done driving"/"Still driving" buttons run
+    // in-process (LiveActivityIntent) but can't reference this singleton
+    // directly — see OkkleTripLiveActivityIntents.swift for why — so they
+    // signal over NotificationCenter instead.
+    NotificationCenter.default.addObserver(forName: .nativeLiveActivityStopTrackingRequested, object: nil, queue: .main) { [weak self] _ in
+      Task { @MainActor in self?.endCurrentShift() }
+    }
+    NotificationCenter.default.addObserver(forName: .nativeLiveActivityStillDrivingRequested, object: nil, queue: .main) { [weak self] _ in
+      Task { @MainActor in self?.confirmStillDriving() }
+    }
+  }
+
+  /// The Live Activity's "Still driving" button — confirms whatever
+  /// stationary/dwell window is pending is a false alarm and continues the
+  /// same shift, same as CoreMotion detecting real driving motion again.
+  func confirmStillDriving() {
+    guard shiftPhase == .stationaryPending else { return }
+    resumeShift()
   }
 
   func configure(store: OkkleStore) {
@@ -266,6 +284,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// Automatic-tracking setting. Listening itself is just low-power motion
   /// monitoring — the GPS only turns on once driving is actually detected.
   func refresh() {
+    // The app coming to foreground (e.g. the driver opening it) is itself a
+    // wake opportunity — catch up on anything a background timer couldn't
+    // fire for immediately, rather than waiting for the next location/motion
+    // event.
+    catchUpOverdueTimers()
     guard let settings = store?.settings,
           settings.autoTrackTrips,
           nativeIsWorkingDay(Date(), settings: settings) else {
@@ -329,6 +352,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleMotionActivity(_ activity: CMMotionActivity) {
+    catchUpOverdueTimers()
     guard let settings = store?.settings,
           settings.autoTrackTrips,
           nativeIsWorkingDay(Date(), settings: settings) else { return }
@@ -365,6 +389,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     if let shiftLastLocation { trackHomeArrival(at: shiftLastLocation) }
     armVehicleDisconnectDwellIfNeeded()
     scheduleStationaryTimeout()
+    NativeTripLiveActivityController.update(miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()), isDriving: false, vehicleLabel: liveShiftVehicle.label, force: true)
   }
 
   private func scheduleStationaryTimeout() {
@@ -374,6 +399,32 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       Task { @MainActor in self?.concludeShift() }
     }
     stationaryTimer?.tolerance = 30
+  }
+
+  /// `Timer` doesn't reliably fire while iOS has this process suspended in
+  /// the background — a dwell/timeout can elapse for real without its
+  /// closure ever running, which is why a shift-ended notification could
+  /// previously only arrive once the driver reopened the app. Called on
+  /// every wake opportunity this engine gets (a location update, a motion
+  /// update, or the app coming to foreground) so an overdue timer gets
+  /// finalized — and its notification sent — as soon as the process is
+  /// actually running again, instead of waiting for the exact scheduled
+  /// callback the OS may have skipped.
+  private func catchUpOverdueTimers() {
+    let now = Date()
+    if let stationaryTimer, now >= stationaryTimer.fireDate {
+      stationaryTimer.invalidate()
+      self.stationaryTimer = nil
+      concludeShift()
+      return   // the shift just ended — any other pending timers are now moot
+    }
+    if let homeDwellTimer, now >= homeDwellTimer.fireDate {
+      confirmHomeArrivalIfStillNearby()
+      if shiftPhase == .idle { return }
+    }
+    if let vehicleDisconnectDwellTimer, now >= vehicleDisconnectDwellTimer.fireDate {
+      confirmVehicleStillDisconnected()
+    }
   }
 
   private func beginShift() {
@@ -391,6 +442,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     liveShiftVehicle = store?.settings.defaultVehicle ?? .car
     publishLiveShift()
     persistShiftSnapshot()
+    NativeTripLiveActivityController.start(source: "auto", vehicleLabel: liveShiftVehicle.label, miles: 0, elapsed: 0, isDriving: true)
     configureLocationForDriving()
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
@@ -410,6 +462,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     setBackgroundTrackingEnabled(false)
     publishLiveShift()
     persistShiftSnapshot()
+    NativeTripLiveActivityController.update(miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()), isDriving: false, vehicleLabel: liveShiftVehicle.label, force: true)
   }
 
   func resumeCurrentShift() {
@@ -420,6 +473,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     manager.startUpdatingLocation()
     publishLiveShift()
     persistShiftSnapshot()
+    NativeTripLiveActivityController.update(miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()), isDriving: true, vehicleLabel: liveShiftVehicle.label, force: true)
   }
 
   func endCurrentShift() {
@@ -440,6 +494,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     configureLocationForDriving()
     manager.startUpdatingLocation()
     persistShiftSnapshot()
+    NativeTripLiveActivityController.update(miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()), isDriving: true, vehicleLabel: liveShiftVehicle.label, force: true)
   }
 
   /// The stationary timer expired (or tracking got turned off mid-shift) —
@@ -468,6 +523,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationaryCoordinate = nil
     publishLiveShift()
     clearShiftSnapshot()
+    NativeTripLiveActivityController.end()
     refresh()
   }
 
@@ -513,6 +569,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   // MARK: Continuous route recording (mirrors NativeTripSession's approach)
 
   private func handleLocationUpdates(_ locations: [CLLocation]) {
+    catchUpOverdueTimers()
     if shiftPhase == .idle {
       handleIdleWakeLocationUpdates(locations)
     } else {
@@ -594,6 +651,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     }
     publishLiveShift()
     persistShiftSnapshot()
+    NativeTripLiveActivityController.update(
+      miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()),
+      isDriving: shiftPhase == .driving, vehicleLabel: liveShiftVehicle.label
+    )
   }
 
   private func shouldUseIdleWakeLocation(_ location: CLLocation) -> Bool {
@@ -1064,6 +1125,14 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     }
 
     publishLiveShift()
+    // The previous run's Activity handle doesn't survive relaunch — start a
+    // fresh one reflecting the restored state rather than leaving the driver
+    // with no live banner for a shift that's actually still going.
+    NativeTripLiveActivityController.start(
+      source: "auto", vehicleLabel: liveShiftVehicle.label,
+      miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()),
+      isDriving: phase == .driving
+    )
 
     switch phase {
     case .driving:

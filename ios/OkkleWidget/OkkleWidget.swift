@@ -1,3 +1,4 @@
+import ActivityKit
 import SwiftUI
 import WidgetKit
 
@@ -86,9 +87,141 @@ struct OkkleTripWidget: Widget {
   }
 }
 
+// MARK: - Live Activity (Lock Screen + Dynamic Island)
+
+private func okkleLiveActivityMiles(_ miles: Double) -> String {
+  String(format: "%.1f mi", miles)
+}
+
+private func okkleLiveActivityElapsed(_ seconds: TimeInterval) -> String {
+  let total = Int(seconds)
+  let hours = total / 3600
+  let minutes = (total % 3600) / 60
+  if hours > 0 { return "\(hours)h \(minutes)m" }
+  return "\(minutes)m"
+}
+
+private struct OkkleTripActivityButtons: View {
+  var body: some View {
+    if #available(iOS 17.0, *) {
+      HStack(spacing: 8) {
+        Button(intent: OkkleStillDrivingLiveActivityIntent()) {
+          Text("Still driving")
+            .font(.system(size: 15, weight: .bold))
+            .frame(maxWidth: .infinity)
+        }
+        .tint(.white.opacity(0.16))
+        .foregroundStyle(.white)
+
+        Button(intent: OkkleStopTrackingLiveActivityIntent()) {
+          Text("Done driving")
+            .font(.system(size: 15, weight: .bold))
+            .frame(maxWidth: .infinity)
+        }
+        .tint(Color(red: 0.00, green: 0.66, blue: 0.49))
+        .foregroundStyle(.white)
+      }
+      .buttonStyle(.borderedProminent)
+      .buttonBorderShape(.capsule)
+    }
+    // Pre-iOS 17: no interactive buttons (LiveActivityIntent needs 17+) —
+    // tapping the banner still opens the app to control tracking there.
+  }
+}
+
+private struct OkkleTripActivityLockScreenView: View {
+  let state: OkkleTripActivityAttributes.ContentState
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Image(systemName: "location.north.fill")
+          .font(.system(size: 14, weight: .heavy))
+        Text("Okkle")
+          .font(.system(size: 14, weight: .heavy, design: .rounded))
+        Spacer()
+        Text(state.isDriving ? "Tracking trip" : "Finalizing trip")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(.secondary)
+      }
+
+      HStack {
+        VStack(alignment: .leading, spacing: 1) {
+          Text(okkleLiveActivityMiles(state.miles))
+            .font(.system(size: 24, weight: .heavy, design: .rounded))
+          Text("Distance")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        VStack(alignment: .trailing, spacing: 1) {
+          Text(okkleLiveActivityElapsed(state.elapsed))
+            .font(.system(size: 24, weight: .heavy, design: .rounded))
+          Text(state.vehicleLabel)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      OkkleTripActivityButtons()
+    }
+    .padding(16)
+  }
+}
+
+@available(iOS 16.1, *)
+struct OkkleTripLiveActivity: Widget {
+  var body: some WidgetConfiguration {
+    ActivityConfiguration(for: OkkleTripActivityAttributes.self) { context in
+      OkkleTripActivityLockScreenView(state: context.state)
+        .activityBackgroundTint(Color(red: 0.02, green: 0.20, blue: 0.16))
+        .activitySystemActionForegroundColor(.white)
+    } dynamicIsland: { context in
+      DynamicIsland {
+        DynamicIslandExpandedRegion(.leading) {
+          VStack(alignment: .leading, spacing: 1) {
+            Text(okkleLiveActivityMiles(context.state.miles))
+              .font(.system(size: 18, weight: .heavy, design: .rounded))
+            Text("Distance")
+              .font(.system(size: 11, weight: .medium))
+              .foregroundStyle(.secondary)
+          }
+        }
+        DynamicIslandExpandedRegion(.trailing) {
+          VStack(alignment: .trailing, spacing: 1) {
+            Text(okkleLiveActivityElapsed(context.state.elapsed))
+              .font(.system(size: 18, weight: .heavy, design: .rounded))
+            Text(context.state.isDriving ? "Tracking" : "Finalizing")
+              .font(.system(size: 11, weight: .medium))
+              .foregroundStyle(.secondary)
+          }
+        }
+        DynamicIslandExpandedRegion(.bottom) {
+          OkkleTripActivityButtons()
+        }
+      } compactLeading: {
+        Image(systemName: "location.north.fill")
+      } compactTrailing: {
+        Text(okkleLiveActivityMiles(context.state.miles))
+          .font(.system(size: 13, weight: .bold, design: .rounded))
+      } minimal: {
+        Image(systemName: "location.north.fill")
+      }
+      // Just opens the app — ending the trip is what the "Done driving"
+      // button is for, a stray tap on the compact/minimal presentation
+      // shouldn't end tracking by accident.
+      .widgetURL(URL(string: "\(NativeTripWidgetStore.urlScheme)://")!)
+      .keylineTint(Color(red: 0.00, green: 0.66, blue: 0.49))
+    }
+  }
+}
+
 @main
 struct OkkleWidgetBundle: WidgetBundle {
   var body: some Widget {
     OkkleTripWidget()
+    if #available(iOS 16.1, *) {
+      OkkleTripLiveActivity()
+    }
   }
 }
