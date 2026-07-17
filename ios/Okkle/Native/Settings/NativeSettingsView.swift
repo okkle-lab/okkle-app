@@ -315,6 +315,7 @@ struct NativeTaxSettingsView: View {
 
 struct NativeAutoTrackSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
 
   var body: some View {
     Form {
@@ -325,6 +326,9 @@ struct NativeAutoTrackSettingsView: View {
             store.settings.autoTrackTrips = enabled
             if enabled {
               store.settings.enhancedAutoTracking = true
+              if autoTrack.locationAuthorizationStatus != .authorizedAlways {
+                autoTrack.requestAlwaysLocationAuthorization()
+              }
             }
           }
         ))
@@ -339,6 +343,25 @@ struct NativeAutoTrackSettingsView: View {
         Text("On your working days Okkle starts tracking a trip automatically when it detects you driving, so you never forget. Turn it off to track every trip by hand.")
       }
 
+      if store.settings.autoTrackTrips, autoTrack.locationAuthorizationStatus != .authorizedAlways {
+        Section {
+          Label("Automatic tracking is waiting for Always location access.", systemImage: "location.slash.fill")
+          Button(autoTrack.locationAuthorizationStatus == .denied || autoTrack.locationAuthorizationStatus == .restricted
+                 ? "Open Location Settings"
+                 : "Allow Background Tracking") {
+            if autoTrack.locationAuthorizationStatus == .denied || autoTrack.locationAuthorizationStatus == .restricted {
+              if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+              }
+            } else {
+              autoTrack.requestAlwaysLocationAuthorization()
+            }
+          }
+        } footer: {
+          Text("Okkle does not partially run automatic tracking with While Using access because iOS cannot reliably wake a closed app for a new trip.")
+        }
+      }
+
       if store.settings.autoTrackTrips {
         Section {
           Toggle("Enhanced automatic tracking", isOn: Binding(
@@ -346,7 +369,7 @@ struct NativeAutoTrackSettingsView: View {
             set: { store.settings.enhancedAutoTracking = $0 }
           ))
         } footer: {
-          Text("Improves automatic trip accuracy by using CarPlay and car Bluetooth signals, so Okkle can end trips sooner when your car disconnects.")
+          Text("Improves automatic trip accuracy using the system Car Audio route, including CarPlay audio, so headphones and speakers cannot start a trip by mistake.")
         }
       }
 
@@ -364,9 +387,140 @@ struct NativeAutoTrackSettingsView: View {
       if store.settings.autoTrackTrips {
         NativeExcludedPlacesSection()
       }
+
+      Section {
+        NavigationLink {
+          NativeAutoTrackDiagnosticsView()
+        } label: {
+          Label("Tracking diagnostics", systemImage: "waveform.path.ecg")
+        }
+      } header: {
+        Text("Diagnostics")
+      }
     }
     .navigationTitle("Automatic tracking")
     .navigationBarTitleDisplayMode(.inline)
+    .onAppear { autoTrack.refresh() }
+  }
+}
+
+private struct NativeAutoTrackDiagnosticsView: View {
+  @ObservedObject private var diagnostics = NativeAutoTrackDiagnostics.shared
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
+  @State private var showClearConfirmation = false
+
+  var body: some View {
+    List {
+      Section("Current status") {
+        LabeledContent("Tracking", value: trackingStatus)
+        LabeledContent("Location", value: authorizationStatus)
+      }
+
+      Section {
+        if diagnostics.events.isEmpty {
+          Label("No tracking events recorded", systemImage: "clock.badge.questionmark")
+            .foregroundStyle(.secondary)
+        } else {
+          ForEach(diagnostics.events) { event in
+            diagnosticRow(event)
+          }
+        }
+      } header: {
+        Text("Recent events")
+      } footer: {
+        Text("Events are kept on this device for seven days. Location coordinates are not recorded.")
+      }
+
+      if !diagnostics.events.isEmpty {
+        Section {
+          Button("Clear diagnostics", role: .destructive) {
+            showClearConfirmation = true
+          }
+        }
+      }
+    }
+    .navigationTitle("Tracking diagnostics")
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .topBarTrailing) {
+        ShareLink(
+          item: diagnostics.exportText,
+          subject: Text("Okkle tracking diagnostics")
+        ) {
+          Image(systemName: "square.and.arrow.up")
+        }
+        .accessibilityLabel("Share diagnostics")
+        .disabled(diagnostics.events.isEmpty)
+      }
+    }
+    .confirmationDialog("Clear tracking diagnostics?", isPresented: $showClearConfirmation) {
+      Button("Clear diagnostics", role: .destructive) {
+        diagnostics.clear()
+      }
+      Button("Cancel", role: .cancel) {}
+    }
+  }
+
+  private func diagnosticRow(_ event: NativeAutoTrackDiagnosticEvent) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: eventSymbol(event.kind))
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(eventColor(event.kind))
+        .frame(width: 28, height: 28)
+        .background(eventColor(event.kind).opacity(0.12), in: Circle())
+
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .firstTextBaseline) {
+          Text(event.title)
+            .font(.body.weight(.semibold))
+          Spacer(minLength: 8)
+          Text(event.timestamp, format: .dateTime.month(.abbreviated).day().hour().minute().second())
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Text(event.detail)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(.vertical, 3)
+  }
+
+  private var trackingStatus: String {
+    if autoTrack.shiftPhase != .idle {
+      return autoTrack.shiftPhase.rawValue.capitalized
+    }
+    if autoTrack.vehicleStartArmed { return "Armed" }
+    return "Idle"
+  }
+
+  private var authorizationStatus: String {
+    switch autoTrack.locationAuthorizationStatus {
+    case .notDetermined: return "Not determined"
+    case .restricted: return "Restricted"
+    case .denied: return "Denied"
+    case .authorizedAlways: return "Always"
+    case .authorizedWhenInUse: return "While Using"
+    @unknown default: return "Unknown"
+    }
+  }
+
+  private func eventSymbol(_ kind: String) -> String {
+    if kind.hasPrefix("gps.error") || kind.contains("rejected") { return "exclamationmark.triangle.fill" }
+    if kind.hasPrefix("vehicle") { return "car.fill" }
+    if kind.hasPrefix("motion") { return "waveform.path.ecg" }
+    if kind.hasPrefix("handoff") { return "arrow.left.arrow.right" }
+    if kind.contains("started") || kind.contains("resumed") { return "location.fill" }
+    if kind.contains("ended") { return "stop.circle.fill" }
+    return "clock.arrow.circlepath"
+  }
+
+  private func eventColor(_ kind: String) -> Color {
+    if kind.hasPrefix("gps.error") || kind.contains("rejected") { return OkkleColor.red }
+    if kind.hasPrefix("vehicle") { return OkkleColor.brand }
+    if kind.hasPrefix("motion") { return OkkleColor.blue }
+    if kind.hasPrefix("handoff") { return .orange }
+    return .secondary
   }
 }
 
@@ -777,6 +931,26 @@ struct NativeDataSettingsView: View {
 
   var body: some View {
     Form {
+      if let persistenceIssue = store.persistenceIssue {
+        Section {
+          Label {
+            Text(persistenceIssue)
+              .font(.footnote)
+          } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundStyle(.orange)
+          }
+
+          Button {
+            store.save()
+          } label: {
+            Label("Try saving again", systemImage: "arrow.clockwise")
+          }
+        } header: {
+          Text("Local data")
+        }
+      }
+
       Section {
         Toggle("iCloud sync", isOn: Binding(
           get: { store.settings.iCloudSyncEnabled },

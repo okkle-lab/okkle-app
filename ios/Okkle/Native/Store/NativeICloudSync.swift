@@ -558,18 +558,47 @@ private extension NativeSnapshot {
 
 enum NativeICloudSnapshotMerge {
   static func merge(local: NativeSnapshot, remote: NativeSnapshot) -> NativeSnapshot {
-    NativeSnapshot(
-      settings: mergeSettings(local: local, remote: remote),
-      records: mergeRecords(local.records, remote.records),
-      trips: mergeTrips(local.trips, remote.trips)
+    let recordTombstones = mergeTombstones(local.recordTombstones, remote.recordTombstones)
+    let tripTombstones = mergeTombstones(local.tripTombstones, remote.tripTombstones)
+    let settingsResult = mergeSettings(local: local, remote: remote)
+    return NativeSnapshot(
+      settings: settingsResult.settings,
+      records: mergeRecords(local.records, remote.records, tombstones: recordTombstones),
+      trips: mergeTrips(local.trips, remote.trips, tombstones: tripTombstones),
+      settingsUpdatedAt: settingsResult.updatedAt,
+      recordTombstones: recordTombstones,
+      tripTombstones: tripTombstones
     )
   }
 
-  private static func mergeSettings(local: NativeSnapshot, remote: NativeSnapshot) -> NativeSettings {
-    var settings = shouldPreferRemoteSettings(local: local, remote: remote) ? remote.settings : local.settings
-    settings.platforms = uniqueStrings(remote.settings.platforms + local.settings.platforms)
+  private static func mergeSettings(
+    local: NativeSnapshot,
+    remote: NativeSnapshot
+  ) -> (settings: NativeSettings, updatedAt: Date?) {
+    let preferRemote: Bool
+    switch (local.settingsUpdatedAt, remote.settingsUpdatedAt) {
+    case let (localDate?, remoteDate?):
+      preferRemote = remoteDate > localDate
+    case (nil, _?):
+      preferRemote = true
+    case (_?, nil):
+      preferRemote = shouldPreferRemoteSettings(local: local, remote: remote)
+    case (nil, nil):
+      preferRemote = shouldPreferRemoteSettings(local: local, remote: remote)
+    }
+
+    var settings = preferRemote ? remote.settings : local.settings
+    // Old iCloud files did not carry modification dates. Preserve their
+    // additive platform behavior, but once timestamps exist the newer whole
+    // settings object wins so removing a platform syncs as an edit too.
+    if local.settingsUpdatedAt == nil, remote.settingsUpdatedAt == nil {
+      settings.platforms = uniqueStrings(remote.settings.platforms + local.settings.platforms)
+    }
     settings.iCloudSyncEnabled = true
-    return settings
+    return (
+      settings,
+      preferRemote ? remote.settingsUpdatedAt : local.settingsUpdatedAt
+    )
   }
 
   private static func shouldPreferRemoteSettings(local: NativeSnapshot, remote: NativeSnapshot) -> Bool {
@@ -578,25 +607,79 @@ enum NativeICloudSnapshotMerge {
     return local.records.isEmpty && local.trips.isEmpty
   }
 
-  private static func mergeRecords(_ local: [NativeRecord], _ remote: [NativeRecord]) -> [NativeRecord] {
+  private static func mergeRecords(
+    _ local: [NativeRecord],
+    _ remote: [NativeRecord],
+    tombstones: [NativeDeletionTombstone]
+  ) -> [NativeRecord] {
     var byID: [UUID: NativeRecord] = [:]
     for record in remote {
       byID[record.id] = record
     }
     for record in local {
-      byID[record.id] = record
+      guard let existing = byID[record.id] else {
+        byID[record.id] = record
+        continue
+      }
+      if recordModifiedAt(record) >= recordModifiedAt(existing) {
+        byID[record.id] = record
+      }
+    }
+    for tombstone in tombstones {
+      guard let record = byID[tombstone.id] else { continue }
+      if tombstone.deletedAt >= recordModifiedAt(record) {
+        byID.removeValue(forKey: tombstone.id)
+      }
     }
     return byID.values.sorted { $0.date > $1.date }
   }
 
-  private static func mergeTrips(_ local: [NativeTrip], _ remote: [NativeTrip]) -> [NativeTrip] {
+  private static func mergeTrips(
+    _ local: [NativeTrip],
+    _ remote: [NativeTrip],
+    tombstones: [NativeDeletionTombstone]
+  ) -> [NativeTrip] {
     var byID: [UUID: NativeTrip] = [:]
     for trip in remote {
       byID[trip.id] = trip
     }
     for trip in local {
-      byID[trip.id] = trip
+      guard let existing = byID[trip.id] else {
+        byID[trip.id] = trip
+        continue
+      }
+      if tripModifiedAt(trip) >= tripModifiedAt(existing) {
+        byID[trip.id] = trip
+      }
+    }
+    for tombstone in tombstones {
+      guard let trip = byID[tombstone.id] else { continue }
+      if tombstone.deletedAt >= tripModifiedAt(trip) {
+        byID.removeValue(forKey: tombstone.id)
+      }
     }
     return byID.values.sorted { $0.startedAt > $1.startedAt }
+  }
+
+  private static func mergeTombstones(
+    _ local: [NativeDeletionTombstone],
+    _ remote: [NativeDeletionTombstone]
+  ) -> [NativeDeletionTombstone] {
+    var byID: [UUID: NativeDeletionTombstone] = [:]
+    for tombstone in remote + local {
+      if let existing = byID[tombstone.id], existing.deletedAt >= tombstone.deletedAt {
+        continue
+      }
+      byID[tombstone.id] = tombstone
+    }
+    return byID.values.sorted { $0.deletedAt > $1.deletedAt }
+  }
+
+  private static func recordModifiedAt(_ record: NativeRecord) -> Date {
+    record.updatedAt ?? record.date
+  }
+
+  private static func tripModifiedAt(_ trip: NativeTrip) -> Date {
+    trip.updatedAt ?? trip.endedAt
   }
 }

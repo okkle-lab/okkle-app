@@ -111,7 +111,7 @@ final class NativeNotificationRouter: NSObject, ObservableObject, UNUserNotifica
     } else if info["type"] as? String == "manualTripStopPrompt" {
       DispatchQueue.main.async { [weak self] in
         self?.pendingManualTripStopPrompt = true
-        NativeTripSession.shared.stopPromptRequested = true
+        NativeTripSession.shared.requestStopPrompt()
       }
     } else if info["type"] as? String == "manualTripAutoCompleted" {
       DispatchQueue.main.async { [weak self] in
