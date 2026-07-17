@@ -1192,7 +1192,7 @@ struct NativeAboutSettingsView: View {
         HStack {
           Text("Version")
           Spacer()
-          Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0")
+          Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.1")
             .foregroundStyle(.secondary)
         }
       }
