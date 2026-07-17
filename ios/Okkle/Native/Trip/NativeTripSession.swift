@@ -4,6 +4,10 @@ import Foundation
 import UIKit
 @preconcurrency import UserNotifications
 
+extension Notification.Name {
+  static let nativeManualTripPhaseDidChange = Notification.Name("uk.okkle.native.manualTripPhaseDidChange")
+}
+
 enum NativeManualTripStopNotification {
   static let categoryIdentifier = "uk.okkle.native.manual-trip-stop"
   static let endActionIdentifier = "uk.okkle.native.manual-trip-stop.end"
@@ -36,17 +40,47 @@ enum NativeManualTripStopNotification {
   }
 }
 
+private struct NativeManualTripSnapshot: Codable {
+  var phase: String
+  var vehicle: NativeVehicle
+  var miles: Double
+  var elapsed: TimeInterval
+  var points: [RoutePoint]
+  var startedAt: Date
+  var reviewEndedAt: Date?
+  var lastLocation: RoutePoint?
+  var lastRoutePointLocation: RoutePoint?
+  var stationaryAnchorLocation: RoutePoint?
+  var stationarySince: Date?
+  var promptedForCurrentStationaryPeriod: Bool
+  var stopPromptRequested: Bool
+}
+
 final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDelegate {
   static let shared = NativeTripSession()
 
-  enum Phase {
+  enum Phase: String, Equatable, Codable {
     case setup
     case live
     case paused
     case summary
+
+    var diagnosticLabel: String {
+      switch self {
+      case .setup: return "returned to setup"
+      case .live: return "started"
+      case .paused: return "paused"
+      case .summary: return "entered review"
+      }
+    }
   }
 
-  @Published var phase: Phase = .setup
+  @Published var phase: Phase = .setup {
+    didSet {
+      guard oldValue != phase else { return }
+      NotificationCenter.default.post(name: .nativeManualTripPhaseDidChange, object: nil)
+    }
+  }
   @Published var vehicle: NativeVehicle = .car
   @Published var miles: Double = 0
   @Published var elapsed: TimeInterval = 0
@@ -61,23 +95,30 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   private var stationarySince: Date?
   private var promptedForCurrentStationaryPeriod = false
   private var startedAt: Date?
+  private var reviewEndedAt: Date?
   private var timer: Timer?
   private var waitingForAuthorization = false
-  private let routePointDistance: CLLocationDistance = 30
+  private let routePointDistance: CLLocationDistance = 10
   private let timerInterval: TimeInterval = 5
   private let stationaryPromptDelay: TimeInterval = 12 * 60
   private let minimumTrackingTimeBeforeStopPrompt: TimeInterval = 10 * 60
   private let stationaryPromptRadius: CLLocationDistance = 60
   private let stopPromptNotificationIdentifier = "uk.okkle.native.manual-trip-stop-prompt"
   private let autoCompletedNotificationIdentifier = "uk.okkle.native.manual-trip-auto-completed"
+  private let persistenceQueue = DispatchQueue(label: "uk.okkle.native.manual-trip-persist", qos: .utility)
+  private static let snapshotFileURL: URL = {
+    let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    return base.appendingPathComponent("Okkle", isDirectory: true).appendingPathComponent("manual-trip.json")
+  }()
 
   override init() {
     super.init()
     manager.delegate = self
     manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-    manager.distanceFilter = 20
+    manager.distanceFilter = 10
     manager.activityType = .automotiveNavigation
-    manager.pausesLocationUpdatesAutomatically = true
+    manager.pausesLocationUpdatesAutomatically = false
+    restorePersistedTrip()
     // The Live Activity's "Done driving"/"Still driving" buttons run
     // in-process (LiveActivityIntent) but can't reference this singleton
     // directly — see OkkleTripLiveActivityIntents.swift for why — so they
@@ -107,11 +148,10 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   @MainActor
   func start(vehicle: NativeVehicle) {
-    // Auto-tracking and manual tracking each run their own CLLocationManager;
-    // if an automatic shift is already live/paused, conclude it (saving
-    // whatever it already recorded) rather than letting two managers race
-    // for GPS at once.
-    NativeAutoTrackEngine.shared.endCurrentShift()
+    // Reserve location ownership before requesting permission so automatic
+    // tracking cannot start in the gap between the user's tap and the manual
+    // session becoming live.
+    NativeAutoTrackEngine.shared.manualTripStartRequested()
     self.vehicle = vehicle
     configureLocationManager(for: vehicle)
     permissionMessage = nil
@@ -124,6 +164,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     guard status == .authorizedAlways || status == .authorizedWhenInUse else {
       permissionMessage = "Location permission is needed to track trip distance."
       NativeTripWidgetStore.markTripEnded()
+      NativeAutoTrackEngine.shared.manualTripStartCancelled()
       return
     }
     beginTracking()
@@ -140,6 +181,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     promptedForCurrentStationaryPeriod = false
     stopPromptRequested = false
     startedAt = Date()
+    reviewEndedAt = nil
     phase = .live
     NativeTripWidgetStore.markTripStarted(startedAt: startedAt ?? Date())
     NativeTripLiveActivityController.start(source: "manual", vehicleLabel: vehicle.label, miles: 0, elapsed: 0, isDriving: true)
@@ -147,6 +189,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     manager.startUpdatingLocation()
     startTimer()
     waitingForAuthorization = false
+    persistState()
   }
 
   func pause() {
@@ -159,6 +202,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     manager.stopUpdatingLocation()
     setBackgroundTrackingEnabled(false)
     stopTimer()
+    persistState()
   }
 
   func resume() {
@@ -171,10 +215,12 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
+    persistState()
   }
 
   func continueTrackingAfterEndReview() {
     guard phase == .summary else { return }
+    reviewEndedAt = nil
     phase = .live
     if let startedAt {
       NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
@@ -183,11 +229,12 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     setBackgroundTrackingEnabled(true)
     manager.startUpdatingLocation()
     startTimer()
+    persistState()
   }
 
   @MainActor
   func end(store: OkkleStore) -> NativeTrip? {
-    guard let startedAt else { return nil }
+    guard startedAt != nil else { return nil }
     manager.stopUpdatingLocation()
     setBackgroundTrackingEnabled(false)
     stopTimer()
@@ -198,15 +245,22 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     if let lastLocation {
       appendRoutePoint(for: lastLocation, force: true)
     }
-    let trip = NativeTrip(
+    reviewEndedAt = Date()
+    persistState()
+    return tripForReview(store: store)
+  }
+
+  @MainActor
+  func tripForReview(store: OkkleStore) -> NativeTrip? {
+    guard phase == .summary, let startedAt else { return nil }
+    return NativeTrip(
       vehicle: vehicle,
       miles: miles,
       deduction: store.calcDeduction(miles: miles, vehicle: vehicle, date: startedAt),
       startedAt: startedAt,
-      endedAt: Date(),
+      endedAt: reviewEndedAt ?? points.last?.timestamp ?? Date(),
       points: points
     )
-    return trip
   }
 
   func discard() {
@@ -224,10 +278,12 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     promptedForCurrentStationaryPeriod = false
     stopPromptRequested = false
     startedAt = nil
+    reviewEndedAt = nil
     phase = .setup
     NativeTripWidgetStore.markTripEnded()
     NativeTripLiveActivityController.end()
     UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [stopPromptNotificationIdentifier])
+    clearPersistedState()
   }
 
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -243,13 +299,17 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       waitingForAuthorization = false
       permissionMessage = "Location permission is needed to track trip distance."
       NativeTripWidgetStore.markTripEnded()
+      Task { @MainActor in
+        NativeAutoTrackEngine.shared.manualTripStartCancelled()
+      }
     }
   }
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     guard phase == .live else { return }
     var usedLocation = false
-    for location in locations where shouldUse(location) {
+    let receivedAt = Date()
+    for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) where shouldUse(location, now: receivedAt) {
       usedLocation = true
       if let lastLocation {
         let delta = location.distance(from: lastLocation) / 1_609.344
@@ -263,15 +323,19 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     }
     if usedLocation {
       permissionMessage = nil
+      persistState()
     }
   }
 
-  private func shouldUse(_ location: CLLocation) -> Bool {
-    guard location.horizontalAccuracy >= 0 else { return false }
-    guard abs(location.timestamp.timeIntervalSinceNow) < 30 else { return false }
-    // iOS can provide approximate or still-settling GPS fixes above 60m accuracy.
-    // Keep those points so the trip visibly starts instead of staying at 0.
-    return location.horizontalAccuracy <= 250
+  private func shouldUse(_ location: CLLocation, now: Date) -> Bool {
+    let activeTripAge = startedAt.map { max(30, now.timeIntervalSince($0) + 30) } ?? 30
+    return nativeShouldAcceptTripLocation(
+      location,
+      since: lastLocation,
+      now: now,
+      maximumAge: activeTripAge,
+      earliestTimestamp: startedAt
+    )
   }
 
   func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -297,6 +361,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       guard let self, let startedAt = self.startedAt else { return }
       self.elapsed = Date().timeIntervalSince(startedAt)
       NativeTripLiveActivityController.update(miles: self.miles, elapsed: self.elapsed, isDriving: true, vehicleLabel: self.vehicle.label)
+      self.persistState()
       Task { @MainActor in
         self.promptToStopIfStationary(now: Date())
       }
@@ -325,12 +390,15 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   }
 
   private func appendRoutePoint(for location: CLLocation, force: Bool = false) {
-    guard force || nativeIsPlausibleRoutePoint(location, since: lastRoutePointLocation) else { return }
+    guard nativeIsPlausibleRoutePoint(location, since: lastRoutePointLocation) else { return }
+    let breakBefore = lastRoutePointLocation.map {
+      nativeRouteSegmentNeedsBreak(from: $0, to: location)
+    } ?? false
     if let lastRoutePointLocation {
       let distance = location.distance(from: lastRoutePointLocation)
       guard force ? distance > 1 : distance >= routePointDistance else { return }
     }
-    points.append(RoutePoint(location: location))
+    points.append(RoutePoint(location: location, breakBefore: breakBefore))
     lastRoutePointLocation = location
   }
 
@@ -357,6 +425,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
     promptedForCurrentStationaryPeriod = true
     if OkkleStore.shared.settings.manualTripAutoComplete {
+      persistState()
       Task { @MainActor [weak self] in
         self?.completeStoppedManualTrip(store: OkkleStore.shared, notify: true)
       }
@@ -364,13 +433,21 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     }
 
     stopPromptRequested = true
+    persistState()
     if UIApplication.shared.applicationState != .active {
       sendStopPromptNotification()
     }
   }
 
+  func requestStopPrompt() {
+    guard phase == .live || phase == .paused else { return }
+    stopPromptRequested = true
+    persistState()
+  }
+
   func dismissStopPrompt() {
     stopPromptRequested = false
+    persistState()
   }
 
   @MainActor
@@ -412,5 +489,120 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       content.userInfo = ["type": "manualTripAutoCompleted", "tripID": trip.id.uuidString]
       center.add(UNNotificationRequest(identifier: self.autoCompletedNotificationIdentifier, content: content, trigger: nil))
     }
+  }
+
+  private func restorePersistedTrip() {
+    guard let data = try? Data(contentsOf: Self.snapshotFileURL),
+          let snapshot = try? JSONDecoder().decode(NativeManualTripSnapshot.self, from: data),
+          let restoredPhase = Phase(rawValue: snapshot.phase),
+          restoredPhase != .setup else { return }
+
+    vehicle = snapshot.vehicle
+    configureLocationManager(for: snapshot.vehicle)
+    miles = snapshot.miles
+    elapsed = snapshot.elapsed
+    points = snapshot.points
+    startedAt = snapshot.startedAt
+    reviewEndedAt = snapshot.reviewEndedAt
+    lastLocation = location(from: snapshot.lastLocation)
+    lastRoutePointLocation = location(from: snapshot.lastRoutePointLocation)
+      ?? location(from: snapshot.points.last)
+    stationaryAnchorLocation = location(from: snapshot.stationaryAnchorLocation)
+    stationarySince = snapshot.stationarySince
+    promptedForCurrentStationaryPeriod = snapshot.promptedForCurrentStationaryPeriod
+    stopPromptRequested = snapshot.stopPromptRequested
+
+    let canUseLocation = manager.authorizationStatus == .authorizedAlways ||
+      manager.authorizationStatus == .authorizedWhenInUse
+    phase = restoredPhase == .live && !canUseLocation ? .paused : restoredPhase
+
+    switch phase {
+    case .live:
+      elapsed = max(elapsed, Date().timeIntervalSince(snapshot.startedAt))
+      NativeTripWidgetStore.markTripStarted(startedAt: snapshot.startedAt)
+      NativeTripLiveActivityController.start(
+        source: "manual",
+        vehicleLabel: vehicle.label,
+        miles: miles,
+        elapsed: elapsed,
+        isDriving: true
+      )
+      setBackgroundTrackingEnabled(true)
+      manager.startUpdatingLocation()
+      startTimer()
+    case .paused:
+      if !canUseLocation {
+        permissionMessage = "Location permission is needed to continue this recovered trip."
+      }
+      NativeTripWidgetStore.markTripStarted(startedAt: snapshot.startedAt)
+      NativeTripLiveActivityController.start(
+        source: "manual",
+        vehicleLabel: vehicle.label,
+        miles: miles,
+        elapsed: elapsed,
+        isDriving: false
+      )
+    case .summary:
+      NativeTripWidgetStore.markTripEnded()
+      NativeTripLiveActivityController.end()
+    case .setup:
+      break
+    }
+  }
+
+  private func persistState() {
+    guard phase != .setup, let startedAt else { return }
+    let snapshot = NativeManualTripSnapshot(
+      phase: phase.rawValue,
+      vehicle: vehicle,
+      miles: miles,
+      elapsed: elapsed,
+      points: points,
+      startedAt: startedAt,
+      reviewEndedAt: reviewEndedAt,
+      lastLocation: lastLocation.map { RoutePoint(location: $0) },
+      lastRoutePointLocation: lastRoutePointLocation.map { RoutePoint(location: $0) },
+      stationaryAnchorLocation: stationaryAnchorLocation.map { RoutePoint(location: $0) },
+      stationarySince: stationarySince,
+      promptedForCurrentStationaryPeriod: promptedForCurrentStationaryPeriod,
+      stopPromptRequested: stopPromptRequested
+    )
+    let url = Self.snapshotFileURL
+    persistenceQueue.async {
+      do {
+        let data = try JSONEncoder().encode(snapshot)
+        try FileManager.default.createDirectory(
+          at: url.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try data.write(
+          to: url,
+          options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        )
+      } catch {
+        // The in-memory trip remains authoritative for this run. A later
+        // location or timer tick retries the atomic recovery snapshot.
+      }
+    }
+  }
+
+  private func clearPersistedState() {
+    let url = Self.snapshotFileURL
+    persistenceQueue.async {
+      try? FileManager.default.removeItem(at: url)
+    }
+  }
+
+  private func location(from point: RoutePoint?) -> CLLocation? {
+    guard let point else { return nil }
+    return CLLocation(
+      coordinate: CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude),
+      altitude: 0,
+      horizontalAccuracy: point.horizontalAccuracy ?? 10,
+      verticalAccuracy: -1,
+      course: point.course ?? -1,
+      speed: point.speed ?? -1,
+      timestamp: point.timestamp ?? Date()
+    )
   }
 }

@@ -117,6 +117,9 @@ struct NativeTripView: View {
       selectedVehicle = store.settings.defaultVehicle
       now = Date()
       applyWidgetRequestIfNeeded()
+      if completedTrip == nil, session.phase == .summary {
+        completedTrip = session.tripForReview(store: store)
+      }
       updateTrackingTimer(active: shouldShowTrackingMap)
     }
     .onDisappear {
@@ -716,7 +719,7 @@ struct NativeTripView: View {
       }
       if autoTrack.liveShiftUsesEnhancedTracking {
         return ("car.fill", OkkleColor.brand, "Enhanced automatic tracking",
-                "Ends when your car disconnects or you arrive home.")
+                "Ends after 5 min disconnected, or when you arrive home.")
       }
       return ("location.north.line.fill", OkkleColor.brand, "Automatically tracking",
               "Based on movement and work schedule.")
@@ -844,7 +847,7 @@ struct NativeTripView: View {
       return "Paused by you. Resume when you're ready."
     }
     if autoTrack.liveShiftUsesEnhancedTracking {
-      return "Ends when your car disconnects or you arrive home."
+      return "Ends after 5 min disconnected, or when you arrive home."
     }
     return "Based on movement and work schedule."
   }

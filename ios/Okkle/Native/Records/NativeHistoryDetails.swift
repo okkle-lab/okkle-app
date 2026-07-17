@@ -1793,6 +1793,11 @@ struct NativeRouteMapView: UIViewRepresentable {
         let polyline = MKPolyline(coordinates: run, count: run.count)
         mapView.addOverlay(polyline)
       }
+
+      routeGapCoordinatePairs(from: points).forEach { pair in
+        let gap = MKGeodesicPolyline(coordinates: pair, count: pair.count)
+        mapView.addOverlay(gap)
+      }
     }
 
     if let selectedStopID = selectedStopID.wrappedValue,
@@ -1821,7 +1826,8 @@ struct NativeRouteMapView: UIViewRepresentable {
     let first = coordinates.first.map { "\($0.latitude),\($0.longitude)" } ?? "none"
     let last = coordinates.last.map { "\($0.latitude),\($0.longitude)" } ?? "none"
     let stopIDs = stops.map(\.id.uuidString).joined(separator: ",")
-    return "\(coordinates.count)|\(first)|\(last)|\(showsEndMarker)|\(stopIDs)"
+    let breakIndices = points.enumerated().compactMap { $0.element.breakBefore ? String($0.offset) : nil }.joined(separator: ",")
+    return "\(coordinates.count)|\(first)|\(last)|\(breakIndices)|\(showsEndMarker)|\(stopIDs)"
   }
 
   private func focus(_ mapView: MKMapView, on stop: NativeRouteMapStop, animated: Bool) {
@@ -1866,6 +1872,14 @@ struct NativeRouteMapView: UIViewRepresentable {
     }
   }
 
+  private func routeGapCoordinatePairs(from points: [RoutePoint]) -> [[CLLocationCoordinate2D]] {
+    guard points.count > 1 else { return [] }
+    return points.indices.dropFirst().compactMap { index in
+      guard points[index].breakBefore else { return nil }
+      return [points[index - 1].coordinate, points[index].coordinate]
+    }
+  }
+
   final class Coordinator: NSObject, MKMapViewDelegate {
     var parent: NativeRouteMapView
     var dataSignature: String?
@@ -1882,7 +1896,13 @@ struct NativeRouteMapView: UIViewRepresentable {
       }
       let renderer = MKPolylineRenderer(polyline: polyline)
       renderer.strokeColor = UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 1)
-      renderer.lineWidth = 5
+      if overlay is MKGeodesicPolyline {
+        renderer.strokeColor = renderer.strokeColor?.withAlphaComponent(0.55)
+        renderer.lineDashPattern = [4, 8]
+        renderer.lineWidth = 4
+      } else {
+        renderer.lineWidth = 5
+      }
       renderer.lineCap = .round
       renderer.lineJoin = .round
       return renderer
