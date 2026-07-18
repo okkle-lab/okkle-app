@@ -7,27 +7,51 @@ struct NativeExportCard: View {
   var body: some View {
     NativeGlassCard(cornerRadius: 30) {
       VStack(alignment: .leading, spacing: 14) {
+        Label("Send to your accountant", systemImage: "square.and.arrow.up")
+          .font(.system(size: 16, weight: .heavy))
+          .foregroundStyle(OkkleColor.brandDark)
         Text("Export & share")
           .font(.system(size: 24, weight: .heavy, design: .rounded))
           .foregroundStyle(OkkleColor.ink)
+        Text("Generate files on-device and choose where to send or save them.")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(OkkleColor.muted)
 
-        VStack(alignment: .leading, spacing: 16) {
-          ForEach(NativeTaxExportGroup.allCases, id: \.self) { group in
-            let kinds = NativeTaxExportKind.allCases.filter { $0.group == group }
-            VStack(alignment: .leading, spacing: 4) {
-              Text(group.title)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(OkkleColor.muted)
-                .padding(.leading, 2)
-
-              VStack(spacing: 0) {
-                ForEach(kinds) { kind in
-                  exportRow(kind)
-                  if kind != kinds.last {
-                    Divider().padding(.leading, 50)
-                  }
-                }
+        VStack(spacing: 0) {
+          ForEach(NativeTaxExportKind.allCases) { kind in
+            Button {
+              if let item = nativeMakeExport(kind, store: store) {
+                shareItem = item
+              } else {
+                exportFailed = true
               }
+            } label: {
+              HStack(spacing: 12) {
+                Image(systemName: kind.symbol)
+                  .font(.system(size: 17, weight: .bold))
+                  .foregroundStyle(OkkleColor.brand)
+                  .frame(width: 38, height: 38)
+                  .background(OkkleColor.brand.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                  Text(kind.title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(OkkleColor.ink)
+                  Text(kind.subtitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                    .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "square.and.arrow.up")
+                  .font(.system(size: 15, weight: .bold))
+                  .foregroundStyle(OkkleColor.muted)
+              }
+              .padding(.vertical, 11)
+            }
+            .buttonStyle(.plain)
+
+            if kind != .allData {
+              Divider().padding(.leading, 50)
             }
           }
         }
@@ -42,39 +66,6 @@ struct NativeExportCard: View {
       Text("Please try again.")
     }
   }
-
-  private func exportRow(_ kind: NativeTaxExportKind) -> some View {
-    Button {
-      if let item = nativeMakeExport(kind, store: store) {
-        shareItem = item
-      } else {
-        exportFailed = true
-      }
-    } label: {
-      HStack(spacing: 12) {
-        Image(systemName: kind.symbol)
-          .font(.system(size: 17, weight: .bold))
-          .foregroundStyle(OkkleColor.brand)
-          .frame(width: 38, height: 38)
-          .background(OkkleColor.brand.opacity(0.12), in: Circle())
-        VStack(alignment: .leading, spacing: 3) {
-          Text(kind.title)
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(OkkleColor.ink)
-          Text(kind.subtitle)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-            .lineLimit(1)
-        }
-        Spacer()
-        Image(systemName: "square.and.arrow.up")
-          .font(.system(size: 15, weight: .bold))
-          .foregroundStyle(OkkleColor.muted)
-      }
-      .padding(.vertical, 11)
-    }
-    .buttonStyle(.plain)
-  }
 }
 
 @MainActor
@@ -83,12 +74,9 @@ func nativeMakeExport(_ kind: NativeTaxExportKind, store: OkkleStore) -> NativeS
     .replacingOccurrences(of: "/", with: "-")
   let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
   do {
-    switch kind {
-    case .accountantPack:
+    if kind == .accountantPack {
       try nativeAccountantPackPdfData(store: store).write(to: url, options: [.atomic])
-    case .mileageReportPdf:
-      try nativeMileageReportPdfData(store: store).write(to: url, options: [.atomic])
-    default:
+    } else {
       let content = nativeExportContents(kind, store: store)
       try content.write(to: url, atomically: true, encoding: .utf8)
     }
@@ -115,8 +103,6 @@ func nativeExportContents(_ kind: NativeTaxExportKind, store: OkkleStore) -> Str
     return nativeFreeAgentCsv(store: store)
   case .selfAssessment:
     return nativeSelfAssessmentText(store: store)
-  case .mileageReportPdf:
-    return ""   // PDF kind, handled directly in nativeMakeExport
   case .mileageLog:
     return nativeMileageCsv(store: store)
   case .allData:
@@ -152,25 +138,31 @@ func nativeSelfAssessmentText(store: OkkleStore) -> String {
 
 @MainActor
 func nativeMileageCsv(store: OkkleStore) -> String {
-  // Scoped to the current tax year, with each row's deduction recomputed
-  // against a running car/van total — a trip's own stored `deduction` is
-  // set at logging time against a running total of zero, so it's only
-  // right below the 10,000-mile HMRC simplified-rate threshold; this way
-  // the exported total always matches the tax-year figure shown in Reports.
-  let header = "Date,Vehicle,Source,Miles,Basis,Deduction GBP,From,To"
-  let rows = store.yearMileageLogRows.map { row in
+  let header = "Date,Vehicle,Source,Miles,Basis,Deduction GBP"
+  let tripRows = store.trips.sorted { $0.startedAt < $1.startedAt }.map { trip in
     [
-      nativeCsvField(nativeDateStamp(row.date)),
-      nativeCsvField(row.vehicle.label),
-      nativeCsvField(row.source),
-      nativeCsvField(nativeDecimal(row.miles)),
+      nativeCsvField(nativeDateStamp(trip.startedAt)),
+      nativeCsvField(trip.vehicle.label),
+      nativeCsvField("GPS"),
+      nativeCsvField(nativeDecimal(trip.miles)),
       nativeCsvField("HMRC simplified"),
-      nativeCsvField(nativeDecimal(row.deduction)),
-      nativeCsvField(row.fromAddress ?? ""),
-      nativeCsvField(row.toAddress ?? "")
+      nativeCsvField(nativeDecimal(trip.deduction))
     ].joined(separator: ",")
   }
-  return ([header] + rows).joined(separator: "\n")
+  let manualRows = store.records
+    .filter { $0.kind == .mileage }
+    .sorted { $0.date < $1.date }
+    .map { record in
+      [
+        nativeCsvField(nativeDateStamp(record.date)),
+        nativeCsvField(record.vehicle?.label ?? "Vehicle"),
+        nativeCsvField("Manual"),
+        nativeCsvField(nativeDecimal(record.miles ?? 0)),
+        nativeCsvField("HMRC simplified"),
+        nativeCsvField(nativeDecimal(record.deduction ?? 0))
+      ].joined(separator: ",")
+    }
+  return ([header] + tripRows + manualRows).joined(separator: "\n")
 }
 
 @MainActor
@@ -189,12 +181,10 @@ func nativeFreeAgentCsv(store: OkkleStore) -> String {
           return value
         }.joined(separator: " - ")
       }
-      let cleanNote = record.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      let exportDescription = cleanNote.isEmpty ? description : "\(description) - \(cleanNote)"
       return [
         nativeCsvField(nativeUkDateStamp(record.date)),
         nativeCsvField(nativeDecimal(amount)),
-        nativeCsvField(exportDescription)
+        nativeCsvField(description)
       ].joined(separator: ",")
     }
   return (["Date,Amount,Description"] + rows).joined(separator: "\n")
@@ -202,7 +192,7 @@ func nativeFreeAgentCsv(store: OkkleStore) -> String {
 
 @MainActor
 func nativeAllDataCsv(store: OkkleStore) -> String {
-  let header = "date,type,platform,vehicle,miles,deduction,amount,category,merchant,note"
+  let header = "date,type,platform,vehicle,miles,deduction,amount,category,merchant"
   let tripRows = store.trips.map { trip in
     [
       nativeCsvField(nativeDateStamp(trip.startedAt)),
@@ -211,7 +201,6 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(trip.vehicle.label),
       nativeCsvField(nativeDecimal(trip.miles)),
       nativeCsvField(nativeDecimal(trip.deduction)),
-      nativeCsvField(""),
       nativeCsvField(""),
       nativeCsvField(""),
       nativeCsvField("")
@@ -227,8 +216,7 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(record.deduction.map(nativeDecimal) ?? ""),
       nativeCsvField(record.amount.map(nativeDecimal) ?? ""),
       nativeCsvField(record.category ?? ""),
-      nativeCsvField(record.merchant ?? ""),
-      nativeCsvField(record.note ?? "")
+      nativeCsvField(record.merchant ?? "")
     ].joined(separator: ",")
   }
   return ([header] + tripRows + recordRows).joined(separator: "\n")

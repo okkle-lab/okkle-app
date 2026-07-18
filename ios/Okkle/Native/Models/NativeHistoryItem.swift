@@ -1,5 +1,11 @@
+import CoreLocation
+import EventKit
+import MapKit
+import PhotosUI
+import SQLite3
 import SwiftUI
 import UIKit
+import Vision
 enum NativeHistoryItem: Identifiable, Equatable {
   case trip(NativeTrip)
   case record(NativeRecord)

@@ -1,5 +1,11 @@
+import CoreLocation
+import EventKit
+import MapKit
+import PhotosUI
+import SQLite3
 import SwiftUI
 import UIKit
+import Vision
 enum OkkleColor {
   static let brand = Color(red: 0.03, green: 0.58, blue: 0.49)
   static let brandDark = Color(UIColor { traits in
@@ -45,17 +51,12 @@ let gbpFormatter: NumberFormatter = {
   return formatter
 }()
 
-let wholeGbpFormatter: NumberFormatter = {
-  let formatter = NumberFormatter()
-  formatter.numberStyle = .currency
-  formatter.currencyCode = "GBP"
-  formatter.maximumFractionDigits = 0
-  return formatter
-}()
-
 func gbp(_ value: Double, whole: Bool = false) -> String {
-  let formatter = whole ? wholeGbpFormatter : gbpFormatter
-  return formatter.string(from: NSNumber(value: value)) ?? "GBP \(String(format: "%.2f", value))"
+  gbpFormatter.string(from: NSNumber(value: value)) ?? "GBP \(String(format: "%.2f", value))"
+}
+
+func headlineGbp(_ value: Double) -> String {
+  gbp(value)
 }
 
 func miles(_ value: Double) -> String {

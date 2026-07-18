@@ -112,47 +112,9 @@ struct RoutePoint: Identifiable, Codable, Equatable {
   var id = UUID()
   var latitude: Double
   var longitude: Double
-  // Optional (and absent from older saved trips) so decoding old data still
-  // works — nil just means this point can't be used to attribute a specific
-  // paid/dead leg within a multi-stop shift, only the trip's own total.
-  var timestamp: Date? = nil
-  // Marks a visible gap before this point, used when a driver removes a
-  // middle route segment. Old trips decode with no gaps.
-  var breakBefore = false
 
   var coordinate: CLLocationCoordinate2D {
     CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-  }
-
-  private enum CodingKeys: String, CodingKey {
-    case id
-    case latitude
-    case longitude
-    case timestamp
-    case breakBefore
-  }
-
-  init(
-    id: UUID = UUID(),
-    latitude: Double,
-    longitude: Double,
-    timestamp: Date? = nil,
-    breakBefore: Bool = false
-  ) {
-    self.id = id
-    self.latitude = latitude
-    self.longitude = longitude
-    self.timestamp = timestamp
-    self.breakBefore = breakBefore
-  }
-
-  init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-    latitude = try container.decode(Double.self, forKey: .latitude)
-    longitude = try container.decode(Double.self, forKey: .longitude)
-    timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp)
-    breakBefore = try container.decodeIfPresent(Bool.self, forKey: .breakBefore) ?? false
   }
 }
 
@@ -167,7 +129,6 @@ struct NativeRecord: Identifiable, Codable, Equatable {
   var deduction: Double?
   var category: String?
   var merchant: String? = nil
-  var note: String? = nil
   var date: Date
   var period: NativePayPeriod
   var periodStart: Date? = nil
@@ -184,12 +145,6 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var startedAt: Date
   var endedAt: Date
   var points: [RoutePoint]
-  // Reverse-geocoded lazily after the trip is saved (see
-  // NativeTripAddressResolver) so the mileage log can show a real from/to
-  // journey rather than just an aggregate distance. Nil until resolved, or
-  // for trips saved before this existed.
-  var startAddress: String? = nil
-  var endAddress: String? = nil
 }
 
 enum NativePayPeriod: String, CaseIterable, Identifiable, Codable {
@@ -216,49 +171,8 @@ struct NativeExcludedPlace: Codable, Identifiable, Equatable {
   var label: String
   var latitude: Double
   var longitude: Double
-  var address: String?
 
   var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
-}
-
-/// Tunable thresholds behind automatic shift/stop detection — starts at sane
-/// defaults and nudges itself from the driver's own corrections in the
-/// shift-review screen, so accuracy keeps improving per-driver rather than
-/// staying pinned to one global guess forever.
-struct NativeAutoTrackCalibration: Codable, Equatable {
-  /// How long stationary before a shift is considered over.
-  var stationaryTimeoutSeconds: TimeInterval = 20 * 60
-  /// Provisional pickup guess: dwell at or above this reads as a pick-up.
-  var pickupDwellThreshold: TimeInterval = 150
-  /// Below this dwell, with no nearby food venue, MapKit confirms drop-off.
-  var dropoffMaxDwellThreshold: TimeInterval = 240
-  /// Search radius for a nearby restaurant/cafe when refining a stop's kind.
-  var foodPoiRadiusMeters: Double = 45
-
-  private enum CodingKeys: String, CodingKey {
-    case stationaryTimeoutSeconds
-    case pickupDwellThreshold
-    case dropoffMaxDwellThreshold
-    case foodPoiRadiusMeters
-  }
-
-  init() {}
-
-  init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    stationaryTimeoutSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .stationaryTimeoutSeconds) ?? 20 * 60
-    pickupDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .pickupDwellThreshold) ?? 150
-    dropoffMaxDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .dropoffMaxDwellThreshold) ?? 240
-    foodPoiRadiusMeters = try container.decodeIfPresent(Double.self, forKey: .foodPoiRadiusMeters) ?? 45
-  }
-
-  /// Nudge, don't overwrite — one outlier correction shouldn't swing the
-  /// threshold wildly. 80% old / 20% new per correction, clamped to a
-  /// sane range so a single bad data point can't break detection.
-  mutating func nudgeStationaryTimeout(toward suggested: TimeInterval) {
-    let blended = stationaryTimeoutSeconds * 0.8 + suggested * 0.2
-    stationaryTimeoutSeconds = min(max(blended, 8 * 60), 60 * 60)
-  }
 }
 
 struct NativeSettings: Codable, Equatable {
@@ -276,30 +190,19 @@ struct NativeSettings: Codable, Equatable {
   var reminderDay = 1
   var logFrequency: NativeLogFrequency = .weekly
   var taxDeadlineReminders = true
-  // Optional iCloud sync. Kept in settings so the preference follows the
-  // user's Okkle snapshot once sync is enabled.
-  var iCloudSyncEnabled = false
   // Automatic trip tracking: on by default, tracking any trip. `workingDays`
   // holds the weekdays (0 = Sunday … 6 = Saturday, matching Calendar's symbol
   // index) on which trips auto-start; default is every day.
   var autoTrackTrips = true
-  // Opt-in voice automation: lets Siri and Shortcuts start or resume tracking
-  // with the driver's default vehicle.
-  var siriTripTrackingEnabled = false
   var workingDays: [Int] = Array(0...6)
   // A heads-up before your busy window starts, on working days.
   var preShiftAlerts = true
-  // Manual trips still ask before ending by default. When enabled, the same
-  // stationary detection quietly completes the trip after the driver stops.
-  var manualTripAutoComplete = false
   var hasCompletedOnboarding = false
   // Places the driver has manually marked as not-work (home, a usual break
   // spot) — kept out of the "where to go" earning suggestions. If this is
   // empty, the app falls back to auto-detecting a likely home location from
   // dwell patterns (see nativeDetectedHomeCoordinate).
   var excludedPlaces: [NativeExcludedPlace] = []
-  // Self-tuning thresholds behind automatic shift/stop detection.
-  var autoTrackCalibration = NativeAutoTrackCalibration()
 
   init() {}
 
@@ -318,15 +221,11 @@ struct NativeSettings: Codable, Equatable {
     case reminderDay
     case logFrequency
     case taxDeadlineReminders
-    case iCloudSyncEnabled
     case autoTrackTrips
-    case siriTripTrackingEnabled
     case workingDays
     case preShiftAlerts
-    case manualTripAutoComplete
     case hasCompletedOnboarding
     case excludedPlaces
-    case autoTrackCalibration
   }
 
   init(from decoder: Decoder) throws {
@@ -345,15 +244,11 @@ struct NativeSettings: Codable, Equatable {
     reminderDay = try container.decodeIfPresent(Int.self, forKey: .reminderDay) ?? 1
     logFrequency = try container.decodeIfPresent(NativeLogFrequency.self, forKey: .logFrequency) ?? .weekly
     taxDeadlineReminders = try container.decodeIfPresent(Bool.self, forKey: .taxDeadlineReminders) ?? true
-    iCloudSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? false
     autoTrackTrips = try container.decodeIfPresent(Bool.self, forKey: .autoTrackTrips) ?? true
-    siriTripTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .siriTripTrackingEnabled) ?? false
     workingDays = try container.decodeIfPresent([Int].self, forKey: .workingDays) ?? Array(0...6)
     preShiftAlerts = try container.decodeIfPresent(Bool.self, forKey: .preShiftAlerts) ?? true
-    manualTripAutoComplete = try container.decodeIfPresent(Bool.self, forKey: .manualTripAutoComplete) ?? false
     hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
     excludedPlaces = try container.decodeIfPresent([NativeExcludedPlace].self, forKey: .excludedPlaces) ?? []
-    autoTrackCalibration = try container.decodeIfPresent(NativeAutoTrackCalibration.self, forKey: .autoTrackCalibration) ?? NativeAutoTrackCalibration()
   }
 }
 
@@ -381,14 +276,11 @@ struct NativeBackupRestoreSummary {
 
 enum NativeBackupRestoreError: LocalizedError {
   case invalidBackup
-  case iCloudSyncEnabled
 
   var errorDescription: String? {
     switch self {
     case .invalidBackup:
       return "That file does not look like an Okkle backup."
-    case .iCloudSyncEnabled:
-      return "Turn off iCloud sync before restoring a backup."
     }
   }
 }

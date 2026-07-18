@@ -1,15 +1,5 @@
 import Foundation
 
-struct NativeMileageLogRow {
-  let date: Date
-  let vehicle: NativeVehicle
-  let source: String
-  let miles: Double
-  let deduction: Double
-  let fromAddress: String?
-  let toAddress: String?
-}
-
 struct NativeTaxPosition {
   var turnover: Double
   var expenses: Double
@@ -92,20 +82,12 @@ enum TaxCalculator {
   static func incomeTax(income: Double, region: NativeRegion) -> Double {
     let allowance = personalAllowance(for: income)
     let taxable = max(0, income - allowance)
-    // The additional-rate band starts at a fixed £125,140 of *gross* income.
-    // Expressed in taxable terms that's 125,140 minus whatever allowance
-    // actually applied — not a flat 112,570 (125,140 minus the standard,
-    // un-tapered £12,570) — because by this income level (over £100,000)
-    // the allowance itself is already partway or fully tapered away. Using a
-    // fixed taxable cutoff here taxed a slice of income at 45% a little
-    // early for anyone still in the £100,000-£125,140 tapering band.
-    let additionalRateThreshold = 125_140.0 - allowance
     let bands: [(Double, Double)]
     switch region {
     case .ruk:
-      bands = [(37_700, 0.20), (additionalRateThreshold, 0.40), (.infinity, 0.45)]
+      bands = [(37_700, 0.20), (112_570, 0.40), (.infinity, 0.45)]
     case .scotland:
-      bands = [(3_967, 0.19), (16_956, 0.20), (31_092, 0.21), (62_430, 0.42), (additionalRateThreshold, 0.45), (.infinity, 0.48)]
+      bands = [(3_967, 0.19), (16_956, 0.20), (31_092, 0.21), (62_430, 0.42), (112_570, 0.45), (.infinity, 0.48)]
     }
 
     var tax = 0.0

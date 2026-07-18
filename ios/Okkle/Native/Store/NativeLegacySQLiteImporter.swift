@@ -111,7 +111,6 @@ enum NativeLegacySQLiteImporter {
       applyAccountantDetails(keyValues, to: &settings)
       applyIncomeBracket(taxRate: legacyTaxRate(from: keyValues), to: &settings)
       settings.otherIncome = legacyOtherIncome(from: keyValues) ?? 0
-      applySiriTripTracking(keyValues, to: &settings)
       return settings
     }
     var settings = NativeSettings()
@@ -120,7 +119,6 @@ enum NativeLegacySQLiteImporter {
     settings.region = NativeRegion(rawValue: string(row["region"]) ?? "") ?? .ruk
     applyIncomeBracket(taxRate: double(row["tax_rate"]) ?? legacyTaxRate(from: keyValues), to: &settings)
     settings.otherIncome = legacyOtherIncome(from: keyValues) ?? 0
-    applySiriTripTracking(keyValues, to: &settings)
     settings.hasCompletedOnboarding = (int(row["onboarded"]) ?? 1) != 0
 
     let platforms = splitList(string(row["platforms"]))
@@ -160,11 +158,6 @@ enum NativeLegacySQLiteImporter {
   private static func applyIncomeBracket(taxRate: Double?, to settings: inout NativeSettings) {
     guard let taxRate else { return }
     settings.incomeBracket = taxRate >= 0.40 ? .higher : .basic
-  }
-
-  private static func applySiriTripTracking(_ values: [String: String], to settings: inout NativeSettings) {
-    guard let enabled = values["siri_trip_tracking_enabled"].flatMap({ Int($0) }) else { return }
-    settings.siriTripTrackingEnabled = enabled != 0
   }
 
   private static func legacyTaxRate(from values: [String: String]) -> Double? {

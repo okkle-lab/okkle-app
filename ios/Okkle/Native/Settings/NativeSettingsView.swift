@@ -1,7 +1,12 @@
 import CoreLocation
+import EventKit
 import MapKit
+import PhotosUI
+import SQLite3
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
+import Vision
 struct NativeSettingsPlatformsSection: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var newPlatform = ""
@@ -140,11 +145,10 @@ struct NativeSettingsView: View {
         Section {
           menuRow("Tax settings") { NativeTaxSettingsView() }
           menuRow("Automatic tracking") { NativeAutoTrackSettingsView() }
-          menuRow("Siri & Shortcuts") { NativeSiriSettingsView() }
           menuRow("Reminders") { NativeRemindersSettingsView() }
           menuRow("Export & share") { NativeExportSettingsView() }
         } header: {
-          Text("Settings")
+          Text("Features")
         }
 
         Section {
@@ -164,9 +168,14 @@ struct NativeSettingsView: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
-          NativeSettingsCloseButton {
-            dismiss()
+          Button { dismiss() } label: {
+            Image(systemName: "xmark")
+              .font(.system(size: 15, weight: .bold))
+              .foregroundStyle(OkkleColor.ink)
+              .frame(width: 44, height: 44)
+              .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
           }
+          .accessibilityLabel("Close")
         }
       }
     }
@@ -178,18 +187,6 @@ struct NativeSettingsView: View {
     } label: {
       Text(title)
     }
-  }
-}
-
-private struct NativeSettingsCloseButton: View {
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      Image(systemName: "xmark")
-        .font(.system(size: 15, weight: .bold))
-    }
-    .accessibilityLabel("Close")
   }
 }
 
@@ -318,17 +315,6 @@ struct NativeAutoTrackSettingsView: View {
 
         NativeExcludedPlacesSection()
       }
-
-      Section {
-        Toggle("Auto-complete stopped manual trips", isOn: Binding(
-          get: { store.settings.manualTripAutoComplete },
-          set: { store.settings.manualTripAutoComplete = $0 }
-        ))
-      } header: {
-        Text("Manual trips")
-      } footer: {
-        Text("When a trip you started by hand has been stationary for a while, Okkle can save it automatically instead of asking you to end it.")
-      }
     }
     .navigationTitle("Automatic tracking")
     .navigationBarTitleDisplayMode(.inline)
@@ -351,32 +337,7 @@ struct NativeExcludedPlacesSection: View {
     Section {
       if !store.settings.excludedPlaces.isEmpty {
         ForEach(store.settings.excludedPlaces) { place in
-          VStack(alignment: .leading, spacing: 6) {
-            NativeExcludedPlaceMapRepresentable(
-              coordinate: place.coordinate,
-              onDragEnd: { moved(place.id, to: $0) }
-            )
-            .frame(height: 140)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            HStack(spacing: 10) {
-              Text(place.label)
-                .font(.subheadline.weight(.semibold))
-              Spacer(minLength: 10)
-              Button(role: .destructive) {
-                removePlace(place.id)
-              } label: {
-                Label("Remove \(place.label)", systemImage: "trash")
-                  .labelStyle(.iconOnly)
-              }
-              .buttonStyle(.borderless)
-              .accessibilityLabel("Remove \(place.label)")
-            }
-            if let address = place.address {
-              Text(address).font(.footnote).foregroundStyle(.secondary)
-            }
-          }
-          .padding(.vertical, 4)
+          Text(place.label)
         }
         .onDelete { offsets in
           store.settings.excludedPlaces.remove(atOffsets: offsets)
@@ -404,7 +365,7 @@ struct NativeExcludedPlacesSection: View {
     } header: {
       Text("Places to leave out")
     } footer: {
-      Text("Add home or anywhere you stop often that isn't work — they'll never be suggested as a place to go and earn. Drag the pin if it lands somewhere off.")
+      Text("Add home or anywhere you stop often that isn't work — they'll never be suggested as a place to go and earn.")
     }
     .onAppear { locator.request() }
   }
@@ -418,11 +379,11 @@ struct NativeExcludedPlacesSection: View {
     CLGeocoder().geocodeAddressString(cleanAddress) { placemarks, _ in
       Task { @MainActor in
         isGeocoding = false
-        guard let placemark = placemarks?.first, let coordinate = placemark.location?.coordinate else {
+        guard let coordinate = placemarks?.first?.location?.coordinate else {
           errorMessage = "Couldn't find that address."
           return
         }
-        save(label: cleanLabel, coordinate: coordinate, address: Self.formattedAddress(placemark))
+        save(label: cleanLabel, coordinate: coordinate)
       }
     }
   }
@@ -430,133 +391,15 @@ struct NativeExcludedPlacesSection: View {
   private func addByCurrentLocation() {
     let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !cleanLabel.isEmpty, let coordinate = locator.coordinate else { return }
-    save(label: cleanLabel, coordinate: coordinate, address: nil)
-    resolveAddress(for: coordinate) { resolved in
-      guard let resolved, let index = store.settings.excludedPlaces.lastIndex(where: { $0.label == cleanLabel }) else { return }
-      store.settings.excludedPlaces[index].address = resolved
-    }
+    save(label: cleanLabel, coordinate: coordinate)
   }
 
-  private func save(label: String, coordinate: CLLocationCoordinate2D, address: String?) {
+  private func save(label: String, coordinate: CLLocationCoordinate2D) {
     store.settings.excludedPlaces.append(NativeExcludedPlace(
-      label: label, latitude: coordinate.latitude, longitude: coordinate.longitude, address: address
+      label: label, latitude: coordinate.latitude, longitude: coordinate.longitude
     ))
     self.label = ""
-    self.address = ""
-  }
-
-  private func removePlace(_ id: UUID) {
-    store.settings.excludedPlaces.removeAll { $0.id == id }
-  }
-
-  /// Dragging the pin corrects the coordinate directly — geocoding can land a
-  /// little off, and re-resolving the address confirms the new spot matched.
-  private func moved(_ id: UUID, to coordinate: CLLocationCoordinate2D) {
-    guard let index = store.settings.excludedPlaces.firstIndex(where: { $0.id == id }) else { return }
-    store.settings.excludedPlaces[index].latitude = coordinate.latitude
-    store.settings.excludedPlaces[index].longitude = coordinate.longitude
-    resolveAddress(for: coordinate) { resolved in
-      guard let resolved, let index = store.settings.excludedPlaces.firstIndex(where: { $0.id == id }) else { return }
-      store.settings.excludedPlaces[index].address = resolved
-    }
-  }
-
-  private func resolveAddress(for coordinate: CLLocationCoordinate2D, completion: @escaping (String?) -> Void) {
-    CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
-      Task { @MainActor in completion(placemarks?.first.flatMap(Self.formattedAddress)) }
-    }
-  }
-
-  private static func formattedAddress(_ placemark: CLPlacemark) -> String? {
-    let line1 = [placemark.subThoroughfare, placemark.thoroughfare].compactMap { $0 }.joined(separator: " ")
-    let line2 = [placemark.locality ?? placemark.subLocality, placemark.postalCode].compactMap { $0 }.joined(separator: " ")
-    let combined = [line1, line2].filter { !$0.isEmpty }.joined(separator: ", ")
-    return combined.isEmpty ? nil : combined
-  }
-}
-
-/// A small draggable-pin map for correcting an excluded place's coordinate —
-/// geocoding (from a typed address, or the device's current fix) can land a
-/// little off, so the driver can drag it right rather than re-typing.
-struct NativeExcludedPlaceMapRepresentable: UIViewRepresentable {
-  var coordinate: CLLocationCoordinate2D
-  var onDragEnd: (CLLocationCoordinate2D) -> Void
-
-  func makeCoordinator() -> Coordinator { Coordinator(onDragEnd: onDragEnd) }
-
-  func makeUIView(context: Context) -> MKMapView {
-    let mapView = MKMapView()
-    mapView.delegate = context.coordinator
-    mapView.isPitchEnabled = false
-    mapView.showsCompass = false
-    mapView.showsScale = false
-    let annotation = MKPointAnnotation()
-    annotation.coordinate = coordinate
-    mapView.addAnnotation(annotation)
-    mapView.setRegion(MKCoordinateRegion(center: coordinate, span: MKCoordinateSpan(latitudeDelta: 0.006, longitudeDelta: 0.006)), animated: false)
-    context.coordinator.annotation = annotation
-    return mapView
-  }
-
-  func updateUIView(_ mapView: MKMapView, context: Context) {
-    // Only move the pin from an external coordinate change (e.g. switching
-    // rows) — not after a drag, which already updated the model to match.
-    guard let annotation = context.coordinator.annotation,
-          annotation.coordinate.latitude != coordinate.latitude || annotation.coordinate.longitude != coordinate.longitude else { return }
-    annotation.coordinate = coordinate
-  }
-
-  final class Coordinator: NSObject, MKMapViewDelegate {
-    let onDragEnd: (CLLocationCoordinate2D) -> Void
-    weak var annotation: MKPointAnnotation?
-
-    init(onDragEnd: @escaping (CLLocationCoordinate2D) -> Void) { self.onDragEnd = onDragEnd }
-
-    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-      guard !(annotation is MKUserLocation) else { return nil }
-      let identifier = "excludedPlacePin"
-      let view = (mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView)
-        ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-      view.annotation = annotation
-      view.isDraggable = true
-      view.markerTintColor = .systemGreen
-      return view
-    }
-
-    func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, didChange newState: MKAnnotationView.DragState, fromOldState oldState: MKAnnotationView.DragState) {
-      guard newState == .ending, let coordinate = view.annotation?.coordinate else { return }
-      onDragEnd(coordinate)
-    }
-  }
-}
-
-// MARK: Siri & Shortcuts
-
-struct NativeSiriSettingsView: View {
-  @EnvironmentObject private var store: OkkleStore
-
-  var body: some View {
-    Form {
-      Section {
-        Toggle("Siri trip tracking", isOn: Binding(
-          get: { store.settings.siriTripTrackingEnabled },
-          set: { store.settings.siriTripTrackingEnabled = $0 }
-        ))
-      } header: {
-        Text("Voice automation")
-      } footer: {
-        Text("Allow Siri and Shortcuts to start or resume trip tracking with your default vehicle. Okkle opens when the shortcut runs and still needs location permission.")
-      }
-
-      Section {
-        Label("Hey Siri, track this trip with Okkle", systemImage: "quote.bubble")
-        Label("Hey Siri, start tracking this trip with Okkle", systemImage: "quote.bubble")
-      } header: {
-        Text("Example phrases")
-      }
-    }
-    .navigationTitle("Siri & Shortcuts")
-    .navigationBarTitleDisplayMode(.inline)
+    address = ""
   }
 }
 
@@ -644,29 +487,7 @@ struct NativeDataSettingsView: View {
 
   var body: some View {
     Form {
-      Section {
-        Toggle("iCloud sync", isOn: Binding(
-          get: { store.settings.iCloudSyncEnabled },
-          set: { store.setICloudSyncEnabled($0) }
-        ))
-
-        HStack(alignment: .top, spacing: 12) {
-          Image(systemName: iCloudSyncStatusSymbol)
-            .foregroundStyle(iCloudSyncStatusTint)
-          VStack(alignment: .leading, spacing: 4) {
-            Text(store.iCloudSyncState.title)
-              .font(.subheadline.weight(.semibold))
-            Text(store.iCloudSyncState.detail)
-              .font(.footnote)
-              .foregroundStyle(.secondary)
-          }
-        }
-
-      } header: {
-        Text("iCloud sync")
-      }
-
-      Section {
+      Section("Backup & restore") {
         Button {
           backupBusy = true
           switch nativeCreateBackup(store: store) {
@@ -679,31 +500,21 @@ struct NativeDataSettingsView: View {
           }
           backupBusy = false
         } label: {
-          manualBackupLabel(
-            backupBusy ? "Backing up..." : "Back up to iCloud",
-            systemImage: "icloud.and.arrow.up",
-            isDisabled: backupBusy || manualBackupDisabled
-          )
+          Label(backupBusy ? "Backing up..." : "Back up to iCloud", systemImage: "icloud.and.arrow.up")
         }
-        .disabled(backupBusy || manualBackupDisabled)
+        .disabled(backupBusy)
 
         Button {
           prepareBackupExport()
         } label: {
-          manualBackupLabel("Choose backup location", systemImage: "folder", isDisabled: manualBackupDisabled)
+          Label("Choose backup location", systemImage: "folder")
         }
-        .disabled(manualBackupDisabled)
 
         Button {
           showBackupImporter = true
         } label: {
-          manualBackupLabel("Load backup", systemImage: "icloud.and.arrow.down", isDisabled: manualBackupDisabled)
+          Label("Load backup", systemImage: "icloud.and.arrow.down")
         }
-        .disabled(manualBackupDisabled)
-      } header: {
-        Text("Backup & restore")
-      } footer: {
-        Text(manualBackupDisabled ? "Manual backup and restore are disabled while automatic iCloud sync is on." : "Creates a JSON backup you can save to Files or iCloud, or restore onto this device.")
       }
 
       Section {
@@ -713,14 +524,11 @@ struct NativeDataSettingsView: View {
           Label("Clear all app data", systemImage: "trash")
         }
       } footer: {
-        Text("Clearing removes everything and restarts sign-up.")
+        Text("Creates a JSON backup you can save to Files or iCloud, or restore onto this device. Clearing removes everything and restarts sign-up.")
       }
     }
     .navigationTitle("Data & backup")
     .navigationBarTitleDisplayMode(.inline)
-    .onAppear {
-      store.refreshICloudSyncIfNeeded()
-    }
     .sheet(item: $backupShareItem) { item in
       NativeShareSheet(items: [item.url])
     }
@@ -773,10 +581,6 @@ struct NativeDataSettingsView: View {
   }
 
   private func restoreBackup(from result: Result<[URL], Error>) {
-    guard !store.settings.iCloudSyncEnabled else {
-      backupMessage = "Turn off iCloud sync before restoring a backup."
-      return
-    }
     do {
       guard let url = try result.get().first else { return }
       let didAccess = url.startAccessingSecurityScopedResource()
@@ -790,46 +594,6 @@ struct NativeDataSettingsView: View {
       backupMessage = summary.message
     } catch {
       backupMessage = "Could not load backup. \(error.localizedDescription)"
-    }
-  }
-
-  private var manualBackupDisabled: Bool {
-    store.settings.iCloudSyncEnabled
-  }
-
-  private func manualBackupLabel(_ title: String, systemImage: String, isDisabled: Bool) -> some View {
-    Label {
-      Text(title)
-        .foregroundStyle(isDisabled ? Color.secondary : Color.primary)
-    } icon: {
-      Image(systemName: systemImage)
-        .foregroundStyle(isDisabled ? Color.secondary : OkkleColor.brand)
-    }
-  }
-
-  private var iCloudSyncStatusSymbol: String {
-    switch store.iCloudSyncState {
-    case .disabled:
-      return "icloud.slash"
-    case .unavailable, .failed:
-      return "exclamationmark.icloud"
-    case .syncing, .waitingForDownload:
-      return "icloud.and.arrow.up"
-    case .synced:
-      return "checkmark.icloud"
-    }
-  }
-
-  private var iCloudSyncStatusTint: Color {
-    switch store.iCloudSyncState {
-    case .disabled:
-      return .secondary
-    case .unavailable, .failed:
-      return .orange
-    case .syncing, .waitingForDownload:
-      return OkkleColor.brand
-    case .synced:
-      return .green
     }
   }
 }

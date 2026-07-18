@@ -3,8 +3,15 @@
 # macOS
 .DS_Store
 
+# local legacy/generated folders
+node_modules/
+.expo/
+
 # local env files
 .env*.local
 
+# generated native folders
+/android
+
 # local IDE state
-.idea/
+.idea/workspace.xml

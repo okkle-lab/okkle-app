@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-import UIKit
 @MainActor
 final class OkkleStore: ObservableObject {
   static let shared = OkkleStore()
@@ -9,44 +8,21 @@ final class OkkleStore: ObservableObject {
     var date: Date
     var miles: Double
     var vehicle: NativeVehicle
-    var source: String = "GPS"
-    var interval: DateInterval? = nil
-    var fromAddress: String? = nil
-    var toAddress: String? = nil
   }
 
   @Published var settings = NativeSettings() { didSet { scheduleSave() } }
-  @Published var records: [NativeRecord] = [] { didSet { cachedHistory = nil; scheduleSave() } }
-  @Published var trips: [NativeTrip] = [] { didSet { cachedHistory = nil; scheduleSave() } }
-  @Published private(set) var iCloudSyncState: NativeICloudSyncState = .disabled
+  @Published var records: [NativeRecord] = [] { didSet { scheduleSave() } }
+  @Published var trips: [NativeTrip] = [] { didSet { scheduleSave() } }
 
   private let key = "uk.okkle.native.swiftui.snapshot.v1"
   private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v3"
   private let saveDebounceInterval: TimeInterval = 0.45
   private var isLoading = false
   private var pendingSave: DispatchWorkItem?
-  private var cachedHistory: [NativeHistoryItem]?
-  private var isApplyingICloudSnapshot = false
-  // The legacy SQLite mirror only exists so an older build can recover the
-  // data; rebuilding it on every save is wasted work, so it's deferred to
-  // the next trip into the background.
-  private var legacyExportNeeded = false
-  private let persistenceQueue = DispatchQueue(label: "uk.okkle.native.snapshot-persist", qos: .utility)
-
-  private static let snapshotFileURL: URL = {
-    let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    return base.appendingPathComponent("Okkle", isDirectory: true).appendingPathComponent("snapshot.json")
-  }()
 
   init() {
     load()
     scheduleLegacyImport()
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(appDidEnterBackground),
-      name: UIApplication.didEnterBackgroundNotification,
-      object: nil
-    )
   }
 
   func load() {
@@ -57,35 +33,19 @@ final class OkkleStore: ObservableObject {
       if shouldPersist { save() }
     }
 
-    // Snapshots moved from UserDefaults to a file in Application Support;
-    // the defaults read is the migration path, cleaned up on the next save.
-    if let data = (try? Data(contentsOf: Self.snapshotFileURL)) ?? UserDefaults.standard.data(forKey: key) {
+    if let data = UserDefaults.standard.data(forKey: key) {
       do {
         let snapshot = try JSONDecoder().decode(NativeSnapshot.self, from: data)
         settings = snapshot.settings
         records = snapshot.records
         trips = snapshot.trips
       } catch {
-        try? FileManager.default.removeItem(at: Self.snapshotFileURL)
         UserDefaults.standard.removeObject(forKey: key)
       }
     }
 
     if normalizeOnboardingState() {
       shouldPersist = true
-    }
-
-    iCloudSyncState = settings.iCloudSyncEnabled ? .syncing : .disabled
-  }
-
-  @objc private func appDidEnterBackground() {
-    if pendingSave != nil { save() }
-    refreshICloudSyncIfNeeded()
-    guard legacyExportNeeded else { return }
-    legacyExportNeeded = false
-    let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
-    persistenceQueue.async {
-      NativeLegacySQLiteExporter.write(snapshot: snapshot)
     }
   }
 
@@ -107,11 +67,11 @@ final class OkkleStore: ObservableObject {
     save()
   }
 
-  func save(uploadToICloud: Bool = true) {
+  func save() {
     guard !isLoading else { return }
     pendingSave?.cancel()
     pendingSave = nil
-    persistSnapshot(uploadToICloud: uploadToICloud)
+    persistSnapshot()
   }
 
   private func scheduleSave() {
@@ -128,38 +88,14 @@ final class OkkleStore: ObservableObject {
     DispatchQueue.main.asyncAfter(deadline: .now() + saveDebounceInterval, execute: work)
   }
 
-  private func persistSnapshot(uploadToICloud: Bool = true) {
+  private func persistSnapshot() {
     let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
-    legacyExportNeeded = true
-    let url = Self.snapshotFileURL
-    let defaultsKey = key
-    persistenceQueue.async {
-      guard let data = try? JSONEncoder().encode(snapshot) else { return }
-      try? FileManager.default.createDirectory(
-        at: url.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      do {
-        try data.write(to: url, options: .atomic)
-        // Only drop the old UserDefaults copy once the file write succeeded,
-        // so a migration interrupted mid-flight loses nothing.
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
-      } catch {}
+    if let data = try? JSONEncoder().encode(snapshot) {
+      UserDefaults.standard.set(data, forKey: key)
     }
-    if uploadToICloud, snapshot.settings.iCloudSyncEnabled, !isApplyingICloudSnapshot {
-      NativeICloudSyncEngine.shared.uploadLocalSnapshot(snapshot, store: self)
+    DispatchQueue.global(qos: .utility).async {
+      NativeLegacySQLiteExporter.write(snapshot: snapshot)
     }
-  }
-
-  var currentSnapshot: NativeSnapshot {
-    NativeSnapshot(settings: settings, records: records, trips: trips)
-  }
-
-  var isFreshInstallForICloudOffer: Bool {
-    !settings.hasCompletedOnboarding &&
-      settings.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-      records.isEmpty &&
-      trips.isEmpty
   }
 
   var backupPayload: NativeBackupPayload {
@@ -180,9 +116,6 @@ final class OkkleStore: ObservableObject {
 
   @discardableResult
   func restoreBackupData(_ data: Data) throws -> NativeBackupRestoreSummary {
-    guard !settings.iCloudSyncEnabled else {
-      throw NativeBackupRestoreError.iCloudSyncEnabled
-    }
     let snapshot = try decodeBackupSnapshot(from: data)
     isLoading = true
     settings = snapshot.settings
@@ -194,51 +127,6 @@ final class OkkleStore: ObservableObject {
     return NativeBackupRestoreSummary(records: records.count, trips: trips.count)
   }
 
-  func setICloudSyncEnabled(_ isEnabled: Bool) {
-    guard settings.iCloudSyncEnabled != isEnabled else {
-      refreshICloudSyncIfNeeded()
-      return
-    }
-    if isEnabled {
-      isLoading = true
-      settings.iCloudSyncEnabled = true
-      isLoading = false
-      save(uploadToICloud: false)
-      NativeICloudSyncEngine.shared.refresh(store: self, mergeCloudData: true)
-    } else {
-      settings.iCloudSyncEnabled = false
-      iCloudSyncState = .disabled
-    }
-  }
-
-  func refreshICloudSyncIfNeeded() {
-    NativeICloudSyncEngine.shared.refresh(store: self)
-  }
-
-  func existingICloudDataCheck() async -> NativeICloudRemoteSnapshotCheck {
-    await NativeICloudSyncEngine.shared.remoteSnapshotSummary()
-  }
-
-  func restoreExistingICloudData() async throws {
-    try await NativeICloudSyncEngine.shared.restoreExistingRemoteData(store: self)
-  }
-
-  func setICloudSyncState(_ state: NativeICloudSyncState) {
-    iCloudSyncState = state
-  }
-
-  func applyICloudSnapshot(_ snapshot: NativeSnapshot) {
-    isApplyingICloudSnapshot = true
-    isLoading = true
-    settings = snapshot.settings
-    records = snapshot.records
-    trips = snapshot.trips
-    _ = normalizeOnboardingState()
-    isLoading = false
-    save(uploadToICloud: false)
-    isApplyingICloudSnapshot = false
-  }
-
   /// Set by the passive-insights layer so it can quietly check its own
   /// predictions against newly logged pay, without this store needing to know
   /// anything about Insights' domain types.
@@ -247,13 +135,10 @@ final class OkkleStore: ObservableObject {
   func addRecord(_ record: NativeRecord) {
     records.insert(record, at: 0)
     onRecordAdded?(record)
-    refreshLogSensitiveNotifications()
   }
 
   func addTrip(_ trip: NativeTrip) {
     trips.insert(trip, at: 0)
-    refreshLogSensitiveNotifications()
-    NativeTripAddressResolver.resolveAddresses(for: trip.id, store: self)
   }
 
   func updateTrip(_ trip: NativeTrip) {
@@ -272,11 +157,6 @@ final class OkkleStore: ObservableObject {
 
   func deleteTrip(_ trip: NativeTrip) {
     trips.removeAll { $0.id == trip.id }
-  }
-
-  private func refreshLogSensitiveNotifications() {
-    NativeLoggingReminder.refresh(store: self)
-    NativePreShiftNotifier.refresh(store: self)
   }
 
   func resetAllData() {
@@ -341,47 +221,6 @@ final class OkkleStore: ObservableObject {
     return total
   }
 
-  /// The mileage log, one row per entry, for the current tax year — each
-  /// row's deduction computed against the *same* running car/van total
-  /// yearMileageDeduction itself accumulates, so the two always agree once
-  /// summed. A trip or manual record's own stored `deduction` field is set
-  /// at logging time against a running total of zero (it can't know what
-  /// else that tax year will hold yet), so it's only ever right for whoever
-  /// stays under the 10,000-mile HMRC simplified-rate threshold for the
-  /// whole year — anyone who crosses it needs every later entry recomputed
-  /// at the lower after-threshold rate, which is what this does.
-  var yearMileageLogRows: [NativeMileageLogRow] {
-    var rows: [NativeMileageLogRow] = []
-    var carAndVanMilesBefore = 0.0
-
-    for entry in yearMileageEntries {
-      let deduction: Double
-      switch entry.vehicle {
-      case .car, .van:
-        deduction = calcDeduction(
-          miles: entry.miles,
-          vehicle: entry.vehicle,
-          totalBefore: carAndVanMilesBefore,
-          date: entry.date
-        )
-        carAndVanMilesBefore += entry.miles
-      case .motorbike, .bike:
-        deduction = calcDeduction(miles: entry.miles, vehicle: entry.vehicle, date: entry.date)
-      }
-      rows.append(NativeMileageLogRow(
-        date: entry.date,
-        vehicle: entry.vehicle,
-        source: entry.source,
-        miles: entry.miles,
-        deduction: deduction,
-        fromAddress: entry.fromAddress,
-        toAddress: entry.toAddress
-      ))
-    }
-
-    return rows
-  }
-
   var yearIncome: Double {
     yearRecords.reduce(0) { $0 + incomeForTaxYear($1) }
   }
@@ -392,43 +231,6 @@ final class OkkleStore: ObservableObject {
 
   var taxSaved: Double {
     yearMileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
-  }
-
-  func mileageTaxSavings(for interval: DateInterval?) -> NativeMileageTaxSavings {
-    var miles = 0.0
-    var mileageDeduction = 0.0
-    var carAndVanMilesByTaxYear: [Date: Double] = [:]
-
-    for entry in allMileageEntries {
-      let selectedMiles = selectedMiles(for: entry, within: interval)
-      let taxYearStart = TaxCalculator.taxYearInterval(containing: entry.date).start
-
-      switch entry.vehicle {
-      case .car, .van:
-        let totalBefore = carAndVanMilesByTaxYear[taxYearStart] ?? 0
-        if selectedMiles > 0 {
-          miles += selectedMiles
-          mileageDeduction += calcDeduction(
-            miles: selectedMiles,
-            vehicle: entry.vehicle,
-            totalBefore: totalBefore,
-            date: entry.date
-          )
-        }
-        carAndVanMilesByTaxYear[taxYearStart] = totalBefore + entry.miles
-      case .motorbike, .bike:
-        if selectedMiles > 0 {
-          miles += selectedMiles
-          mileageDeduction += calcDeduction(miles: selectedMiles, vehicle: entry.vehicle, date: entry.date)
-        }
-      }
-    }
-
-    return NativeMileageTaxSavings(
-      miles: miles,
-      mileageDeduction: mileageDeduction,
-      taxSaved: mileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
-    )
   }
 
   var taxPosition: NativeTaxPosition {
@@ -442,12 +244,9 @@ final class OkkleStore: ObservableObject {
   }
 
   var history: [NativeHistoryItem] {
-    if let cachedHistory { return cachedHistory }
     let tripItems = trips.map(NativeHistoryItem.trip)
     let recordItems = records.map(NativeHistoryItem.record)
-    let items = (tripItems + recordItems).sorted { $0.date > $1.date }
-    cachedHistory = items
-    return items
+    return (tripItems + recordItems).sorted { $0.date > $1.date }
   }
 
   func periodBounds(for date: Date, period: NativePayPeriod) -> (start: Date, end: Date) {
@@ -606,13 +405,7 @@ final class OkkleStore: ObservableObject {
     let tripEntries = yearTrips.compactMap { trip -> TaxYearMileageEntry? in
       let miles = max(0, trip.miles)
       guard miles > 0 else { return nil }
-      return TaxYearMileageEntry(
-        date: trip.startedAt,
-        miles: miles,
-        vehicle: trip.vehicle,
-        fromAddress: trip.startAddress,
-        toAddress: trip.endAddress
-      )
+      return TaxYearMileageEntry(date: trip.startedAt, miles: miles, vehicle: trip.vehicle)
     }
 
     let recordEntries = yearRecords.compactMap { record -> TaxYearMileageEntry? in
@@ -622,8 +415,7 @@ final class OkkleStore: ObservableObject {
       return TaxYearMileageEntry(
         date: record.date,
         miles: miles,
-        vehicle: record.vehicle ?? settings.defaultVehicle,
-        source: "Manual"
+        vehicle: record.vehicle ?? settings.defaultVehicle
       )
     }
 
@@ -633,46 +425,6 @@ final class OkkleStore: ObservableObject {
       }
       return lhs.date < rhs.date
     }
-  }
-
-  private var allMileageEntries: [TaxYearMileageEntry] {
-    let tripEntries = trips.compactMap { trip -> TaxYearMileageEntry? in
-      let miles = max(0, trip.miles)
-      guard miles > 0 else { return nil }
-      return TaxYearMileageEntry(date: trip.startedAt, miles: miles, vehicle: trip.vehicle)
-    }
-
-    let recordEntries = records.compactMap { record -> TaxYearMileageEntry? in
-      guard record.kind == .mileage else { return nil }
-      let miles = max(0, record.miles ?? 0)
-      guard miles > 0 else { return nil }
-      return TaxYearMileageEntry(
-        date: record.date,
-        miles: miles,
-        vehicle: record.vehicle ?? settings.defaultVehicle,
-        interval: recordInterval(record)
-      )
-    }
-
-    return (tripEntries + recordEntries).sorted { lhs, rhs in
-      if lhs.date == rhs.date {
-        return lhs.vehicle.rawValue < rhs.vehicle.rawValue
-      }
-      return lhs.date < rhs.date
-    }
-  }
-
-  private func selectedMiles(for entry: TaxYearMileageEntry, within interval: DateInterval?) -> Double {
-    guard let interval else { return entry.miles }
-
-    if let entryInterval = entry.interval {
-      guard entryInterval.duration > 0, let overlap = entryInterval.intersection(with: interval) else {
-        return 0
-      }
-      return entry.miles * min(1, max(0, overlap.duration / entryInterval.duration))
-    }
-
-    return interval.contains(entry.date) ? entry.miles : 0
   }
 
   private func incomeForTaxYear(_ record: NativeRecord) -> Double {

@@ -46,8 +46,8 @@ struct NativeMedalStats {
 
 @MainActor
 enum NativeMedalEngine {
-  static func achievements(store: OkkleStore, period: NativeProgressPeriod = .allTime) -> [NativeMedalAchievement] {
-    let stats = stats(store: store, period: period)
+  static func achievements(store: OkkleStore) -> [NativeMedalAchievement] {
+    let stats = stats(store: store)
     var medals: [NativeMedalAchievement] = []
 
     medals += tiered(
@@ -287,11 +287,10 @@ enum NativeMedalEngine {
     return medals
   }
 
-  private static func stats(store: OkkleStore, period: NativeProgressPeriod) -> NativeMedalStats {
+  private static func stats(store: OkkleStore) -> NativeMedalStats {
     let calendar = Calendar.current
-    let scoped = scopedActivity(store: store, period: period, calendar: calendar)
-    let records = scoped.records
-    let trips = scoped.trips
+    let records = store.records
+    let trips = store.trips
     let mileageRecords = records.filter { $0.kind == .mileage }
     let incomeRecords = records.filter { $0.kind == .income }
     let expenseRecords = records.filter { $0.kind == .expense }
@@ -313,7 +312,12 @@ enum NativeMedalEngine {
 
     let tripMiles = trips.reduce(0) { $0 + max(0, $1.miles) }
     let recordMiles = mileageRecords.reduce(0) { $0 + max(0, $1.miles ?? 0) }
-    let taxSaved = NativeProgressSummary.mileageTaxSavings(store: store, period: period).taxSaved
+    let tripDeduction = trips.reduce(0) { partial, trip in
+      partial + (trip.deduction > 0 ? trip.deduction : store.calcDeduction(miles: trip.miles, vehicle: trip.vehicle, date: trip.startedAt))
+    }
+    let recordDeduction = mileageRecords.reduce(0) { partial, record in
+      partial + ((record.deduction ?? 0) > 0 ? (record.deduction ?? 0) : store.calcDeduction(miles: record.miles ?? 0, vehicle: record.vehicle ?? store.settings.defaultVehicle, date: record.date))
+    }
     let hours = trips.reduce(0) { partial, trip in
       partial + max(0, trip.endedAt.timeIntervalSince(trip.startedAt) / 3_600)
     }
@@ -325,7 +329,7 @@ enum NativeMedalEngine {
     return NativeMedalStats(
       trips: trips.count,
       miles: tripMiles + recordMiles,
-      taxSaved: taxSaved,
+      taxSaved: (tripDeduction + recordDeduction) * store.settings.incomeBracket.marginalRate(region: store.settings.region),
       earnings: incomeRecords.reduce(0) { $0 + max(0, $1.amount ?? 0) },
       streak: streak(days: days),
       hours: hours,
@@ -339,24 +343,6 @@ enum NativeMedalEngine {
       expenses: expenseRecords.count,
       receipts: expenseRecords.filter { $0.receiptImageData != nil }.count
     )
-  }
-
-  private static func scopedActivity(store: OkkleStore, period: NativeProgressPeriod, calendar: Calendar) -> (records: [NativeRecord], trips: [NativeTrip]) {
-    switch period {
-    case .weekly:
-      let interval = calendar.dateInterval(of: .weekOfYear, for: Date()) ?? DateInterval(
-        start: calendar.startOfDay(for: Date()),
-        duration: 7 * 24 * 60 * 60
-      )
-      return (
-        store.records.filter { interval.contains($0.date) },
-        store.trips.filter { interval.contains($0.startedAt) }
-      )
-    case .yearToDate:
-      return (store.yearRecords, store.yearTrips)
-    case .allTime:
-      return (store.records, store.trips)
-    }
   }
 
   private static func streak(days: Set<Date>) -> Int {

@@ -1,5 +1,11 @@
+import CoreLocation
+import EventKit
 import MapKit
+import PhotosUI
+import SQLite3
 import SwiftUI
+import UIKit
+import Vision
 enum NativeScreenStyle {
   case standard
 
@@ -30,36 +36,13 @@ extension EnvironmentValues {
   }
 }
 
-private struct NativeUsesSidebarNavigationKey: EnvironmentKey {
-  static let defaultValue = false
-}
-
-private struct NativeSidebarAvoidanceInsetKey: EnvironmentKey {
-  static let defaultValue: CGFloat = 0
-}
-
-extension EnvironmentValues {
-  var nativeUsesSidebarNavigation: Bool {
-    get { self[NativeUsesSidebarNavigationKey.self] }
-    set { self[NativeUsesSidebarNavigationKey.self] = newValue }
-  }
-
-  var nativeSidebarAvoidanceInset: CGFloat {
-    get { self[NativeSidebarAvoidanceInsetKey.self] }
-    set { self[NativeSidebarAvoidanceInsetKey.self] = newValue }
-  }
-}
-
 struct NativeScreen<Content: View>: View {
-  @Environment(\.nativeUsesSidebarNavigation) private var nativeUsesSidebarNavigation
   let title: String
   let collapsedTitle: String?
   let subtitle: String?
   let style: NativeScreenStyle
   let onClose: (() -> Void)?
   let fillsViewport: Bool
-  let scrollsContent: Bool
-  let showsProfileButton: Bool
   let content: Content
   @State private var showSettings = false
 
@@ -70,8 +53,6 @@ struct NativeScreen<Content: View>: View {
     style: NativeScreenStyle = .standard,
     onClose: (() -> Void)? = nil,
     fillsViewport: Bool = false,
-    scrollsContent: Bool = true,
-    showsProfileButton: Bool = true,
     @ViewBuilder content: () -> Content
   ) {
     self.title = title
@@ -80,23 +61,36 @@ struct NativeScreen<Content: View>: View {
     self.style = style
     self.onClose = onClose
     self.fillsViewport = fillsViewport
-    self.scrollsContent = scrollsContent
-    self.showsProfileButton = showsProfileButton
     self.content = content()
   }
 
   var body: some View {
     NavigationStack {
       GeometryReader { proxy in
-        if scrollsContent {
-          ScrollView {
-            screenContent(proxy: proxy)
+        ScrollView {
+          VStack(alignment: .leading, spacing: 20) {
+            if let subtitle {
+              Text(subtitle)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(style.subtitleColor)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if fillsViewport {
+              content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+              content
+            }
           }
-          .scrollIndicators(.hidden)
-          .scrollDismissesKeyboard(.interactively)
-        } else {
-          screenContent(proxy: proxy)
+          .frame(minHeight: fillsViewport ? max(0, proxy.size.height - 36) : nil, alignment: .topLeading)
+          .padding(.horizontal, 20)
+          .padding(.bottom, 120)
+          .coordinateSpace(name: nativeScreenContentCoordinateSpace)
+          .environment(\.nativeViewportHeight, proxy.size.height)
         }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
       }
       .background { NativeBackground() }
       .navigationTitle(collapsedTitle ?? title)
@@ -112,11 +106,9 @@ struct NativeScreen<Content: View>: View {
           }
         }
 
-        if showsProfileButton && !nativeUsesSidebarNavigation {
-          ToolbarItem(placement: .topBarTrailing) {
-            NativeProfileToolbarButton {
-              showSettings = true
-            }
+        ToolbarItem(placement: .topBarTrailing) {
+          NativeProfileToolbarButton {
+            showSettings = true
           }
         }
       }
@@ -127,33 +119,6 @@ struct NativeScreen<Content: View>: View {
           .presentationCornerRadius(36)
       }
     }
-  }
-
-  private func screenContent(proxy: GeometryProxy) -> some View {
-    VStack(alignment: .leading, spacing: 20) {
-      if let subtitle {
-        Text(subtitle)
-          .font(.system(size: 17, weight: .medium))
-          .foregroundStyle(style.subtitleColor)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-
-      if fillsViewport {
-        content
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      } else {
-        content
-      }
-    }
-    .frame(
-      maxWidth: .infinity,
-      minHeight: fillsViewport ? max(0, proxy.size.height - 36) : nil,
-      alignment: .topLeading
-    )
-    .padding(.horizontal, 20)
-    .padding(.bottom, 120)
-    .coordinateSpace(name: nativeScreenContentCoordinateSpace)
-    .environment(\.nativeViewportHeight, proxy.size.height)
   }
 }
 
@@ -266,16 +231,10 @@ struct NativeAiCard<Content: View>: View {
     self.content = content()
   }
 
-  // Deliberately NOT built on NativeGlassCard: that shared component carries
-  // its own shadow (used by Records/Tax/Log/Home), and layering another
-  // shadow on top of it is exactly what kept reading as a "halo" around every
-  // Insights card. This is a flat card — material fill only, no drop shadow —
-  // so there's nothing left to bleed out around the edges.
   var body: some View {
-    cardBody
-      .padding(20)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+    NativeGlassCard(cornerRadius: 30) {
+      cardBody
+    }
   }
 
   @ViewBuilder private var cardBody: some View {

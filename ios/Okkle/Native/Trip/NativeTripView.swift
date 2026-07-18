@@ -1,6 +1,11 @@
+import CoreLocation
+import EventKit
 import MapKit
+import PhotosUI
+import SQLite3
 import SwiftUI
 import UIKit
+import Vision
 
 private struct NativeTopRoundedRectangle: Shape {
   let radius: CGFloat
@@ -17,17 +22,13 @@ private struct NativeTopRoundedRectangle: Shape {
 
 struct NativeTripView: View {
   @Environment(\.colorScheme) private var colorScheme
-  @Environment(\.nativeUsesSidebarNavigation) private var nativeUsesSidebarNavigation
-  @Environment(\.nativeSidebarAvoidanceInset) private var nativeSidebarAvoidanceInset
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var session: NativeTripSession
-  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @Binding private var selectedTab: NativeTab
   @State private var selectedVehicle: NativeVehicle = .car
   @State private var completedTrip: NativeTrip?
   @State private var infoCard = 0
   @State private var showProfile = false
-  @State private var now = Date()
 
   init(session: NativeTripSession = .shared, selectedTab: Binding<NativeTab> = .constant(.trip)) {
     self.session = session
@@ -72,32 +73,8 @@ struct NativeTripView: View {
         Text("\(miles(completedTrip.miles)) with \(gbp(completedTrip.deduction, whole: true)) deduction.")
       }
     }
-    .alert("Still tracking this trip?", isPresented: Binding(
-      get: { session.stopPromptRequested && completedTrip == nil && session.phase == .live },
-      set: { isPresented in
-        if !isPresented {
-          session.dismissStopPrompt()
-        }
-      }
-    )) {
-      Button("Continue tracking", role: .cancel) {
-        session.dismissStopPrompt()
-      }
-      Button("Stop trip") {
-        session.dismissStopPrompt()
-        finishTripForReview()
-      }
-      Button("Auto-complete trips") {
-        store.settings.manualTripAutoComplete = true
-        session.dismissStopPrompt()
-        finishTripForReview()
-      }
-    } message: {
-      Text("You've been in one place for a while. Stop now, keep tracking, or let Okkle auto-complete stopped manual trips next time.")
-    }
     .onAppear {
       selectedVehicle = store.settings.defaultVehicle
-      now = Date()
       applyWidgetRequestIfNeeded()
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
@@ -105,10 +82,6 @@ struct NativeTripView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .nativeTripWidgetActionReceived)) { _ in
       applyWidgetRequestIfNeeded()
-    }
-    .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { tick in
-      guard shouldShowTrackingMap else { return }
-      now = tick
     }
     // The live trip map owns the screen while recording or reviewing the end
     // state; bring the tab bar back on the normal start screen.
@@ -122,21 +95,42 @@ struct NativeTripView: View {
           tripStartBackground
             .ignoresSafeArea()
 
-          if usesCompactStartLayout(proxy) {
-            compactStartLayout(proxy)
-          } else {
-            regularStartLayout(proxy)
+          let centerY = proxy.size.height * 0.45
+
+          Text("Tap to Record")
+            .font(.system(size: 30, weight: .heavy, design: .rounded))
+            .foregroundStyle(.white)
+            .position(x: proxy.size.width / 2, y: centerY - 166)
+
+          startTripButton
+            .position(x: proxy.size.width / 2, y: centerY)
+
+          vehicleSelector
+            .position(x: proxy.size.width / 2, y: centerY + 176)
+
+          missedTripPanel
+            .padding(.horizontal, 18)
+            .position(x: proxy.size.width / 2, y: proxy.size.height - proxy.safeAreaInsets.bottom - (proxy.size.height * 0.05) + 56)
+
+          if let message = session.permissionMessage {
+            Label(message, systemImage: "location.slash")
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(.white)
+              .multilineTextAlignment(.center)
+              .padding(12)
+              .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+              .padding(.horizontal, 18)
+              .frame(maxWidth: proxy.size.width - 36)
+              .position(x: proxy.size.width / 2, y: min(proxy.size.height - proxy.safeAreaInsets.bottom - 148, centerY + 258))
           }
         }
       }
       .navigationTitle("")
       .navigationBarTitleDisplayMode(.large)
       .toolbar {
-        if !nativeUsesSidebarNavigation {
-          ToolbarItem(placement: .topBarTrailing) {
-            NativeProfileToolbarButton {
-              showProfile = true
-            }
+        ToolbarItem(placement: .topBarTrailing) {
+          NativeProfileToolbarButton {
+            showProfile = true
           }
         }
       }
@@ -147,89 +141,6 @@ struct NativeTripView: View {
           .presentationCornerRadius(36)
       }
     }
-  }
-
-  private func usesCompactStartLayout(_ proxy: GeometryProxy) -> Bool {
-    proxy.size.height < 560
-  }
-
-  private func regularStartLayout(_ proxy: GeometryProxy) -> some View {
-    let centerY = proxy.size.height * 0.45
-
-    return ZStack {
-      Text("Tap to Record")
-        .font(.system(size: 30, weight: .heavy, design: .rounded))
-        .foregroundStyle(.white)
-        .position(x: proxy.size.width / 2, y: centerY - 166)
-
-      startTripButton()
-        .position(x: proxy.size.width / 2, y: centerY)
-
-      vehicleSelector
-        .position(x: proxy.size.width / 2, y: centerY + 176)
-
-      if nativeUsesSidebarNavigation {
-        VStack {
-          Spacer()
-          missedTripPanel
-            .padding(.horizontal, 18)
-            .padding(.bottom, max(proxy.safeAreaInsets.bottom + 18, 24))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
-        missedTripPanel
-          .padding(.horizontal, 18)
-          .position(x: proxy.size.width / 2, y: proxy.size.height - proxy.safeAreaInsets.bottom - (proxy.size.height * 0.05) + 56)
-      }
-
-      if let message = session.permissionMessage {
-        permissionMessage(message, maxWidth: proxy.size.width - 36)
-          .position(x: proxy.size.width / 2, y: min(proxy.size.height - proxy.safeAreaInsets.bottom - 148, centerY + 258))
-      }
-    }
-  }
-
-  private func compactStartLayout(_ proxy: GeometryProxy) -> some View {
-    let buttonSize = min(max(proxy.size.height * 0.42, 132), 174)
-    let horizontalPadding: CGFloat = proxy.size.width < 760 ? 20 : 34
-
-    return HStack(spacing: proxy.size.width < 760 ? 18 : 30) {
-      VStack(spacing: 14) {
-        Text("Tap to Record")
-          .font(.system(size: 24, weight: .heavy, design: .rounded))
-          .foregroundStyle(.white)
-          .lineLimit(1)
-          .minimumScaleFactor(0.82)
-
-        startTripButton(size: buttonSize)
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-      VStack(spacing: 12) {
-        vehicleSelector
-
-        missedTripPanel
-
-        if let message = session.permissionMessage {
-          permissionMessage(message, maxWidth: 360)
-        }
-      }
-      .frame(width: min(360, max(260, proxy.size.width * 0.42)))
-    }
-    .padding(.horizontal, horizontalPadding)
-    .padding(.top, proxy.safeAreaInsets.top + 8)
-    .padding(.bottom, proxy.safeAreaInsets.bottom + 10)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-  }
-
-  private func permissionMessage(_ message: String, maxWidth: CGFloat) -> some View {
-    Label(message, systemImage: "location.slash")
-      .font(.system(size: 14, weight: .semibold))
-      .foregroundStyle(.white)
-      .multilineTextAlignment(.center)
-      .padding(12)
-      .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-      .frame(maxWidth: maxWidth)
   }
 
   private var vehicleSelector: some View {
@@ -279,10 +190,10 @@ struct NativeTripView: View {
           .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
         VStack(alignment: .leading, spacing: 3) {
-          Text("Log mileage")
+          Text("Missed a trip?")
             .font(.system(size: 17, weight: .bold, design: .rounded))
             .foregroundStyle(.white)
-          Text("From a previous journey")
+          Text("Log a previous journey")
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(.white.opacity(0.72))
         }
@@ -303,16 +214,28 @@ struct NativeTripView: View {
       .shadow(color: Color.black.opacity(0.18), radius: 22, y: 10)
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("Log mileage from a previous journey")
+    .accessibilityLabel("Log a previous trip")
   }
 
   @ViewBuilder
-  private func startTripButton(size: CGFloat = 236) -> some View {
+  private var startTripButton: some View {
     if #available(iOS 26.0, *) {
       Button {
         session.start(vehicle: selectedVehicle)
       } label: {
-        nativeStartTripButtonFace(size: size)
+        ZStack {
+          Circle()
+            .fill(startButtonFill)
+            .overlay {
+              Circle()
+                .stroke(Color.white.opacity(0.22), lineWidth: 0.35)
+            }
+          Image(systemName: "location.north.fill")
+            .font(.system(size: 76, weight: .heavy))
+            .foregroundStyle(.white)
+        }
+        .frame(width: 236, height: 236)
+        .contentShape(Circle())
       }
       .buttonStyle(.plain)
       .shadow(color: Color.black.opacity(0.22), radius: 34, y: 18)
@@ -321,44 +244,25 @@ struct NativeTripView: View {
       Button {
         session.start(vehicle: selectedVehicle)
       } label: {
-        startTripButtonFace(size: size)
+        ZStack {
+          Circle()
+            .fill(startButtonFill)
+            .frame(width: 236, height: 236)
+            .overlay {
+              Circle().stroke(Color.white.opacity(0.22), lineWidth: 0.35)
+            }
+
+          Image(systemName: "location.north.fill")
+            .font(.system(size: 76, weight: .heavy))
+            .foregroundStyle(.white)
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Circle())
       }
       .buttonStyle(.plain)
       .shadow(color: Color.black.opacity(0.22), radius: 34, y: 18)
       .shadow(color: OkkleColor.brand.opacity(0.30), radius: 24)
     }
-  }
-
-  @available(iOS 26.0, *)
-  private func nativeStartTripButtonFace(size: CGFloat) -> some View {
-    startTripButtonFace(size: size)
-      .glassEffect(.regular.tint(OkkleColor.brand.opacity(0.26)).interactive(), in: Circle())
-  }
-
-  private func startTripButtonFace(size: CGFloat) -> some View {
-    ZStack {
-      Circle()
-        .fill(startButtonFill)
-
-      Circle()
-        .fill(startButtonDepthGlow)
-        .blendMode(.screen)
-
-      Circle()
-        .stroke(startButtonRim, lineWidth: 1.6)
-
-      Circle()
-        .stroke(Color.white.opacity(0.34), lineWidth: 0.7)
-        .padding(7)
-
-      Image(systemName: "location.north.fill")
-        .font(.system(size: size * 0.32, weight: .heavy))
-        .foregroundStyle(.white)
-        .shadow(color: Color.black.opacity(0.18), radius: 8, y: 4)
-    }
-    .frame(width: size, height: size)
-    .clipShape(Circle())
-    .contentShape(Circle())
   }
 
   private var startButtonHighlight: Color {
@@ -371,32 +275,6 @@ struct NativeTripView: View {
         startButtonHighlight,
         OkkleColor.brand,
         Color(red: 0.02, green: 0.42, blue: 0.36),
-      ],
-      startPoint: .topLeading,
-      endPoint: .bottomTrailing
-    )
-  }
-
-  private var startButtonDepthGlow: RadialGradient {
-    RadialGradient(
-      colors: [
-        Color.white.opacity(0.24),
-        Color.white.opacity(0.08),
-        Color.clear,
-        Color.black.opacity(0.22),
-      ],
-      center: .topLeading,
-      startRadius: 10,
-      endRadius: 230
-    )
-  }
-
-  private var startButtonRim: LinearGradient {
-    LinearGradient(
-      colors: [
-        Color.white.opacity(0.74),
-        Color.white.opacity(0.18),
-        Color.black.opacity(0.18),
       ],
       startPoint: .topLeading,
       endPoint: .bottomTrailing
@@ -417,10 +295,8 @@ struct NativeTripView: View {
 
   private var trackingMapScreen: some View {
     GeometryReader { proxy in
-      let sidebarInset = trackingSidebarAvoidanceInset(for: proxy)
-
       ZStack(alignment: .bottom) {
-        NativeRouteMapView(points: trackingPoints, showsEndMarker: completedTrip != nil)
+        NativeRouteMapView(points: session.points, showsEndMarker: completedTrip != nil)
           .ignoresSafeArea()
           .overlay(alignment: .top) {
             LinearGradient(
@@ -437,12 +313,11 @@ struct NativeTripView: View {
           trackingStatusBadge
           Spacer()
         }
-        .padding(.leading, 18 + sidebarInset)
-        .padding(.trailing, 18)
+        .padding(.horizontal, 18)
         .padding(.top, proxy.safeAreaInsets.top + 12)
         .allowsHitTesting(false)
 
-        trackingPanel(bottomInset: proxy.safeAreaInsets.bottom, leadingInset: sidebarInset)
+        trackingPanel(bottomInset: proxy.safeAreaInsets.bottom)
       }
       .background(Color(uiColor: .systemBackground))
       .ignoresSafeArea()
@@ -455,7 +330,7 @@ struct NativeTripView: View {
       Label(trackingStatusTitle, systemImage: trackingStatusSymbol)
         .font(.system(size: 14, weight: .bold))
       Spacer()
-      Text(trackingVehicle.label)
+      Text(session.vehicle.label)
         .font(.system(size: 13, weight: .semibold))
     }
     .foregroundStyle(trackingPrimaryText)
@@ -466,20 +341,14 @@ struct NativeTripView: View {
     .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
   }
 
-  private func trackingPanel(bottomInset: CGFloat, leadingInset: CGFloat = 0) -> some View {
+  private func trackingPanel(bottomInset: CGFloat) -> some View {
     VStack(alignment: .leading, spacing: 14) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 6) {
           Text(trackingStatusTitle)
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(trackingStatusColor)
-          if isAutomaticTrackingVisible {
-            Text(autoTrack.shiftPhase == .paused ? "Paused by you. Resume when you're ready." : "Based on movement and work schedule.")
-              .font(.system(size: 12, weight: .semibold))
-              .foregroundStyle(trackingSecondaryText)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          Text(miles(trackingMiles))
+          Text(miles(session.miles))
             .font(.system(size: 42, weight: .heavy, design: .rounded))
             .foregroundStyle(trackingPrimaryText)
             .minimumScaleFactor(0.62)
@@ -489,7 +358,7 @@ struct NativeTripView: View {
           Text("Elapsed")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(trackingSecondaryText)
-          Text(elapsedLabel(trackingElapsed))
+          Text(elapsedLabel(session.elapsed))
             .font(.system(size: 24, weight: .bold, design: .rounded))
             .foregroundStyle(trackingPrimaryText)
         }
@@ -497,13 +366,13 @@ struct NativeTripView: View {
 
       trackingInfoCarousel
 
-      if trackingPoints.isEmpty {
+      if session.points.isEmpty {
         Label("Waiting for GPS signal. Your route will draw here once location points arrive.", systemImage: "location.magnifyingglass")
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(trackingSecondaryText)
       }
 
-      if let message = trackingPermissionMessage {
+      if let message = session.permissionMessage {
         Label(message, systemImage: "location.slash")
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(OkkleColor.red)
@@ -526,16 +395,8 @@ struct NativeTripView: View {
         .fill(trackingPanelSheen)
         .allowsHitTesting(false)
     }
-    .padding(.leading, leadingInset)
     .shadow(color: .black.opacity(0.18), radius: 30, y: 14)
     .transition(.move(edge: .bottom).combined(with: .opacity))
-  }
-
-  private func trackingSidebarAvoidanceInset(for proxy: GeometryProxy) -> CGFloat {
-    guard nativeUsesSidebarNavigation else { return 0 }
-    let minimumReadableWidth: CGFloat = 500
-    let maximumInset = max(0, proxy.size.width - minimumReadableWidth)
-    return min(nativeSidebarAvoidanceInset, maximumInset)
   }
 
   private var trackingPanelShape: NativeTopRoundedRectangle {
@@ -544,72 +405,36 @@ struct NativeTripView: View {
 
   private var trackingActionButtons: some View {
     HStack(spacing: 12) {
-      if isAutomaticTrackingVisible {
-        automaticTrackingActionButtons
-      } else {
-        if session.phase == .live {
-          Button {
-            session.pause()
-          } label: {
-            Label("Pause", systemImage: "pause.fill")
-              .frame(maxWidth: .infinity)
-          }
-          .buttonStyle(.borderedProminent)
-          .tint(OkkleColor.blue)
-        } else {
-          Button {
-            session.resume()
-          } label: {
-            Label("Resume", systemImage: "play.fill")
-              .frame(maxWidth: .infinity)
-          }
-          .buttonStyle(.borderedProminent)
-          .tint(OkkleColor.brand)
-        }
-
-        Button(role: .destructive) {
-          finishTripForReview()
+      if session.phase == .live {
+        Button {
+          session.pause()
         } label: {
-          Label("End", systemImage: "stop.fill")
+          Label("Pause", systemImage: "pause.fill")
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .tint(OkkleColor.red)
+        .tint(OkkleColor.blue)
+      } else {
+        Button {
+          session.resume()
+        } label: {
+          Label("Resume", systemImage: "play.fill")
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(OkkleColor.brand)
       }
+
+      Button(role: .destructive) {
+        finishTripForReview()
+      } label: {
+        Label("End", systemImage: "stop.fill")
+          .frame(maxWidth: .infinity)
+      }
+      .buttonStyle(.borderedProminent)
+      .tint(OkkleColor.red)
     }
     .font(.system(size: 16, weight: .bold))
-  }
-
-  @ViewBuilder
-  private var automaticTrackingActionButtons: some View {
-    if autoTrack.shiftPhase == .paused {
-      Button {
-        autoTrack.resumeCurrentShift()
-      } label: {
-        Label("Resume", systemImage: "play.fill")
-          .frame(maxWidth: .infinity)
-      }
-      .buttonStyle(.borderedProminent)
-      .tint(OkkleColor.brand)
-    } else {
-      Button {
-        autoTrack.pauseCurrentShift()
-      } label: {
-        Label("Pause", systemImage: "pause.fill")
-          .frame(maxWidth: .infinity)
-      }
-      .buttonStyle(.borderedProminent)
-      .tint(OkkleColor.blue)
-    }
-
-    Button(role: .destructive) {
-      autoTrack.endCurrentShift()
-    } label: {
-      Label("End", systemImage: "stop.fill")
-        .frame(maxWidth: .infinity)
-    }
-    .buttonStyle(.borderedProminent)
-    .tint(OkkleColor.red)
   }
 
   // Swipe between the live coach and mileage deduction — each its own clean
@@ -663,16 +488,7 @@ struct NativeTripView: View {
 
   private func liveCoachTip() -> (symbol: String, color: Color, title: String, detail: String) {
     let hour = Calendar.current.component(.hour, from: Date())
-    if isAutomaticTrackingVisible {
-      if autoTrack.shiftPhase == .paused {
-        return ("pause.fill", OkkleColor.blue, "Auto trip paused",
-                "Resume when you're back on the road.")
-      }
-      return ("location.north.line.fill", OkkleColor.brand, "Automatically tracking",
-              "Based on movement and work schedule.")
-    }
-
-    let elapsedHours = trackingElapsed / 3600
+    let elapsedHours = session.elapsed / 3600
     let shift = NativeShiftInsights.build(visits: NativeAutoTrackEngine.shared.visits, store: store)
     let plan = shift.todayPlan
     let area = plan?.zone.flatMap { NativeAreaNamer.shared.name(for: $0) }
@@ -735,7 +551,7 @@ struct NativeTripView: View {
 
         Spacer(minLength: 12)
 
-        Text(gbp(store.calcDeduction(miles: trackingMiles, vehicle: trackingVehicle), whole: true))
+        Text(gbp(store.calcDeduction(miles: session.miles, vehicle: session.vehicle), whole: true))
           .font(.system(size: 20, weight: .bold, design: .rounded))
           .foregroundStyle(trackingPrimaryText)
       }
@@ -743,12 +559,6 @@ struct NativeTripView: View {
   }
 
   private var trackingStatusTitle: String {
-    if isAutomaticTrackingVisible {
-      if autoTrack.shiftPhase == .paused {
-        return "Auto trip paused"
-      }
-      return "Automatically tracking"
-    }
     switch session.phase {
     case .live:
       return "Tracking trip"
@@ -760,12 +570,6 @@ struct NativeTripView: View {
   }
 
   private var trackingStatusSymbol: String {
-    if isAutomaticTrackingVisible {
-      if autoTrack.shiftPhase == .stationaryPending || autoTrack.shiftPhase == .paused {
-        return "pause.circle.fill"
-      }
-      return "location.north.line.fill"
-    }
     switch session.phase {
     case .live:
       return "location.north.fill"
@@ -777,10 +581,7 @@ struct NativeTripView: View {
   }
 
   private var trackingStatusColor: Color {
-    if isAutomaticTrackingVisible {
-      return autoTrack.shiftPhase == .paused ? OkkleColor.blue : OkkleColor.brand
-    }
-    return session.phase == .paused ? OkkleColor.blue : OkkleColor.brand
+    session.phase == .paused ? OkkleColor.blue : OkkleColor.brand
   }
 
   private var trackingGlassMaterial: Material {
@@ -825,35 +626,7 @@ struct NativeTripView: View {
   }
 
   private var shouldShowTrackingMap: Bool {
-    isTracking || isAutomaticTrackingVisible || completedTrip != nil
-  }
-
-  private var isAutomaticTrackingVisible: Bool {
-    completedTrip == nil && session.phase == .setup && autoTrack.shiftPhase != .idle
-  }
-
-  private var trackingPoints: [RoutePoint] {
-    isAutomaticTrackingVisible ? autoTrack.liveShiftPoints : session.points
-  }
-
-  private var trackingMiles: Double {
-    isAutomaticTrackingVisible ? autoTrack.liveShiftMiles : session.miles
-  }
-
-  private var trackingVehicle: NativeVehicle {
-    isAutomaticTrackingVisible ? autoTrack.liveShiftVehicle : session.vehicle
-  }
-
-  private var trackingElapsed: TimeInterval {
-    if isAutomaticTrackingVisible {
-      guard let startedAt = autoTrack.liveShiftStartedAt else { return 0 }
-      return max(0, now.timeIntervalSince(startedAt))
-    }
-    return session.elapsed
-  }
-
-  private var trackingPermissionMessage: String? {
-    isAutomaticTrackingVisible ? nil : session.permissionMessage
+    isTracking || completedTrip != nil
   }
 
   private func finishTripForReview() {
@@ -871,10 +644,7 @@ struct NativeTripView: View {
         session.resume()
       }
     case .end:
-      if isAutomaticTrackingVisible {
-        autoTrack.endCurrentShift()
-        NativeTripWidgetStore.markTripEnded()
-      } else if session.phase == .live || session.phase == .paused {
+      if session.phase == .live || session.phase == .paused {
         finishTripForReview()
       } else {
         NativeTripWidgetStore.markTripEnded()
