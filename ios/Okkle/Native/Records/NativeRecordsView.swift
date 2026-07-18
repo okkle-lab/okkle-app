@@ -1,19 +1,20 @@
+import CoreLocation
+import EventKit
+import MapKit
+import PhotosUI
+import SQLite3
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import Vision
 struct NativeRecordsView: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var mode: RecordsMode
   @State private var filter: RecordsFilter = .all
-  // nil = All time. Defaults to the current month — day-to-day you're
-  // checking what's recent, not everything you've ever logged; All time is
-  // one tap away via the month picker below.
-  @State private var selectedMonth: Date? = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date()))
   @State private var itemPendingDeletion: NativeHistoryItem?
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
-  @State private var showsAddRecordPanel = false
   var onClose: (() -> Void)? = nil
 
   enum RecordsMode: String, CaseIterable, Identifiable {
@@ -26,23 +27,12 @@ struct NativeRecordsView: View {
 
   enum RecordsFilter: String, CaseIterable, Identifiable {
     case all
-    case journeys
+    case trips
     case income
     case expense
 
     var id: String { rawValue }
-    var label: String {
-      switch self {
-      case .all:
-        return "All"
-      case .journeys:
-        return "Trips"
-      case .income:
-        return "Income"
-      case .expense:
-        return "Expense"
-      }
-    }
+    var label: String { rawValue.capitalized }
   }
 
   init(initialMode: RecordsMode = .history, onClose: (() -> Void)? = nil) {
@@ -51,21 +41,17 @@ struct NativeRecordsView: View {
   }
 
   var body: some View {
-    NativeScreen(
-      title: "Data",
-      collapsedTitle: "Data",
-      subtitle: "Log trip mileage, income and expenses - all export-ready.",
-      onClose: onClose,
-      fillsViewport: mode == .history
-    ) {
+    NativeScreen(title: "Records", collapsedTitle: "Records", subtitle: "Your logs, tax estimate and export-ready history.", onClose: onClose) {
+      Picker("Records", selection: $mode) {
+        ForEach(RecordsMode.allCases) { Text($0.label).tag($0) }
+      }
+      .pickerStyle(.segmented)
+
       if mode == .tax {
         NativeTaxSummaryView()
       } else {
-        recordsOverview
+        historyContent
       }
-    }
-    .safeAreaInset(edge: .bottom, spacing: 0) {
-      bottomAddRecordMenu
     }
     .alert("Delete this entry?", isPresented: Binding(
       get: { itemPendingDeletion != nil },
@@ -103,201 +89,52 @@ struct NativeRecordsView: View {
         recordPendingEdit = nil
       }
     }
-    .sheet(isPresented: $showsAddRecordPanel) {
-      NativeAddRecordPanel(
-        title: { logTitle(for: $0) },
-        subtitle: { logSubtitle(for: $0) },
-        onViewRecords: {
-          showsAddRecordPanel = false
-        }
-      )
-      .environmentObject(store)
-      .presentationDetents([.medium])
-      .presentationDragIndicator(.visible)
-    }
-  }
-
-  private var recordsOverview: some View {
-    historyContent
-  }
-
-  private var addRecordButton: some View {
-    Button {
-      showsAddRecordPanel = true
-    } label: {
-      Label("Add record", systemImage: "plus")
-        .font(.system(size: 17, weight: .heavy))
-        .lineLimit(1)
-        .minimumScaleFactor(0.82)
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("Add record")
-  }
-
-  private var bottomAddRecordMenu: some View {
-    HStack {
-      Spacer()
-      addRecordButton
-        .labelStyle(.titleAndIcon)
-        .foregroundStyle(.white)
-        .padding(.horizontal, 22)
-        .padding(.vertical, 14)
-        .background(OkkleColor.brand, in: Capsule())
-        .overlay {
-          Capsule()
-            .stroke(.white.opacity(0.22), lineWidth: 0.8)
-        }
-        .shadow(color: OkkleColor.brand.opacity(0.32), radius: 22, y: 10)
-        .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
-    }
-    .padding(.horizontal, 20)
-    .padding(.top, 8)
-    .padding(.bottom, 10)
-  }
-
-  private func logTitle(for kind: NativeLogKind) -> String {
-    switch kind {
-    case .income:
-      return "Log earnings"
-    case .expense:
-      return "Log expense"
-    case .mileage:
-      return "Log mileage"
-    }
-  }
-
-  private func logSubtitle(for kind: NativeLogKind) -> String {
-    switch kind {
-    case .income:
-      return "Add delivery pay, tips or bonuses."
-    case .expense:
-      return "Add a deductible cost."
-    case .mileage:
-      return "Add mileage from a previous journey."
-    }
   }
 
   private var historyContent: some View {
-    LazyVStack(spacing: 14, pinnedViews: [.sectionHeaders]) {
-      Section {
-        if filteredHistory.isEmpty {
-          NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Mileage, earnings and expenses appear here after you save them.")
-            .padding(.top, 20)
-        } else {
-          NativeGlassCard {
-            VStack(spacing: 0) {
-              ForEach(filteredHistory) { item in
-                NativeSelectableHistoryRow(
-                  item: item,
-                  onSelect: { selectFromAllHistory(item) }
-                )
-                if item.id != filteredHistory.last?.id {
-                  Divider().padding(.leading, 52)
-                }
-              }
-            }
-          }
-        }
-      } header: {
-        historyFilterBar
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .top)
-  }
-
-  private var historyFilterBar: some View {
-    HStack(spacing: 10) {
+    VStack(spacing: 20) {
       Picker("History filter", selection: $filter) {
         ForEach(RecordsFilter.allCases) { Text($0.label).tag($0) }
       }
       .pickerStyle(.segmented)
 
-      Menu {
-        Button {
-          selectedMonth = nil
-        } label: {
-          if selectedMonth == nil {
-            Label("All time", systemImage: "checkmark")
-          } else {
-            Text("All time")
-          }
-        }
-
-        ForEach(availableMonths, id: \.self) { month in
-          Button {
-            selectedMonth = month
-          } label: {
-            if selectedMonth == month {
-              Label(monthLabel(for: month), systemImage: "checkmark")
-            } else {
-              Text(monthLabel(for: month))
+      if filteredHistory.isEmpty {
+        NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Trips, earnings and expenses appear here after you save them.")
+      } else {
+        NativeGlassCard {
+          VStack(spacing: 0) {
+            ForEach(filteredHistory) { item in
+              NativeSelectableHistoryRow(
+                item: item,
+                onSelect: { selectedHistoryItem = item }
+              )
+              if item.id != filteredHistory.last?.id {
+                Divider().padding(.leading, 52)
+              }
             }
           }
         }
-      } label: {
-        Label(monthButtonLabel, systemImage: "line.3.horizontal.decrease")
-          .labelStyle(.iconOnly)
-          .font(.system(size: 15, weight: .semibold))
-          .foregroundStyle(OkkleColor.brand)
-          .padding(10)
-          .background(OkkleColor.brand.opacity(selectedMonth != nil ? 0.22 : 0.14), in: Circle())
-          .overlay {
-            Circle()
-              .stroke(OkkleColor.brand.opacity(selectedMonth != nil ? 0.38 : 0), lineWidth: 1)
-          }
       }
-      .accessibilityLabel(selectedMonth != nil ? "Showing \(monthButtonLabel)" : "Showing all time")
     }
-    .padding(.vertical, 8)
-    .padding(.horizontal, 8)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .overlay {
-      RoundedRectangle(cornerRadius: 18, style: .continuous)
-        .stroke(Color.white.opacity(0.18), lineWidth: 1)
-    }
-    .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
-    .zIndex(1)
-  }
-
-  private func selectFromAllHistory(_ item: NativeHistoryItem) {
-    selectedHistoryItem = currentItem(matching: item) ?? item
   }
 
   private var filteredHistory: [NativeHistoryItem] {
     store.history.filter { item in
-      let typeOk: Bool
       switch filter {
       case .all:
-        typeOk = true
-      case .journeys:
-        if case .trip = item { typeOk = true }
-        else if case .record(let record) = item { typeOk = record.kind == .mileage }
-        else { typeOk = false }
+        return true
+      case .trips:
+        if case .trip = item { return true }
+        if case .record(let record) = item { return record.kind == .mileage }
+        return false
       case .income:
-        if case .record(let record) = item { typeOk = record.kind == .income } else { typeOk = false }
+        if case .record(let record) = item { return record.kind == .income }
+        return false
       case .expense:
-        if case .record(let record) = item { typeOk = record.kind == .expense } else { typeOk = false }
+        if case .record(let record) = item { return record.kind == .expense }
+        return false
       }
-      guard typeOk else { return false }
-      guard let selectedMonth else { return true }
-      return Calendar.current.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
     }
-  }
-
-  /// Distinct months present anywhere in history (not just the current type
-  /// filter), newest first — what the month picker offers.
-  private var availableMonths: [Date] {
-    let calendar = Calendar.current
-    let months = Set(store.history.map { calendar.date(from: calendar.dateComponents([.year, .month], from: $0.date)) ?? $0.date })
-    return months.sorted(by: >)
-  }
-
-  private func monthLabel(for month: Date) -> String {
-    month.formatted(.dateTime.month(.abbreviated).year())
-  }
-
-  private var monthButtonLabel: String {
-    selectedMonth.map(monthLabel) ?? "All time"
   }
 
   private func delete(_ item: NativeHistoryItem) {
@@ -328,8 +165,10 @@ struct NativeRecordsView: View {
   }
 
   private func requestEdit(_ item: NativeHistoryItem) {
-    edit(currentItem(matching: item) ?? item)
     selectedHistoryItem = nil
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+      edit(currentItem(matching: item) ?? item)
+    }
   }
 
   private func requestDelete(_ item: NativeHistoryItem) {
@@ -365,120 +204,6 @@ struct NativeRecordsView: View {
       return "This trip, route and mileage deduction will be removed from Records. This cannot be undone."
     case .record(let record):
       return "This \(record.kind.label.lowercased()) entry will be removed from Records and tax totals. This cannot be undone."
-    }
-  }
-}
-
-private struct NativeAddRecordPanel: View {
-  @Environment(\.dismiss) private var dismiss
-  @EnvironmentObject private var store: OkkleStore
-  @State private var logKind: NativeLogKind?
-  let title: (NativeLogKind) -> String
-  let subtitle: (NativeLogKind) -> String
-  let onViewRecords: () -> Void
-
-  private let options: [NativeLogKind] = [.income, .expense, .mileage]
-
-  var body: some View {
-    NavigationStack {
-      List {
-        Section {
-          ForEach(options) { kind in
-            Button {
-              logKind = kind
-            } label: {
-              HStack(spacing: 14) {
-                Image(systemName: kind.symbol)
-                  .font(.system(size: 18, weight: .bold))
-                  .foregroundStyle(optionTint(for: kind))
-                  .frame(width: 36, height: 36)
-                  .background(optionTint(for: kind).opacity(0.13), in: Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                  Text(optionTitle(for: kind))
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(OkkleColor.ink)
-                  Text(optionSubtitle(for: kind))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                  .font(.system(size: 13, weight: .semibold))
-                  .foregroundStyle(.tertiary)
-              }
-              .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-          }
-        }
-      }
-      .listStyle(.insetGrouped)
-      .scrollContentBackground(.visible)
-      .navigationTitle("Add record")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Done") {
-            dismiss()
-          }
-          .fontWeight(.semibold)
-        }
-      }
-      .sheet(item: $logKind) { kind in
-        NativeLogView(
-          initialKind: kind,
-          allowedKinds: [kind],
-          title: title(kind),
-          subtitle: subtitle(kind),
-          onClose: {
-            logKind = nil
-          },
-          onViewRecords: {
-            logKind = nil
-            onViewRecords()
-          }
-        )
-        .environmentObject(store)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-      }
-    }
-  }
-
-  private func optionTitle(for kind: NativeLogKind) -> String {
-    switch kind {
-    case .income:
-      return "Earnings"
-    case .expense:
-      return "Expense"
-    case .mileage:
-      return "Mileage"
-    }
-  }
-
-  private func optionSubtitle(for kind: NativeLogKind) -> String {
-    switch kind {
-    case .income:
-      return "Pay, tips or bonuses"
-    case .expense:
-      return "Deductible cost"
-    case .mileage:
-      return "Previous journey"
-    }
-  }
-
-  private func optionTint(for kind: NativeLogKind) -> Color {
-    switch kind {
-    case .income:
-      return .green
-    case .expense:
-      return OkkleColor.amber
-    case .mileage:
-      return OkkleColor.brand
     }
   }
 }
@@ -604,45 +329,10 @@ struct NativeShareSheet: UIViewControllerRepresentable {
   let items: [Any]
 
   func makeUIViewController(context: Context) -> UIActivityViewController {
-    // Wrap file URLs so the share sheet declares an explicit UTType (from
-    // the file's own extension) rather than leaving Mail/Files/AirDrop to
-    // infer one — without this, some destinations fall back to treating
-    // the file as generic plain text instead of recognising it as a CSV
-    // or PDF.
-    let wrapped = items.map { item -> Any in
-      guard let url = item as? URL else { return item }
-      return NativeFileActivityItem(url: url)
-    }
-    return UIActivityViewController(activityItems: wrapped, applicationActivities: nil)
+    UIActivityViewController(activityItems: items, applicationActivities: nil)
   }
 
   func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-private final class NativeFileActivityItem: NSObject, UIActivityItemSource {
-  let url: URL
-  private let utType: UTType
-
-  init(url: URL) {
-    self.url = url
-    self.utType = UTType(filenameExtension: url.pathExtension) ?? .data
-  }
-
-  func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
-    url
-  }
-
-  func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
-    url
-  }
-
-  func activityViewController(_ activityViewController: UIActivityViewController, subjectForActivityType activityType: UIActivity.ActivityType?) -> String {
-    url.deletingPathExtension().lastPathComponent
-  }
-
-  func activityViewController(_ activityViewController: UIActivityViewController, dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?) -> String {
-    utType.identifier
-  }
 }
 
 struct NativeBackupDocument: FileDocument {
@@ -739,7 +429,6 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
   case accountantPack
   case freeAgent
   case selfAssessment
-  case mileageReportPdf
   case mileageLog
   case allData
 
@@ -750,20 +439,18 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .accountantPack: return "Accountant pack PDF"
     case .freeAgent: return "FreeAgent CSV"
     case .selfAssessment: return "Self Assessment summary"
-    case .mileageReportPdf: return "Mileage report PDF"
-    case .mileageLog: return "HMRC mileage log (CSV)"
+    case .mileageLog: return "HMRC mileage log"
     case .allData: return "All data CSV"
     }
   }
 
   var subtitle: String {
     switch self {
-    case .accountantPack: return "Mileage, expenses & receipts"
-    case .freeAgent: return "Ready for bank import"
-    case .selfAssessment: return "Turnover, profit and tax due"
-    case .mileageReportPdf: return "By rate band, plus full log"
-    case .mileageLog: return "Every mileage entry, as CSV"
-    case .allData: return "Trips, earnings and expenses"
+    case .accountantPack: return "Summary, mileage, expenses, receipts and records"
+    case .freeAgent: return "Income and expenses for bank import"
+    case .selfAssessment: return "Turnover, expenses, profit and tax estimate"
+    case .mileageLog: return "GPS and manual mileage claims"
+    case .allData: return "Trips, earnings, mileage and expenses"
     }
   }
 
@@ -772,7 +459,6 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .accountantPack: return "doc.richtext.fill"
     case .freeAgent: return "arrow.up.doc.fill"
     case .selfAssessment: return "doc.text.fill"
-    case .mileageReportPdf: return "chart.bar.doc.horizontal.fill"
     case .mileageLog: return "map.fill"
     case .allData: return "externaldrive.fill"
     }
@@ -783,7 +469,6 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .accountantPack: return "Accountant-Pack"
     case .freeAgent: return "FreeAgent-Import"
     case .selfAssessment: return "SelfAssessment-Summary"
-    case .mileageReportPdf: return "Mileage-Report"
     case .mileageLog: return "HMRC-Mileage-Log"
     case .allData: return "All-Data"
     }
@@ -791,31 +476,9 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
 
   var fileExtension: String {
     switch self {
-    case .accountantPack, .mileageReportPdf: return "pdf"
+    case .accountantPack: return "pdf"
     case .selfAssessment: return "txt"
     case .freeAgent, .mileageLog, .allData: return "csv"
-    }
-  }
-
-  var group: NativeTaxExportGroup {
-    switch self {
-    case .accountantPack, .selfAssessment: return .accountant
-    case .mileageReportPdf, .mileageLog: return .mileage
-    case .freeAgent, .allData: return .rawData
-    }
-  }
-}
-
-enum NativeTaxExportGroup: CaseIterable {
-  case accountant
-  case mileage
-  case rawData
-
-  var title: String {
-    switch self {
-    case .accountant: return "For your accountant"
-    case .mileage: return "Mileage"
-    case .rawData: return "Raw data"
     }
   }
 }

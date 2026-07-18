@@ -1,4 +1,3 @@
-import AVFoundation
 import CoreMotion
 import CoreLocation
 import Foundation
@@ -9,9 +8,9 @@ import UIKit
 
 // MARK: - Model
 
-/// One passively-detected stop within an automatic shift. A short stop with
-/// no food place nearby reads as a customer drop-off; a longer stop at (or
-/// beside) a restaurant reads as an order pick-up.
+/// One passively-detected stop (from Core Location Visit monitoring). A short
+/// stop with no food place nearby reads as a customer drop-off; a longer stop
+/// at (or beside) a restaurant reads as an order pick-up.
 struct NativeVisit: Codable, Identifiable, Equatable {
   var id = UUID()
   var latitude: Double
@@ -20,13 +19,6 @@ struct NativeVisit: Codable, Identifiable, Equatable {
   var departure: Date
   var kindRaw: String = Kind.other.rawValue
   var placeName: String?
-  // True when this pickup/dropoff wasn't a real classified stop, but a stand-in
-  // built from a trip's raw start/end GPS point (see
-  // NativeShiftInsights.enrichedVisits). For a home-based driver that's
-  // usually just "wherever the shift happened to start/end" — not a
-  // restaurant or customer address — so it's real signal for deliveries
-  // count/mileage/active-hours, but not trustworthy for "where to go".
-  var isEndpointGuess: Bool = false
 
   enum Kind: String, Codable, CaseIterable { case pickup, dropoff, other }
 
@@ -47,97 +39,31 @@ func nativeIsWorkingDay(_ date: Date, settings: NativeSettings) -> Bool {
 
 // MARK: - Engine
 
-/// Where an automatic shift currently stands. `driving` means we're actively
-/// recording a continuous GPS route; `stationaryPending` means motion says
-/// we've stopped and we're waiting to see whether that's a delivery stop
-/// (driving resumes) or the end of the shift (the stationary timer expires).
-enum NativeAutoShiftPhase: Equatable {
-  case idle
-  case driving
-  case stationaryPending
-  case paused
-}
-
-/// Passive, hands-off shift tracking. On a working day, the moment Core
-/// Motion reports driving, this starts recording a real continuous GPS route
-/// — the same fidelity as the manual Start-trip flow, just triggered
-/// automatically instead of by a tap. Going stationary pauses recording and
-/// starts a countdown: if driving resumes before it expires, the stop
-/// becomes a logged pick-up/drop-off and the same shift continues; if it
-/// expires, the shift ends, gets saved as a real trip, and the driver gets a
-/// notification to check it.
-@MainActor
-enum NativeVehicleConnectionMonitor {
-  private static var carPlayConnected = false
-
-  static func setCarPlayConnected(_ connected: Bool) {
-    carPlayConnected = connected
-  }
-
-  static var isLikelyConnectedToVehicle: Bool {
-    carPlayConnected || audioRouteLooksLikeVehicle
-  }
-
-  private static var audioRouteLooksLikeVehicle: Bool {
-    AVAudioSession.sharedInstance().currentRoute.outputs.contains { output in
-      switch output.portType {
-      case .carAudio, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
-        return true
-      default:
-        return false
-      }
-    }
-  }
-}
-
+/// Passive, hands-off tracking. After a one-time "Always" location grant it
+/// watches Core Location Visits in the background and, on working days, records
+/// pick-up / drop-off stops — the raw material for the shift insights. No taps,
+/// no screenshots, no shortcuts.
 @MainActor
 final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
   static let shared = NativeAutoTrackEngine()
 
   @Published private(set) var visits: [NativeVisit] = []
-  @Published private(set) var shiftPhase: NativeAutoShiftPhase = .idle
-  @Published private(set) var lastAutoShiftID: UUID?
-  @Published private(set) var liveShiftVehicle: NativeVehicle = .car
-  @Published private(set) var liveShiftMiles: Double = 0
-  @Published private(set) var liveShiftStartedAt: Date?
-  @Published private(set) var liveShiftPoints: [RoutePoint] = []
+  @Published private(set) var pendingStartPrompt = false
 
   private let manager = CLLocationManager()
   private let motionManager = CMMotionActivityManager()
   private let motionQueue = OperationQueue()
   private let storageKey = "uk.okkle.native.autotrack.visits.v1"
-  private let shiftNotificationIdentifier = "uk.okkle.native.shift-logged"
-  private let shiftStartNotificationIdentifier = "uk.okkle.native.shift-started"
-  private var shiftStartNotified = false
+  private let startPromptIdentifier = "uk.okkle.native.trip-start-prompt"
+  private let promptCooldown: TimeInterval = 12 * 60
   private weak var store: OkkleStore?
   private var motionMonitoring = false
-
-  // Live shift state — a continuous GPS route, mirroring NativeTripSession's
-  // own accumulation approach so automatic shifts get the same real-route
-  // mileage as manually-tracked ones, not a straight-line estimate.
-  private var shiftPoints: [RoutePoint] = []
-  private var shiftMiles: Double = 0
-  private var shiftStartedAt: Date?
-  private var shiftLastLocation: CLLocation?
-  private var shiftLastRoutePointLocation: CLLocation?
-  private var shiftSawVehicleConnection = false
-  private let routePointDistance: CLLocationDistance = 30
-  private let minimumConfidentStopDwell: TimeInterval = 90
-  private let minimumConnectedVehicleStopDwell: TimeInterval = 4 * 60
-
-  // A stop currently being timed — may resolve into a logged visit (driving
-  // resumes) or trigger shift-end (the stationary timer expires).
-  private var stationaryTimer: Timer?
-  private var stationarySince: Date?
-  private var stationaryCoordinate: CLLocationCoordinate2D?
+  private var lastPromptedAt: Date?
 
   override init() {
     super.init()
     manager.delegate = self
-    manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-    manager.distanceFilter = 20
-    manager.activityType = .automotiveNavigation
-    manager.pausesLocationUpdatesAutomatically = false
+    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     motionQueue.name = "uk.okkle.native.auto-track-motion"
     motionQueue.qualityOfService = .utility
     load()
@@ -155,50 +81,14 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// shows anything, it just quietly keeps the confidence label honest.
   private func checkOutcome(for record: NativeRecord) {
     guard record.kind == .income, let amount = record.amount, let store else { return }
-    let insights = NativeShiftInsights.build(visits: visits, store: store)
-
-    // Every weekday this record's own period actually spans — a "Week" entry
-    // covers seven of them, not just the single day the driver happened to
-    // pick when logging (the picker labels it "Week ending", which is only
-    // where the period ends). Shared by both self-correction checks below.
-    let periodStart = Calendar.current.startOfDay(for: record.periodStart ?? record.date)
-    let periodEnd = Calendar.current.startOfDay(for: record.periodEnd ?? record.date)
-    var weekdaysInPeriod = Set<Int>()
-    var cursor = periodStart
-    while cursor <= periodEnd {
-      weekdaysInPeriod.insert(Calendar.current.component(.weekday, from: cursor) - 1)
-      guard let next = Calendar.current.date(byAdding: .day, value: 1, to: cursor) else { break }
-      cursor = next
-    }
-
-    // Day half: was any weekday in this record's period one the model had
-    // called a "peak" day?
-    let peakWeekdays = Set(insights.weekdayDetails.prefix(3).map(\.weekday))
+    let weekday = Calendar.current.component(.weekday, from: record.date) - 1
+    let peakWeekdays = NativeShiftInsights.build(visits: visits, store: store)
+      .weekdayDetails.prefix(3).map(\.weekday)
     NativeOutcomeTracker.shared.record(amount: amount, period: record.period,
-                                       wasPredictedPeakDay: !peakWeekdays.isDisjoint(with: weekdaysInPeriod))
-
-    // Zone half of the same self-correction: did work happen anywhere near a
-    // recommended zone at any point during this record's own period. Entirely
-    // silent — feeds NativeZoneOutcomeTracker.zoneHitRate, which only ever
-    // dampens future zone weights, never boosts them.
-    let recommendedZonesInPeriod = weekdaysInPeriod.compactMap { wd in
-      insights.weekdayDetails.first(where: { $0.weekday == wd })?.coordinate
-    }
-    if !recommendedZonesInPeriod.isEmpty {
-      let periodEndExclusive = periodEnd.addingTimeInterval(86_400)
-      let wasNear = visits.contains { visit in
-        guard visit.arrival >= periodStart, visit.arrival < periodEndExclusive else { return false }
-        return recommendedZonesInPeriod.contains { zone in
-          visit.location.distance(from: CLLocation(latitude: zone.latitude, longitude: zone.longitude)) <= 600
-        }
-      }
-      NativeZoneOutcomeTracker.shared.record(amount: amount, period: record.period, wasNearRecommendedZone: wasNear)
-    }
+                                       wasPredictedPeakDay: peakWeekdays.contains(weekday))
   }
 
-  /// Start or stop listening for driving on working days, to match the
-  /// Automatic-tracking setting. Listening itself is just low-power motion
-  /// monitoring — the GPS only turns on once driving is actually detected.
+  /// Start or stop passive monitoring to match the Automatic-tracking setting.
   func refresh() {
     guard let settings = store?.settings,
           settings.autoTrackTrips,
@@ -207,29 +97,62 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       return
     }
     startMotionMonitoring()
-    if manager.authorizationStatus == .notDetermined {
+    switch manager.authorizationStatus {
+    case .notDetermined:
       manager.requestAlwaysAuthorization()
+    case .authorizedAlways:
+      manager.allowsBackgroundLocationUpdates = true
+      manager.startMonitoringVisits()
+    default:
+      // While-in-use still lets us collect visits when the app is foreground.
+      manager.startMonitoringVisits()
     }
   }
 
   private func stopMonitoring() {
+    manager.stopMonitoringVisits()
     stopMotionMonitoring()
-    // Turning tracking off mid-shift shouldn't throw away real, already-
-    // recorded GPS miles — save what's there rather than silently lose it.
-    if shiftPhase != .idle { concludeShift() }
+    pendingStartPrompt = false
+  }
+
+  func dismissStartPrompt() {
+    pendingStartPrompt = false
+  }
+
+  func acceptStartPrompt() {
+    pendingStartPrompt = false
+    lastPromptedAt = Date()
   }
 
   nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
     Task { @MainActor in self.refresh() }
   }
 
-  nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-    Task { @MainActor in self.handleShiftLocationUpdates(locations) }
+  nonisolated func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
+    // Ignore the "arrived, still here" event — wait for a completed visit.
+    guard visit.departureDate != Date.distantFuture else { return }
+    Task { @MainActor in self.record(visit) }
   }
 
-  nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
-
-  // MARK: Motion → shift state machine
+  private func record(_ clVisit: CLVisit) {
+    guard let settings = store?.settings,
+          settings.autoTrackTrips,
+          nativeIsWorkingDay(clVisit.departureDate, settings: settings) else { return }
+    let arrival = clVisit.arrivalDate == Date.distantPast ? clVisit.departureDate : clVisit.arrivalDate
+    var visit = NativeVisit(
+      latitude: clVisit.coordinate.latitude,
+      longitude: clVisit.coordinate.longitude,
+      arrival: arrival,
+      departure: clVisit.departureDate
+    )
+    // Provisional guess from dwell; MapKit refines it below.
+    visit.kind = visit.dwell >= 150 ? .pickup : .dropoff
+    visits.append(visit)
+    trim()
+    save()
+    classifyWithMapKit(visit.id, coordinate: visit.coordinate)
+    runBackgroundExploration(for: visit)
+  }
 
   private func startMotionMonitoring() {
     guard CMMotionActivityManager.isActivityAvailable(), !motionMonitoring else { return }
@@ -252,290 +175,36 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     guard let settings = store?.settings,
           settings.autoTrackTrips,
           nativeIsWorkingDay(Date(), settings: settings) else { return }
-    // A manual trip already running takes priority — never double-record.
     guard NativeTripSession.shared.phase == .setup else { return }
-
-    if activity.automotive, activity.confidence != .low {
-      handleDrivingSignal()
-    } else if activity.stationary, activity.confidence != .low {
-      handleStationarySignal()
-    }
-    // Ambiguous readings (walking, unknown, low confidence) don't change
-    // phase — a brief wobble shouldn't flip the state machine back and forth.
+    guard activity.automotive, activity.confidence != .low else { return }
+    promptToStartTrip()
   }
 
-  private func handleDrivingSignal() {
-    switch shiftPhase {
-    case .idle:
-      beginShift()
-    case .stationaryPending:
-      resumeShift()
-    case .driving, .paused:
-      break
-    }
+  private func promptToStartTrip() {
+    let now = Date()
+    if let lastPromptedAt, now.timeIntervalSince(lastPromptedAt) < promptCooldown { return }
+    guard !pendingStartPrompt else { return }
+    lastPromptedAt = now
+    pendingStartPrompt = true
+
+    guard UIApplication.shared.applicationState != .active else { return }
+    sendStartTripNotification()
   }
 
-  private func handleStationarySignal() {
-    guard shiftPhase == .driving else { return }
-    shiftPhase = .stationaryPending
-    stationarySince = Date()
-    stationaryCoordinate = shiftLastLocation?.coordinate
-    scheduleStationaryTimeout()
-  }
-
-  private func scheduleStationaryTimeout() {
-    stationaryTimer?.invalidate()
-    let timeout = store?.settings.autoTrackCalibration.stationaryTimeoutSeconds ?? 20 * 60
-    stationaryTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
-      Task { @MainActor in self?.concludeShift() }
-    }
-    stationaryTimer?.tolerance = 30
-  }
-
-  private func beginShift() {
-    shiftPhase = .driving
-    shiftPoints = []
-    shiftMiles = 0
-    shiftStartedAt = Date()
-    shiftStartNotified = false
-    shiftLastLocation = nil
-    shiftLastRoutePointLocation = nil
-    shiftSawVehicleConnection = NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
-    liveShiftVehicle = store?.settings.defaultVehicle ?? .car
-    publishLiveShift()
-    setBackgroundTrackingEnabled(true)
-    manager.startUpdatingLocation()
-  }
-
-  func pauseCurrentShift() {
-    guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
-    stationaryTimer?.invalidate()
-    stationaryTimer = nil
-    stationarySince = nil
-    stationaryCoordinate = nil
-    shiftPhase = .paused
-    manager.stopUpdatingLocation()
-    setBackgroundTrackingEnabled(false)
-    publishLiveShift()
-  }
-
-  func resumeCurrentShift() {
-    guard shiftPhase == .paused else { return }
-    shiftPhase = .driving
-    setBackgroundTrackingEnabled(true)
-    manager.startUpdatingLocation()
-    publishLiveShift()
-  }
-
-  func endCurrentShift() {
-    guard shiftPhase != .idle else { return }
-    concludeShift()
-  }
-
-  /// Driving resumed before the stationary timer expired — the stop that was
-  /// being timed becomes a logged pick-up/drop-off, and the same shift (same
-  /// trip, same accumulated mileage) keeps going.
-  private func resumeShift() {
-    finalizePendingStop()
-    stationaryTimer?.invalidate()
-    stationaryTimer = nil
-    shiftPhase = .driving
-  }
-
-  /// The stationary timer expired (or tracking got turned off mid-shift) —
-  /// the shift is over. Save it as a real trip and notify the driver.
-  private func concludeShift() {
-    guard shiftPhase != .idle else { return }
-    finalizePendingStop()
-    saveShiftAsTrip()
-    manager.stopUpdatingLocation()
-    setBackgroundTrackingEnabled(false)
-    stationaryTimer?.invalidate()
-    stationaryTimer = nil
-    shiftPhase = .idle
-    shiftPoints = []
-    shiftMiles = 0
-    shiftStartedAt = nil
-    shiftStartNotified = false
-    shiftLastLocation = nil
-    shiftLastRoutePointLocation = nil
-    shiftSawVehicleConnection = false
-    stationarySince = nil
-    stationaryCoordinate = nil
-    publishLiveShift()
-  }
-
-  // MARK: Continuous route recording (mirrors NativeTripSession's approach)
-
-  private func handleShiftLocationUpdates(_ locations: [CLLocation]) {
-    guard shiftPhase == .driving || shiftPhase == .stationaryPending else { return }
-    shiftSawVehicleConnection = shiftSawVehicleConnection || NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
-    for location in locations where shouldUseShiftLocation(location) {
-      if let shiftLastLocation {
-        let delta = location.distance(from: shiftLastLocation) / 1_609.344
-        if delta > 0.002 && delta < 1 { shiftMiles += delta }
-      }
-      shiftLastLocation = location
-      appendShiftRoutePoint(for: location)
-      if shiftPhase == .stationaryPending { stationaryCoordinate = location.coordinate }
-    }
-    // Tell the driver recording has started — but only once the shift shows
-    // real recorded distance, not on the raw driving signal. A bus ride or a
-    // motion blip can open a shift that's discarded as near-zero noise; every
-    // "started" notification here is one that will end in a logged trip.
-    if !shiftStartNotified, shiftMiles >= 0.2 {
-      shiftStartNotified = true
-      sendShiftStartedNotification()
-    }
-    publishLiveShift()
-  }
-
-  private func publishLiveShift() {
-    liveShiftMiles = shiftMiles
-    liveShiftStartedAt = shiftStartedAt
-    liveShiftPoints = shiftPoints
-  }
-
-  private func shouldUseShiftLocation(_ location: CLLocation) -> Bool {
-    guard location.horizontalAccuracy >= 0 else { return false }
-    guard abs(location.timestamp.timeIntervalSinceNow) < 30 else { return false }
-    return location.horizontalAccuracy <= 250
-  }
-
-  private func appendShiftRoutePoint(for location: CLLocation) {
-    if let shiftLastRoutePointLocation {
-      guard location.distance(from: shiftLastRoutePointLocation) >= routePointDistance else { return }
-    }
-    shiftPoints.append(RoutePoint(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude, timestamp: location.timestamp))
-    shiftLastRoutePointLocation = location
-  }
-
-  private func setBackgroundTrackingEnabled(_ enabled: Bool) {
-    guard supportsBackgroundLocation else { return }
-    manager.allowsBackgroundLocationUpdates = enabled
-    manager.showsBackgroundLocationIndicator = enabled
-  }
-
-  private var supportsBackgroundLocation: Bool {
-    let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
-    return backgroundModes.contains("location")
-  }
-
-  // MARK: Stop classification + shift finalization
-
-  /// Turns the stop currently being timed into a logged visit — reusing the
-  /// same dwell + nearby-food-venue heuristic as before, just fed by the
-  /// motion-driven timer instead of a CLVisit callback.
-  private func finalizePendingStop() {
-    guard let stationarySince, let coordinate = stationaryCoordinate else { return }
-    let departure = Date()
-    guard shouldRecordPendingStop(arrival: stationarySince, departure: departure) else {
-      self.stationarySince = nil
-      self.stationaryCoordinate = nil
-      return
-    }
-    var visit = NativeVisit(latitude: coordinate.latitude, longitude: coordinate.longitude,
-                            arrival: stationarySince, departure: departure)
-    let calibration = store?.settings.autoTrackCalibration ?? NativeAutoTrackCalibration()
-    visit.kind = visit.dwell >= calibration.pickupDwellThreshold ? .pickup : .dropoff
-    visits.append(visit)
-    trim()
-    save()
-    classifyWithMapKit(visit.id, coordinate: coordinate, calibration: calibration)
-    runBackgroundExploration(for: visit)
-    self.stationarySince = nil
-    self.stationaryCoordinate = nil
-  }
-
-  private func shouldRecordPendingStop(arrival: Date, departure: Date) -> Bool {
-    let dwell = departure.timeIntervalSince(arrival)
-    guard dwell >= minimumConfidentStopDwell else { return false }
-
-    let disconnectedFromKnownVehicle = shiftSawVehicleConnection && !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
-    if disconnectedFromKnownVehicle {
-      return true
-    }
-
-    return dwell >= minimumConnectedVehicleStopDwell
-  }
-
-  private func saveShiftAsTrip() {
-    guard let store, let shiftStartedAt else { return }
-    // Skip near-zero noise (a driving reading that immediately went
-    // stationary again without covering real distance).
-    guard shiftMiles > 0.1 || shiftPoints.count > 2 else { return }
-    let vehicle = store.settings.defaultVehicle
-    let endedAt = Date()
-    let trip = NativeTrip(
-      vehicle: vehicle,
-      miles: shiftMiles,
-      deduction: store.calcDeduction(miles: shiftMiles, vehicle: vehicle, date: shiftStartedAt),
-      startedAt: shiftStartedAt,
-      endedAt: endedAt,
-      points: shiftPoints
-    )
-    store.addTrip(trip)
-    lastAutoShiftID = trip.id
-    ensureShiftHasVisitPair(shiftStart: shiftStartedAt, shiftEnd: endedAt)
-    sendShiftLoggedNotification(trip)
-    // Push the logging reminder off today if it was about to fire today —
-    // don't wait for the app to be reopened to notice a shift just logged.
-    NativeLoggingReminder.refresh(store: store)
-  }
-
-  // Insights (NativeShiftInsights) treats a pickup→dropoff visit pair as the
-  // signal that there's real delivery data — a plain point-to-point drive
-  // with no recognized intermediate stop never produces one, even though it
-  // just got saved as a real, GPS-tracked trip above. Without this, a driver
-  // who never has a classifiable mid-shift stop would see the "Learning your
-  // week" cold-start card forever, no matter how much they actually drive.
-  // Only synthesize when the shift genuinely produced zero real stops —
-  // leave any real (if imperfectly paired) classification alone.
-  private func ensureShiftHasVisitPair(shiftStart: Date, shiftEnd: Date) {
-    guard !visits.contains(where: { $0.arrival >= shiftStart }) else { return }
-    let startCoordinate = shiftPoints.first.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
-      ?? shiftLastLocation?.coordinate
-    let endCoordinate = shiftPoints.last.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
-      ?? shiftLastLocation?.coordinate
-    guard let start = startCoordinate, let end = endCoordinate else { return }
-    var pickup = NativeVisit(latitude: start.latitude, longitude: start.longitude, arrival: shiftStart, departure: shiftStart)
-    pickup.kind = .pickup
-    var dropoff = NativeVisit(latitude: end.latitude, longitude: end.longitude, arrival: shiftEnd, departure: shiftEnd)
-    dropoff.kind = .dropoff
-    visits.append(contentsOf: [pickup, dropoff])
-    trim()
-    save()
-  }
-
-  private func sendShiftStartedNotification() {
-    sendAutoTrackNotification(
-      identifier: "\(shiftStartNotificationIdentifier)-\(Int((shiftStartedAt ?? Date()).timeIntervalSince1970))",
-      title: "Automatic tracking started",
-      body: "Okkle is recording this trip automatically. Tap to check or pause it.",
-      userInfo: ["type": "autoShiftStarted"]
-    )
-  }
-
-  private func sendShiftLoggedNotification(_ trip: NativeTrip) {
-    let miles = String(format: "%.1f", trip.miles)
-    sendAutoTrackNotification(
-      identifier: "\(shiftNotificationIdentifier)-\(trip.id.uuidString)",
-      title: "Automatic tracking ended",
-      body: "\(miles) miles were saved automatically. Tap to review the trip.",
-      userInfo: ["type": "autoShiftReview", "tripID": trip.id.uuidString]
-    )
-  }
-
-  private func sendAutoTrackNotification(identifier: String, title: String, body: String, userInfo: [String: String] = [:]) {
+  private func sendStartTripNotification() {
     let center = UNUserNotificationCenter.current()
-    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+    center.requestAuthorization(options: [.alert, .sound]) { [startPromptIdentifier] granted, _ in
       guard granted else { return }
       let content = UNMutableNotificationContent()
-      content.title = title
-      content.body = body
+      content.title = "Start tracking this trip?"
+      content.body = "Okkle detected you may be driving. Open the app to start recording miles."
       content.sound = .default
-      content.userInfo = userInfo
-      center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+      let request = UNNotificationRequest(
+        identifier: startPromptIdentifier,
+        content: content,
+        trigger: nil
+      )
+      center.add(request)
     }
   }
 
@@ -557,8 +226,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
 
   /// Use Apple Maps as an information layer: if there's a food place right by the
   /// stop it's a pick-up; otherwise it's most likely a customer drop-off.
-  private func classifyWithMapKit(_ id: UUID, coordinate: CLLocationCoordinate2D, calibration: NativeAutoTrackCalibration) {
-    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: calibration.foodPoiRadiusMeters)
+  private func classifyWithMapKit(_ id: UUID, coordinate: CLLocationCoordinate2D) {
+    let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 45)
     request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.restaurant, .cafe, .bakery, .foodMarket, .brewery, .nightlife])
     MKLocalSearch(request: request).start { [weak self] response, _ in
       guard let self else { return }
@@ -567,7 +236,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         if let food = response?.mapItems.first {
           self.visits[index].kind = .pickup
           self.visits[index].placeName = food.name
-        } else if self.visits[index].dwell < calibration.dropoffMaxDwellThreshold {
+        } else if self.visits[index].dwell < 240 {
           self.visits[index].kind = .dropoff
         }
         self.save()
@@ -578,9 +247,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   // MARK: Persistence
 
   private func trim() {
-    // Keep just over a year of stops — the Insights carousel's Yearly period
-    // needs real history to show, not just whatever a 60-day window left.
-    let cutoff = Date().addingTimeInterval(-370 * 86_400)
+    // Keep the last 60 days of stops — plenty for pattern insights.
+    let cutoff = Date().addingTimeInterval(-60 * 86_400)
     visits.removeAll { $0.departure < cutoff }
   }
 
@@ -599,12 +267,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// Test/demo seeding used by the SEED_DEMO launch flag only.
   func seed(_ seeded: [NativeVisit]) {
     visits = seeded
-    save()
-  }
-
-  /// Removes a stop the driver flagged as wrong in the shift-review screen.
-  func discardVisit(_ id: UUID) {
-    visits.removeAll { $0.id == id }
     save()
   }
 }

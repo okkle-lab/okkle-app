@@ -35,7 +35,6 @@ enum NativeLegacyBackupImporter {
       settings.region = NativeRegion(rawValue: string(user["region"]) ?? "") ?? .ruk
       applyIncomeBracket(taxRate: double(user["tax_rate"]) ?? legacyTaxRate(from: keyValues), to: &settings)
       settings.otherIncome = legacyOtherIncome(from: keyValues) ?? 0
-      applySiriTripTracking(keyValues, to: &settings)
 
       let platforms = splitList(string(user["platforms"]))
       if !platforms.isEmpty {
@@ -57,7 +56,6 @@ enum NativeLegacyBackupImporter {
     } else {
       applyIncomeBracket(taxRate: legacyTaxRate(from: keyValues), to: &settings)
       settings.otherIncome = legacyOtherIncome(from: keyValues) ?? 0
-      applySiriTripTracking(keyValues, to: &settings)
       settings.hasCompletedOnboarding = hasContent
     }
 
@@ -169,11 +167,6 @@ enum NativeLegacyBackupImporter {
   private static func applyIncomeBracket(taxRate: Double?, to settings: inout NativeSettings) {
     guard let taxRate else { return }
     settings.incomeBracket = taxRate >= 0.40 ? .higher : .basic
-  }
-
-  private static func applySiriTripTracking(_ values: [String: String], to settings: inout NativeSettings) {
-    guard let enabled = values["siri_trip_tracking_enabled"].flatMap({ Int($0) }) else { return }
-    settings.siriTripTrackingEnabled = enabled != 0
   }
 
   private static func legacyTaxRate(from values: [String: String]) -> Double? {

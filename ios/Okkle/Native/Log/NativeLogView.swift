@@ -5,12 +5,12 @@ import Vision
 
 struct NativeLogView: View {
   @EnvironmentObject private var store: OkkleStore
-  @State private var kind: NativeLogKind
+  @Binding var selectedTab: NativeTab
+  @State private var kind: NativeLogKind = .income
   @State private var amount = ""
   @State private var distance = ""
   @State private var category = ""
   @State private var merchant = ""
-  @State private var note = ""
   @State private var platform = "Uber Eats"
   @State private var vehicle: NativeVehicle = .car
   @State private var period: NativePayPeriod = .day
@@ -24,12 +24,6 @@ struct NativeLogView: View {
   @State private var savedRecord: NativeRecord?
   @State private var showSavedNotice = false
   @State private var stepIndex = 0
-  private let defaultKind: NativeLogKind
-  private let allowedKinds: [NativeLogKind]
-  private let screenTitle: String
-  private let screenSubtitle: String
-  private let onCloseAction: () -> Void
-  private let onViewRecordsAction: () -> Void
 
   private enum LogStep: String {
     case kind
@@ -40,39 +34,14 @@ struct NativeLogView: View {
     case review
   }
 
-  private static func normalizedKinds(_ kinds: [NativeLogKind]) -> [NativeLogKind] {
-    let orderedKinds = NativeLogKind.allCases.filter { kinds.contains($0) }
-    return orderedKinds.isEmpty ? [.income] : orderedKinds
-  }
-
-  init(
-    initialKind: NativeLogKind = .income,
-    allowedKinds: [NativeLogKind] = NativeLogKind.allCases,
-    title: String = "Log",
-    subtitle: String = "Add one record at a time.",
-    onClose: @escaping () -> Void,
-    onViewRecords: @escaping () -> Void
-  ) {
-    let normalizedKinds = NativeLogView.normalizedKinds(allowedKinds)
-    let startingKind = normalizedKinds.contains(initialKind) ? initialKind : normalizedKinds[0]
-    _kind = State(initialValue: startingKind)
-    self.defaultKind = startingKind
-    self.allowedKinds = normalizedKinds
-    self.screenTitle = title
-    self.screenSubtitle = subtitle
-    self.onCloseAction = onClose
-    self.onViewRecordsAction = onViewRecords
-  }
-
   var body: some View {
     ZStack {
       NativeScreen(
-        title: screenTitle, collapsedTitle: screenTitle, subtitle: screenSubtitle,
+        title: "Log", collapsedTitle: "Log", subtitle: "Add one record at a time.",
         onClose: {
           resetEntry()
-          onCloseAction()
-        },
-        showsProfileButton: false
+          selectedTab = .trip
+        }
       ) {
         VStack(alignment: .leading, spacing: 16) {
           stepProgress
@@ -102,18 +71,12 @@ struct NativeLogView: View {
   }
 
   private var steps: [LogStep] {
-    let entrySteps: [LogStep]
     switch kind {
-    case .income:
-      entrySteps = savedPlatformOptions.count == 1
-        ? [.receipt, .primary, .date, .review]
-        : [.receipt, .primary, .details, .date, .review]
-    case .expense:
-      entrySteps = [.receipt, .primary, .details, .date, .review]
+    case .income, .expense:
+      return [.kind, .receipt, .primary, .details, .date, .review]
     case .mileage:
-      entrySteps = [.primary, .details, .date, .review]
+      return [.kind, .primary, .details, .date, .review]
     }
-    return allowedKinds.count > 1 ? [.kind] + entrySteps : entrySteps
   }
 
   private var currentStep: LogStep {
@@ -192,7 +155,7 @@ struct NativeLogView: View {
 
   private var kindStep: some View {
     VStack(spacing: 12) {
-      ForEach(allowedKinds) { item in
+      ForEach(NativeLogKind.allCases) { item in
         nativeChoiceRow(
           title: item.label,
           subtitle: kindDescription(for: item),
@@ -240,31 +203,23 @@ struct NativeLogView: View {
     case .income:
       NativeFreeTextDropdown(
         title: "Delivery service",
-        placeholder: "Choose the delivery service",
+        placeholder: "Choose or type a delivery service",
         options: platformOptions,
         text: $platform
       )
     case .expense:
       VStack(spacing: 14) {
         NativeFreeTextDropdown(
-          title: "Category *",
+          title: "Category",
           placeholder: "Choose or type a category",
           options: categoryOptions,
           text: $category
         )
-        Text("Required. Pick the closest expense type so this can be saved correctly.")
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        nativeTextField(
-          title: "Merchant (optional)",
-          placeholder: "e.g. Shell, Halfords, Vodafone",
+        NativeFreeTextDropdown(
+          title: "Merchant",
+          placeholder: "Choose or type a merchant",
+          options: merchantOptions,
           text: $merchant
-        )
-        nativeTextEditor(
-          title: "Note (optional)",
-          placeholder: "e.g. Phone data for courier apps, parking while collecting orders",
-          text: $note
         )
       }
     case .mileage:
@@ -352,10 +307,9 @@ struct NativeLogView: View {
     case .mileage:
       return Double(distance) ?? 0 > 0
     case .income:
-      return Double(amount) ?? 0 > 0 && !incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      return Double(amount) ?? 0 > 0 && !platform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .expense:
-      return (Double(amount) ?? 0 > 0)
-        && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      return (Double(amount) ?? 0 > 0) && !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
   }
 
@@ -435,7 +389,7 @@ struct NativeLogView: View {
       case .income:
         return "Pick a saved platform or type a new one."
       case .expense:
-        return "Category is required. Merchant and note are optional context for the accountant pack."
+        return "Use a category your accountant will understand."
       case .mileage:
         return "Okkle uses this to calculate the mileage deduction."
       }
@@ -482,20 +436,13 @@ struct NativeLogView: View {
       rows.append(("Deduction", gbp(store.calcDeduction(miles: milesValue, vehicle: vehicle, date: date))))
     case .income:
       rows.append(("Amount", gbp(Double(amount) ?? 0)))
-      rows.append(("Platform", incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines)))
+      rows.append(("Platform", platform.trimmingCharacters(in: .whitespacesAndNewlines)))
     case .expense:
       rows.append(("Amount", gbp(Double(amount) ?? 0)))
-      let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !cleanCategory.isEmpty {
-        rows.append(("Category", cleanCategory))
-      }
+      rows.append(("Category", category.trimmingCharacters(in: .whitespacesAndNewlines)))
       let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
       if !cleanMerchant.isEmpty {
         rows.append(("Merchant", cleanMerchant))
-      }
-      let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !cleanNote.isEmpty {
-        rows.append(("Note", cleanNote))
       }
     }
 
@@ -627,7 +574,7 @@ struct NativeLogView: View {
         HStack(spacing: 12) {
           Button {
             resetEntry()
-            onCloseAction()
+            selectedTab = .trip
           } label: {
             Text("Done")
               .font(.system(size: 16, weight: .bold))
@@ -639,7 +586,7 @@ struct NativeLogView: View {
 
           Button {
             resetEntry()
-            onViewRecordsAction()
+            selectedTab = .records
           } label: {
             Text("View records")
               .font(.system(size: 16, weight: .bold))
@@ -702,14 +649,10 @@ struct NativeLogView: View {
   }
 
   private var platformOptions: [String] {
-    uniqueStrings(savedPlatformOptions + [platform])
-  }
-
-  private var incomePlatform: String {
-    if savedPlatformOptions.count == 1 {
-      return savedPlatformOptions[0]
-    }
-    return platform
+    let recent = store.records
+      .filter { $0.kind == .income }
+      .compactMap { $0.platform }
+    return uniqueStrings(store.settings.platforms + nativeDeliveryServiceOptions + recent + [platform])
   }
 
   private var categoryOptions: [String] {
@@ -719,10 +662,11 @@ struct NativeLogView: View {
     return uniqueStrings(recent + nativeExpenseCategories)
   }
 
-  private var savedPlatformOptions: [String] {
-    uniqueStrings(store.settings.platforms)
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
+  private var merchantOptions: [String] {
+    let recent = store.records
+      .filter { $0.kind == .expense }
+      .compactMap { $0.merchant }
+    return uniqueStrings(recent)
   }
 
   private var savedMessage: String {
@@ -859,48 +803,10 @@ struct NativeLogView: View {
     }
   }
 
-  private func nativeTextField(title: String, placeholder: String, text: Binding<String>) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(title)
-        .font(.system(size: 14, weight: .bold))
-        .foregroundStyle(OkkleColor.ink)
-      TextField(placeholder, text: text)
-        .font(.system(size: 16, weight: .semibold))
-        .textInputAutocapitalization(.words)
-        .padding(14)
-        .background(OkkleColor.fieldBackground, in: RoundedRectangle(cornerRadius: 18))
-    }
-  }
-
-  private func nativeTextEditor(title: String, placeholder: String, text: Binding<String>) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(title)
-        .font(.system(size: 14, weight: .bold))
-        .foregroundStyle(OkkleColor.ink)
-      ZStack(alignment: .topLeading) {
-        if text.wrappedValue.isEmpty {
-          Text(placeholder)
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted.opacity(0.72))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .allowsHitTesting(false)
-        }
-        TextEditor(text: text)
-          .font(.system(size: 15, weight: .semibold))
-          .scrollContentBackground(.hidden)
-          .padding(10)
-          .frame(minHeight: 96)
-      }
-      .background(OkkleColor.fieldBackground, in: RoundedRectangle(cornerRadius: 18))
-    }
-  }
-
   private func saveRecord() {
     let cleanCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-    let cleanNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-    let cleanPlatform = incomePlatform.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanPlatform = platform.trimmingCharacters(in: .whitespacesAndNewlines)
     let receiptPayload = nativeOptimizedReceiptData(image: receiptImage, data: receiptData)
     let bounds = store.periodBounds(for: date, period: period)
     let record: NativeRecord
@@ -916,7 +822,6 @@ struct NativeLogView: View {
         deduction: store.calcDeduction(miles: milesValue, vehicle: vehicle, date: date),
         category: nil,
         merchant: nil,
-        note: nil,
         date: date,
         period: period,
         periodStart: bounds.start,
@@ -933,7 +838,6 @@ struct NativeLogView: View {
         deduction: nil,
         category: nil,
         merchant: nil,
-        note: nil,
         date: date,
         period: period,
         periodStart: bounds.start,
@@ -949,9 +853,8 @@ struct NativeLogView: View {
         amount: Double(amount) ?? 0,
         miles: nil,
         deduction: nil,
-        category: cleanCategory.isEmpty ? nil : cleanCategory,
+        category: cleanCategory,
         merchant: cleanMerchant.isEmpty ? nil : cleanMerchant,
-        note: cleanNote.isEmpty ? nil : cleanNote,
         date: date,
         period: period,
         periodStart: bounds.start,
@@ -964,14 +867,13 @@ struct NativeLogView: View {
   }
 
   private func resetEntry(keepKind: Bool = false) {
-    if !keepKind { kind = defaultKind }
+    if !keepKind { kind = .income }
     amount = ""
     distance = ""
     category = ""
     merchant = ""
-    note = ""
     vehicle = store.settings.defaultVehicle
-    platform = savedPlatformOptions.first ?? "Uber Eats"
+    platform = store.settings.platforms.first ?? "Uber Eats"
     period = .day
     date = Date()
     receiptImage = nil
