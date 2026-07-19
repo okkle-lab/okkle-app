@@ -506,7 +506,12 @@ func nativeNeighbourhoodName(from placemark: CLPlacemark) -> String? {
      !nativeLondonBoroughNames.contains(subLocality.lowercased()) {
     return subLocality
   }
-  return placemark.thoroughfare ?? placemark.locality
+  // No locality fallback: for a London-only app, CLPlacemark.locality
+  // resolves to "London" for virtually every coordinate in Greater
+  // London, which tells a driver nothing actionable — as useless as no
+  // name at all, so this returns nil and lets the "fails silently" path
+  // above omit the zone rather than surface it.
+  return placemark.thoroughfare
 }
 
 /// How many nearby points of interest look delivery-relevant — food places
