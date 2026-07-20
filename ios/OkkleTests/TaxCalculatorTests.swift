@@ -154,17 +154,17 @@ final class NativeInsightsSimulationTests: XCTestCase {
     return calendar
   }
 
-  func testStoredTripWithoutStopEvidenceDoesNotInventDeliveryEpisodes() {
+  func testStoredTripWithoutStopEvidenceKeepsInferredDeliveryPair() {
     let store = OkkleStore()
     store.trips = [trip(miles: 6, startedAt: date(2026, 6, 23, 18), endedAt: date(2026, 6, 23, 18, 30), timestamped: false)]
 
     let visits = NativeShiftInsights.enrichedVisits(visits: [], trips: store.trips)
     let insights = NativeShiftInsights.build(visits: visits, store: store)
 
-    XCTAssertTrue(visits.isEmpty)
-    XCTAssertFalse(insights.hasData)
-    XCTAssertEqual(insights.deliveries, 0)
-    XCTAssertEqual(insights.paidMiles, 0, accuracy: 0.05)
+    XCTAssertEqual(visits.map(\.kind), [.pickup, .dropoff])
+    XCTAssertTrue(visits.allSatisfy(\.isEndpointGuess))
+    XCTAssertTrue(insights.hasData)
+    XCTAssertEqual(insights.deliveries, 1)
   }
 
   func testStoredTripDoesNotDoubleCountWhenRealVisitsAlreadyExist() {
@@ -184,7 +184,7 @@ final class NativeInsightsSimulationTests: XCTestCase {
     XCTAssertEqual(insights.deliveries, 1)
   }
 
-  func testTimestampedRouteWithoutSignificantStopsDoesNotBecomeDelivery() {
+  func testTimestampedRouteWithoutSignificantStopsKeepsInferredDeliveryPair() {
     let store = OkkleStore()
     store.trips = [trip(miles: 8, startedAt: date(2026, 6, 25, 17), endedAt: date(2026, 6, 25, 18), timestamped: true)]
 
@@ -193,8 +193,8 @@ final class NativeInsightsSimulationTests: XCTestCase {
       store: store
     )
 
-    XCTAssertEqual(insights.deliveries, 0)
-    XCTAssertEqual(insights.paidMiles, 0, accuracy: 0.15)
+    XCTAssertEqual(insights.deliveries, 1)
+    XCTAssertGreaterThan(insights.paidMiles, 0)
   }
 
   func testHighIncomeCanOverturnDeadMilePreference() {
@@ -394,8 +394,8 @@ final class NativeInsightsSimulationTests: XCTestCase {
     let visits = NativeShiftInsights.enrichedVisits(visits: [], trips: store.trips)
     let insights = NativeShiftInsights.build(visits: visits, store: store)
 
-    // A trip's raw start/end point is not evidence of a successful delivery.
-    XCTAssertEqual(insights.deliveries, 0)
+    // Raw endpoints preserve delivery progress but are never location evidence.
+    XCTAssertEqual(insights.deliveries, 1)
     XCTAssertTrue(insights.zones.isEmpty)
   }
 
@@ -727,6 +727,35 @@ final class NativeDeliveryEpisodeTests: XCTestCase {
     XCTAssertEqual(NativeDeliveryEpisodeDetector.episodes(in: [origin, destination]).count, 1)
     origin.evidence = [.routeDwell]
     XCTAssertTrue(NativeDeliveryEpisodeDetector.episodes(in: [origin, destination]).isEmpty)
+  }
+
+  func testInferredPickupDropoffPairRemainsAnEpisodeWithoutNewEvidence() {
+    let tripID = UUID()
+    let start = Date(timeIntervalSinceReferenceDate: 30_000)
+    var pickup = NativeVisit(
+      tripID: tripID,
+      latitude: 51.50,
+      longitude: -0.12,
+      arrival: start,
+      departure: start,
+      isEndpointGuess: true
+    )
+    pickup.kind = .pickup
+    var dropoff = NativeVisit(
+      tripID: tripID,
+      latitude: 51.52,
+      longitude: -0.10,
+      arrival: start.addingTimeInterval(900),
+      departure: start.addingTimeInterval(900),
+      isEndpointGuess: true
+    )
+    dropoff.kind = .dropoff
+
+    let episodes = NativeDeliveryEpisodeDetector.episodes(in: [pickup, dropoff])
+
+    XCTAssertEqual(episodes.count, 1)
+    XCTAssertEqual(episodes.first?.origin.id, pickup.id)
+    XCTAssertEqual(episodes.first?.destination.id, dropoff.id)
   }
 }
 
