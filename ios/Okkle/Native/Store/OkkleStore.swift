@@ -15,10 +15,16 @@ final class OkkleStore: ObservableObject {
     var toAddress: String? = nil
   }
 
-  @Published var settings = NativeSettings() { didSet { scheduleSave() } }
+  @Published var settings = NativeSettings() {
+    didSet {
+      if !isLoading { settingsUpdatedAt = Date() }
+      scheduleSave()
+    }
+  }
   @Published var records: [NativeRecord] = [] { didSet { cachedHistory = nil; scheduleSave() } }
   @Published var trips: [NativeTrip] = [] { didSet { cachedHistory = nil; scheduleSave() } }
   @Published private(set) var iCloudSyncState: NativeICloudSyncState = .disabled
+  @Published private(set) var persistenceIssue: String?
 
   private let key = "uk.okkle.native.swiftui.snapshot.v1"
   private let legacyMigrationKey = "uk.okkle.native.swiftui.legacySqliteMigration.v3"
@@ -27,6 +33,9 @@ final class OkkleStore: ObservableObject {
   private var pendingSave: DispatchWorkItem?
   private var cachedHistory: [NativeHistoryItem]?
   private var isApplyingICloudSnapshot = false
+  private var settingsUpdatedAt: Date?
+  private var recordTombstones: [NativeDeletionTombstone] = []
+  private var tripTombstones: [NativeDeletionTombstone] = []
   // The legacy SQLite mirror only exists so an older build can recover the
   // data; rebuilding it on every save is wasted work, so it's deferred to
   // the next trip into the background.
@@ -37,6 +46,10 @@ final class OkkleStore: ObservableObject {
     let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
     return base.appendingPathComponent("Okkle", isDirectory: true).appendingPathComponent("snapshot.json")
   }()
+
+  private static let snapshotBackupFileURL = snapshotFileURL
+    .deletingLastPathComponent()
+    .appendingPathComponent("snapshot.backup.json")
 
   init() {
     load()
@@ -57,18 +70,52 @@ final class OkkleStore: ObservableObject {
       if shouldPersist { save() }
     }
 
-    // Snapshots moved from UserDefaults to a file in Application Support;
-    // the defaults read is the migration path, cleaned up on the next save.
-    if let data = (try? Data(contentsOf: Self.snapshotFileURL)) ?? UserDefaults.standard.data(forKey: key) {
+    let decoder = JSONDecoder()
+    var snapshot: NativeSnapshot?
+    var primaryReadFailed = false
+
+    if FileManager.default.fileExists(atPath: Self.snapshotFileURL.path) {
       do {
-        let snapshot = try JSONDecoder().decode(NativeSnapshot.self, from: data)
-        settings = snapshot.settings
-        records = snapshot.records
-        trips = snapshot.trips
+        snapshot = try decoder.decode(
+          NativeSnapshot.self,
+          from: Data(contentsOf: Self.snapshotFileURL)
+        )
       } catch {
-        try? FileManager.default.removeItem(at: Self.snapshotFileURL)
-        UserDefaults.standard.removeObject(forKey: key)
+        primaryReadFailed = true
       }
+    }
+
+    if snapshot == nil, FileManager.default.fileExists(atPath: Self.snapshotBackupFileURL.path) {
+      do {
+        snapshot = try decoder.decode(
+          NativeSnapshot.self,
+          from: Data(contentsOf: Self.snapshotBackupFileURL)
+        )
+        shouldPersist = true
+      } catch {
+        if primaryReadFailed {
+          persistenceIssue = "Okkle could not read its local data or recovery copy. The files were preserved so they can be recovered."
+        }
+      }
+    }
+
+    // UserDefaults is the migration path from older builds. Keep it until a
+    // replacement file has been written successfully.
+    if snapshot == nil, let defaultsData = UserDefaults.standard.data(forKey: key) {
+      do {
+        snapshot = try decoder.decode(NativeSnapshot.self, from: defaultsData)
+        shouldPersist = true
+      } catch {
+        if primaryReadFailed {
+          persistenceIssue = "Okkle could not read its local data. The original snapshot was preserved for recovery."
+        }
+      }
+    }
+
+    if let snapshot {
+      applySnapshotContents(snapshot)
+    } else if primaryReadFailed, persistenceIssue == nil {
+      persistenceIssue = "Okkle could not read its local data. The original snapshot was preserved for recovery."
     }
 
     if normalizeOnboardingState() {
@@ -77,7 +124,6 @@ final class OkkleStore: ObservableObject {
     if migrateStuckDropoffMaxDwellThreshold() {
       shouldPersist = true
     }
-
     iCloudSyncState = settings.iCloudSyncEnabled ? .syncing : .disabled
   }
 
@@ -99,7 +145,7 @@ final class OkkleStore: ObservableObject {
     refreshICloudSyncIfNeeded()
     guard legacyExportNeeded else { return }
     legacyExportNeeded = false
-    let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
+    let snapshot = currentSnapshot
     persistenceQueue.async {
       NativeLegacySQLiteExporter.write(snapshot: snapshot)
     }
@@ -145,22 +191,50 @@ final class OkkleStore: ObservableObject {
   }
 
   private func persistSnapshot(uploadToICloud: Bool = true) {
-    let snapshot = NativeSnapshot(settings: settings, records: records, trips: trips)
+    let snapshot = currentSnapshot
     legacyExportNeeded = true
     let url = Self.snapshotFileURL
+    let backupURL = Self.snapshotBackupFileURL
     let defaultsKey = key
+    let backgroundTask = UIApplication.shared.beginBackgroundTask(
+      withName: "Save Okkle data",
+      expirationHandler: nil
+    )
     persistenceQueue.async {
-      guard let data = try? JSONEncoder().encode(snapshot) else { return }
-      try? FileManager.default.createDirectory(
-        at: url.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
       do {
-        try data.write(to: url, options: .atomic)
+        let data = try JSONEncoder().encode(snapshot)
+        try FileManager.default.createDirectory(
+          at: url.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        let options: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+
+        if let previousData = try? Data(contentsOf: url),
+           (try? JSONDecoder().decode(NativeSnapshot.self, from: previousData)) != nil {
+          try previousData.write(to: backupURL, options: options)
+        }
+        try data.write(to: url, options: options)
+        if !FileManager.default.fileExists(atPath: backupURL.path) {
+          try data.write(to: backupURL, options: options)
+        }
         // Only drop the old UserDefaults copy once the file write succeeded,
         // so a migration interrupted mid-flight loses nothing.
         UserDefaults.standard.removeObject(forKey: defaultsKey)
-      } catch {}
+        DispatchQueue.main.async { [weak self] in
+          self?.persistenceIssue = nil
+          if backgroundTask != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+          }
+        }
+      } catch {
+        let message = "Okkle could not save local data. Try saving again before closing the app. \(error.localizedDescription)"
+        DispatchQueue.main.async { [weak self] in
+          self?.persistenceIssue = message
+          if backgroundTask != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+          }
+        }
+      }
     }
     if uploadToICloud, snapshot.settings.iCloudSyncEnabled, !isApplyingICloudSnapshot {
       NativeICloudSyncEngine.shared.uploadLocalSnapshot(snapshot, store: self)
@@ -168,7 +242,14 @@ final class OkkleStore: ObservableObject {
   }
 
   var currentSnapshot: NativeSnapshot {
-    NativeSnapshot(settings: settings, records: records, trips: trips)
+    NativeSnapshot(
+      settings: settings,
+      records: records,
+      trips: trips,
+      settingsUpdatedAt: settingsUpdatedAt,
+      recordTombstones: recordTombstones,
+      tripTombstones: tripTombstones
+    )
   }
 
   var isFreshInstallForICloudOffer: Bool {
@@ -183,7 +264,7 @@ final class OkkleStore: ObservableObject {
       app: "okkle",
       version: 1,
       exportedAt: Date(),
-      snapshot: NativeSnapshot(settings: settings, records: records, trips: trips)
+      snapshot: currentSnapshot
     )
   }
 
@@ -201,9 +282,7 @@ final class OkkleStore: ObservableObject {
     }
     let snapshot = try decodeBackupSnapshot(from: data)
     isLoading = true
-    settings = snapshot.settings
-    records = snapshot.records
-    trips = snapshot.trips
+    applySnapshotContents(snapshot)
     _ = normalizeOnboardingState()
     isLoading = false
     save()
@@ -218,6 +297,7 @@ final class OkkleStore: ObservableObject {
     if isEnabled {
       isLoading = true
       settings.iCloudSyncEnabled = true
+      settingsUpdatedAt = Date()
       isLoading = false
       save(uploadToICloud: false)
       NativeICloudSyncEngine.shared.refresh(store: self, mergeCloudData: true)
@@ -246,9 +326,7 @@ final class OkkleStore: ObservableObject {
   func applyICloudSnapshot(_ snapshot: NativeSnapshot) {
     isApplyingICloudSnapshot = true
     isLoading = true
-    settings = snapshot.settings
-    records = snapshot.records
-    trips = snapshot.trips
+    applySnapshotContents(snapshot)
     _ = normalizeOnboardingState()
     isLoading = false
     save(uploadToICloud: false)
@@ -261,20 +339,29 @@ final class OkkleStore: ObservableObject {
   var onRecordAdded: ((NativeRecord) -> Void)?
 
   func addRecord(_ record: NativeRecord) {
-    records.insert(record, at: 0)
-    onRecordAdded?(record)
+    var updated = record
+    updated.updatedAt = Date()
+    recordTombstones.removeAll { $0.id == updated.id }
+    records.insert(updated, at: 0)
+    onRecordAdded?(updated)
     refreshLogSensitiveNotifications()
   }
 
   func addTrip(_ trip: NativeTrip) {
-    trips.insert(trip, at: 0)
+    var updated = trip
+    updated.updatedAt = Date()
+    tripTombstones.removeAll { $0.id == updated.id }
+    trips.insert(updated, at: 0)
     refreshLogSensitiveNotifications()
-    NativeTripAddressResolver.resolveAddresses(for: trip.id, store: self)
+    NativeTripAddressResolver.resolveAddresses(for: updated.id, store: self)
   }
 
   func updateTrip(_ trip: NativeTrip) {
     guard let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
-    trips[index] = trip
+    var updated = trip
+    updated.updatedAt = Date()
+    tripTombstones.removeAll { $0.id == updated.id }
+    trips[index] = updated
   }
 
   func setTripCategory(_ trip: NativeTrip, to category: NativeTripCategory) {
@@ -284,15 +371,20 @@ final class OkkleStore: ObservableObject {
 
   func updateRecord(_ record: NativeRecord) {
     guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
-    records[index] = record
+    var updated = record
+    updated.updatedAt = Date()
+    recordTombstones.removeAll { $0.id == updated.id }
+    records[index] = updated
   }
 
   func deleteRecord(_ record: NativeRecord) {
     records.removeAll { $0.id == record.id }
+    Self.upsertTombstone(id: record.id, deletedAt: Date(), in: &recordTombstones)
   }
 
   func deleteTrip(_ trip: NativeTrip) {
     trips.removeAll { $0.id == trip.id }
+    Self.upsertTombstone(id: trip.id, deletedAt: Date(), in: &tripTombstones)
   }
 
   private func refreshLogSensitiveNotifications() {
@@ -305,6 +397,9 @@ final class OkkleStore: ObservableObject {
     settings = NativeSettings()
     records = []
     trips = []
+    settingsUpdatedAt = Date()
+    recordTombstones = []
+    tripTombstones = []
     isLoading = false
     UserDefaults.standard.removeObject(forKey: nativeSeenMedalsKey)
     save()
@@ -550,6 +645,29 @@ final class OkkleStore: ObservableObject {
     }
 
     throw NativeBackupRestoreError.invalidBackup
+  }
+
+  private func applySnapshotContents(_ snapshot: NativeSnapshot) {
+    settings = snapshot.settings
+    records = snapshot.records
+    trips = snapshot.trips
+    settingsUpdatedAt = snapshot.settingsUpdatedAt
+    recordTombstones = snapshot.recordTombstones
+    tripTombstones = snapshot.tripTombstones
+  }
+
+  private static func upsertTombstone(
+    id: UUID,
+    deletedAt: Date,
+    in tombstones: inout [NativeDeletionTombstone]
+  ) {
+    if let index = tombstones.firstIndex(where: { $0.id == id }) {
+      if deletedAt > tombstones[index].deletedAt {
+        tombstones[index].deletedAt = deletedAt
+      }
+    } else {
+      tombstones.append(NativeDeletionTombstone(id: id, deletedAt: deletedAt))
+    }
   }
 
   private func merge(_ imported: NativeLegacyImportResult) {

@@ -100,17 +100,6 @@
 					<string>$(PRODUCT_MODULE_NAME).OkkleSceneDelegate</string>
 				</dict>
 			</array>
-			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
-			<array>
-				<dict>
-					<key>UISceneClassName</key>
-					<string>CPTemplateApplicationScene</string>
-					<key>UISceneConfigurationName</key>
-					<string>CarPlay Configuration</string>
-					<key>UISceneDelegateClassName</key>
-					<string>$(PRODUCT_MODULE_NAME).OkkleCarPlaySceneDelegate</string>
-				</dict>
-			</array>
 		</dict>
 	</dict>
 	<key>UIRequiredDeviceCapabilities</key>

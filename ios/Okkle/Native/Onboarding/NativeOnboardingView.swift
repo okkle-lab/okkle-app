@@ -14,21 +14,16 @@ enum NativeOnboardingStep: Int, CaseIterable {
   case ready
 }
 
-/// Requests When In Use location access from a dedicated onboarding step —
-/// primed by an explanation screen first, rather than the system prompt
-/// firing on its own later from wherever NativeAutoTrackEngine happens to
-/// start monitoring. Deliberately asks for When In Use, not Always: iOS
-/// shows the same first-ask sheet either way, but leading with the
-/// broader "Always" request reads as more invasive and is more likely to
-/// be declined outright. The upgrade to Always is asked for later, once
-/// automatic tracking has actually proven itself.
+/// Requests location access from a dedicated onboarding step, primed by an
+/// explanation screen rather than a system prompt appearing unexpectedly.
+/// iOS requires the When In Use grant before the user can explicitly upgrade
+/// Okkle to Always, which automatic tracking needs to relaunch in background.
 final class NativeOnboardingLocationRequester: NSObject, ObservableObject, CLLocationManagerDelegate {
-  enum Outcome { case granted, denied }
+  enum Outcome { case needsAlways, granted, denied }
 
   @Published var outcome: Outcome?
 
   private let manager = CLLocationManager()
-  private var isRequesting = false
 
   override init() {
     super.init()
@@ -38,9 +33,10 @@ final class NativeOnboardingLocationRequester: NSObject, ObservableObject, CLLoc
   func request() {
     switch manager.authorizationStatus {
     case .notDetermined:
-      isRequesting = true
       manager.requestWhenInUseAuthorization()
-    case .authorizedAlways, .authorizedWhenInUse:
+    case .authorizedWhenInUse:
+      manager.requestAlwaysAuthorization()
+    case .authorizedAlways:
       outcome = .granted
     case .denied, .restricted:
       outcome = .denied
@@ -49,19 +45,25 @@ final class NativeOnboardingLocationRequester: NSObject, ObservableObject, CLLoc
     }
   }
 
+  var hasAlwaysAuthorization: Bool {
+    outcome == .granted
+  }
+
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-    guard isRequesting else { return }
-    switch manager.authorizationStatus {
-    case .authorizedAlways, .authorizedWhenInUse:
-      isRequesting = false
+    updateOutcome(for: manager.authorizationStatus)
+  }
+
+  private func updateOutcome(for status: CLAuthorizationStatus) {
+    switch status {
+    case .authorizedAlways:
       outcome = .granted
+    case .authorizedWhenInUse:
+      outcome = .needsAlways
     case .denied, .restricted:
-      isRequesting = false
       outcome = .denied
     case .notDetermined:
-      break
+      outcome = nil
     @unknown default:
-      isRequesting = false
       outcome = .denied
     }
   }
@@ -520,7 +522,7 @@ struct NativeOnboardingView: View {
                 Text("Enhanced automatic tracking")
                   .font(.system(size: 17, weight: .bold))
                   .foregroundStyle(autoTrackTrips ? OkkleColor.ink : OkkleColor.muted)
-                Text("Uses CarPlay and car Bluetooth signals to improve accuracy and end trips sooner.")
+                Text("Uses the system Car Audio route, including CarPlay audio, to improve accuracy and end trips sooner.")
                   .font(.system(size: 13, weight: .semibold))
                   .foregroundStyle(OkkleColor.muted)
               }
@@ -560,7 +562,7 @@ struct NativeOnboardingView: View {
           VStack(alignment: .leading, spacing: 14) {
             NativeOnboardingBullet(symbol: "1.circle.fill", title: "Tap \"Allow location access\" below")
             NativeOnboardingBullet(symbol: "2.circle.fill", title: "iOS will ask to confirm - choose \"Allow While Using App\"")
-            NativeOnboardingBullet(symbol: "3.circle.fill", title: "We'll ask to upgrade to \"Always Allow\" later, once tracking's proven useful")
+            NativeOnboardingBullet(symbol: "3.circle.fill", title: "Then allow background tracking so Okkle can catch trips when closed")
           }
         }
 
@@ -592,12 +594,35 @@ struct NativeOnboardingView: View {
           .padding(14)
           .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
+        case .needsAlways:
+          VStack(alignment: .leading, spacing: 12) {
+            Text("Background access is still needed before automatic tracking can run reliably.")
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(OkkleColor.ink)
+            Button {
+              locationRequester.request()
+            } label: {
+              Label("Allow background tracking", systemImage: "location.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            Text("Continuing without Always access will leave automatic tracking off. Manual trip recording will still work.")
+              .font(.system(size: 12, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+          }
+          .padding(14)
+          .background(OkkleColor.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
         case .denied:
           VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
               Image(systemName: "location.slash.fill")
                 .foregroundStyle(OkkleColor.amber)
-              Text("Location is off. Automatic tracking needs it to work.")
+              Text("Location is off. Automatic tracking will stay off until Always access is enabled.")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(OkkleColor.ink)
             }
@@ -874,6 +899,10 @@ struct NativeOnboardingView: View {
   private func advance() {
     guard canContinue,
           var next = NativeOnboardingStep(rawValue: step.rawValue + 1) else { return }
+    if step == .locationPermission, !locationRequester.hasAlwaysAuthorization {
+      autoTrackTrips = false
+      enhancedAutoTracking = false
+    }
     // No point asking for location access for a feature the driver just
     // turned off on the step before.
     if next == .locationPermission, !autoTrackTrips,
@@ -897,14 +926,15 @@ struct NativeOnboardingView: View {
   private func finish(destination: NativeTab) {
     hideKeyboard()
     selectedTab = destination
+    let automaticTrackingEnabled = autoTrackTrips && locationRequester.hasAlwaysAuthorization
     store.completeOnboarding(
       name: name,
       defaultVehicle: vehicle,
       platforms: orderedPlatforms,
       region: region,
       incomeBracket: incomeBracket,
-      autoTrackTrips: autoTrackTrips,
-      enhancedAutoTracking: autoTrackTrips && enhancedAutoTracking,
+      autoTrackTrips: automaticTrackingEnabled,
+      enhancedAutoTracking: automaticTrackingEnabled && enhancedAutoTracking,
       workingDays: workingDays
     )
     if iCloudSyncEnabled {

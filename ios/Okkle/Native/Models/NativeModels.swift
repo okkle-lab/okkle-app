@@ -130,6 +130,84 @@ func nativeIsPlausibleRoutePoint(
   return distance / elapsed <= maxImpliedSpeedMetersPerSecond
 }
 
+enum NativeTripLocationRejectionReason: String, Equatable {
+  case stale
+  case beforeTrip
+  case invalidAccuracy
+  case inaccurate
+  case outOfOrder
+  case implausibleSpeed
+
+  var diagnosticLabel: String {
+    switch self {
+    case .stale: return "stale timestamp"
+    case .beforeTrip: return "timestamp before trip start"
+    case .invalidAccuracy: return "invalid accuracy"
+    case .inaccurate: return "accuracy over 65 m"
+    case .outOfOrder: return "out-of-order timestamp"
+    case .implausibleSpeed: return "implausible movement speed"
+    }
+  }
+}
+
+func nativeTripLocationRejectionReason(
+  _ location: CLLocation,
+  since previous: CLLocation?,
+  now: Date = Date(),
+  maximumAge: TimeInterval = 30,
+  earliestTimestamp: Date? = nil,
+  maxAccuracyMeters: CLLocationDistance = 65,
+  maxImpliedSpeedMetersPerSecond: Double = 45
+) -> NativeTripLocationRejectionReason? {
+  let age = now.timeIntervalSince(location.timestamp)
+  guard age <= maximumAge, age > -30 else { return .stale }
+  if let earliestTimestamp, location.timestamp < earliestTimestamp { return .beforeTrip }
+  guard location.horizontalAccuracy >= 0 else { return .invalidAccuracy }
+  guard location.horizontalAccuracy <= maxAccuracyMeters else { return .inaccurate }
+  guard let previous else { return nil }
+  guard location.timestamp > previous.timestamp else { return .outOfOrder }
+
+  let elapsed = location.timestamp.timeIntervalSince(previous.timestamp)
+  let distance = location.distance(from: previous)
+  guard distance / elapsed <= maxImpliedSpeedMetersPerSecond else { return .implausibleSpeed }
+  return nil
+}
+
+/// A location used for mileage must meet the same quality bar as a location
+/// drawn on the route. Keeping these paths aligned prevents mileage from
+/// advancing through coarse fixes while the map is left with only a handful
+/// of accurate vertices.
+func nativeShouldAcceptTripLocation(
+  _ location: CLLocation,
+  since previous: CLLocation?,
+  now: Date = Date(),
+  maximumAge: TimeInterval = 30,
+  earliestTimestamp: Date? = nil
+) -> Bool {
+  nativeTripLocationRejectionReason(
+    location,
+    since: previous,
+    now: now,
+    maximumAge: maximumAge,
+    earliestTimestamp: earliestTimestamp
+  ) == nil
+}
+
+/// When iOS leaves a large hole in the sampled route, a straight polyline is
+/// not evidence of the streets actually driven. Start a new visible run so
+/// the map shows an honest gap instead of cutting across several blocks.
+func nativeRouteSegmentNeedsBreak(
+  from previous: CLLocation,
+  to current: CLLocation,
+  maximumSegmentDistance: CLLocationDistance = 250,
+  maximumSamplingGap: TimeInterval = 45
+) -> Bool {
+  let elapsed = current.timestamp.timeIntervalSince(previous.timestamp)
+  guard elapsed > 0 else { return true }
+  let distance = current.distance(from: previous)
+  return distance > maximumSegmentDistance || (elapsed > maximumSamplingGap && distance > 80)
+}
+
 struct RoutePoint: Identifiable, Codable, Equatable {
   var id = UUID()
   var latitude: Double
@@ -216,6 +294,7 @@ struct RoutePoint: Identifiable, Codable, Equatable {
 struct NativeRecord: Identifiable, Codable, Equatable {
   var id = UUID()
   var legacyID: String? = nil
+  var updatedAt: Date? = nil
   var kind: NativeLogKind
   var platform: String?
   var vehicle: NativeVehicle?
@@ -235,6 +314,7 @@ struct NativeRecord: Identifiable, Codable, Equatable {
 struct NativeTrip: Identifiable, Codable, Equatable {
   var id = UUID()
   var legacyID: String? = nil
+  var updatedAt: Date? = nil
   var vehicle: NativeVehicle
   var miles: Double
   var deduction: Double
@@ -388,7 +468,7 @@ struct NativeSettings: Codable, Equatable {
   // index) on which trips auto-start; default is every day.
   var autoTrackTrips = true
   // Adds stronger vehicle signals to automatic tracking. When enabled, Okkle
-  // can use CarPlay / car Bluetooth disconnects and saved Home arrival to end
+  // can use Car Audio disconnects and saved Home arrival to end
   // trips with less GPS tail.
   var enhancedAutoTracking = true
   // Opt-in voice automation: lets Siri and Shortcuts start or resume tracking
@@ -469,10 +549,59 @@ struct NativeSettings: Codable, Equatable {
   }
 }
 
+struct NativeDeletionTombstone: Codable, Equatable {
+  var id: UUID
+  var deletedAt: Date
+}
+
 struct NativeSnapshot: Codable {
   var settings: NativeSettings
   var records: [NativeRecord]
   var trips: [NativeTrip]
+  var settingsUpdatedAt: Date?
+  var recordTombstones: [NativeDeletionTombstone]
+  var tripTombstones: [NativeDeletionTombstone]
+
+  init(
+    settings: NativeSettings,
+    records: [NativeRecord],
+    trips: [NativeTrip],
+    settingsUpdatedAt: Date? = nil,
+    recordTombstones: [NativeDeletionTombstone] = [],
+    tripTombstones: [NativeDeletionTombstone] = []
+  ) {
+    self.settings = settings
+    self.records = records
+    self.trips = trips
+    self.settingsUpdatedAt = settingsUpdatedAt
+    self.recordTombstones = recordTombstones
+    self.tripTombstones = tripTombstones
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case settings
+    case records
+    case trips
+    case settingsUpdatedAt
+    case recordTombstones
+    case tripTombstones
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    settings = try container.decode(NativeSettings.self, forKey: .settings)
+    records = try container.decode([NativeRecord].self, forKey: .records)
+    trips = try container.decode([NativeTrip].self, forKey: .trips)
+    settingsUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .settingsUpdatedAt)
+    recordTombstones = try container.decodeIfPresent(
+      [NativeDeletionTombstone].self,
+      forKey: .recordTombstones
+    ) ?? []
+    tripTombstones = try container.decodeIfPresent(
+      [NativeDeletionTombstone].self,
+      forKey: .tripTombstones
+    ) ?? []
+  }
 }
 
 struct NativeBackupPayload: Codable {

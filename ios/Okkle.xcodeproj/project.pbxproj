@@ -33,7 +33,6 @@
 		8AC319BFA10D96F07E2BAB00 /* NativePdfDocumentRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FCB2220388F7D57B4A3CEF3 /* NativePdfDocumentRenderer.swift */; };
 		9F88AF1F7A4C49F6A7D0F841 /* NativeLegacySQLiteExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */; };
 		A1C4F9022D68000000000002 /* OkkleSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9012D68000000000001 /* OkkleSceneDelegate.swift */; };
-		A1C4F9052D68000000000005 /* OkkleCarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */; };
 		A1C4F9072D68000000000007 /* NativeTripSiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4F9062D68000000000006 /* NativeTripSiriIntents.swift */; };
 		A1CB806BF18308E2190819CF /* NativeAutoShiftReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF39469B146AB6A7CF2E14D /* NativeAutoShiftReview.swift */; };
 		A231C60E0E6944FC916AB873 /* NativeMedalEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */; };
@@ -159,7 +158,6 @@
 		9F1849BD5F1081CEED880ACC /* NativeTripSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSession.swift; sourceTree = "<group>"; };
 		9F88AF1E7A4C49F6A7D0F840 /* NativeLegacySQLiteExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacySQLiteExporter.swift; sourceTree = "<group>"; };
 		A1C4F9012D68000000000001 /* OkkleSceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleSceneDelegate.swift; sourceTree = "<group>"; };
-		A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OkkleCarPlaySceneDelegate.swift; sourceTree = "<group>"; };
 		A1C4F9062D68000000000006 /* NativeTripSiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTripSiriIntents.swift; sourceTree = "<group>"; };
 		A231C60D0E6944FC916AB872 /* NativeMedalEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMedalEngine.swift; sourceTree = "<group>"; };
 		A518F044C9990A704AFED4C2 /* NativeTaxSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTaxSummaryView.swift; sourceTree = "<group>"; };
@@ -348,7 +346,6 @@
 			isa = PBXGroup;
 			children = (
 				7BD06F6BB66F1C538D7B0306 /* App */,
-				A1C4F9032D68000000000003 /* CarPlay */,
 				E54D23970403319F95166248 /* Components */,
 				50589A9E67C0D991FED09AC1 /* Export */,
 				0FAF8CA30B915234260C4D80 /* Home */,
@@ -440,14 +437,6 @@
 				1A407DAF5733F81FA8B3EFCD /* NativeTripView.swift */,
 			);
 			path = Trip;
-			sourceTree = "<group>";
-		};
-		A1C4F9032D68000000000003 /* CarPlay */ = {
-			isa = PBXGroup;
-			children = (
-				A1C4F9042D68000000000004 /* OkkleCarPlaySceneDelegate.swift */,
-			);
-			path = CarPlay;
 			sourceTree = "<group>";
 		};
 		A7C000000000000000000060 /* OkkleWatch */ = {
@@ -650,7 +639,6 @@
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				A1C4F9022D68000000000002 /* OkkleSceneDelegate.swift in Sources */,
-				A1C4F9052D68000000000005 /* OkkleCarPlaySceneDelegate.swift in Sources */,
 				EEF0E7F2C444B59A63FFAE1E /* NativeSupport.swift in Sources */,
 				EFB29A0C18DB58B2B7065BD1 /* NativeModels.swift in Sources */,
 				3BB846212B22596820BA8297 /* NativeHistoryItem.swift in Sources */,
@@ -759,14 +747,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Okkle/Okkle.entitlements;
-				CURRENT_PROJECT_VERSION = 81;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 22S8J5SFT8;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Okkle/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.4;
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app;
 				PRODUCT_NAME = Okkle;
@@ -784,13 +772,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Okkle/Okkle.entitlements;
-				CURRENT_PROJECT_VERSION = 81;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 22S8J5SFT8;
 				INFOPLIST_FILE = Okkle/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.4;
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app;
 				PRODUCT_NAME = Okkle;
@@ -911,7 +899,7 @@
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 81;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 22S8J5SFT8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Okkle;
@@ -919,7 +907,7 @@
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = okklelab.app;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -938,7 +926,7 @@
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 81;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 22S8J5SFT8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Okkle;
@@ -946,7 +934,7 @@
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = okklelab.app;
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -965,13 +953,13 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = OkkleWidget/OkkleWidget.entitlements;
-				CURRENT_PROJECT_VERSION = 81;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 22S8J5SFT8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OkkleWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -989,13 +977,13 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = OkkleWidget/OkkleWidget.entitlements;
-				CURRENT_PROJECT_VERSION = 81;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 22S8J5SFT8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OkkleWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = okklelab.app.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1011,7 +999,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 81;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 22S8J5SFT8;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
@@ -1029,7 +1017,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 81;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 22S8J5SFT8;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.4;

@@ -43,6 +43,7 @@ struct OkkleNativeRootView: View {
   @StateObject private var store = OkkleStore.shared
   @ObservedObject private var notificationRouter = NativeNotificationRouter.shared
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
+  @ObservedObject private var tripSession = NativeTripSession.shared
   @State private var selectedTab: NativeTab = .trip
   @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
   @State private var showSettings = false
@@ -76,6 +77,7 @@ struct OkkleNativeRootView: View {
       routeAutomaticTripIfNeeded()
       routeManualTripStopPromptIfNeeded()
       routeManualTripAutoCompletedIfNeeded()
+      updateSidebarForTripPresentation()
     }
     .onChange(of: store.settings.hasCompletedOnboarding) { completed in
       if completed {
@@ -156,6 +158,13 @@ struct OkkleNativeRootView: View {
     .onChange(of: autoTrack.shiftPhase) { _ in
       routeAutomaticTripIfNeeded()
       NativePreShiftNotifier.refresh(store: store)
+      updateSidebarForTripPresentation()
+    }
+    .onChange(of: tripSession.phase) { _ in
+      updateSidebarForTripPresentation()
+    }
+    .onChange(of: selectedTab) { _ in
+      updateSidebarForTripPresentation()
     }
   }
 
@@ -241,7 +250,18 @@ struct OkkleNativeRootView: View {
     .id("okkle-main-tabs-trip-log-insights-records-tax")
   }
 
+  @ViewBuilder
   private var iPadSidebarApp: some View {
+    if isTripRecordingPresentation {
+      iPadNavigationSplitView
+        .navigationSplitViewStyle(.prominentDetail)
+    } else {
+      iPadNavigationSplitView
+        .navigationSplitViewStyle(.balanced)
+    }
+  }
+
+  private var iPadNavigationSplitView: some View {
     NavigationSplitView(columnVisibility: $sidebarVisibility) {
       NativeSidebar(
         selectedTab: $selectedTab,
@@ -258,11 +278,26 @@ struct OkkleNativeRootView: View {
         .environment(\.nativeUsesSidebarNavigation, true)
         .environment(\.nativeSidebarAvoidanceInset, sidebarAvoidanceInset)
     }
-    .navigationSplitViewStyle(.balanced)
   }
 
   private var sidebarAvoidanceInset: CGFloat {
-    sidebarVisibility == .detailOnly ? 0 : NativeSidebarMetrics.avoidanceInset
+    if isTripRecordingPresentation { return 0 }
+    return sidebarVisibility == .detailOnly ? 0 : NativeSidebarMetrics.avoidanceInset
+  }
+
+  private var isTripRecordingPresentation: Bool {
+    usesSidebarNavigation &&
+      selectedTab == .trip &&
+      (tripSession.phase != .setup || autoTrack.shiftPhase != .idle)
+  }
+
+  private func updateSidebarForTripPresentation() {
+    guard usesSidebarNavigation else { return }
+    if isTripRecordingPresentation {
+      sidebarVisibility = .detailOnly
+    } else {
+      sidebarVisibility = .all
+    }
   }
 
   @ViewBuilder
@@ -333,9 +368,19 @@ private struct NativeSidebar: View {
             selectedTab = tab
           } label: {
             Label(tab.label, systemImage: tab.symbol)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 12)
+              .padding(.vertical, 10)
+              .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                  .fill(selectedTab == tab ? OkkleColor.brand.opacity(0.12) : Color.clear)
+              }
+              .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
           }
+          .buttonStyle(.plain)
           .foregroundStyle(selectedTab == tab ? OkkleColor.brand : Color.primary)
-          .listRowBackground(selectedTab == tab ? OkkleColor.brand.opacity(0.12) : Color.clear)
+          .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
+          .listRowBackground(Color.clear)
         }
       }
 
