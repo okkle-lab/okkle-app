@@ -3,19 +3,6 @@ import SwiftUI
 
 let nativeInsightPromptAnimation = Animation.spring(response: 0.46, dampingFraction: 0.72, blendDuration: 0.08)
 
-let nativeAIAccentPink = Color(red: 1.00, green: 0.22, blue: 0.72)
-let nativeAIAccentPurple = Color(red: 0.55, green: 0.30, blue: 1.00)
-let nativeAIAccentGradient = LinearGradient(
-  colors: [nativeAIAccentPink, nativeAIAccentPurple],
-  startPoint: .topLeading,
-  endPoint: .bottomTrailing
-)
-let nativeAIAccentHorizontalGradient = LinearGradient(
-  colors: [nativeAIAccentPink, nativeAIAccentPurple],
-  startPoint: .leading,
-  endPoint: .trailing
-)
-
 enum NativeInsightPeriod: Int, CaseIterable, Identifiable {
   case today, week, month, year
 
@@ -64,6 +51,7 @@ struct NativeInsightPeriodTabs: View {
       }
     }
     .pickerStyle(.segmented)
+    .controlSize(.large)
   }
 }
 
@@ -132,13 +120,15 @@ struct NativeShiftPatternsCard: View {
   }
 
   var body: some View {
-    // Full panels only once confidence is genuinely High — Medium ("good
-    // read") is still shaky enough that presenting it as a confident
-    // recommendation risks sending someone to the wrong place at the
-    // wrong time. Below High, show the building state instead, even
-    // though shift.hasData would already be true well before then.
-    if shift.confidence == .high {
-      VStack(alignment: .leading, spacing: 14) {
+    // Show useful early reads as soon as a delivery can be inferred. Confidence
+    // remains visible while the same model continues building toward a solid
+    // pattern; low-confidence copy stays exploratory rather than prescriptive.
+    if shift.hasData {
+      VStack(alignment: .leading, spacing: 24) {
+        if shift.confidence != .high {
+          learningStatus
+        }
+
         NativeInsightPeriodTabs(period: $period)
 
         TabView(selection: $period) {
@@ -190,6 +180,49 @@ struct NativeShiftPatternsCard: View {
     }
   }
 
+  private var learningStatus: some View {
+    NativeAiCard {
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 10) {
+          Label("Improving your insights", systemImage: "chart.line.uptrend.xyaxis")
+            .font(.headline)
+            .foregroundStyle(.primary)
+          Spacer(minLength: 8)
+          Text("\(Int((buildingProgress * 100).rounded()))%")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+        }
+        ProgressView(value: buildingProgress)
+          .progressViewStyle(.linear)
+          .tint(OkkleColor.brand)
+          .animation(.easeInOut(duration: 0.35), value: buildingProgress)
+          .accessibilityLabel("Insight quality")
+          .accessibilityValue("\(Int((buildingProgress * 100).rounded())) percent")
+        Text(learningStatusLabel)
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(.secondary)
+        Text(learningStatusDetail)
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
+  private var learningStatusLabel: String {
+    buildingProgress >= 1
+      ? "Validating your pattern before marking it solid"
+      : "\(shift.confidence.tag.capitalized) while the full pattern builds"
+  }
+
+  private var learningStatusDetail: String {
+    let dayLabel = shift.activeDays == 1 ? "day" : "days"
+    if shift.confidence == .medium {
+      return "Useful estimates are available now. Okkle is checking them across more shifts before calling the pattern solid."
+    }
+    return "Based on \(shift.deliveries) deliveries across \(shift.activeDays) active \(dayLabel). These early estimates will adjust as more trips are tracked."
+  }
+
   /// A brand-new driver has no visits at all yet, so the normal background
   /// exploration (triggered by real passive visits) has nothing to run from.
   /// Seed it once so the cold-start card can still offer a tentative "worth
@@ -208,56 +241,56 @@ struct NativeShiftPatternsCard: View {
   }
 
   private var offState: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 12) {
       Text("Know exactly when and where to work")
-        .font(.system(size: 22, weight: .bold, design: .rounded))
-        .foregroundStyle(OkkleColor.ink)
+        .font(.title2.bold())
+        .foregroundStyle(.primary)
       Text("Enable automatic tracking in Settings so Okkle can learn your best times and areas passively.")
-        .font(.system(size: 15, weight: .medium))
-        .foregroundStyle(OkkleColor.muted)
+        .font(.body)
+        .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
   }
 
-  /// Cold start: sensible built-in guidance so a day-1 driver still gets
-  /// something useful while their own pattern accrues. Clearly generic.
-  /// Covers everything below medium confidence — zero deliveries all the
-  /// way through a handful of shaky ones — with a progress bar so it
-  /// reads as "still building" rather than "broken" or "empty".
+  /// Cold start: sensible built-in guidance before the first usable delivery
+  /// exists. Once real data is available, the live panels replace this card
+  /// even while their confidence is still low.
   private var buildingState: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      VStack(alignment: .leading, spacing: 3) {
+    VStack(alignment: .leading, spacing: 24) {
+      VStack(alignment: .leading, spacing: 6) {
         Text("Learning your week")
-          .font(.system(size: 22, weight: .bold, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
+          .font(.title2.bold())
+          .foregroundStyle(.primary)
         Text("This fills in automatically as you drive.")
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
+          .font(.body)
+          .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
-      VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: 12) {
         HStack {
-          Text("BUILDING YOUR INSIGHTS")
-            .font(.system(size: 12, weight: .heavy)).tracking(0.5)
-            .foregroundStyle(OkkleColor.muted)
+          Text("Building your insights")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
           Spacer()
           Text("\(Int((buildingProgress * 100).rounded()))%")
-            .font(.system(size: 12, weight: .heavy))
-            .foregroundStyle(nativeAIAccentGradient)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
         }
-        NativeAIProgressBar(progress: buildingProgress)
+        ProgressView(value: buildingProgress)
+          .progressViewStyle(.linear)
+          .tint(OkkleColor.brand)
         // The real heat map, mid-build — your own tracked routes and
         // whatever zones have formed so far, however sparse. As it fills
         // in, this is the same map that shows on the finished panels; a
         // fake progress visual would say "trust me", this actually shows it.
         NativeShiftMapRepresentable(trips: trips, zones: shift.zones, interactive: false, pinLimit: 3)
           .frame(height: 150)
-          .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+          .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
           .allowsHitTesting(false)
         Text(buildingSubtitle)
-          .font(.system(size: 12, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
 
@@ -278,11 +311,14 @@ struct NativeShiftPatternsCard: View {
   /// (20+ deliveries, 8+ distinct days, spread across at least two weeks —
   /// full panels now wait for High, not just Medium) — whichever of the
   /// three is further from being met is the real bottleneck, so progress
-  /// is capped at the smallest ratio rather than averaged.
+  /// is capped at the smallest ratio rather than averaged. daySpan is an
+  /// elapsed-day difference, so count its first calendar day inclusively;
+  /// otherwise a real first-day insight would misleadingly remain at 0%.
   private var buildingProgress: Double {
     let deliveryProgress = min(Double(shift.deliveries) / 20.0, 1.0)
     let dayProgress = min(Double(shift.activeDays) / 8.0, 1.0)
-    let spanProgress = min(Double(shift.daySpan) / 14.0, 1.0)
+    let inclusiveSpan = shift.activeDays > 0 ? shift.daySpan + 1 : 0
+    let spanProgress = min(Double(inclusiveSpan) / 14.0, 1.0)
     return min(deliveryProgress, dayProgress, spanProgress)
   }
 
@@ -317,7 +353,7 @@ struct NativeShiftPatternsCard: View {
       HStack(spacing: 12) {
         Image(systemName: "sparkle.magnifyingglass")
           .font(.system(size: 16, weight: .semibold))
-          .foregroundStyle(OkkleColor.muted)
+          .foregroundStyle(OkkleColor.brand)
           .frame(width: 24)
         VStack(alignment: .leading, spacing: 1) {
           Text("Worth trying: \(candidate.name)")
@@ -332,9 +368,8 @@ struct NativeShiftPatternsCard: View {
           .font(.system(size: 12, weight: .bold))
           .foregroundStyle(OkkleColor.muted)
       }
-      .padding(.vertical, 10)
-      .padding(.horizontal, 10)
-      .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+      .padding(.vertical, 12)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
   }
@@ -347,7 +382,7 @@ struct NativeShiftPatternsCard: View {
     HStack(spacing: 12) {
       Image(systemName: "sparkle.magnifyingglass")
         .font(.system(size: 16, weight: .semibold))
-        .foregroundStyle(OkkleColor.muted)
+        .foregroundStyle(OkkleColor.brand)
         .frame(width: 24)
       VStack(alignment: .leading, spacing: 1) {
         Text("Still looking for a standout area")
@@ -359,9 +394,7 @@ struct NativeShiftPatternsCard: View {
       }
       Spacer(minLength: 0)
     }
-    .padding(.vertical, 10)
-    .padding(.horizontal, 10)
-    .background(OkkleColor.muted.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .padding(.vertical, 12)
   }
 
   /// Hands the candidate straight to Apple Maps rather than trying to build
@@ -377,7 +410,7 @@ struct NativeShiftPatternsCard: View {
       HStack(spacing: 12) {
         Image(systemName: symbol)
           .font(.system(size: 16, weight: .semibold))
-          .foregroundStyle(nativeAIAccentGradient)
+          .foregroundStyle(OkkleColor.brand)
           .frame(width: 24)
         VStack(alignment: .leading, spacing: 1) {
           Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(OkkleColor.ink)
@@ -385,7 +418,7 @@ struct NativeShiftPatternsCard: View {
         }
         Spacer(minLength: 0)
       }
-      .padding(.vertical, 10)
+      .padding(.vertical, 12)
       if divider { Divider().padding(.leading, 36) }
     }
   }
@@ -402,13 +435,13 @@ struct NativeDailyInsightPanel: View {
   @State private var generatedNarrative: NativeInsightNarrative?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 24) {
       if let plan = shift.todayPlan {
         let narrativeContext = narrativeContext(for: plan)
         let narrative = generatedNarrative ?? narrativeContext.fallback
         // Panel 1 — WHEN: the one thing to do, plus the busy shape of the day.
         NativeAiCard {
-          VStack(alignment: .leading, spacing: 16) {
+          VStack(alignment: .leading, spacing: 20) {
             heroSection(plan, narrative: narrative)
             Divider()
             narrativeLine(text: narrative.summary)
@@ -421,9 +454,9 @@ struct NativeDailyInsightPanel: View {
             }
             VStack(alignment: .leading, spacing: 8) {
               HStack {
-                Text("WHEN IT'S BUSY")
-                  .font(.system(size: 12, weight: .heavy)).tracking(0.5)
-                  .foregroundStyle(OkkleColor.muted)
+                Text("When it's busy")
+                  .font(.subheadline.weight(.semibold))
+                  .foregroundStyle(.secondary)
                 Spacer()
                 NativeBusyLegend()
               }
@@ -440,7 +473,7 @@ struct NativeDailyInsightPanel: View {
         // Panel 2 — WHERE: your best patches for today (the heat map itself now
         // lives on the Monthly/Yearly overviews).
         NativeAiCard {
-          section("WHERE TO GO") {
+          section("Where to go") {
             NativeTopAreasList(zones: shift.zones, limit: 3)
           }
         }
@@ -456,10 +489,10 @@ struct NativeDailyInsightPanel: View {
   }
 
   private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 14) {
       Text(title)
-        .font(.system(size: 12, weight: .heavy)).tracking(0.5)
-        .foregroundStyle(OkkleColor.muted)
+        .font(.headline)
+        .foregroundStyle(.primary)
       content()
     }
   }
@@ -467,20 +500,9 @@ struct NativeDailyInsightPanel: View {
   /// How sure Okkle is, as a labelled chip (not a menu) — signal bars + words so
   /// it reads as "how much data is behind this", not a tappable control.
   private var confidenceChip: some View {
-    HStack(spacing: 5) {
-      HStack(alignment: .bottom, spacing: 1.5) {
-        ForEach(0..<3, id: \.self) { i in
-          RoundedRectangle(cornerRadius: 0.5)
-            .fill(i < shift.confidence.dots ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.muted.opacity(0.25)))
-            .frame(width: 3, height: 4 + CGFloat(i) * 3)
-        }
-      }
-      Text("Confidence: \(shift.confidence.level)")
-        .font(.system(size: 10, weight: .heavy)).tracking(0.3)
-        .foregroundStyle(OkkleColor.muted)
-    }
-    .padding(.horizontal, 8).padding(.vertical, 4)
-    .background(OkkleColor.muted.opacity(0.08), in: Capsule())
+    Label("\(shift.confidence.level) confidence", systemImage: "chart.bar.fill")
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
     .accessibilityLabel("Confidence: \(shift.confidence.level)")
   }
 
@@ -488,7 +510,7 @@ struct NativeDailyInsightPanel: View {
     HStack(alignment: .top, spacing: 10) {
       Image(systemName: "sparkles")
         .font(.system(size: 15, weight: .bold))
-        .foregroundStyle(nativeAIAccentGradient)
+        .foregroundStyle(OkkleColor.brand)
         .padding(.top, 1)
       Text(text)
         .font(.system(size: 14, weight: .medium))
@@ -509,22 +531,22 @@ struct NativeDailyInsightPanel: View {
 
   private func heroSection(_ plan: NativeDayPlan, narrative: NativeInsightNarrative) -> some View {
     let hero = defaultHeroContent(plan)
-    return VStack(alignment: .leading, spacing: 7) {
+    return VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 7) {
         Text(plan.isToday ? "TODAY · \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())"
                           : "NEXT: \(Calendar.current.weekdaySymbols[plan.weekday].uppercased())")
-          .font(.system(size: 12, weight: .heavy)).tracking(0.5)
+          .font(.subheadline.weight(.semibold))
           .foregroundStyle(hero.color)
         Spacer()
         confidenceChip
       }
       Text(narrative.headline)
-        .font(.system(size: 27, weight: .bold, design: .rounded))
-        .foregroundStyle(OkkleColor.ink)
+        .font(.title2.bold())
+        .foregroundStyle(.primary)
         .fixedSize(horizontal: false, vertical: true)
       Text(narrative.detail)
-        .font(.system(size: 15, weight: .medium))
-        .foregroundStyle(OkkleColor.muted)
+        .font(.body)
+        .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
   }
@@ -547,7 +569,7 @@ struct NativeDailyInsightPanel: View {
     // 1. Big night: bad weather on one of your strong days.
     if !boost.isEmpty, strongDay, let peak {
       let cond = wet ? "Wet" : "Cold"
-      return ("flame.fill", AnyShapeStyle(nativeAIAccentGradient),
+      return ("flame.fill", AnyShapeStyle(OkkleColor.brand),
               plan.isToday ? "Tonight could be a big one" : "\(dayName) could be a big one",
               "\(cond) on one of your strong days — \(peak.label)\(near) tends to pay best.")
     }
@@ -556,14 +578,14 @@ struct NativeDailyInsightPanel: View {
       let hour = Calendar.current.component(.hour, from: Date())
       // 2. In a busy window right now.
       if let current = plan.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
-        return ("bolt.fill", AnyShapeStyle(nativeAIAccentGradient),
+        return ("bolt.fill", AnyShapeStyle(OkkleColor.brand),
                 "Good time to be out",
                 area.map { "Busy till \(nativeHourLabel(current.endHour + 1))\(soft ? "" : " around \($0)")." } ?? "Busy till \(nativeHourLabel(current.endHour + 1)).")
       }
       // 3. A window still ahead today.
       if let next = plan.driveWindows.first(where: { $0.startHour > hour }) {
         let boostNote = boost.isEmpty ? "" : (wet ? " Rain should help." : " Cold should help.")
-        return ("figure.walk.arrival", AnyShapeStyle(nativeAIAccentGradient),
+        return ("figure.walk.arrival", AnyShapeStyle(OkkleColor.brand),
                 "Great to be out for \(nativeHourLabel(next.startHour))",
                 "\(next.label)\(near) \(soft ? "looks like" : "is usually") your strongest.\(boostNote)")
       }
@@ -575,7 +597,7 @@ struct NativeDailyInsightPanel: View {
 
     // 5. Planning ahead for the next working day.
     if let peak {
-      return ("calendar", AnyShapeStyle(nativeAIAccentGradient),
+      return ("calendar", AnyShapeStyle(OkkleColor.brand),
               "\(dayName) looks best from \(nativeHourLabel(peak.startHour))",
               "\(peak.label)\(near) \(soft ? "looks" : "is usually") strongest.")
     }
@@ -718,7 +740,7 @@ struct NativePlatformShareList: View {
         HStack(spacing: 12) {
           Image(systemName: nativePlatformSymbol(share.platform))
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(nativeAIAccentGradient)
+            .foregroundStyle(OkkleColor.brand)
             .frame(width: 24)
           Text(share.platform)
             .font(.system(size: 16, weight: .semibold))
@@ -727,13 +749,13 @@ struct NativePlatformShareList: View {
           if let delta = share.deltaPct {
             Image(systemName: delta > 0 ? "arrow.up.right" : "arrow.down.right")
               .font(.system(size: 12, weight: .bold))
-              .foregroundStyle(delta > 0 ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.muted))
+              .foregroundStyle(delta > 0 ? AnyShapeStyle(OkkleColor.brand) : AnyShapeStyle(OkkleColor.muted))
           }
           Text("\(share.sharePct)%")
             .font(.system(size: 16, weight: .bold, design: .rounded))
             .foregroundStyle(OkkleColor.ink)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 14)
         if index < shares.count - 1 { Divider() }
       }
     }
@@ -770,7 +792,7 @@ struct NativeWeeklyInsightPanel: View {
 
     let reliability = shift.weekdayReliability[wd]
 
-    return VStack(alignment: .leading, spacing: 12) {
+    return VStack(alignment: .leading, spacing: 16) {
       HStack(alignment: .firstTextBaseline) {
         Text(name)
           .font(.system(size: 18, weight: .bold))
@@ -778,7 +800,7 @@ struct NativeWeeklyInsightPanel: View {
         if let reliability {
           Text(reliability == .reliable ? "Reliable" : "Hit or miss")
             .font(.system(size: 10, weight: .heavy)).tracking(0.3)
-            .foregroundStyle(reliability == .reliable ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.amber))
+            .foregroundStyle(reliability == .reliable ? AnyShapeStyle(OkkleColor.brand) : AnyShapeStyle(OkkleColor.amber))
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background((reliability == .reliable ? OkkleColor.brand : OkkleColor.amber).opacity(0.14), in: Capsule())
         }
@@ -812,7 +834,7 @@ struct NativeWeeklyInsightPanel: View {
     HStack(spacing: 10) {
       Image(systemName: symbol)
         .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(nativeAIAccentGradient)
+        .foregroundStyle(OkkleColor.brand)
         .frame(width: 20)
       Text(label)
         .font(.system(size: 14, weight: .medium))
@@ -836,12 +858,17 @@ struct NativeWeeklyInsightPanel: View {
   /// One specific, actionable line — grounded in the driver's own busiest area
   /// and time — that replaces the vague generic warning where we can.
   private var specificAdvice: (symbol: String, color: AnyShapeStyle, text: String)? {
+    if shift.confidence == .low {
+      guard let spot = topSpot else { return nil }
+      return ("sparkles", AnyShapeStyle(OkkleColor.brand),
+              "Early pattern: \(spot.area) around \(spot.time) is showing up most often so far. Treat it as a place to test while Okkle keeps learning.")
+    }
     if shift.deadMilePct >= 25, let spot = topSpot {
       return ("exclamationmark.triangle.fill", AnyShapeStyle(OkkleColor.amber),
               "You cover a lot of empty miles between orders. Sit tight around \(spot.area) at \(spot.time) — that's where most of your pickups start.")
     }
     if let spot = topSpot {
-      return ("mappin.and.ellipse", AnyShapeStyle(nativeAIAccentGradient),
+      return ("mappin.and.ellipse", AnyShapeStyle(OkkleColor.brand),
               "Your strongest patch is \(spot.area) at \(spot.time) — base yourself there and let the orders come to you.")
     }
     if let warning = shift.warning {
@@ -856,18 +883,18 @@ struct NativeWeeklyInsightPanel: View {
   private var peakHitRateLine: (symbol: String, color: AnyShapeStyle, text: String)? {
     guard let rate = shift.peakHitRate else { return nil }
     if rate >= 0.55 {
-      return ("checkmark.seal.fill", AnyShapeStyle(nativeAIAccentGradient), "Your peak-day calls have been paying off lately.")
+      return ("checkmark.seal.fill", AnyShapeStyle(OkkleColor.brand), "Your peak-day calls have been paying off lately.")
     }
     return ("arrow.triangle.2.circlepath", AnyShapeStyle(OkkleColor.muted), "Recent peak days haven't stood out much — we're adjusting.")
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 24) {
       // Card 1 — a suggestion, clearly set apart as advice (not a stat) — the
       // one thing to act on, so it leads rather than trailing behind stats.
       if let advice = specificAdvice {
         NativeAiCard {
-          section("SUGGESTION") {
+          section("Suggestion") {
             insightLine(symbol: advice.symbol, color: advice.color, text: advice.text)
           }
         }
@@ -875,8 +902,8 @@ struct NativeWeeklyInsightPanel: View {
 
       // Card 2 — a reflection on how your week actually went.
       NativeAiCard {
-        VStack(alignment: .leading, spacing: 18) {
-          section("BUSIEST DAYS", subtitle: "Deliveries you made on each day.") {
+        VStack(alignment: .leading, spacing: 22) {
+          section("Busiest days", subtitle: "Deliveries you made on each day.") {
             let maxCount = max(1, shift.weekdayStats.map(\.count).max() ?? 1)
             HStack(alignment: .bottom, spacing: 8) {
               ForEach(orderedWeekdayStats) { stat in
@@ -900,9 +927,9 @@ struct NativeWeeklyInsightPanel: View {
                     .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-                .background(selected ? OkkleColor.muted.opacity(0.10) : .clear,
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.vertical, 8)
+                .background(selected ? Color(uiColor: .tertiarySystemFill) : .clear,
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .contentShape(Rectangle())
                 .onTapGesture {
                   withAnimation(.easeInOut(duration: 0.15)) { selectedWeekday = stat.weekday }
@@ -933,7 +960,7 @@ struct NativeWeeklyInsightPanel: View {
       // there's an actual mix — a single platform isn't a "ranking".
       if shift.platformShares.count >= 2 {
         NativeAiCard {
-          section("PLATFORM MIX", subtitle: "Share of your logged earnings this period, by app.") {
+          section("Platform mix", subtitle: "Share of your logged earnings this period, by app.") {
             NativePlatformShareList(shares: shift.platformShares)
           }
         }
@@ -941,7 +968,7 @@ struct NativeWeeklyInsightPanel: View {
 
       // Card 4 — your top areas, with how much of your work each one carries.
       NativeAiCard {
-        section("YOUR TOP AREAS", subtitle: "Bar shows how busy each area is compared to your #1 spot.") {
+        section("Your top areas", subtitle: "Bar shows how busy each area is compared to your #1 spot.") {
           NativeTopAreasList(zones: shift.zones, limit: 4, showShareBar: true)
         }
       }
@@ -949,15 +976,15 @@ struct NativeWeeklyInsightPanel: View {
   }
 
   private func section<Content: View>(_ title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      VStack(alignment: .leading, spacing: 2) {
+    VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 4) {
         Text(title)
-          .font(.system(size: 12, weight: .heavy)).tracking(0.5)
-          .foregroundStyle(OkkleColor.muted)
+          .font(.headline)
+          .foregroundStyle(.primary)
         if let subtitle {
           Text(subtitle)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(OkkleColor.muted.opacity(0.8))
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
@@ -1005,8 +1032,8 @@ struct NativeWeeklyInsightPanel: View {
 
 private func nativeInsightKicker(_ text: String) -> some View {
   Text(text)
-    .font(.system(size: 12, weight: .heavy)).tracking(0.5)
-    .foregroundStyle(OkkleColor.muted)
+    .font(.subheadline.weight(.semibold))
+    .foregroundStyle(.secondary)
 }
 
 /// The one number style every Insights figure routes through — same font,
@@ -1021,7 +1048,7 @@ private enum NativeStatSize {
 
 private func nativeStatValue(_ value: String, size: NativeStatSize = .hero, color: AnyShapeStyle = AnyShapeStyle(OkkleColor.ink)) -> some View {
   Text(value)
-    .font(.system(size: size.points, weight: .bold, design: .rounded))
+    .font(.system(size: size.points, weight: .bold))
     .foregroundStyle(color)
     .lineLimit(1)
     // No minimumScaleFactor: that let this shrink under width pressure while
@@ -1033,7 +1060,7 @@ private func nativeStatValue(_ value: String, size: NativeStatSize = .hero, colo
 
 private func nativeHeadlineStat(kicker: String, value: String, valueColor: AnyShapeStyle = AnyShapeStyle(OkkleColor.ink),
                                 sub: (symbol: String, color: AnyShapeStyle, text: String)?) -> some View {
-  VStack(alignment: .leading, spacing: 8) {
+  VStack(alignment: .leading, spacing: 10) {
     nativeInsightKicker(kicker)
     nativeStatValue(value, color: valueColor)
     if let sub {
@@ -1052,7 +1079,7 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: AnySh
 /// column, which is what let "Est. rate" and "Unpaid miles" render smaller
 /// than the headline figures above them despite requesting the same size.
 private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View {
-  VStack(alignment: .leading, spacing: 3) {
+  VStack(alignment: .leading, spacing: 5) {
     nativeStatValue(value, size: .secondary)
     Text(title)
       .font(.system(size: 12, weight: .medium))
@@ -1068,8 +1095,8 @@ private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View
 private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint]) -> some View {
   if !zones.isEmpty {
     NativeAiCard {
-      VStack(alignment: .leading, spacing: 12) {
-        nativeInsightKicker("WHERE YOU EARN")
+      VStack(alignment: .leading, spacing: 16) {
+        nativeInsightKicker("Where you earn")
         NativeZoneMiniMap(trips: trips, zones: zones)
         Text("Numbered pins match the list below — 1 is your busiest patch. Tap the map to explore full-screen.")
           .font(.system(size: 12, weight: .medium))
@@ -1128,7 +1155,7 @@ struct NativeMonthlyInsightPanel: View {
     }
     let pct = Int((abs(delta) * 100).rounded())
     return delta > 0
-      ? ("arrow.up.right", AnyShapeStyle(nativeAIAccentGradient), "\(pct)% more than the 30 days before")
+      ? ("arrow.up.right", AnyShapeStyle(OkkleColor.brand), "\(pct)% more than the 30 days before")
       : ("arrow.down.right", AnyShapeStyle(OkkleColor.amber), "\(pct)% less than the 30 days before")
   }
 
@@ -1142,12 +1169,12 @@ struct NativeMonthlyInsightPanel: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 24) {
       // Card 1 — the money: earned this month, its trend, efficiency, pattern.
       NativeAiCard {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 18) {
           nativeHeadlineStat(
-            kicker: "EARNED · LAST 30 DAYS",
+            kicker: "Earned · Last 30 days",
             value: gbp(incomeThis, whole: true),
             sub: incomeThis == 0
               ? ("square.and.pencil", AnyShapeStyle(OkkleColor.muted), "Log your pay to track your month")
@@ -1166,7 +1193,7 @@ struct NativeMonthlyInsightPanel: View {
             HStack(alignment: .top, spacing: 8) {
               Image(systemName: "calendar")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(nativeAIAccentGradient)
+                .foregroundStyle(OkkleColor.brand)
               Text(line)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(OkkleColor.muted)
@@ -1179,9 +1206,9 @@ struct NativeMonthlyInsightPanel: View {
 
       // Card 2 — tax relief banked this month.
       NativeAiCard {
-        VStack(alignment: .leading, spacing: 6) {
-          nativeInsightKicker("TAX RELIEF BANKED · 30 DAYS")
-          nativeStatValue(gbp(savings.taxSaved, whole: true), color: AnyShapeStyle(nativeAIAccentGradient))
+        VStack(alignment: .leading, spacing: 10) {
+          nativeInsightKicker("Tax relief banked · 30 days")
+          nativeStatValue(gbp(savings.taxSaved, whole: true), color: AnyShapeStyle(OkkleColor.brand))
           Text("\(gbp(savings.mileageDeduction, whole: true)) off your taxable profit, from \(miles(savings.miles)) of business driving.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
@@ -1234,14 +1261,14 @@ struct NativeYearlyInsightPanel: View {
 
   var body: some View {
     let stats = monthlyStats
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 24) {
       // Card 1 — earned this tax year, plus the same efficiency stats Monthly
       // shows (now that shift is scoped to store.taxYear, income and active
       // hours share the same window, so the rate is actually trustworthy).
       NativeAiCard {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 18) {
           nativeHeadlineStat(
-            kicker: "EARNED · THIS TAX YEAR",
+            kicker: "Earned · This tax year",
             value: gbp(store.yearIncome, whole: true),
             sub: store.yearIncome == 0
               ? ("square.and.pencil", AnyShapeStyle(OkkleColor.muted), "Log your pay to total your year")
@@ -1261,9 +1288,9 @@ struct NativeYearlyInsightPanel: View {
 
       // Card 2 — tax relief (same treatment as Monthly, for consistency).
       NativeAiCard {
-        VStack(alignment: .leading, spacing: 6) {
-          nativeInsightKicker("TAX RELIEF · THIS TAX YEAR")
-          nativeStatValue(gbp(store.taxSaved, whole: true), color: AnyShapeStyle(nativeAIAccentGradient))
+        VStack(alignment: .leading, spacing: 10) {
+          nativeInsightKicker("Tax relief · This tax year")
+          nativeStatValue(gbp(store.taxSaved, whole: true), color: AnyShapeStyle(OkkleColor.brand))
           Text("A \(gbp(store.yearMileageDeduction, whole: true)) deduction off your Self Assessment profit, from \(miles(store.yearMiles)) driven. See the Tax tab.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
@@ -1274,9 +1301,9 @@ struct NativeYearlyInsightPanel: View {
       // Card 3 — seasonal earnings by month; tap a bar for that month's stats.
       if stats.contains(where: { $0.income > 0 }) {
         NativeAiCard {
-          VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-              nativeInsightKicker("BUSIEST MONTHS")
+          VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+              nativeInsightKicker("Busiest months")
               Text("Earnings each month — tap a bar for the detail.")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(OkkleColor.muted.opacity(0.8))
@@ -1297,9 +1324,9 @@ struct NativeYearlyInsightPanel: View {
                     .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-                .background(selected ? OkkleColor.muted.opacity(0.10) : .clear,
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.vertical, 8)
+                .background(selected ? Color(uiColor: .tertiarySystemFill) : .clear,
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .contentShape(Rectangle())
                 .onTapGesture {
                   withAnimation(.easeInOut(duration: 0.15)) { selectedMonth = month.index }
@@ -1350,7 +1377,7 @@ struct NativeYearlyInsightPanel: View {
     HStack(spacing: 10) {
       Image(systemName: symbol)
         .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(nativeAIAccentGradient)
+        .foregroundStyle(OkkleColor.brand)
         .frame(width: 20)
       Text(label)
         .font(.system(size: 14, weight: .medium))
@@ -1396,71 +1423,75 @@ struct NativeInsightsView: View {
 
   var body: some View {
     NativeScreen(title: "Insights", collapsedTitle: "Insights",
-                 subtitle: "From your trips: when to head out and where to go. Sharper the more you drive.") {
-      if !store.settings.insightsEnabled {
-        NativeEmptyState(
-          symbol: "sparkles",
-          title: "Insights are off",
-          message: "Enable Insights in Settings to use AI insights from your trips and records."
-        )
-      } else {
-        NativeShiftPatternsCard(
-          shift: shift,
-          visits: insightVisits,
-          trips: store.trips,
-          autoTrackTrips: Binding(
-            get: { store.settings.autoTrackTrips },
-            set: { value in
-              withAnimation(nativeInsightPromptAnimation) {
-                store.settings.autoTrackTrips = value
-                if value {
-                  store.settings.enhancedAutoTracking = true
-                }
-              }
-            }
+                 subtitle: "From your trips: when to head out and where to go. Sharper the more you drive.",
+                 style: .grouped) {
+      VStack(alignment: .leading, spacing: 28) {
+        if !store.settings.insightsEnabled {
+          NativeEmptyState(
+            symbol: "sparkles",
+            title: "Insights are off",
+            message: "Enable Insights in Settings to use AI insights from your trips and records."
           )
-        )
-
-        // These cards are one-time set-up prompts: they only appear while
-        // the feature is off. Once you turn one on it disappears here — the on/off
-        // switch then lives in Settings.
-        if !store.settings.siriTripTrackingEnabled {
-          NativeSiriTripTrackingPrompt()
-            .transition(.nativeInsightSetupCard)
-        }
-
-        if !store.settings.loggingReminder {
-          NativeAiCard(banner: "REMINDERS") {
-            VStack(alignment: .leading, spacing: 16) {
-              Text("Keep your records fresh")
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-              Text("Get a gentle nudge to log your miles and pay so nothing slips through the week.")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(OkkleColor.muted)
-              Toggle("Logging reminder", isOn: Binding(
-                get: { store.settings.loggingReminder },
-                set: { value in
-                  withAnimation(nativeInsightPromptAnimation) {
-                    store.settings.loggingReminder = value
+        } else {
+          NativeShiftPatternsCard(
+            shift: shift,
+            visits: insightVisits,
+            trips: store.trips,
+            autoTrackTrips: Binding(
+              get: { store.settings.autoTrackTrips },
+              set: { value in
+                withAnimation(nativeInsightPromptAnimation) {
+                  store.settings.autoTrackTrips = value
+                  if value {
+                    store.settings.enhancedAutoTracking = true
                   }
                 }
-              ))
-              .font(.system(size: 17, weight: .bold))
-              .tint(OkkleColor.brand)
-            }
+              }
+            )
+          )
+
+          // These cards are one-time set-up prompts: they only appear while
+          // the feature is off. Once you turn one on it disappears here — the on/off
+          // switch then lives in Settings.
+          if !store.settings.siriTripTrackingEnabled {
+            NativeSiriTripTrackingPrompt()
+              .transition(.nativeInsightSetupCard)
           }
-          .transition(.nativeInsightSetupCard)
-        }
 
-        if !store.settings.taxDeadlineReminders {
-          NativeKeyTaxDatesPanel()
+          if !store.settings.loggingReminder {
+            NativeAiCard(banner: "REMINDERS") {
+              VStack(alignment: .leading, spacing: 18) {
+                Text("Keep your records fresh")
+                  .font(.title2.bold())
+                Text("Get a gentle nudge to log your miles and pay so nothing slips through the week.")
+                  .font(.body)
+                  .foregroundStyle(.secondary)
+                Toggle("Logging reminder", isOn: Binding(
+                  get: { store.settings.loggingReminder },
+                  set: { value in
+                    withAnimation(nativeInsightPromptAnimation) {
+                      store.settings.loggingReminder = value
+                    }
+                  }
+                ))
+                .font(.headline)
+                .tint(OkkleColor.brand)
+              }
+            }
             .transition(.nativeInsightSetupCard)
-        }
+          }
 
-        if store.history.isEmpty {
-          NativeEmptyState(symbol: "sparkles", title: "Insights will grow with your data", message: "Track trips and log pay to unlock best zones, hours, platform mix and tax-aware suggestions.")
+          if !store.settings.taxDeadlineReminders {
+            NativeKeyTaxDatesPanel()
+              .transition(.nativeInsightSetupCard)
+          }
+
+          if store.history.isEmpty {
+            NativeEmptyState(symbol: "sparkles", title: "Insights will grow with your data", message: "Track trips and log pay to unlock best zones, hours, platform mix and tax-aware suggestions.")
+          }
         }
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
     .animation(nativeInsightPromptAnimation, value: store.settings.insightsEnabled)
     .animation(nativeInsightPromptAnimation, value: store.settings.autoTrackTrips)
@@ -1490,64 +1521,6 @@ private struct NativeInsightSetupCardTransition: ViewModifier {
   }
 }
 
-private struct NativeAIProgressBar: View {
-  let progress: Double
-
-  private var clampedProgress: CGFloat {
-    CGFloat(min(1, max(0, progress)))
-  }
-
-  private var fillGradient: LinearGradient {
-    LinearGradient(
-      colors: [
-        nativeAIAccentPink,
-        nativeAIAccentPurple
-      ],
-      startPoint: .leading,
-      endPoint: .trailing
-    )
-  }
-
-  var body: some View {
-    GeometryReader { proxy in
-      let fillWidth = proxy.size.width * clampedProgress
-
-      ZStack(alignment: .leading) {
-        Capsule()
-          .fill(Color(uiColor: .systemGray5).opacity(0.82))
-
-        if clampedProgress > 0 {
-          Capsule()
-            .fill(fillGradient)
-            .frame(width: max(10, fillWidth))
-            .blur(radius: 4)
-            .opacity(0.22)
-
-          Capsule()
-            .fill(fillGradient)
-            .frame(width: max(10, fillWidth))
-            .shadow(color: nativeAIAccentPink.opacity(0.16), radius: 5)
-            .shadow(color: nativeAIAccentPurple.opacity(0.12), radius: 9)
-            .overlay(alignment: .top) {
-              Capsule()
-                .fill(.white.opacity(0.16))
-                .frame(height: 2)
-                .padding(.horizontal, 2)
-                .padding(.top, 1)
-                .blendMode(.screen)
-            }
-        }
-      }
-      .overlay {
-        Capsule()
-          .stroke(.white.opacity(0.36), lineWidth: 1)
-      }
-    }
-    .frame(height: 8)
-    .padding(.vertical, 3)
-  }
-}
-
 private extension AnyTransition {
   static var nativeInsightSetupCard: AnyTransition {
     .asymmetric(
@@ -1565,13 +1538,13 @@ struct NativeSiriTripTrackingPrompt: View {
 
   var body: some View {
     NativeAiCard(banner: "SIRI") {
-      VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 18) {
         Text("Start trips by voice")
-          .font(.system(size: 26, weight: .bold, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
+          .font(.title2.bold())
+          .foregroundStyle(.primary)
         Text("Let Siri and Shortcuts start or resume trip tracking with your default vehicle.")
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
+          .font(.body)
+          .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
         Toggle("Siri trip tracking", isOn: Binding(
           get: { store.settings.siriTripTrackingEnabled },
@@ -1581,7 +1554,7 @@ struct NativeSiriTripTrackingPrompt: View {
             }
           }
         ))
-        .font(.system(size: 17, weight: .bold))
+        .font(.headline)
         .tint(OkkleColor.brand)
       }
     }

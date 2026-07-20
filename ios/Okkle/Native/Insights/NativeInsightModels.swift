@@ -310,6 +310,34 @@ enum NativeDeliveryEpisodeDetector {
       }) else { continue }
       episodes.append(NativeDeliveryEpisode(origin: origin, destination: destination))
     }
+
+    // Compatibility for the inferred pickup/drop-off pairs used before the
+    // evidence model was introduced. Evidence-backed episodes win, while
+    // role-based pairs fill only gaps and therefore cannot double count.
+    var usedStopIDs = Set(episodes.flatMap { [$0.origin.id, $0.destination.id] })
+    var index = 0
+    while index < sorted.count {
+      let origin = sorted[index]
+      guard origin.kind == .pickup, !usedStopIDs.contains(origin.id) else {
+        index += 1
+        continue
+      }
+      guard let destinationIndex = sorted.indices.dropFirst(index + 1).first(where: {
+        let destination = sorted[$0]
+        return destination.kind == .dropoff &&
+          !usedStopIDs.contains(destination.id) &&
+          sameTripOrShift(origin, destination) &&
+          destination.arrival >= origin.departure
+      }) else {
+        index += 1
+        continue
+      }
+      let destination = sorted[destinationIndex]
+      episodes.append(NativeDeliveryEpisode(origin: origin, destination: destination))
+      usedStopIDs.insert(origin.id)
+      usedStopIDs.insert(destination.id)
+      index = destinationIndex + 1
+    }
     return episodes
   }
 
@@ -555,35 +583,84 @@ struct NativeShiftInsights {
     for stop in trips.flatMap(\.canonicalStops) {
       byID[stop.id] = stop
     }
-    let base = Array(byID.values)
-    let synthetic = trips.filter { $0.canonicalStops.isEmpty }.flatMap { trip in
-      tripDerivedVisits(for: trip, existingVisits: visits)
+
+    for trip in trips {
+      let overlapping = byID.values
+        .filter { visit in
+          visit.tripID == trip.id ||
+            (visit.arrival <= trip.endedAt && visit.departure >= trip.startedAt)
+        }
+        .sorted { $0.arrival < $1.arrival }
+      guard NativeDeliveryEpisodeDetector.episodes(in: overlapping).isEmpty else { continue }
+      for inferred in inferredDeliveryVisits(for: trip, existingVisits: overlapping) {
+        byID[inferred.id] = inferred
+      }
     }
-    guard !synthetic.isEmpty else { return base.sorted { $0.arrival < $1.arrival } }
-    return (base + synthetic).sorted { left, right in left.arrival < right.arrival }
+    return byID.values.sorted { $0.arrival < $1.arrival }
   }
 
-  private static func tripDerivedVisits(for trip: NativeTrip, existingVisits: [NativeVisit]) -> [NativeVisit] {
+  private static func inferredDeliveryVisits(for trip: NativeTrip, existingVisits: [NativeVisit]) -> [NativeVisit] {
     guard trip.endedAt > trip.startedAt, trip.miles > 0 else { return [] }
-    let overlappingVisits = existingVisits.filter { visit in
-      visit.arrival <= trip.endedAt && visit.departure >= trip.startedAt
+    guard let start = trip.points.first?.coordinate,
+          let end = trip.points.last?.coordinate else { return [] }
+
+    var candidates = existingVisits.filter { !$0.isEndpointGuess }
+    if candidates.isEmpty {
+      candidates = NativeRouteStopDetector.detectStops(in: trip.points).map { detected in
+        var stop = detected.visit
+        stop.tripID = trip.id
+        return stop
+      }
     }
-    let inferredStops = routeDerivedStops(for: trip)
-      .filter { !NativeRouteStopDetector.containsSameStop(overlappingVisits, $0) }
-    if !inferredStops.isEmpty {
-      return inferredStops
+
+    guard !candidates.isEmpty else {
+      return [
+        inferredEndpointVisit(trip: trip, coordinate: start, date: trip.startedAt, role: .pickup, suffix: "pickup"),
+        inferredEndpointVisit(trip: trip, coordinate: end, date: trip.endedAt, role: .dropoff, suffix: "dropoff")
+      ]
     }
-    return []
+
+    candidates.sort { $0.arrival < $1.arrival }
+    for index in candidates.indices {
+      candidates[index].tripID = trip.id
+      candidates[index].kind = index.isMultiple(of: 2) ? .pickup : .dropoff
+    }
+    if candidates.count == 1 {
+      candidates[0].kind = .dropoff
+      candidates.insert(
+        inferredEndpointVisit(trip: trip, coordinate: start, date: trip.startedAt, role: .pickup, suffix: "pickup"),
+        at: 0
+      )
+    } else if candidates.last?.kind == .pickup {
+      candidates.append(
+        inferredEndpointVisit(trip: trip, coordinate: end, date: trip.endedAt, role: .dropoff, suffix: "dropoff")
+      )
+    }
+    return candidates
   }
 
-  private static func routeDerivedStops(for trip: NativeTrip) -> [NativeVisit] {
-    var visits = NativeRouteStopDetector.detectStops(in: trip.points).map(\.visit)
-    for index in visits.indices {
-      visits[index].tripID = trip.id
-      visits[index].kind = .other
-      visits[index].placeName = "Detected stop"
-    }
-    return visits
+  private static func inferredEndpointVisit(
+    trip: NativeTrip,
+    coordinate: CLLocationCoordinate2D,
+    date: Date,
+    role: NativeVisit.Kind,
+    suffix: String
+  ) -> NativeVisit {
+    var visit = NativeVisit(
+      id: deterministicUUID(seed: "\(trip.id.uuidString)-\(suffix)"),
+      tripID: trip.id,
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+      arrival: date,
+      departure: date,
+      kindRaw: role.rawValue,
+      placeName: role == .pickup ? "Trip start" : "Trip end",
+      isEndpointGuess: true,
+      confidence: 0.25,
+      evidence: [.inferredEndpoint]
+    )
+    visit.kind = role
+    return visit
   }
 
   private static func deterministicUUID(seed: String) -> UUID {
@@ -654,8 +731,8 @@ struct NativeShiftInsights {
     }
     activeSeconds += sorted.last?.dwell ?? 0
 
-    // Delivery episodes are projected from generic stop evidence. Persisted
-    // stops never claim pickup/drop-off truth.
+    // Prefer episodes projected from generic stop evidence, with inferred
+    // pickup/drop-off pairs retained for historical and sparse trip data.
     var deliveries = 0
     var paidMeters = 0.0
     var paidMetersByWeekday: [Int: Double] = [:]

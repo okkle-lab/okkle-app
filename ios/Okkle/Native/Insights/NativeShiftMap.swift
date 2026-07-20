@@ -140,7 +140,7 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
       if let polyline = overlay as? MKPolyline {
         let renderer = MKPolylineRenderer(polyline: polyline)
-        renderer.strokeColor = UIColor(red: 0.20, green: 0.47, blue: 0.93, alpha: 0.55)
+        renderer.strokeColor = UIColor(OkkleColor.brand).withAlphaComponent(0.7)
         renderer.lineWidth = 4
         renderer.lineCap = .round
         renderer.lineJoin = .round
@@ -160,46 +160,15 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
       guard let rank = annotation as? NativeRankAnnotation else { return nil }
       let id = "rank"
-      let view = mapView.dequeueReusableAnnotationView(withIdentifier: id) ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
+      let view = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
+        ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
       view.annotation = annotation
-      let size: CGFloat = 26
-      let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
-      view.image = renderer.image { context in
-        let rect = CGRect(x: 0, y: 0, width: size, height: size)
-        let insetRect = rect.insetBy(dx: 1, dy: 1)
-        let cgContext = context.cgContext
-        cgContext.saveGState()
-        cgContext.addEllipse(in: insetRect)
-        cgContext.clip()
-        if let gradient = CGGradient(
-          colorsSpace: CGColorSpaceCreateDeviceRGB(),
-          colors: [UIColor(nativeAIAccentPink).cgColor, UIColor(nativeAIAccentPurple).cgColor] as CFArray,
-          locations: [0, 1]
-        ) {
-          cgContext.drawLinearGradient(
-            gradient,
-            start: CGPoint(x: insetRect.minX, y: insetRect.minY),
-            end: CGPoint(x: insetRect.maxX, y: insetRect.maxY),
-            options: []
-          )
-        }
-        cgContext.restoreGState()
-        cgContext.setStrokeColor(UIColor.white.cgColor)
-        cgContext.setLineWidth(2)
-        cgContext.strokeEllipse(in: insetRect)
-
-        let text = "\(rank.rank)" as NSString
-        let attributes: [NSAttributedString.Key: Any] = [
-          .font: UIFont.systemFont(ofSize: 13, weight: .heavy),
-          .foregroundColor: UIColor.white
-        ]
-        let textSize = text.size(withAttributes: attributes)
-        text.draw(
-          at: CGPoint(x: rect.midX - textSize.width / 2, y: rect.midY - textSize.height / 2),
-          withAttributes: attributes
-        )
-      }
-      view.centerOffset = .zero
+      view.markerTintColor = UIColor(OkkleColor.brand)
+      view.glyphText = "\(rank.rank)"
+      view.glyphTintColor = .white
+      view.titleVisibility = .hidden
+      view.subtitleVisibility = .hidden
+      view.displayPriority = .required
       return view
     }
   }
@@ -221,17 +190,16 @@ struct NativeZoneMiniMap: View {
         // Little affordance so it clearly opens something bigger.
         HStack(spacing: 5) {
           Image(systemName: "arrow.up.left.and.arrow.down.right")
-            .font(.system(size: 11, weight: .bold))
-          Text("Explore")
-            .font(.system(size: 12, weight: .bold))
+          Text("Expand")
         }
-        .foregroundStyle(OkkleColor.ink)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.primary)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
+        .background(.thinMaterial, in: Capsule())
         .padding(10)
       }
-      .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
     .buttonStyle(.plain)
     .sheet(isPresented: $showDetail) {
@@ -270,7 +238,7 @@ struct NativeTopAreasList: View {
                 .font(.system(size: 13, weight: .heavy))
                 .foregroundStyle(.white)
                 .frame(width: 24, height: 24)
-                .background(nativeAIAccentGradient, in: Circle())
+                .background(OkkleColor.brand, in: Circle())
               VStack(alignment: .leading, spacing: showShareBar ? 5 : 1) {
                 Text(area.name)
                   .font(.system(size: 16, weight: .semibold))
@@ -283,7 +251,7 @@ struct NativeTopAreasList: View {
                     GeometryReader { geo in
                       ZStack(alignment: .leading) {
                         Capsule().fill(OkkleColor.muted.opacity(0.12)).frame(height: 4)
-                        Capsule().fill(nativeAIAccentHorizontalGradient).frame(width: max(6, geo.size.width * area.weight), height: 4)
+                        Capsule().fill(OkkleColor.brand).frame(width: max(6, geo.size.width * area.weight), height: 4)
                       }
                     }
                     .frame(height: 4)
@@ -302,7 +270,7 @@ struct NativeTopAreasList: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(OkkleColor.muted.opacity(0.5))
             }
-            .padding(.vertical, 10)
+            .padding(.vertical, 14)
             .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
@@ -367,7 +335,7 @@ struct NativeShiftMapDetailView: View {
       VStack(spacing: 0) {
         NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: true)
           .ignoresSafeArea(edges: .bottom)
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
           Text("Numbered pins are your busiest areas near you, ranked 1–5. Warmer patches are where you pick up and drop off most.")
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
@@ -375,8 +343,8 @@ struct NativeShiftMapDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
           NativeHeatLegend()
         }
-        .padding(16)
-        .background(.regularMaterial)
+        .padding(20)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
       }
       .navigationTitle("Where you earn")
       .navigationBarTitleDisplayMode(.inline)
