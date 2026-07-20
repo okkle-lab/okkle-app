@@ -1813,7 +1813,19 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
 
       Task { @MainActor in
         guard let index = self.visits.firstIndex(where: { $0.id == id }) else { return }
-        if let place = nearestPickupPlace {
+
+        // Real courier work alternates pickup -> dropoff -> pickup -> dropoff;
+        // if the visit immediately before this one in the same shift was a
+        // pickup, this one is the matching dropoff almost by definition —
+        // a stronger signal than nearby-POI proximity, which kept
+        // misclassifying genuine dropoffs as pickups in dense city centres
+        // where almost any stop sits near an unrelated restaurant or café.
+        let previousVisit = self.shiftStartedAt.flatMap { shiftStart in
+          self.visits[..<index].last { $0.arrival >= shiftStart }
+        }
+        if previousVisit?.kind == .pickup {
+          self.visits[index].kind = .dropoff
+        } else if let place = nearestPickupPlace {
           self.visits[index].kind = .pickup
           self.visits[index].placeName = place.name
         } else if self.visits[index].dwell < calibration.dropoffMaxDwellThreshold {
