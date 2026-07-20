@@ -93,16 +93,7 @@ struct NativeShiftPatternsCard: View {
 
   private func shift(for period: NativeInsightPeriod) -> NativeShiftInsights {
     if let cached = scopedShifts[period] { return cached }
-    let cutoff: Date
-    switch period {
-    case .today: return shift
-    case .year: cutoff = store.taxYear.start
-    default:
-      guard let days = period.lookbackDays else { return shift }
-      cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-    }
-    let scoped = insightVisits.filter { $0.arrival >= cutoff }
-    return NativeShiftInsights.build(visits: scoped, store: store)
+    return period == .today ? shift : .empty
   }
 
   // The paged TabView keeps all four period panels alive at once, so without
@@ -111,9 +102,32 @@ struct NativeShiftPatternsCard: View {
   @State private var scopedShifts: [NativeInsightPeriod: NativeShiftInsights] = [:]
 
   private func rebuildScopedShifts() {
-    scopedShifts = [:]
+    let now = Date()
+    var inputs: [NativeInsightPeriod: NativeInsightInput] = [:]
     for period in NativeInsightPeriod.allCases where period != .today {
-      scopedShifts[period] = shift(for: period)
+      let cutoff: Date
+      if period == .year {
+        cutoff = store.taxYear.start
+      } else {
+        cutoff = Calendar.current.date(byAdding: .day, value: -(period.lookbackDays ?? 0), to: now) ?? now
+      }
+      inputs[period] = NativeInsightInput(
+        visits: insightVisits.filter { $0.arrival >= cutoff },
+        store: store,
+        generatedAt: now
+      )
+    }
+    Task {
+      var projected: [NativeInsightPeriod: NativeShiftInsights] = [:]
+      for (period, input) in inputs {
+        projected[period] = await NativeInsightsProjector.shared.project(input).shift
+      }
+      await MainActor.run {
+        scopedShifts = projected
+        for zone in projected.values.flatMap(\.zones) {
+          _ = NativeZonePOIPrior.shared.priorScore(for: zone.coordinate)
+        }
+      }
     }
   }
 
@@ -154,6 +168,7 @@ struct NativeShiftPatternsCard: View {
       .onChange(of: trips) { _ in rebuildScopedShifts() }
       .onChange(of: store.records) { _ in rebuildScopedShifts() }
       .onChange(of: store.settings.excludedPlaces) { _ in rebuildScopedShifts() }
+      .onChange(of: store.insightEvidence) { _ in rebuildScopedShifts() }
     } else if !autoTrackTrips {
       NativeAiCard { offState }
         .transition(.nativeInsightSetupCard)
@@ -1359,11 +1374,24 @@ struct NativeInsightsView: View {
   }
 
   private var shift: NativeShiftInsights {
-    cachedShift ?? NativeShiftInsights.build(visits: insightVisits, store: store)
+    cachedShift ?? .empty
   }
 
   private func rebuildShift() {
-    cachedShift = NativeShiftInsights.build(visits: insightVisits, store: store)
+    guard store.settings.insightsEnabled else {
+      cachedShift = .empty
+      return
+    }
+    let input = NativeInsightInput(visits: insightVisits, store: store)
+    Task {
+      let snapshot = await NativeInsightsProjector.shared.project(input)
+      await MainActor.run {
+        cachedShift = snapshot.shift
+        for zone in snapshot.shift.zones {
+          _ = NativeZonePOIPrior.shared.priorScore(for: zone.coordinate)
+        }
+      }
+    }
   }
 
   var body: some View {
@@ -1444,6 +1472,8 @@ struct NativeInsightsView: View {
     .onChange(of: store.trips) { _ in rebuildShift() }
     .onChange(of: store.records) { _ in rebuildShift() }
     .onChange(of: store.settings.excludedPlaces) { _ in rebuildShift() }
+    .onChange(of: store.insightEvidence) { _ in rebuildShift() }
+    .onChange(of: store.settings.insightsEnabled) { _ in rebuildShift() }
   }
 }
 

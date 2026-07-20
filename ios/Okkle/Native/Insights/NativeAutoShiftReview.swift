@@ -143,8 +143,7 @@ struct NativeAutoShiftReviewView: View {
 
   private var stops: [NativeVisit] {
     guard let trip else { return [] }
-    return autoTrack.visits
-      .filter { $0.arrival >= trip.startedAt && $0.departure <= trip.endedAt }
+    return trip.canonicalStops
       .sorted { $0.arrival < $1.arrival }
   }
 

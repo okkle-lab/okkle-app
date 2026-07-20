@@ -295,6 +295,8 @@ struct NativeRecord: Identifiable, Codable, Equatable {
   var id = UUID()
   var legacyID: String? = nil
   var updatedAt: Date? = nil
+  var source: NativeRecordSource? = nil
+  var tripID: UUID? = nil
   var kind: NativeLogKind
   var platform: String?
   var vehicle: NativeVehicle?
@@ -315,6 +317,7 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var id = UUID()
   var legacyID: String? = nil
   var updatedAt: Date? = nil
+  var source: NativeTripSource? = nil
   var vehicle: NativeVehicle
   var miles: Double
   var deduction: Double
@@ -328,6 +331,9 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var startAddress: String? = nil
   var endAddress: String? = nil
   var feedback: NativeTripFeedback? = nil
+  // Stop analysis is owned by the trip so edits, deletion, backup and iCloud
+  // sync all operate on one coherent aggregate. Nil decodes older snapshots.
+  var analysis: NativeTripAnalysis? = nil
 }
 
 enum NativeTripFeedback: String, CaseIterable, Identifiable, Codable {
@@ -542,6 +548,7 @@ struct NativeSnapshot: Codable {
   var settings: NativeSettings
   var records: [NativeRecord]
   var trips: [NativeTrip]
+  var insightEvidence: NativeInsightEvidence
   var settingsUpdatedAt: Date?
   var recordTombstones: [NativeDeletionTombstone]
   var tripTombstones: [NativeDeletionTombstone]
@@ -550,6 +557,7 @@ struct NativeSnapshot: Codable {
     settings: NativeSettings,
     records: [NativeRecord],
     trips: [NativeTrip],
+    insightEvidence: NativeInsightEvidence = NativeInsightEvidence(),
     settingsUpdatedAt: Date? = nil,
     recordTombstones: [NativeDeletionTombstone] = [],
     tripTombstones: [NativeDeletionTombstone] = []
@@ -557,6 +565,7 @@ struct NativeSnapshot: Codable {
     self.settings = settings
     self.records = records
     self.trips = trips
+    self.insightEvidence = insightEvidence
     self.settingsUpdatedAt = settingsUpdatedAt
     self.recordTombstones = recordTombstones
     self.tripTombstones = tripTombstones
@@ -566,6 +575,7 @@ struct NativeSnapshot: Codable {
     case settings
     case records
     case trips
+    case insightEvidence
     case settingsUpdatedAt
     case recordTombstones
     case tripTombstones
@@ -576,6 +586,10 @@ struct NativeSnapshot: Codable {
     settings = try container.decode(NativeSettings.self, forKey: .settings)
     records = try container.decode([NativeRecord].self, forKey: .records)
     trips = try container.decode([NativeTrip].self, forKey: .trips)
+    insightEvidence = try container.decodeIfPresent(
+      NativeInsightEvidence.self,
+      forKey: .insightEvidence
+    ) ?? NativeInsightEvidence()
     settingsUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .settingsUpdatedAt)
     recordTombstones = try container.decodeIfPresent(
       [NativeDeletionTombstone].self,

@@ -9,6 +9,7 @@ struct NativeRouteDetectedStop {
   var arrival: Date
   var departure: Date
   var confidence: Double
+  var evidence: [NativeTripStopEvidence]
 
   var visit: NativeVisit {
     var visit = NativeVisit(
@@ -20,6 +21,8 @@ struct NativeRouteDetectedStop {
     )
     visit.kind = NativeVisit.Kind.other
     visit.placeName = "Detected from movement"
+    visit.confidence = confidence
+    visit.evidence = evidence
     return visit
   }
 
@@ -96,7 +99,7 @@ enum NativeRouteStopDetector {
         latitude: (points[index].latitude + points[index + 1].latitude) / 2,
         longitude: (points[index].longitude + points[index + 1].longitude) / 2
       )
-      let confidence = stopConfidence(
+      let assessment = stopAssessment(
         points: points,
         runStart: runStart,
         runEnd: runEnd,
@@ -104,7 +107,7 @@ enum NativeRouteStopDetector {
         coordinate: coordinate,
         dwell: dwell
       )
-      guard confidence >= minimumStopConfidence else { continue }
+      guard assessment.confidence >= minimumStopConfidence else { continue }
       stops.append(NativeRouteDetectedStop(
         boundaryIndex: index + 1,
         startIndex: index,
@@ -112,7 +115,8 @@ enum NativeRouteStopDetector {
         coordinate: coordinate,
         arrival: arrival,
         departure: departure,
-        confidence: confidence
+        confidence: assessment.confidence,
+        evidence: assessment.evidence
       ))
     }
 
@@ -145,6 +149,7 @@ enum NativeRouteStopDetector {
       previous.boundaryIndex = max(previous.boundaryIndex, stop.boundaryIndex)
       previous.departure = max(previous.departure, stop.departure)
       previous.confidence = max(previous.confidence, stop.confidence)
+      previous.evidence = Array(Set(previous.evidence + stop.evidence))
       previous.coordinate = CLLocationCoordinate2D(
         latitude: (previous.coordinate.latitude + stop.coordinate.latitude) / 2,
         longitude: (previous.coordinate.longitude + stop.coordinate.longitude) / 2
@@ -162,15 +167,16 @@ enum NativeRouteStopDetector {
     return distance <= 100 && (timeOverlap || timeNear)
   }
 
-  private static func stopConfidence(
+  private static func stopAssessment(
     points: [RoutePoint],
     runStart: Int,
     runEnd: Int,
     index: Int,
     coordinate: CLLocationCoordinate2D,
     dwell: TimeInterval
-  ) -> Double {
+  ) -> (confidence: Double, evidence: [NativeTripStopEvidence]) {
     var confidence = dwell >= strongDwell ? 0.62 : dwell >= 6 * 60 ? 0.38 : 0.24
+    var evidence: [NativeTripStopEvidence] = [.routeDwell]
     let connectionDropped = vehicleConnectionDropped(points: points, runStart: runStart, runEnd: runEnd, index: index)
     let lowSpeed = endpointSpeedLooksStationary(points[index]) || endpointSpeedLooksStationary(points[index + 1])
     let jitter = hasRepeatedStationaryJitter(points: points, runStart: runStart, runEnd: runEnd, coordinate: coordinate, arrivalIndex: index, departureIndex: index + 1)
@@ -186,13 +192,14 @@ enum NativeRouteStopDetector {
       connectionDropped: connectionDropped
     )
 
-    if connectionDropped { confidence += 0.50 }
-    if lowSpeed { confidence += 0.10 }
-    if jitter { confidence += 0.18 }
-    if let headingChange, headingChange >= 55 { confidence += 0.12 }
+    if connectionDropped { confidence += 0.50; evidence.append(.vehicleDisconnect) }
+    if lowSpeed { confidence += 0.10; evidence.append(.speedDecay) }
+    if jitter { confidence += 0.18; evidence.append(.repeatedJitter) }
+    if let headingChange, headingChange >= 55 { confidence += 0.12; evidence.append(.headingChange) }
     if likelyTraffic { confidence -= 0.38 }
+    if index + 2 <= runEnd { evidence.append(.resumedDriving) }
 
-    return min(max(confidence, 0), 1)
+    return (min(max(confidence, 0), 1), evidence)
   }
 
   private static func endpointSpeedLooksStationary(_ point: RoutePoint) -> Bool {
@@ -304,6 +311,56 @@ enum NativeRouteStopDetector {
       .distance(from: CLLocation(latitude: rhs.latitude, longitude: rhs.longitude))
   }
 
+}
+
+enum NativeTripAnalysisProjector {
+  static func build(
+    for trip: NativeTrip,
+    source: NativeTripTrackingSource,
+    recordedVisits: [NativeVisit] = [],
+    startTrigger: String? = nil,
+    endReason: String? = nil,
+    usedEnhancedTracking: Bool = false
+  ) -> NativeTripAnalysis {
+    let recorded = recordedVisits
+      .filter { $0.arrival <= trip.endedAt && $0.departure >= trip.startedAt }
+      .map { genericStop(linked($0, to: trip.id)) }
+      .sorted { $0.arrival < $1.arrival }
+
+    let stops: [NativeVisit]
+    if !recorded.isEmpty {
+      stops = recorded
+    } else {
+      stops = inferredStops(for: trip)
+    }
+
+    return NativeTripAnalysis(
+      routeFingerprint: NativeTripAnalysis.fingerprint(for: trip.points),
+      source: source,
+      stops: stops,
+      startTrigger: startTrigger,
+      endReason: endReason,
+      usedEnhancedTracking: usedEnhancedTracking
+    )
+  }
+
+  private static func inferredStops(for trip: NativeTrip) -> [NativeVisit] {
+    NativeRouteStopDetector.detectStops(in: trip.points).map {
+      genericStop(linked($0.visit, to: trip.id))
+    }
+  }
+
+  private static func linked(_ visit: NativeVisit, to tripID: UUID) -> NativeVisit {
+    var linked = visit
+    linked.tripID = tripID
+    return linked
+  }
+
+  private static func genericStop(_ visit: NativeVisit) -> NativeVisit {
+    var stop = visit
+    stop.kind = .other
+    return stop
+  }
 }
 
 private func nativeRouteStopDeterministicUUID(seed: String) -> UUID {

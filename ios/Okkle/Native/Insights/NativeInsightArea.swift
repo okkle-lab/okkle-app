@@ -34,7 +34,7 @@ final class NativeOneShotLocator: NSObject, ObservableObject, CLLocationManagerD
 
 /// One logged pay entry, tagged with whether the model had called its date a
 /// "peak" day at the moment it was logged.
-struct NativeOutcomeSample: Codable {
+struct NativeOutcomeSample: Codable, Equatable {
   let date: Date
   let period: NativePayPeriod
   let amount: Double
@@ -52,17 +52,23 @@ struct NativeOutcomeSample: Codable {
 @MainActor
 final class NativeOutcomeTracker: ObservableObject {
   static let shared = NativeOutcomeTracker()
-  @Published private(set) var samples: [NativeOutcomeSample] = []
-  private let storageKey = "uk.okkle.native.outcome.samples.v1"
 
-  init() { load() }
+  var samples: [NativeOutcomeSample] { OkkleStore.shared.insightEvidence.outcomeSamples }
 
   func record(amount: Double, period: NativePayPeriod, wasPredictedPeakDay: Bool) {
     guard amount > 0 else { return }
-    samples.append(NativeOutcomeSample(date: Date(), period: period, amount: amount, wasPredictedPeakDay: wasPredictedPeakDay))
-    // A rolling log, not a growing ledger — recent evidence should dominate.
-    if samples.count > 40 { samples.removeFirst(samples.count - 40) }
-    save()
+    OkkleStore.shared.updateInsightEvidence { evidence in
+      evidence.outcomeSamples.append(NativeOutcomeSample(
+        date: Date(),
+        period: period,
+        amount: amount,
+        wasPredictedPeakDay: wasPredictedPeakDay
+      ))
+      if evidence.outcomeSamples.count > 40 {
+        evidence.outcomeSamples.removeFirst(evidence.outcomeSamples.count - 40)
+      }
+    }
+    objectWillChange.send()
   }
 
   /// Of the times the model called a period "your peak", how often did the
@@ -86,22 +92,11 @@ final class NativeOutcomeTracker: ObservableObject {
     return Double(hits) / Double(evaluated)
   }
 
-  private func load() {
-    guard let data = UserDefaults.standard.data(forKey: storageKey),
-          let saved = try? JSONDecoder().decode([NativeOutcomeSample].self, from: data) else { return }
-    samples = saved
-  }
-
-  private func save() {
-    if let data = try? JSONEncoder().encode(samples) {
-      UserDefaults.standard.set(data, forKey: storageKey)
-    }
-  }
 }
 
 /// One logged pay entry, tagged with whether that day's work actually
 /// happened near the zone the model was recommending at the time.
-struct NativeZoneOutcomeSample: Codable {
+struct NativeZoneOutcomeSample: Codable, Equatable {
   let date: Date
   let period: NativePayPeriod
   let amount: Double
@@ -119,16 +114,23 @@ struct NativeZoneOutcomeSample: Codable {
 @MainActor
 final class NativeZoneOutcomeTracker: ObservableObject {
   static let shared = NativeZoneOutcomeTracker()
-  @Published private(set) var samples: [NativeZoneOutcomeSample] = []
-  private let storageKey = "uk.okkle.native.zoneoutcome.samples.v1"
 
-  init() { load() }
+  var samples: [NativeZoneOutcomeSample] { OkkleStore.shared.insightEvidence.zoneOutcomeSamples }
 
   func record(amount: Double, period: NativePayPeriod, wasNearRecommendedZone: Bool) {
     guard amount > 0 else { return }
-    samples.append(NativeZoneOutcomeSample(date: Date(), period: period, amount: amount, wasNearRecommendedZone: wasNearRecommendedZone))
-    if samples.count > 40 { samples.removeFirst(samples.count - 40) }
-    save()
+    OkkleStore.shared.updateInsightEvidence { evidence in
+      evidence.zoneOutcomeSamples.append(NativeZoneOutcomeSample(
+        date: Date(),
+        period: period,
+        amount: amount,
+        wasNearRecommendedZone: wasNearRecommendedZone
+      ))
+      if evidence.zoneOutcomeSamples.count > 40 {
+        evidence.zoneOutcomeSamples.removeFirst(evidence.zoneOutcomeSamples.count - 40)
+      }
+    }
+    objectWillChange.send()
   }
 
   var zoneHitRate: Double? {
@@ -154,9 +156,8 @@ final class NativeZoneOutcomeTracker: ObservableObject {
   // weather, luck) — tracked as its own tally rather than folded into the
   // income-comparison samples above, which need real £ amounts to stay
   // meaningful.
-  @Published private(set) var explicitPositive: Int = 0
-  @Published private(set) var explicitNegative: Int = 0
-  private let explicitKey = "uk.okkle.native.zoneoutcome.explicit.v1"
+  var explicitPositive: Int { OkkleStore.shared.insightEvidence.explicitPositive }
+  var explicitNegative: Int { OkkleStore.shared.insightEvidence.explicitNegative }
 
   var explicitHitRate: Double? {
     let total = explicitPositive + explicitNegative
@@ -165,28 +166,14 @@ final class NativeZoneOutcomeTracker: ObservableObject {
   }
 
   func recordExplicitFeedback(wasWorthIt: Bool) {
-    if wasWorthIt { explicitPositive += 1 } else { explicitNegative += 1 }
-    if let data = try? JSONEncoder().encode([explicitPositive, explicitNegative]) {
-      UserDefaults.standard.set(data, forKey: explicitKey)
+    OkkleStore.shared.updateInsightEvidence { evidence in
+      if wasWorthIt {
+        evidence.explicitPositive += 1
+      } else {
+        evidence.explicitNegative += 1
+      }
     }
-  }
-
-  private func load() {
-    if let data = UserDefaults.standard.data(forKey: storageKey),
-       let saved = try? JSONDecoder().decode([NativeZoneOutcomeSample].self, from: data) {
-      samples = saved
-    }
-    if let data = UserDefaults.standard.data(forKey: explicitKey),
-       let saved = try? JSONDecoder().decode([Int].self, from: data), saved.count == 2 {
-      explicitPositive = saved[0]
-      explicitNegative = saved[1]
-    }
-  }
-
-  private func save() {
-    if let data = try? JSONEncoder().encode(samples) {
-      UserDefaults.standard.set(data, forKey: storageKey)
-    }
+    objectWillChange.send()
   }
 }
 
@@ -215,7 +202,7 @@ final class NativeZoneOutcomeTracker: ObservableObject {
 /// candidate saved before this threshold existed doesn't linger either.
 let nativeMinimumViableAreaPoiScore = 3
 
-struct NativeExploreCandidate: Codable, Identifiable {
+struct NativeExploreCandidate: Codable, Identifiable, Equatable {
   var id = UUID()
   let name: String
   let latitude: Double
@@ -232,13 +219,106 @@ struct NativeExploreCandidate: Codable, Identifiable {
   var isValidated: Bool { timesNearby >= 3 }
 }
 
+/// All learned Insights state lives beside the user's records and trips, so it
+/// participates in backup, reset and iCloud merge as one versioned unit.
+struct NativeInsightEvidence: Codable, Equatable {
+  static let currentVersion = 1
+
+  var version = currentVersion
+  var outcomeSamples: [NativeOutcomeSample] = []
+  var zoneOutcomeSamples: [NativeZoneOutcomeSample] = []
+  var explicitPositive = 0
+  var explicitNegative = 0
+  var candidates: [NativeExploreCandidate] = []
+  var fetchedAreaKeys: [String: Date] = [:]
+  var poiPriorScores: [String: Double] = [:]
+  var updatedAt: Date? = nil
+
+  var isEmpty: Bool {
+    outcomeSamples.isEmpty && zoneOutcomeSamples.isEmpty &&
+      explicitPositive == 0 && explicitNegative == 0 && candidates.isEmpty &&
+      fetchedAreaKeys.isEmpty && poiPriorScores.isEmpty
+  }
+
+  static func migratedFromLegacyDefaults(_ defaults: UserDefaults = .standard) -> NativeInsightEvidence? {
+    let decoder = JSONDecoder()
+    var evidence = NativeInsightEvidence()
+    if let data = defaults.data(forKey: "uk.okkle.native.outcome.samples.v1"),
+       let samples = try? decoder.decode([NativeOutcomeSample].self, from: data) {
+      evidence.outcomeSamples = samples
+    }
+    if let data = defaults.data(forKey: "uk.okkle.native.zoneoutcome.samples.v1"),
+       let samples = try? decoder.decode([NativeZoneOutcomeSample].self, from: data) {
+      evidence.zoneOutcomeSamples = samples
+    }
+    if let data = defaults.data(forKey: "uk.okkle.native.zoneoutcome.explicit.v1"),
+       let values = try? decoder.decode([Int].self, from: data), values.count == 2 {
+      evidence.explicitPositive = values[0]
+      evidence.explicitNegative = values[1]
+    }
+    if let data = defaults.data(forKey: "uk.okkle.native.explore.candidates.v1"),
+       let candidates = try? decoder.decode([NativeExploreCandidate].self, from: data) {
+      evidence.candidates = candidates
+    }
+    if let data = defaults.data(forKey: "uk.okkle.native.explore.fetchedKeys.v1"),
+       let keys = try? decoder.decode([String: Date].self, from: data) {
+      evidence.fetchedAreaKeys = keys
+    }
+    guard !evidence.isEmpty else { return nil }
+    evidence.updatedAt = Date()
+    return evidence
+  }
+
+  static func merged(_ lhs: NativeInsightEvidence, _ rhs: NativeInsightEvidence) -> NativeInsightEvidence {
+    func outcomeKey(_ sample: NativeOutcomeSample) -> String {
+      "\(sample.date.timeIntervalSinceReferenceDate)|\(sample.period.rawValue)|\(sample.amount)|\(sample.wasPredictedPeakDay)"
+    }
+    func zoneKey(_ sample: NativeZoneOutcomeSample) -> String {
+      "\(sample.date.timeIntervalSinceReferenceDate)|\(sample.period.rawValue)|\(sample.amount)|\(sample.wasNearRecommendedZone)"
+    }
+
+    var merged = (rhs.updatedAt ?? .distantPast) > (lhs.updatedAt ?? .distantPast) ? rhs : lhs
+    merged.version = currentVersion
+    var uniqueOutcomes: [String: NativeOutcomeSample] = [:]
+    for sample in lhs.outcomeSamples + rhs.outcomeSamples { uniqueOutcomes[outcomeKey(sample)] = sample }
+    merged.outcomeSamples = uniqueOutcomes.values.sorted { $0.date < $1.date }.suffix(40).map { $0 }
+    var uniqueZoneOutcomes: [String: NativeZoneOutcomeSample] = [:]
+    for sample in lhs.zoneOutcomeSamples + rhs.zoneOutcomeSamples { uniqueZoneOutcomes[zoneKey(sample)] = sample }
+    merged.zoneOutcomeSamples = uniqueZoneOutcomes.values.sorted { $0.date < $1.date }.suffix(40).map { $0 }
+    merged.explicitPositive = max(lhs.explicitPositive, rhs.explicitPositive)
+    merged.explicitNegative = max(lhs.explicitNegative, rhs.explicitNegative)
+    merged.candidates = mergeCandidates(lhs.candidates, rhs.candidates)
+    merged.fetchedAreaKeys = lhs.fetchedAreaKeys.merging(rhs.fetchedAreaKeys, uniquingKeysWith: max)
+    merged.poiPriorScores = lhs.poiPriorScores.merging(rhs.poiPriorScores) { _, remote in remote }
+    merged.updatedAt = [lhs.updatedAt, rhs.updatedAt].compactMap { $0 }.max()
+    return merged
+  }
+
+  private static func mergeCandidates(
+    _ lhs: [NativeExploreCandidate],
+    _ rhs: [NativeExploreCandidate]
+  ) -> [NativeExploreCandidate] {
+    var candidates = Dictionary(uniqueKeysWithValues: lhs.map { ($0.id, $0) })
+    for candidate in rhs {
+      if let current = candidates[candidate.id] {
+        var combined = candidate.discoveredAt >= current.discoveredAt ? candidate : current
+        combined.timesNearby = max(current.timesNearby, candidate.timesNearby)
+        combined.trialDays = max(current.trialDays, candidate.trialDays)
+        combined.totalDayIncome = max(current.totalDayIncome, candidate.totalDayIncome)
+        candidates[candidate.id] = combined
+      } else {
+        candidates[candidate.id] = candidate
+      }
+    }
+    return Array(candidates.values).sorted { $0.discoveredAt < $1.discoveredAt }.suffix(30).map { $0 }
+  }
+}
+
 @MainActor
 final class NativeExploreCandidateStore: ObservableObject {
   static let shared = NativeExploreCandidateStore()
-  @Published private(set) var candidates: [NativeExploreCandidate] = []
-  private let storageKey = "uk.okkle.native.explore.candidates.v1"
 
-  init() { load() }
+  var candidates: [NativeExploreCandidate] { OkkleStore.shared.insightEvidence.candidates }
 
   /// Add newly discovered candidates, keeping any trial evidence already
   /// collected for ones we're already tracking (matched by name *and*
@@ -246,6 +326,7 @@ final class NativeExploreCandidateStore: ObservableObject {
   /// across many towns, so a name match alone would permanently suppress a
   /// genuinely new candidate just because a same-named one exists elsewhere).
   func merge(_ discovered: [(name: String, coordinate: CLLocationCoordinate2D, poiScore: Int)]) {
+    var candidates = candidates
     for area in discovered {
       let newLocation = CLLocation(latitude: area.coordinate.latitude, longitude: area.coordinate.longitude)
       let alreadyKnown = candidates.contains { existing in
@@ -258,8 +339,9 @@ final class NativeExploreCandidateStore: ObservableObject {
                                                longitude: area.coordinate.longitude, poiScore: area.poiScore,
                                                discoveredAt: Date()))
     }
-    trim()
-    save()
+    trim(&candidates)
+    OkkleStore.shared.updateInsightEvidence { $0.candidates = candidates }
+    objectWillChange.send()
   }
 
   /// The strongest guess still unproven — what the cold-start card shows,
@@ -285,6 +367,7 @@ final class NativeExploreCandidateStore: ObservableObject {
   /// Called on every real passive visit — the feedback half of the loop. If
   /// the visit lands near a candidate we're quietly testing, log a trial.
   func recordVisit(_ coordinate: CLLocationCoordinate2D, dayIncome: Double?) {
+    var candidates = candidates
     guard !candidates.isEmpty else { return }
     let visitLoc = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
     var changed = false
@@ -295,10 +378,13 @@ final class NativeExploreCandidateStore: ObservableObject {
       if let dayIncome { candidates[i].totalDayIncome += dayIncome; candidates[i].trialDays += 1 }
       changed = true
     }
-    if changed { save() }
+    if changed {
+      OkkleStore.shared.updateInsightEvidence { $0.candidates = candidates }
+      objectWillChange.send()
+    }
   }
 
-  private func trim() {
+  private func trim(_ candidates: inout [NativeExploreCandidate]) {
     // A lightweight exploration log, not a growing database: drop anything
     // that's sat untouched for 90 days, and cap the total tracked.
     let cutoff = Date().addingTimeInterval(-90 * 86_400)
@@ -306,17 +392,6 @@ final class NativeExploreCandidateStore: ObservableObject {
     if candidates.count > 30 { candidates = Array(candidates.suffix(30)) }
   }
 
-  private func load() {
-    guard let data = UserDefaults.standard.data(forKey: storageKey),
-          let saved = try? JSONDecoder().decode([NativeExploreCandidate].self, from: data) else { return }
-    candidates = saved
-  }
-
-  private func save() {
-    if let data = try? JSONEncoder().encode(candidates) {
-      UserDefaults.standard.set(data, forKey: storageKey)
-    }
-  }
 }
 
 /// Move a coordinate `distanceKm` along `bearingDeg` (0 = north, clockwise) —
@@ -339,21 +414,7 @@ enum NativeAreaSuggester {
   // Persisted (not just in-memory) so relaunching the app or bouncing
   // between two working areas doesn't re-trigger the ~48-request
   // MapKit/Overpass scan for a cell that was already scanned recently.
-  private static let fetchedKeysStorageKey = "uk.okkle.native.explore.fetchedKeys.v1"
   private static let fetchedKeyCooldown: TimeInterval = 24 * 60 * 60
-
-  private static var fetchedKeys: [String: Date] {
-    get {
-      guard let data = UserDefaults.standard.data(forKey: fetchedKeysStorageKey),
-            let saved = try? JSONDecoder().decode([String: Date].self, from: data) else { return [:] }
-      return saved
-    }
-    set {
-      if let data = try? JSONEncoder().encode(newValue) {
-        UserDefaults.standard.set(data, forKey: fetchedKeysStorageKey)
-      }
-    }
-  }
 
   /// Lay out three rings of candidates (1.2km, 2.5km, and 4km out) around
   /// the driver, score them by restaurant density, and hand the top three
@@ -371,21 +432,25 @@ enum NativeAreaSuggester {
   /// raise the chance at least one point actually lands near real density.
   @MainActor
   static func refresh(near origin: CLLocationCoordinate2D, knownZones: [CLLocationCoordinate2D]) {
+    let store = OkkleStore.shared
+    guard store.settings.insightsEnabled else { return }
     let key = "\(Int((origin.latitude * 200).rounded())),\(Int((origin.longitude * 200).rounded()))"
-    var keys = fetchedKeys
+    var keys = store.insightEvidence.fetchedAreaKeys
     keys = keys.filter { Date().timeIntervalSince($0.value) < fetchedKeyCooldown }
     if let last = keys[key], Date().timeIntervalSince(last) < fetchedKeyCooldown {
-      fetchedKeys = keys
+      store.updateInsightEvidence { $0.fetchedAreaKeys = keys }
       return
     }
     guard !fetching else { return }
     keys[key] = Date()
-    fetchedKeys = keys
+    store.updateInsightEvidence { $0.fetchedAreaKeys = keys }
     fetching = true
     Task {
       let found = await discover(near: origin, knownZones: knownZones)
       await MainActor.run {
-        NativeExploreCandidateStore.shared.merge(found)
+        if store.settings.insightsEnabled {
+          NativeExploreCandidateStore.shared.merge(found)
+        }
         fetching = false
       }
     }
@@ -596,7 +661,7 @@ final class NativeZoneCircle: MKCircle {
 @MainActor
 final class NativeZonePOIPrior: ObservableObject {
   static let shared = NativeZonePOIPrior()
-  @Published private(set) var scores: [String: Double] = [:]
+  var scores: [String: Double] { OkkleStore.shared.insightEvidence.poiPriorScores }
   private var pending: [(key: String, coordinate: CLLocationCoordinate2D)] = []
   private var enqueued: Set<String> = []
   private var busy = false
@@ -606,6 +671,7 @@ final class NativeZonePOIPrior: ObservableObject {
   private static let saturationCount = 8.0
 
   func priorScore(for coordinate: CLLocationCoordinate2D) -> Double? {
+    guard OkkleStore.shared.settings.insightsEnabled else { return nil }
     let key = "\(Int((coordinate.latitude * 200).rounded())),\(Int((coordinate.longitude * 200).rounded()))"
     if let cached = scores[key] { return cached }
     if !enqueued.contains(key) {
@@ -617,12 +683,19 @@ final class NativeZonePOIPrior: ObservableObject {
   }
 
   private func drain() {
-    guard !busy, !pending.isEmpty else { return }
+    guard OkkleStore.shared.settings.insightsEnabled, !busy, !pending.isEmpty else { return }
     busy = true
     let job = pending.removeFirst()
     Task {
       let count = await nativeFoodPOICount(near: job.coordinate, radiusMeters: 500)
-      self.scores[job.key] = min(Double(count) / Self.saturationCount, 1.0)
+      guard OkkleStore.shared.settings.insightsEnabled else {
+        self.busy = false
+        return
+      }
+      OkkleStore.shared.updateInsightEvidence {
+        $0.poiPriorScores[job.key] = min(Double(count) / Self.saturationCount, 1.0)
+      }
+      self.objectWillChange.send()
       self.busy = false
       try? await Task.sleep(nanoseconds: 250_000_000)
       self.drain()
@@ -648,6 +721,7 @@ final class NativeAreaNamer: ObservableObject {
   private var busy = false
 
   func name(for coordinate: CLLocationCoordinate2D) -> String? {
+    guard OkkleStore.shared.settings.insightsEnabled else { return nil }
     let key = "\(Int((coordinate.latitude * 200).rounded())),\(Int((coordinate.longitude * 200).rounded()))"
     if let cached = names[key] { return cached }
     if !enqueued.contains(key) {
@@ -659,12 +733,16 @@ final class NativeAreaNamer: ObservableObject {
   }
 
   private func drain() {
-    guard !busy, !pending.isEmpty else { return }
+    guard OkkleStore.shared.settings.insightsEnabled, !busy, !pending.isEmpty else { return }
     busy = true
     let job = pending.removeFirst()
     geocoder.reverseGeocodeLocation(CLLocation(latitude: job.coordinate.latitude, longitude: job.coordinate.longitude)) { [weak self] placemarks, _ in
       guard let self else { return }
       Task { @MainActor in
+        guard OkkleStore.shared.settings.insightsEnabled else {
+          self.busy = false
+          return
+        }
         // Aim for the named district/neighbourhood a driver can actually
         // head to ("Wimbledon"), not a single street ("The Broadway") —
         // too narrow a patch to stake out — and never a whole borough
@@ -697,4 +775,3 @@ final class NativeAreaNamer: ObservableObject {
 }
 
 // MARK: - Weather (Open-Meteo — free, no API key)
-

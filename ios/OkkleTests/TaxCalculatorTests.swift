@@ -154,18 +154,17 @@ final class NativeInsightsSimulationTests: XCTestCase {
     return calendar
   }
 
-  func testStoredTripHistoryBuildsInsightsWithoutVisitCache() {
+  func testStoredTripWithoutStopEvidenceDoesNotInventDeliveryEpisodes() {
     let store = OkkleStore()
     store.trips = [trip(miles: 6, startedAt: date(2026, 6, 23, 18), endedAt: date(2026, 6, 23, 18, 30), timestamped: false)]
 
     let visits = NativeShiftInsights.enrichedVisits(visits: [], trips: store.trips)
     let insights = NativeShiftInsights.build(visits: visits, store: store)
 
-    XCTAssertEqual(visits.count, 2)
-    XCTAssertEqual(visits.map(\.kind), [.pickup, .dropoff])
-    XCTAssertTrue(insights.hasData)
-    XCTAssertEqual(insights.deliveries, 1)
-    XCTAssertEqual(insights.paidMiles, 6, accuracy: 0.05)
+    XCTAssertTrue(visits.isEmpty)
+    XCTAssertFalse(insights.hasData)
+    XCTAssertEqual(insights.deliveries, 0)
+    XCTAssertEqual(insights.paidMiles, 0, accuracy: 0.05)
   }
 
   func testStoredTripDoesNotDoubleCountWhenRealVisitsAlreadyExist() {
@@ -185,7 +184,7 @@ final class NativeInsightsSimulationTests: XCTestCase {
     XCTAssertEqual(insights.deliveries, 1)
   }
 
-  func testStoredTripWithTimestampedRouteKeepsRecordedMileageScale() {
+  func testTimestampedRouteWithoutSignificantStopsDoesNotBecomeDelivery() {
     let store = OkkleStore()
     store.trips = [trip(miles: 8, startedAt: date(2026, 6, 25, 17), endedAt: date(2026, 6, 25, 18), timestamped: true)]
 
@@ -194,8 +193,8 @@ final class NativeInsightsSimulationTests: XCTestCase {
       store: store
     )
 
-    XCTAssertEqual(insights.deliveries, 1)
-    XCTAssertEqual(insights.paidMiles, 8, accuracy: 0.15)
+    XCTAssertEqual(insights.deliveries, 0)
+    XCTAssertEqual(insights.paidMiles, 0, accuracy: 0.15)
   }
 
   func testHighIncomeCanOverturnDeadMilePreference() {
@@ -395,10 +394,8 @@ final class NativeInsightsSimulationTests: XCTestCase {
     let visits = NativeShiftInsights.enrichedVisits(visits: [], trips: store.trips)
     let insights = NativeShiftInsights.build(visits: visits, store: store)
 
-    // A trip's raw start/end point is just "wherever the shift happened to
-    // start" — not a real classified stop — so it should count toward
-    // deliveries/mileage but never get named as a "where to go" zone.
-    XCTAssertEqual(insights.deliveries, 1)
+    // A trip's raw start/end point is not evidence of a successful delivery.
+    XCTAssertEqual(insights.deliveries, 0)
     XCTAssertTrue(insights.zones.isEmpty)
   }
 
@@ -441,6 +438,8 @@ final class NativeInsightsSimulationTests: XCTestCase {
   private func visit(kind: NativeVisit.Kind, latitude: Double, longitude: Double, arrival: Date, departure: Date) -> NativeVisit {
     var visit = NativeVisit(latitude: latitude, longitude: longitude, arrival: arrival, departure: departure)
     visit.kind = kind
+    visit.confidence = 0.9
+    visit.evidence = kind == .pickup ? [.nearbyPointOfInterest, .routeDwell] : [.routeDwell]
     return visit
   }
 
@@ -451,6 +450,7 @@ final class NativeInsightsSimulationTests: XCTestCase {
   private func record(date: Date, amount: Double) -> NativeRecord {
     var record = NativeRecord(kind: .income, platform: "Uber Eats", vehicle: nil, amount: amount, miles: nil,
                               deduction: nil, category: nil, date: date, period: .day, receiptImageData: nil)
+    record.source = .tripEarnings
     record.legacyID = "sqlite-trip-earnings-\(UUID().uuidString)"
     return record
   }
@@ -543,6 +543,24 @@ final class NativeRouteStopDetectorTests: XCTestCase {
     XCTAssertEqual(stops.first?.placeName, "Detected from movement")
   }
 
+  func testDetectedStopPreservesVehicleAndMovementEvidence() {
+    let started = date(2026, 7, 6, 18, 0)
+    let points = [
+      RoutePoint(latitude: 51.5000, longitude: -0.1200, timestamp: started, speed: 8, vehicleConnectionActive: true),
+      RoutePoint(latitude: 51.5100, longitude: -0.1100, timestamp: started.addingTimeInterval(10 * 60), speed: 0.2, vehicleConnectionActive: true),
+      RoutePoint(latitude: 51.5101, longitude: -0.1101, timestamp: started.addingTimeInterval(20 * 60), speed: 0.1, vehicleConnectionActive: false),
+      RoutePoint(latitude: 51.5200, longitude: -0.1000, timestamp: started.addingTimeInterval(30 * 60), speed: 8, vehicleConnectionActive: false),
+    ]
+
+    let stop = NativeRouteStopDetector.detectStops(in: points).first?.visit
+
+    XCTAssertEqual(stop?.kind, .other)
+    XCTAssertTrue(stop?.evidence?.contains(.routeDwell) == true)
+    XCTAssertTrue(stop?.evidence?.contains(.vehicleDisconnect) == true)
+    XCTAssertTrue(stop?.evidence?.contains(.speedDecay) == true)
+    XCTAssertTrue(stop?.evidence?.contains(.resumedDriving) == true)
+  }
+
   private func visit(
     latitude: Double,
     longitude: Double,
@@ -562,8 +580,355 @@ final class NativeRouteStopDetectorTests: XCTestCase {
 }
 
 
+final class NativeAutoTrackCoordinatorTests: XCTestCase {
+  func testDrivingAndStationaryEventsFollowOneReducerOwnedLifecycle() {
+    var coordinator = NativeAutoTrackCoordinator()
+
+    XCTAssertEqual(coordinator.handle(.drivingDetected), .beginShift)
+    XCTAssertEqual(coordinator.state.phase, .driving)
+    XCTAssertEqual(coordinator.handle(.stationaryDetected), .beginStationaryWait)
+    XCTAssertEqual(coordinator.state.phase, .stationaryPending)
+    XCTAssertEqual(coordinator.handle(.drivingDetected), .resumeFromStationary)
+    XCTAssertEqual(coordinator.state.phase, .driving)
+    XCTAssertEqual(coordinator.handle(.endRequested(reason: "Test complete")), .concludeShift(reason: "Test complete"))
+    XCTAssertEqual(coordinator.state.phase, .idle)
+  }
+
+  func testPauseResumeAndInvalidEventsCannotCreateImpossibleTransitions() {
+    var coordinator = NativeAutoTrackCoordinator()
+
+    XCTAssertEqual(coordinator.handle(.pauseRequested), .none)
+    XCTAssertEqual(coordinator.state.phase, .idle)
+    XCTAssertEqual(coordinator.handle(.drivingDetected), .beginShift)
+    XCTAssertEqual(coordinator.handle(.pauseRequested), .pauseShift)
+    XCTAssertEqual(coordinator.state.phase, .paused)
+    XCTAssertEqual(coordinator.handle(.stationaryDetected), .none)
+    XCTAssertEqual(coordinator.handle(.resumeRequested), .resumePausedShift)
+    XCTAssertEqual(coordinator.state.phase, .driving)
+  }
+
+  func testRestoredPhaseBecomesCoordinatorState() {
+    var coordinator = NativeAutoTrackCoordinator()
+
+    coordinator.restore(phase: .stationaryPending)
+
+    XCTAssertEqual(coordinator.state.phase, .stationaryPending)
+    XCTAssertEqual(coordinator.handle(.endRequested(reason: "Recovered timeout")), .concludeShift(reason: "Recovered timeout"))
+  }
+}
+
+
+final class NativeTrackingConfidenceTests: XCTestCase {
+  func testStartRequiresDrivingEvidenceAndUsesVehicleSignalAsSupport() {
+    XCTAssertFalse(NativeTrackingConfidenceEvaluator.startDecision(
+      NativeTripStartEvidence(vehicleConnected: true)
+    ).shouldTransition)
+    XCTAssertTrue(NativeTrackingConfidenceEvaluator.startDecision(
+      NativeTripStartEvidence(automotiveMotion: true)
+    ).shouldTransition)
+    XCTAssertTrue(NativeTrackingConfidenceEvaluator.startDecision(
+      NativeTripStartEvidence(displacementMeters: 40, vehicleConnected: true)
+    ).shouldTransition)
+  }
+
+  func testStopHysteresisRejectsBriefPauseAndAcceptsConfirmedEnd() {
+    let briefPause = NativeTripStopEvidenceSnapshot(stationaryDuration: 120, stationaryMotion: true)
+    XCTAssertFalse(NativeTrackingConfidenceEvaluator.stopDecision(
+      briefPause,
+      stationaryTimeout: 20 * 60
+    ).shouldTransition)
+
+    let disconnected = NativeTripStopEvidenceSnapshot(
+      stationaryDuration: 5 * 60,
+      vehicleDisconnected: true
+    )
+    XCTAssertTrue(NativeTrackingConfidenceEvaluator.stopDecision(
+      disconnected,
+      stationaryTimeout: 20 * 60
+    ).shouldTransition)
+
+    let resumed = NativeTripStopEvidenceSnapshot(
+      stationaryDuration: 20 * 60,
+      stationaryMotion: true,
+      drivingResumed: true
+    )
+    XCTAssertFalse(NativeTrackingConfidenceEvaluator.stopDecision(
+      resumed,
+      stationaryTimeout: 20 * 60
+    ).shouldTransition)
+  }
+}
+
+
+final class NativeTripRecorderTests: XCTestCase {
+  func testRecorderHasSingleOwnerAndSharedMileageRules() {
+    let recorder = NativeTripRecorder.shared
+    recorder.release(owner: .manual)
+    recorder.release(owner: .automatic)
+    defer {
+      recorder.release(owner: .manual)
+      recorder.release(owner: .automatic)
+    }
+    let start = Date(timeIntervalSinceReferenceDate: 10_000)
+    XCTAssertTrue(recorder.begin(owner: .manual, startedAt: start))
+    XCTAssertFalse(recorder.begin(owner: .automatic, startedAt: start))
+
+    let first = CLLocation(
+      coordinate: CLLocationCoordinate2D(latitude: 51.50, longitude: -0.12),
+      altitude: 0,
+      horizontalAccuracy: 5,
+      verticalAccuracy: 5,
+      course: 0,
+      speed: 4,
+      timestamp: start
+    )
+    let second = CLLocation(
+      coordinate: CLLocationCoordinate2D(latitude: 51.501, longitude: -0.12),
+      altitude: 0,
+      horizontalAccuracy: 5,
+      verticalAccuracy: 5,
+      course: 0,
+      speed: 4,
+      timestamp: start.addingTimeInterval(60)
+    )
+    let update = recorder.ingest([first, second], owner: .manual, now: start.addingTimeInterval(60))
+
+    XCTAssertEqual(update?.acceptedLocations.count, 2)
+    XCTAssertEqual(update?.snapshot.points.count, 2)
+    XCTAssertGreaterThan(update?.snapshot.miles ?? 0, 0.05)
+  }
+}
+
+
+final class NativeDeliveryEpisodeTests: XCTestCase {
+  func testGenericStopsBecomeEpisodeOnlyWithOriginEvidence() {
+    let start = Date(timeIntervalSinceReferenceDate: 20_000)
+    var origin = NativeVisit(
+      tripID: UUID(),
+      latitude: 51.50,
+      longitude: -0.12,
+      arrival: start,
+      departure: start.addingTimeInterval(60),
+      confidence: 0.9,
+      evidence: [.routeDwell, .nearbyPointOfInterest]
+    )
+    origin.kind = .other
+    var destination = NativeVisit(
+      tripID: origin.tripID,
+      latitude: 51.51,
+      longitude: -0.11,
+      arrival: start.addingTimeInterval(600),
+      departure: start.addingTimeInterval(660),
+      confidence: 0.8,
+      evidence: [.routeDwell]
+    )
+    destination.kind = .other
+
+    XCTAssertEqual(NativeDeliveryEpisodeDetector.episodes(in: [origin, destination]).count, 1)
+    origin.evidence = [.routeDwell]
+    XCTAssertTrue(NativeDeliveryEpisodeDetector.episodes(in: [origin, destination]).isEmpty)
+  }
+}
+
+
+@MainActor
+final class NativeInsightArchitectureTests: XCTestCase {
+  func testExplicitRecordProvenanceControlsRecommendationIncome() {
+    var manual = NativeRecord(
+      source: .manual,
+      kind: .income,
+      platform: "Uber Eats",
+      vehicle: nil,
+      amount: 50,
+      miles: nil,
+      deduction: nil,
+      category: nil,
+      date: Date(),
+      period: .day,
+      receiptImageData: nil
+    )
+    manual.legacyID = "sqlite-trip-earnings-old-prefix"
+    var tripEarnings = manual
+    tripEarnings.source = .tripEarnings
+
+    XCTAssertFalse(manual.isInsightRecommendationIncome)
+    XCTAssertTrue(tripEarnings.isInsightRecommendationIncome)
+  }
+
+  func testPureProjectionHonorsMasterInsightsGate() {
+    let store = OkkleStore()
+    store.settings.insightsEnabled = false
+    let input = NativeInsightInput(visits: [], store: store)
+
+    let result = NativeShiftInsights.build(input: input)
+
+    XCTAssertFalse(result.hasData)
+    XCTAssertEqual(result.deliveries, 0)
+  }
+
+  func testProjectorProducesVersionedSnapshot() async {
+    let store = OkkleStore()
+    let input = NativeInsightInput(visits: [], store: store)
+
+    let snapshot = await NativeInsightsProjector.shared.project(input)
+
+    XCTAssertEqual(snapshot.version, NativeInsightSnapshot.currentVersion)
+    XCTAssertEqual(snapshot.inputRevision, input.revision)
+  }
+}
+
+
+@MainActor
+final class NativeTripAnalysisArchitectureTests: XCTestCase {
+  func testTripOwnsCanonicalStopsAndRoundTripsThemInSnapshotData() throws {
+    let started = Date(timeIntervalSinceReferenceDate: 1_000_000)
+    var trip = makeTrip(started: started)
+    let stop = NativeVisit(
+      latitude: 51.515,
+      longitude: -0.115,
+      arrival: started.addingTimeInterval(300),
+      departure: started.addingTimeInterval(600),
+      placeName: "Cafe"
+    )
+    trip.analysis = NativeTripAnalysisProjector.build(
+      for: trip,
+      source: .automatic,
+      recordedVisits: [stop]
+    )
+
+    let snapshot = NativeSnapshot(settings: NativeSettings(), records: [], trips: [trip])
+    let decoded = try JSONDecoder().decode(NativeSnapshot.self, from: JSONEncoder().encode(snapshot))
+
+    XCTAssertEqual(decoded.trips.first?.canonicalStops.count, 1)
+    XCTAssertEqual(decoded.trips.first?.canonicalStops.first?.placeName, "Cafe")
+    XCTAssertEqual(decoded.trips.first?.canonicalStops.first?.tripID, trip.id)
+  }
+
+  func testRouteEditInvalidatesOldAnalysisAndStoreRebuildsIt() {
+    let started = Date(timeIntervalSinceReferenceDate: 2_000_000)
+    var trip = makeTrip(started: started)
+    trip.analysis = NativeTripAnalysisProjector.build(for: trip, source: .manual)
+    let oldFingerprint = trip.analysis?.routeFingerprint
+    trip.points.append(RoutePoint(
+      latitude: 51.53,
+      longitude: -0.09,
+      timestamp: started.addingTimeInterval(1_000)
+    ))
+    XCTAssertTrue(trip.canonicalStops.isEmpty)
+
+    let store = OkkleStore()
+    var storedOriginal = makeTrip(started: started)
+    storedOriginal.id = trip.id
+    storedOriginal.analysis = NativeTripAnalysisProjector.build(for: storedOriginal, source: .manual)
+    store.trips = [storedOriginal]
+    store.updateTrip(trip)
+
+    XCTAssertEqual(store.trips.first?.analysis?.source, .manual)
+    XCTAssertNotEqual(store.trips.first?.analysis?.routeFingerprint, oldFingerprint)
+    XCTAssertTrue(store.trips.first?.canonicalStops.isEmpty ?? false)
+  }
+
+  func testAddingAnOlderTripNormalizesAnalysisAtTheStoreBoundary() {
+    let store = OkkleStore()
+    store.trips = []
+    let trip = makeTrip(started: Date(timeIntervalSinceReferenceDate: 3_000_000))
+
+    store.addTrip(trip)
+
+    XCTAssertEqual(store.trips.count, 1)
+    XCTAssertTrue(store.trips[0].analysis?.isCurrent(for: store.trips[0]) == true)
+    XCTAssertTrue(store.trips[0].canonicalStops.isEmpty)
+  }
+
+  func testLegacyVisitMigrationReplacesInferredStopsOnce() {
+    let started = Date(timeIntervalSinceReferenceDate: 4_000_000)
+    let store = OkkleStore()
+    var trip = makeTrip(started: started)
+    trip.analysis = NativeTripAnalysisProjector.build(for: trip, source: .unknown)
+    store.trips = [trip]
+    let legacy = NativeVisit(
+      latitude: 51.516,
+      longitude: -0.114,
+      arrival: started.addingTimeInterval(300),
+      departure: started.addingTimeInterval(540),
+      placeName: "Legacy stop"
+    )
+
+    XCTAssertTrue(store.migrateTripAnalyses(legacyVisits: [legacy]))
+    XCTAssertEqual(store.trips[0].analysis?.source, .automatic)
+    XCTAssertEqual(store.trips[0].canonicalStops.map(\.placeName), ["Legacy stop"])
+    XCTAssertFalse(store.migrateTripAnalyses(legacyVisits: [legacy]))
+  }
+
+  private func makeTrip(started: Date) -> NativeTrip {
+    NativeTrip(
+      vehicle: .car,
+      miles: 2.5,
+      deduction: 1.13,
+      startedAt: started,
+      endedAt: started.addingTimeInterval(1_200),
+      points: [
+        RoutePoint(latitude: 51.50, longitude: -0.12, timestamp: started),
+        RoutePoint(latitude: 51.52, longitude: -0.10, timestamp: started.addingTimeInterval(1_200)),
+      ]
+    )
+  }
+}
+
+
 @MainActor
 final class NativeAutoTrackPolicyTests: XCTestCase {
+  func testOffDayKeepsWakeMonitoringWithoutAllowingATripStart() {
+    var settings = NativeSettings()
+    settings.autoTrackTrips = true
+    settings.workingDays = []
+
+    XCTAssertTrue(NativeAutoTrackPolicy.canMaintainWakeMonitoring(
+      settings: settings,
+      authorizationStatus: .authorizedAlways
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.canStartTrip(
+      settings: settings,
+      authorizationStatus: .authorizedAlways,
+      accuracyAuthorization: .fullAccuracy,
+      date: Date()
+    ))
+    XCTAssertEqual(NativeAutoTrackPolicy.readiness(
+      settings: settings,
+      authorizationStatus: .authorizedAlways,
+      accuracyAuthorization: .fullAccuracy,
+      date: Date()
+    ), .waitingForWorkingDay)
+  }
+
+  func testReducedAccuracyCanWakeButCannotRecordATrip() {
+    var settings = NativeSettings()
+    settings.autoTrackTrips = true
+    settings.workingDays = Array(0...6)
+
+    XCTAssertTrue(NativeAutoTrackPolicy.canMaintainWakeMonitoring(
+      settings: settings,
+      authorizationStatus: .authorizedAlways
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.canStartTrip(
+      settings: settings,
+      authorizationStatus: .authorizedAlways,
+      accuracyAuthorization: .reducedAccuracy,
+      date: Date()
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.canContinueActiveShift(
+      settings: settings,
+      authorizationStatus: .authorizedAlways,
+      accuracyAuthorization: .reducedAccuracy
+    ))
+    XCTAssertEqual(NativeAutoTrackPolicy.readiness(
+      settings: settings,
+      authorizationStatus: .authorizedAlways,
+      accuracyAuthorization: .reducedAccuracy,
+      date: Date()
+    ), .needsPreciseLocation)
+  }
+
   func testAutomaticMonitoringRequiresAlwaysAuthorizationAndAWorkingDay() {
     var settings = NativeSettings()
     settings.autoTrackTrips = true
@@ -790,6 +1155,50 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
 
 
 final class NativeICloudSyncMergeTests: XCTestCase {
+  func testInsightEvidenceMergesWithTheUserSnapshot() throws {
+    let now = Date(timeIntervalSinceReferenceDate: 30_000)
+    var localEvidence = NativeInsightEvidence()
+    localEvidence.outcomeSamples = [NativeOutcomeSample(
+      date: now,
+      period: .day,
+      amount: 20,
+      wasPredictedPeakDay: true
+    )]
+    localEvidence.updatedAt = now
+    var remoteEvidence = NativeInsightEvidence()
+    remoteEvidence.zoneOutcomeSamples = [NativeZoneOutcomeSample(
+      date: now.addingTimeInterval(60),
+      period: .day,
+      amount: 25,
+      wasNearRecommendedZone: true
+    )]
+    remoteEvidence.explicitPositive = 2
+    remoteEvidence.updatedAt = now.addingTimeInterval(60)
+
+    let merged = NativeICloudSnapshotMerge.merge(
+      local: NativeSnapshot(
+        settings: NativeSettings(),
+        records: [],
+        trips: [],
+        insightEvidence: localEvidence
+      ),
+      remote: NativeSnapshot(
+        settings: NativeSettings(),
+        records: [],
+        trips: [],
+        insightEvidence: remoteEvidence
+      )
+    )
+    let decoded = try JSONDecoder().decode(
+      NativeSnapshot.self,
+      from: JSONEncoder().encode(merged)
+    )
+
+    XCTAssertEqual(decoded.insightEvidence.outcomeSamples.count, 1)
+    XCTAssertEqual(decoded.insightEvidence.zoneOutcomeSamples.count, 1)
+    XCTAssertEqual(decoded.insightEvidence.explicitPositive, 2)
+  }
+
   func testFreshLocalOnboardingDoesNotOverwriteRemoteProfile() {
     var localSettings = NativeSettings()
     localSettings.name = "iPad"

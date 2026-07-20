@@ -112,9 +112,14 @@ struct NativeRecordsView: View {
         }
       )
       .environmentObject(store)
-      .presentationDetents([.medium])
+      .presentationDetents(addRecordPanelDetents)
       .presentationDragIndicator(.visible)
+      .nativeIPadPagePresentation()
     }
+  }
+
+  private var addRecordPanelDetents: Set<PresentationDetent> {
+    UIDevice.current.userInterfaceIdiom == .pad ? [.large] : [.medium]
   }
 
   private var recordsOverview: some View {
@@ -445,6 +450,7 @@ private struct NativeAddRecordPanel: View {
         .environmentObject(store)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .nativeIPadPagePresentation()
       }
     }
   }

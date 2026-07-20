@@ -565,6 +565,7 @@ enum NativeICloudSnapshotMerge {
       settings: settingsResult.settings,
       records: mergeRecords(local.records, remote.records, tombstones: recordTombstones),
       trips: mergeTrips(local.trips, remote.trips, tombstones: tripTombstones),
+      insightEvidence: NativeInsightEvidence.merged(local.insightEvidence, remote.insightEvidence),
       settingsUpdatedAt: settingsResult.updatedAt,
       recordTombstones: recordTombstones,
       tripTombstones: tripTombstones

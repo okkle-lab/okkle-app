@@ -89,6 +89,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   @Published var stopPromptRequested = false
 
   private let manager = CLLocationManager()
+  private let recorder = NativeTripRecorder.shared
   private var lastLocation: CLLocation?
   private var lastRoutePointLocation: CLLocation?
   private var stationaryAnchorLocation: CLLocation?
@@ -98,7 +99,6 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   private var reviewEndedAt: Date?
   private var timer: Timer?
   private var waitingForAuthorization = false
-  private let routePointDistance: CLLocationDistance = 10
   private let timerInterval: TimeInterval = 5
   private let stationaryPromptDelay: TimeInterval = 12 * 60
   private let minimumTrackingTimeBeforeStopPrompt: TimeInterval = 10 * 60
@@ -181,6 +181,12 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     promptedForCurrentStationaryPeriod = false
     stopPromptRequested = false
     startedAt = Date()
+    guard recorder.begin(owner: .manual, startedAt: startedAt ?? Date()) else {
+      permissionMessage = "Another trip is already being recorded."
+      startedAt = nil
+      Task { @MainActor in NativeAutoTrackEngine.shared.manualTripStartCancelled() }
+      return
+    }
     reviewEndedAt = nil
     phase = .live
     NativeTripWidgetStore.markTripStarted(startedAt: startedAt ?? Date())
@@ -207,6 +213,10 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   func resume() {
     guard phase == .paused else { return }
+    guard ensureRecorderOwnership() else {
+      permissionMessage = "Another trip is already being recorded."
+      return
+    }
     phase = .live
     if let startedAt {
       NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
@@ -220,6 +230,10 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   func continueTrackingAfterEndReview() {
     guard phase == .summary else { return }
+    guard ensureRecorderOwnership() else {
+      permissionMessage = "Another trip is already being recorded."
+      return
+    }
     reviewEndedAt = nil
     phase = .live
     if let startedAt {
@@ -242,8 +256,8 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     NativeTripWidgetStore.markTripEnded()
     NativeTripLiveActivityController.end()
     UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [stopPromptNotificationIdentifier])
-    if let lastLocation {
-      appendRoutePoint(for: lastLocation, force: true)
+    if let snapshot = recorder.forceEndpoint(owner: .manual) {
+      applyRecordingSnapshot(snapshot)
     }
     reviewEndedAt = Date()
     persistState()
@@ -253,7 +267,8 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   @MainActor
   func tripForReview(store: OkkleStore) -> NativeTrip? {
     guard phase == .summary, let startedAt else { return nil }
-    return NativeTrip(
+    var trip = NativeTrip(
+      source: .manual,
       vehicle: vehicle,
       miles: miles,
       deduction: store.calcDeduction(miles: miles, vehicle: vehicle, date: startedAt),
@@ -261,6 +276,8 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       endedAt: reviewEndedAt ?? points.last?.timestamp ?? Date(),
       points: points
     )
+    trip.analysis = NativeTripAnalysisProjector.build(for: trip, source: .manual)
+    return trip
   }
 
   func discard() {
@@ -279,6 +296,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     stopPromptRequested = false
     startedAt = nil
     reviewEndedAt = nil
+    recorder.release(owner: .manual)
     phase = .setup
     NativeTripWidgetStore.markTripEnded()
     NativeTripLiveActivityController.end()
@@ -307,35 +325,15 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     guard phase == .live else { return }
-    var usedLocation = false
-    let receivedAt = Date()
-    for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) where shouldUse(location, now: receivedAt) {
-      usedLocation = true
-      if let lastLocation {
-        let delta = location.distance(from: lastLocation) / 1_609.344
-        if delta > 0.002 && delta < 1 {
-          miles += delta
-        }
-      }
-      lastLocation = location
+    guard let update = recorder.ingest(locations, owner: .manual) else { return }
+    applyRecordingSnapshot(update.snapshot)
+    for location in update.acceptedLocations {
       updateStationaryState(with: location)
-      appendRoutePoint(for: location)
     }
-    if usedLocation {
+    if !update.acceptedLocations.isEmpty {
       permissionMessage = nil
       persistState()
     }
-  }
-
-  private func shouldUse(_ location: CLLocation, now: Date) -> Bool {
-    let activeTripAge = startedAt.map { max(30, now.timeIntervalSince($0) + 30) } ?? 30
-    return nativeShouldAcceptTripLocation(
-      location,
-      since: lastLocation,
-      now: now,
-      maximumAge: activeTripAge,
-      earliestTimestamp: startedAt
-    )
   }
 
   func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -389,17 +387,24 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     return backgroundModes.contains("location")
   }
 
-  private func appendRoutePoint(for location: CLLocation, force: Bool = false) {
-    guard nativeIsPlausibleRoutePoint(location, since: lastRoutePointLocation) else { return }
-    let breakBefore = lastRoutePointLocation.map {
-      nativeRouteSegmentNeedsBreak(from: $0, to: location)
-    } ?? false
-    if let lastRoutePointLocation {
-      let distance = location.distance(from: lastRoutePointLocation)
-      guard force ? distance > 1 : distance >= routePointDistance else { return }
-    }
-    points.append(RoutePoint(location: location, breakBefore: breakBefore))
-    lastRoutePointLocation = location
+  private func applyRecordingSnapshot(_ snapshot: NativeTripRecordingSnapshot) {
+    miles = snapshot.miles
+    points = snapshot.points
+    lastLocation = snapshot.lastLocation
+    lastRoutePointLocation = snapshot.lastRoutePointLocation
+  }
+
+  private func ensureRecorderOwnership() -> Bool {
+    if recorder.snapshot(owner: .manual) != nil { return true }
+    guard let startedAt else { return false }
+    return recorder.restore(
+      owner: .manual,
+      startedAt: startedAt,
+      points: points,
+      miles: miles,
+      lastLocation: lastLocation,
+      lastRoutePointLocation: lastRoutePointLocation
+    )
   }
 
   private func updateStationaryState(with location: CLLocation) {
@@ -507,6 +512,14 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     lastLocation = location(from: snapshot.lastLocation)
     lastRoutePointLocation = location(from: snapshot.lastRoutePointLocation)
       ?? location(from: snapshot.points.last)
+    let recorderRestored = recorder.restore(
+      owner: .manual,
+      startedAt: snapshot.startedAt,
+      points: snapshot.points,
+      miles: snapshot.miles,
+      lastLocation: lastLocation,
+      lastRoutePointLocation: lastRoutePointLocation
+    )
     stationaryAnchorLocation = location(from: snapshot.stationaryAnchorLocation)
     stationarySince = snapshot.stationarySince
     promptedForCurrentStationaryPeriod = snapshot.promptedForCurrentStationaryPeriod
@@ -514,7 +527,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
     let canUseLocation = manager.authorizationStatus == .authorizedAlways ||
       manager.authorizationStatus == .authorizedWhenInUse
-    phase = restoredPhase == .live && !canUseLocation ? .paused : restoredPhase
+    phase = (restoredPhase == .live && (!canUseLocation || !recorderRestored)) ? .paused : restoredPhase
 
     switch phase {
     case .live:
@@ -531,7 +544,9 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       manager.startUpdatingLocation()
       startTimer()
     case .paused:
-      if !canUseLocation {
+      if !recorderRestored {
+        permissionMessage = "Another trip is already being recorded."
+      } else if !canUseLocation {
         permissionMessage = "Location permission is needed to continue this recovered trip."
       }
       NativeTripWidgetStore.markTripStarted(startedAt: snapshot.startedAt)

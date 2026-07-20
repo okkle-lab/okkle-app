@@ -23,7 +23,6 @@ struct NativeTripDetailSheet: View {
   let onDelete: () -> Void
   @Environment(\.dismiss) private var dismiss
   @EnvironmentObject private var store: OkkleStore
-  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var startAddress: String?
   @State private var endAddress: String?
   @State private var stopPlaceNames: [UUID: String] = [:]
@@ -181,7 +180,7 @@ struct NativeTripDetailSheet: View {
       in: trip.points,
       startedAt: trip.startedAt,
       endedAt: trip.endedAt,
-      recordedVisits: autoTrack.visits
+      recordedVisits: trip.canonicalStops
     )
   }
 
@@ -1271,7 +1270,6 @@ struct NativeTripEditSheet: View {
   let onSave: (NativeTrip) -> Void
   @Environment(\.dismiss) private var dismiss
   @EnvironmentObject private var store: OkkleStore
-  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var vehicle: NativeVehicle
   @State private var milesText: String
   @State private var startedAt: Date
@@ -1396,7 +1394,7 @@ struct NativeTripEditSheet: View {
       in: routePoints,
       startedAt: startedAt,
       endedAt: endedAt,
-      recordedVisits: autoTrack.visits
+      recordedVisits: trip.canonicalStops
     )
   }
 

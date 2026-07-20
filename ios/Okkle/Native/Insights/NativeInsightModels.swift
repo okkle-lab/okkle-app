@@ -284,8 +284,121 @@ extension NativeRecord {
   /// attribute to time windows and zones.
   var isInsightRecommendationIncome: Bool {
     guard kind == .income, (amount ?? 0) > 0 else { return false }
+    if let source { return source == .tripEarnings }
     guard let legacyID else { return false }
     return legacyID.hasPrefix("sqlite-trip-earnings-") || legacyID.hasPrefix("json-trip-earnings-")
+  }
+}
+
+struct NativeDeliveryEpisode: Equatable {
+  let origin: NativeVisit
+  let destination: NativeVisit
+}
+
+/// Interprets generic stop evidence without writing a pickup/drop-off role back
+/// to the trip. A nearby food POI is treated as a possible origin only when a
+/// later, confident stop in the same trip provides a plausible destination.
+enum NativeDeliveryEpisodeDetector {
+  static func episodes(in visits: [NativeVisit]) -> [NativeDeliveryEpisode] {
+    let sorted = visits.sorted { $0.arrival < $1.arrival }
+    var episodes: [NativeDeliveryEpisode] = []
+    for (index, origin) in sorted.enumerated() {
+      guard origin.isLikelyDeliveryOrigin else { continue }
+      guard let destination = sorted.dropFirst(index + 1).first(where: {
+        sameTripOrShift(origin, $0) && $0.isConfidentStop &&
+          $0.arrival >= origin.departure && !$0.isEndpointGuess
+      }) else { continue }
+      episodes.append(NativeDeliveryEpisode(origin: origin, destination: destination))
+    }
+    return episodes
+  }
+
+  private static func sameTripOrShift(_ lhs: NativeVisit, _ rhs: NativeVisit) -> Bool {
+    if let tripID = lhs.tripID, let otherTripID = rhs.tripID { return tripID == otherTripID }
+    return rhs.arrival.timeIntervalSince(lhs.departure) <= 45 * 60
+  }
+}
+
+private extension NativeVisit {
+  var isConfidentStop: Bool {
+    !isEndpointGuess && (confidence ?? 0.5) >= 0.45
+  }
+
+  var isLikelyDeliveryOrigin: Bool {
+    isConfidentStop && (evidence ?? []).contains(.nearbyPointOfInterest)
+  }
+}
+
+struct NativeInsightInput {
+  var visits: [NativeVisit]
+  var settings: NativeSettings
+  var records: [NativeRecord]
+  var trips: [NativeTrip]
+  var evidence: NativeInsightEvidence
+  var generatedAt: Date
+
+  @MainActor
+  init(visits: [NativeVisit], store: OkkleStore, generatedAt: Date = Date()) {
+    self.visits = visits
+    settings = store.settings
+    records = store.records
+    trips = store.trips
+    evidence = store.insightEvidence
+    self.generatedAt = generatedAt
+  }
+
+  var revision: String {
+    let visitState = visits.map {
+      "\($0.id.uuidString):\($0.arrival.timeIntervalSinceReferenceDate):\($0.departure.timeIntervalSinceReferenceDate):\($0.confidence ?? -1):\(($0.evidence ?? []).map(\.rawValue).joined(separator: ","))"
+    }.joined(separator: "|")
+    let recordState = records.map {
+      "\($0.id.uuidString):\($0.updatedAt?.timeIntervalSinceReferenceDate ?? 0):\($0.amount ?? 0):\($0.source?.rawValue ?? "nil")"
+    }.joined(separator: "|")
+    let tripState = trips.map {
+      "\($0.id.uuidString):\($0.updatedAt?.timeIntervalSinceReferenceDate ?? 0):\($0.feedback?.rawValue ?? "nil"):\(NativeTripAnalysis.fingerprint(for: $0.points))"
+    }.joined(separator: "|")
+    let excludedState = settings.excludedPlaces.map(\.id.uuidString).joined(separator: ",")
+    return "\(visitState)#\(recordState)#\(tripState)#\(excludedState)#\(evidence.updatedAt?.timeIntervalSinceReferenceDate ?? 0)#\(settings.insightsEnabled)#\(settings.defaultVehicle.rawValue)"
+  }
+
+  func poiPriorScore(for coordinate: CLLocationCoordinate2D) -> Double? {
+    let key = "\(Int((coordinate.latitude * 200).rounded())),\(Int((coordinate.longitude * 200).rounded()))"
+    return evidence.poiPriorScores[key]
+  }
+}
+
+extension NativeInsightEvidence {
+  var peakHitRate: Double? {
+    let peakSamples = outcomeSamples.filter(\.wasPredictedPeakDay)
+    guard peakSamples.count >= 5 else { return nil }
+    var hits = 0
+    var evaluated = 0
+    for sample in peakSamples {
+      let comparable = outcomeSamples.filter { $0.period == sample.period }.map(\.amount).sorted()
+      guard comparable.count >= 3 else { continue }
+      evaluated += 1
+      if sample.amount >= comparable[comparable.count / 2] { hits += 1 }
+    }
+    return evaluated >= 5 ? Double(hits) / Double(evaluated) : nil
+  }
+
+  var zoneHitRate: Double? {
+    let nearSamples = zoneOutcomeSamples.filter(\.wasNearRecommendedZone)
+    guard nearSamples.count >= 5 else { return nil }
+    var hits = 0
+    var evaluated = 0
+    for sample in nearSamples {
+      let comparable = zoneOutcomeSamples.filter { $0.period == sample.period }.map(\.amount).sorted()
+      guard comparable.count >= 3 else { continue }
+      evaluated += 1
+      if sample.amount >= comparable[comparable.count / 2] { hits += 1 }
+    }
+    return evaluated >= 5 ? Double(hits) / Double(evaluated) : nil
+  }
+
+  var explicitHitRate: Double? {
+    let total = explicitPositive + explicitNegative
+    return total >= 3 ? Double(explicitPositive) / Double(total) : nil
   }
 }
 
@@ -438,11 +551,16 @@ struct NativeShiftInsights {
   )
 
   static func enrichedVisits(visits: [NativeVisit], trips: [NativeTrip]) -> [NativeVisit] {
-    let synthetic = trips.flatMap { trip in
+    var byID = Dictionary(uniqueKeysWithValues: visits.map { ($0.id, $0) })
+    for stop in trips.flatMap(\.canonicalStops) {
+      byID[stop.id] = stop
+    }
+    let base = Array(byID.values)
+    let synthetic = trips.filter { $0.canonicalStops.isEmpty }.flatMap { trip in
       tripDerivedVisits(for: trip, existingVisits: visits)
     }
-    guard !synthetic.isEmpty else { return visits }
-    return (visits + synthetic).sorted { left, right in left.arrival < right.arrival }
+    guard !synthetic.isEmpty else { return base.sorted { $0.arrival < $1.arrival } }
+    return (base + synthetic).sorted { left, right in left.arrival < right.arrival }
   }
 
   private static func tripDerivedVisits(for trip: NativeTrip, existingVisits: [NativeVisit]) -> [NativeVisit] {
@@ -450,103 +568,22 @@ struct NativeShiftInsights {
     let overlappingVisits = existingVisits.filter { visit in
       visit.arrival <= trip.endedAt && visit.departure >= trip.startedAt
     }
-    guard let start = trip.points.first?.coordinate, let end = trip.points.last?.coordinate else { return [] }
-    let inferredStops = routeDerivedStops(for: trip, start: start, end: end)
+    let inferredStops = routeDerivedStops(for: trip)
       .filter { !NativeRouteStopDetector.containsSameStop(overlappingVisits, $0) }
     if !inferredStops.isEmpty {
       return inferredStops
     }
-    guard overlappingVisits.isEmpty else { return [] }
-
-    let pickupDeparture = trip.startedAt
-    let dropArrival = trip.endedAt
-
-    var pickup = NativeVisit(
-      id: deterministicUUID(seed: "\(trip.id.uuidString)-pickup"),
-      latitude: start.latitude,
-      longitude: start.longitude,
-      arrival: trip.startedAt,
-      departure: pickupDeparture,
-      kindRaw: NativeVisit.Kind.pickup.rawValue,
-      placeName: "Trip start",
-      isEndpointGuess: true
-    )
-    pickup.kind = .pickup
-
-    var dropoff = NativeVisit(
-      id: deterministicUUID(seed: "\(trip.id.uuidString)-dropoff"),
-      latitude: end.latitude,
-      longitude: end.longitude,
-      arrival: dropArrival,
-      departure: trip.endedAt,
-      kindRaw: NativeVisit.Kind.dropoff.rawValue,
-      placeName: "Trip end",
-      isEndpointGuess: true
-    )
-    dropoff.kind = .dropoff
-
-    return [pickup, dropoff]
+    return []
   }
 
-  private static func routeDerivedStops(
-    for trip: NativeTrip,
-    start: CLLocationCoordinate2D,
-    end: CLLocationCoordinate2D
-  ) -> [NativeVisit] {
+  private static func routeDerivedStops(for trip: NativeTrip) -> [NativeVisit] {
     var visits = NativeRouteStopDetector.detectStops(in: trip.points).map(\.visit)
-    guard !visits.isEmpty else { return [] }
-
-    if visits.count == 1 {
-      visits[0].kind = .dropoff
-      visits[0].placeName = "Detected stop"
-      return [tripEndpointVisit(
-        trip: trip,
-        coordinate: start,
-        date: trip.startedAt,
-        role: .pickup,
-        suffix: "pickup",
-        name: "Trip start"
-      ), visits[0]]
-    }
-
     for index in visits.indices {
-      visits[index].kind = index.isMultiple(of: 2) ? .pickup : .dropoff
+      visits[index].tripID = trip.id
+      visits[index].kind = .other
       visits[index].placeName = "Detected stop"
     }
-
-    if visits.last?.kind == .pickup {
-      visits.append(tripEndpointVisit(
-        trip: trip,
-        coordinate: end,
-        date: trip.endedAt,
-        role: .dropoff,
-        suffix: "dropoff",
-        name: "Trip end"
-      ))
-    }
-
     return visits
-  }
-
-  private static func tripEndpointVisit(
-    trip: NativeTrip,
-    coordinate: CLLocationCoordinate2D,
-    date: Date,
-    role: NativeVisit.Kind,
-    suffix: String,
-    name: String
-  ) -> NativeVisit {
-    var visit = NativeVisit(
-      id: deterministicUUID(seed: "\(trip.id.uuidString)-\(suffix)"),
-      latitude: coordinate.latitude,
-      longitude: coordinate.longitude,
-      arrival: date,
-      departure: date,
-      kindRaw: role.rawValue,
-      placeName: name
-    )
-    visit.kind = role
-    return visit
   }
 
   private static func deterministicUUID(seed: String) -> UUID {
@@ -568,6 +605,12 @@ struct NativeShiftInsights {
 
   @MainActor
   static func build(visits: [NativeVisit], store: OkkleStore) -> NativeShiftInsights {
+    build(input: NativeInsightInput(visits: visits, store: store))
+  }
+
+  static func build(input: NativeInsightInput) -> NativeShiftInsights {
+    guard input.settings.insightsEnabled else { return .empty }
+    let visits = input.visits
     // Kept out of every calculation below, not just "where to go": places the
     // driver manually flagged, plus an auto-detected home guess when they
     // haven't set anything themselves. Left in, a night at home next to a
@@ -576,7 +619,7 @@ struct NativeShiftInsights {
     // wrecks activeHours and therefore £/hr. Manual entries always apply too
     // — labelling one spot doesn't turn off the auto-guess for a *different*
     // long-dwell place (e.g. a partner's).
-    var notWorkCoordinates = store.settings.excludedPlaces.map(\.coordinate)
+    var notWorkCoordinates = input.settings.excludedPlaces.map(\.coordinate)
     if let home = nativeDetectedHomeCoordinate(visits) { notWorkCoordinates.append(home) }
     let exclusionRadiusMeters = 200.0
     func isExcluded(_ coordinate: CLLocationCoordinate2D) -> Bool {
@@ -601,7 +644,7 @@ struct NativeShiftInsights {
       let prev = sorted[k - 1], cur = sorted[k]
       let gap = cur.arrival.timeIntervalSince(prev.departure)
       if gap < shiftGap {
-        let legMeters = routeMeters(from: prev.departure, to: cur.arrival, trips: store.trips)
+        let legMeters = routeMeters(from: prev.departure, to: cur.arrival, trips: input.trips)
           ?? cur.location.distance(from: prev.location)
         totalMeters += legMeters
         let legWeekday = Calendar.current.component(.weekday, from: cur.arrival) - 1
@@ -611,24 +654,25 @@ struct NativeShiftInsights {
     }
     activeSeconds += sorted.last?.dwell ?? 0
 
-    // Deliveries + paid distance: a pick-up drives to the next drop-off.
+    // Delivery episodes are projected from generic stop evidence. Persisted
+    // stops never claim pickup/drop-off truth.
     var deliveries = 0
     var paidMeters = 0.0
     var paidMetersByWeekday: [Int: Double] = [:]
     var deliveryHits: [NativeDeliveryHit] = []
-    var index = 0
-    while index < sorted.count {
-      if sorted[index].kind == .pickup,
-         let dropIndex = (index + 1..<sorted.count).first(where: { sorted[$0].kind == .dropoff }) {
+    for episode in NativeDeliveryEpisodeDetector.episodes(in: sorted) {
+        let origin = episode.origin
+        let destination = episode.destination
+        guard let index = sorted.firstIndex(where: { $0.id == origin.id }) else { continue }
         deliveries += 1
         // Paid = the active delivery leg (restaurant → customer). Everything
         // else (repositioning back out to the next pick-up, idle wandering) is
         // unpaid mileage. Real route distance when a recorded trip covers this
         // leg, otherwise a straight-line estimate.
-        let legMeters = routeMeters(from: sorted[index].departure, to: sorted[dropIndex].arrival, trips: store.trips)
-          ?? sorted[dropIndex].location.distance(from: sorted[index].location)
+        let legMeters = routeMeters(from: origin.departure, to: destination.arrival, trips: input.trips)
+          ?? destination.location.distance(from: origin.location)
         paidMeters += legMeters
-        let date = sorted[dropIndex].arrival
+        let date = destination.arrival
         let weekday = Calendar.current.component(.weekday, from: date) - 1
         paidMetersByWeekday[weekday, default: 0] += legMeters
         let hour = Calendar.current.component(.hour, from: date)
@@ -639,7 +683,7 @@ struct NativeShiftInsights {
         // home for a home-based driver — so it's excluded from zone/place
         // ranking below rather than risk recommending home, or a random
         // waypoint, as "where to go".
-        let isLocationTrustworthy = !sorted[index].isEndpointGuess && !sorted[dropIndex].isEndpointGuess
+        let isLocationTrustworthy = !origin.isEndpointGuess && !destination.isEndpointGuess
         // How far it took to reposition back into this pickup zone from
         // whatever came before it — the same unpaid-mileage cost the overall
         // deadMiles figure already counts, just attributed to this specific
@@ -647,10 +691,10 @@ struct NativeShiftInsights {
         var approachMeters = 0.0
         if index > 0 {
           let prev = sorted[index - 1]
-          let gap = sorted[index].arrival.timeIntervalSince(prev.departure)
+          let gap = origin.arrival.timeIntervalSince(prev.departure)
           if gap < shiftGap {
-            approachMeters = routeMeters(from: prev.departure, to: sorted[index].arrival, trips: store.trips)
-              ?? sorted[index].location.distance(from: prev.location)
+            approachMeters = routeMeters(from: prev.departure, to: origin.arrival, trips: input.trips)
+              ?? origin.location.distance(from: prev.location)
           }
         }
         // The actual vehicle logged for whichever trip covered this delivery
@@ -659,13 +703,9 @@ struct NativeShiftInsights {
         // cost (and therefore understate value) for anyone not driving.
         // Falls back to the driver's current default vehicle for the rare
         // case no covering trip is found (e.g. very old data).
-        let hitVehicle = store.trips.first { $0.startedAt <= date && $0.endedAt >= date }?.vehicle ?? store.settings.defaultVehicle
+        let hitVehicle = input.trips.first { $0.startedAt <= date && $0.endedAt >= date }?.vehicle ?? input.settings.defaultVehicle
         let vehicleCostPerMile = hitVehicle.rateBand(on: date).first
-        deliveryHits.append((weekday, band, hour, sorted[index].coordinate, date, isLocationTrustworthy, approachMeters, legMeters, vehicleCostPerMile))
-        index = dropIndex + 1
-      } else {
-        index += 1
-      }
+        deliveryHits.append((weekday, band, hour, origin.coordinate, date, isLocationTrustworthy, approachMeters, legMeters, vehicleCostPerMile))
     }
 
     let paidMiles = paidMeters / 1609.34 * roadFactor
@@ -729,7 +769,7 @@ struct NativeShiftInsights {
     var cells: [String: (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double, estimatedCost: Double)] = [:]
     let cellSize = 0.006
     let recencyHalfLifeDays = 60.0
-    let now = Date()
+    let now = input.generatedAt
     for hit in deliveryHits where hit.isLocationTrustworthy {
       let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
       var cell = cells[key] ?? (hit.coordinate, 0, 0, [:], 0, 0, 0)
@@ -776,7 +816,7 @@ struct NativeShiftInsights {
     }
     var incomeByCell: [String: NativeZoneIncomeAccumulator] = [:]
     let trustworthyHits = deliveryHits.filter(\.isLocationTrustworthy)
-    let incomeRecords = store.records.filter(\.isInsightRecommendationIncome)
+    let incomeRecords = input.records.filter(\.isInsightRecommendationIncome)
     for record in incomeRecords {
       guard let amount = record.amount else { continue }
       let periodStart = Calendar.current.startOfDay(for: record.periodStart ?? record.date)
@@ -816,7 +856,7 @@ struct NativeShiftInsights {
       }
     }
     var feedbackByCell: [String: NativeZoneTripFeedbackAccumulator] = [:]
-    for trip in store.trips {
+    for trip in input.trips {
       guard let feedback = trip.feedback else { continue }
       let hitsInTrip = trustworthyHits.filter { hit in
         hit.date >= trip.startedAt && hit.date <= trip.endedAt
@@ -886,8 +926,8 @@ struct NativeShiftInsights {
     // restraint as peakHitRate: a good hit rate never inflates a zone beyond
     // what it already earned, it just stops confidently pointing somewhere
     // that keeps not paying off.
-    let incomeHitRate = NativeZoneOutcomeTracker.shared.zoneHitRate
-    let explicitHitRate = NativeZoneOutcomeTracker.shared.explicitHitRate
+    let incomeHitRate = input.evidence.zoneHitRate
+    let explicitHitRate = input.evidence.explicitHitRate
     let combinedZoneHitRate: Double? = {
       switch (incomeHitRate, explicitHitRate) {
       case let (income?, explicit?): return (income + explicit) / 2
@@ -932,15 +972,15 @@ struct NativeShiftInsights {
       // Fall back to the real signal itself while the async POI lookup is
       // still resolving, so a zone isn't held back just because the prior
       // hasn't loaded yet.
-      let poiPrior = NativeZonePOIPrior.shared.priorScore(for: cell.coordinate) ?? realSignal
+      let poiPrior = input.poiPriorScore(for: cell.coordinate) ?? realSignal
       let confidence = Double(cell.rawCount) / (Double(cell.rawCount) + zoneConfidenceK)
       let weight = (confidence * realSignal + (1 - confidence) * poiPrior) * zoneConfidenceFactor
       return NativeZonePoint(coordinate: cell.coordinate, weight: weight, count: cell.rawCount, peakHour: peak, deadMilePct: deadMilePct)
     }
 
     // £/hr over the last 14 days: logged income ÷ active hours in the window.
-    let windowStart = Date().addingTimeInterval(-14 * 86_400)
-    let income = store.records
+    let windowStart = input.generatedAt.addingTimeInterval(-14 * 86_400)
+    let income = input.records
       .filter { $0.isInsightRecommendationIncome && $0.date >= windowStart }
       .reduce(0.0) { $0 + ($1.amount ?? 0) }
     let recentActive = recentActiveHours(sorted, since: windowStart, shiftGap: shiftGap)
@@ -957,8 +997,8 @@ struct NativeShiftInsights {
     // offer — every platform's real, logged share of this period's income,
     // and how each has shifted. Only worth showing once there's an actual mix
     // (2+ platforms) — a single platform logged isn't a "mix" insight.
-    let currentPlatformIncome = store.records.filter { $0.isInsightRecommendationIncome && $0.date >= windowStart }
-    let previousPlatformIncome = store.records.filter { $0.isInsightRecommendationIncome && $0.date >= prevWindowStart && $0.date < windowStart }
+    let currentPlatformIncome = input.records.filter { $0.isInsightRecommendationIncome && $0.date >= windowStart }
+    let previousPlatformIncome = input.records.filter { $0.isInsightRecommendationIncome && $0.date >= prevWindowStart && $0.date < windowStart }
     func platformTotals(_ records: [NativeRecord]) -> [String: Double] {
       var totals: [String: Double] = [:]
       for r in records { totals[r.platform ?? "Other", default: 0] += r.amount ?? 0 }
@@ -1023,7 +1063,7 @@ struct NativeShiftInsights {
 
     // Today's plan: today if it has data, otherwise the next weekday (working
     // day or not — we only ever have data on working days anyway) that does.
-    let todayWeekday = Calendar.current.component(.weekday, from: Date()) - 1
+    let todayWeekday = Calendar.current.component(.weekday, from: input.generatedAt) - 1
     let planWeekday = (0..<7)
       .map { (todayWeekday + $0) % 7 }
       .first { weekdayCounts[$0, default: 0] > 0 }
@@ -1056,7 +1096,7 @@ struct NativeShiftInsights {
       )
     }
 
-    let lastShift = debrief(sorted: sorted, deliveryHits: deliveryHits, store: store, shiftGap: shiftGap, cellSize: cellSize)
+    let lastShift = debrief(sorted: sorted, deliveryHits: deliveryHits, input: input, shiftGap: shiftGap, cellSize: cellSize)
     let activeDays = Set(sorted.map { Calendar.current.startOfDay(for: $0.arrival) }).count
     let daySpan = Calendar.current.dateComponents(
       [.day],
@@ -1080,7 +1120,7 @@ struct NativeShiftInsights {
       lastShift: lastShift,
       activeDays: activeDays,
       daySpan: daySpan,
-      peakHitRate: NativeOutcomeTracker.shared.peakHitRate,
+      peakHitRate: input.evidence.peakHitRate,
       weekdayReliability: weekdayReliability,
       platformShares: platformShares,
       hourCounts: periodHourCounts
@@ -1090,13 +1130,12 @@ struct NativeShiftInsights {
   /// Read on the most recent day (in the last fortnight) that has both stops
   /// and logged income: that day's £/hr vs your usual for that weekday, and
   /// whether you finished before your typical peak band.
-  @MainActor
-  private static func debrief(sorted: [NativeVisit], deliveryHits: [NativeDeliveryHit], store: OkkleStore, shiftGap: TimeInterval, cellSize: Double) -> NativeShiftDebrief? {
+  private static func debrief(sorted: [NativeVisit], deliveryHits: [NativeDeliveryHit], input: NativeInsightInput, shiftGap: TimeInterval, cellSize: Double) -> NativeShiftDebrief? {
     let cal = Calendar.current
     // Income by calendar day (last 14 days).
-    let since = Date().addingTimeInterval(-14 * 86_400)
+    let since = input.generatedAt.addingTimeInterval(-14 * 86_400)
     var incomeByDay: [Date: Double] = [:]
-    for r in store.records where r.isInsightRecommendationIncome && r.date >= since {
+    for r in input.records where r.isInsightRecommendationIncome && r.date >= since {
       incomeByDay[cal.startOfDay(for: r.date), default: 0] += r.amount ?? 0
     }
     guard !incomeByDay.isEmpty else { return nil }
@@ -1182,6 +1221,36 @@ struct NativeShiftInsights {
 }
 
 typealias NativeDeliveryHit = (weekday: Int, band: NativeTimeFilter, hour: Int, coordinate: CLLocationCoordinate2D, date: Date, isLocationTrustworthy: Bool, approachMeters: Double, paidLegMeters: Double, vehicleCostPerMile: Double)
+
+struct NativeInsightSnapshot {
+  static let currentVersion = 1
+
+  var version = currentVersion
+  var generatedAt: Date
+  var inputRevision: String
+  var shift: NativeShiftInsights
+}
+
+actor NativeInsightsProjector {
+  static let shared = NativeInsightsProjector()
+
+  private var cached: NativeInsightSnapshot?
+
+  func project(_ input: NativeInsightInput) -> NativeInsightSnapshot {
+    if let cached, cached.inputRevision == input.revision { return cached }
+    let snapshot = NativeInsightSnapshot(
+      generatedAt: input.generatedAt,
+      inputRevision: input.revision,
+      shift: NativeShiftInsights.build(input: input)
+    )
+    cached = snapshot
+    return snapshot
+  }
+
+  func invalidate() {
+    cached = nil
+  }
+}
 
 /// The busiest time-band and roughly-where for one weekday.
 func bestBandAndZone(for weekday: Int, deliveryHits: [NativeDeliveryHit], cellSize: Double) -> (band: NativeTimeFilter, zone: CLLocationCoordinate2D?) {

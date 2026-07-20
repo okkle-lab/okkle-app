@@ -23,6 +23,7 @@ final class OkkleStore: ObservableObject {
   }
   @Published var records: [NativeRecord] = [] { didSet { cachedHistory = nil; scheduleSave() } }
   @Published var trips: [NativeTrip] = [] { didSet { cachedHistory = nil; scheduleSave() } }
+  @Published var insightEvidence = NativeInsightEvidence() { didSet { scheduleSave() } }
   @Published private(set) var iCloudSyncState: NativeICloudSyncState = .disabled
   @Published private(set) var persistenceIssue: String?
 
@@ -113,9 +114,15 @@ final class OkkleStore: ObservableObject {
     }
 
     if let snapshot {
-      applySnapshotContents(snapshot)
+      shouldPersist = applySnapshotContents(snapshot) || shouldPersist
     } else if primaryReadFailed, persistenceIssue == nil {
       persistenceIssue = "Okkle could not read its local data. The original snapshot was preserved for recovery."
+    }
+
+    if insightEvidence.isEmpty,
+       let migratedEvidence = NativeInsightEvidence.migratedFromLegacyDefaults() {
+      insightEvidence = migratedEvidence
+      shouldPersist = true
     }
 
     if normalizeOnboardingState() {
@@ -246,6 +253,7 @@ final class OkkleStore: ObservableObject {
       settings: settings,
       records: records,
       trips: trips,
+      insightEvidence: insightEvidence,
       settingsUpdatedAt: settingsUpdatedAt,
       recordTombstones: recordTombstones,
       tripTombstones: tripTombstones
@@ -339,7 +347,7 @@ final class OkkleStore: ObservableObject {
   var onRecordAdded: ((NativeRecord) -> Void)?
 
   func addRecord(_ record: NativeRecord) {
-    var updated = record
+    var updated = normalizedRecord(record)
     updated.updatedAt = Date()
     recordTombstones.removeAll { $0.id == updated.id }
     records.insert(updated, at: 0)
@@ -348,7 +356,7 @@ final class OkkleStore: ObservableObject {
   }
 
   func addTrip(_ trip: NativeTrip) {
-    var updated = trip
+    var updated = normalizedTrip(trip)
     updated.updatedAt = Date()
     tripTombstones.removeAll { $0.id == updated.id }
     trips.insert(updated, at: 0)
@@ -359,6 +367,17 @@ final class OkkleStore: ObservableObject {
   func updateTrip(_ trip: NativeTrip) {
     guard let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
     var updated = trip
+    updated.source = updated.source ?? trips[index].source ?? updated.analysis?.source ?? .unknown
+    if updated.points != trips[index].points || updated.analysis?.isCurrent(for: updated) != true {
+      let previousAnalysis = trips[index].analysis ?? updated.analysis
+      updated.analysis = NativeTripAnalysisProjector.build(
+        for: updated,
+        source: previousAnalysis?.source ?? .unknown,
+        startTrigger: previousAnalysis?.startTrigger,
+        endReason: previousAnalysis?.endReason,
+        usedEnhancedTracking: previousAnalysis?.usedEnhancedTracking ?? false
+      )
+    }
     updated.updatedAt = Date()
     tripTombstones.removeAll { $0.id == updated.id }
     trips[index] = updated
@@ -366,7 +385,7 @@ final class OkkleStore: ObservableObject {
 
   func updateRecord(_ record: NativeRecord) {
     guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
-    var updated = record
+    var updated = normalizedRecord(record)
     updated.updatedAt = Date()
     recordTombstones.removeAll { $0.id == updated.id }
     records[index] = updated
@@ -392,12 +411,128 @@ final class OkkleStore: ObservableObject {
     settings = NativeSettings()
     records = []
     trips = []
+    insightEvidence = NativeInsightEvidence()
     settingsUpdatedAt = Date()
     recordTombstones = []
     tripTombstones = []
     isLoading = false
     UserDefaults.standard.removeObject(forKey: nativeSeenMedalsKey)
     save()
+  }
+
+  /// One-time bridge from the old standalone visit cache. Once attached to a
+  /// trip, stops participate in normal save, deletion, backup and iCloud sync.
+  @discardableResult
+  func migrateTripAnalyses(legacyVisits: [NativeVisit]) -> Bool {
+    var changed = false
+    let migrated = trips.map { trip -> NativeTrip in
+      let overlapping = legacyVisits.filter {
+        $0.arrival <= trip.endedAt && $0.departure >= trip.startedAt
+      }
+      if trip.analysis?.isCurrent(for: trip) == true,
+         overlapping.isEmpty || trip.analysis?.source == .automatic {
+        return trip
+      }
+      var updated = trip
+      let source: NativeTripTrackingSource
+      if !overlapping.isEmpty {
+        source = .automatic
+      } else if let previousSource = trip.analysis?.source {
+        source = previousSource
+      } else if trip.legacyID != nil {
+        source = .imported
+      } else {
+        source = .unknown
+      }
+      updated.analysis = NativeTripAnalysisProjector.build(
+        for: updated,
+        source: source,
+        recordedVisits: overlapping,
+        startTrigger: trip.analysis?.startTrigger,
+        endReason: trip.analysis?.endReason,
+        usedEnhancedTracking: trip.analysis?.usedEnhancedTracking ?? false
+      )
+      changed = true
+      return updated
+    }
+    if changed { trips = migrated }
+    return changed
+  }
+
+  private func normalizedTrip(
+    _ trip: NativeTrip,
+    source requestedSource: NativeTripTrackingSource? = nil
+  ) -> NativeTrip {
+    var normalized = trip
+    let source = requestedSource
+      ?? trip.source
+      ?? trip.analysis?.source
+      ?? (trip.legacyID == nil ? .unknown : .imported)
+    normalized.source = source
+    if trip.analysis?.isCurrent(for: trip) == true,
+       trip.analysis?.source == source {
+      return normalized
+    }
+    normalized.analysis = NativeTripAnalysisProjector.build(for: normalized, source: source)
+    if let previous = trip.analysis,
+       previous.routeFingerprint == NativeTripAnalysis.fingerprint(for: trip.points) {
+      normalized.analysis = NativeTripAnalysisProjector.build(
+        for: normalized,
+        source: source,
+        recordedVisits: previous.stops,
+        startTrigger: previous.startTrigger,
+        endReason: previous.endReason,
+        usedEnhancedTracking: previous.usedEnhancedTracking
+      )
+    }
+    if let previous = trip.analysis {
+      normalized.analysis?.startTrigger = previous.startTrigger
+      normalized.analysis?.endReason = previous.endReason
+      normalized.analysis?.usedEnhancedTracking = previous.usedEnhancedTracking
+    }
+    return normalized
+  }
+
+  private func normalizedRecord(_ record: NativeRecord) -> NativeRecord {
+    guard record.source == nil else { return record }
+    var normalized = record
+    if let legacyID = record.legacyID {
+      if legacyID.hasPrefix("sqlite-trip-earnings-") || legacyID.hasPrefix("json-trip-earnings-") {
+        normalized.source = .tripEarnings
+      } else {
+        normalized.source = .imported
+      }
+    } else {
+      normalized.source = .unknown
+    }
+    return normalized
+  }
+
+  private func linkedTripEarningsRecord(_ record: NativeRecord, trips: [NativeTrip]) -> NativeRecord {
+    guard record.source == .tripEarnings, record.tripID == nil, let legacyID = record.legacyID else {
+      return record
+    }
+    let tripLegacyID: String?
+    if legacyID.hasPrefix("sqlite-trip-earnings-") {
+      tripLegacyID = legacyID.replacingOccurrences(of: "sqlite-trip-earnings-", with: "sqlite-trip-")
+    } else if legacyID.hasPrefix("json-trip-earnings-") {
+      tripLegacyID = legacyID.replacingOccurrences(of: "json-trip-earnings-", with: "json-trip-")
+    } else {
+      tripLegacyID = nil
+    }
+    guard let tripLegacyID,
+          let trip = trips.first(where: { $0.legacyID == tripLegacyID }) else { return record }
+    var linked = record
+    linked.tripID = trip.id
+    return linked
+  }
+
+  func updateInsightEvidence(_ mutation: (inout NativeInsightEvidence) -> Void) {
+    var updated = insightEvidence
+    mutation(&updated)
+    updated.version = NativeInsightEvidence.currentVersion
+    updated.updatedAt = Date()
+    insightEvidence = updated
   }
 
   func completeOnboarding(name: String,
@@ -606,13 +741,20 @@ final class OkkleStore: ObservableObject {
     throw NativeBackupRestoreError.invalidBackup
   }
 
-  private func applySnapshotContents(_ snapshot: NativeSnapshot) {
+  @discardableResult
+  private func applySnapshotContents(_ snapshot: NativeSnapshot) -> Bool {
     settings = snapshot.settings
-    records = snapshot.records
-    trips = snapshot.trips
+    let normalizedTrips = snapshot.trips.map { normalizedTrip($0) }
+    trips = normalizedTrips
+    let normalizedRecords = snapshot.records
+      .map(normalizedRecord)
+      .map { linkedTripEarningsRecord($0, trips: normalizedTrips) }
+    records = normalizedRecords
+    insightEvidence = snapshot.insightEvidence
     settingsUpdatedAt = snapshot.settingsUpdatedAt
     recordTombstones = snapshot.recordTombstones
     tripTombstones = snapshot.tripTombstones
+    return normalizedRecords != snapshot.records || normalizedTrips != snapshot.trips
   }
 
   private static func upsertTombstone(
@@ -642,7 +784,8 @@ final class OkkleStore: ObservableObject {
       return !trips.contains { likelySameTrip($0, trip) }
     }
     if !newTrips.isEmpty {
-      trips = (trips + newTrips).sorted { $0.startedAt > $1.startedAt }
+      trips = (trips + newTrips.map { normalizedTrip($0, source: .imported) })
+        .sorted { $0.startedAt > $1.startedAt }
     }
 
     let existingRecordLegacyIDs = Set(records.compactMap(\.legacyID))
@@ -653,7 +796,10 @@ final class OkkleStore: ObservableObject {
       return !records.contains { likelySameRecord($0, record) }
     }
     if !newRecords.isEmpty {
-      records = (records + newRecords).sorted { $0.date > $1.date }
+      records = (records + newRecords
+        .map(normalizedRecord)
+        .map { linkedTripEarningsRecord($0, trips: trips) })
+        .sorted { $0.date > $1.date }
     }
   }
 

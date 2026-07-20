@@ -187,7 +187,9 @@ enum NativeLegacySQLiteImporter {
       let miles = double(row["miles"]) ?? 0
       let storedDeduction = double(row["deduction"]) ?? 0
       return NativeTrip(
+        id: legacyTripUUID(id),
         legacyID: "sqlite-trip-\(id)",
+        source: .imported,
         vehicle: vehicle,
         miles: miles,
         deduction: storedDeduction > 0 ? storedDeduction : calculatedDeduction(miles: miles, vehicle: vehicle, date: startedAt),
@@ -226,6 +228,7 @@ enum NativeLegacySQLiteImporter {
 
       return NativeRecord(
         legacyID: "sqlite-record-\(id)",
+        source: .imported,
         kind: kind,
         platform: nonEmpty(string(row["platform"])),
         vehicle: recordVehicle,
@@ -255,6 +258,8 @@ enum NativeLegacySQLiteImporter {
       let day = Calendar.current.startOfDay(for: date)
       return NativeRecord(
         legacyID: "sqlite-trip-earnings-\(id)",
+        source: .tripEarnings,
+        tripID: legacyTripUUID(id),
         kind: .income,
         platform: nonEmpty(string(row["platform"])),
         vehicle: nil,
@@ -296,6 +301,10 @@ enum NativeLegacySQLiteImporter {
       result.append(row)
     }
     return result
+  }
+
+  private static func legacyTripUUID(_ id: Int) -> UUID {
+    UUID(uuidString: String(format: "00000000-0000-4000-8001-%012llX", UInt64(id))) ?? UUID()
   }
 
   private static func routePoints(from raw: String?) -> [RoutePoint] {

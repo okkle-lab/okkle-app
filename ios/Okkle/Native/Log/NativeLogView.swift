@@ -908,6 +908,7 @@ struct NativeLogView: View {
     case .mileage:
       let milesValue = Double(distance) ?? 0
       record = NativeRecord(
+        source: .manual,
         kind: .mileage,
         platform: nil,
         vehicle: vehicle,
@@ -925,6 +926,7 @@ struct NativeLogView: View {
       )
     case .income:
       record = NativeRecord(
+        source: .manual,
         kind: .income,
         platform: cleanPlatform,
         vehicle: nil,
@@ -943,6 +945,7 @@ struct NativeLogView: View {
       store.settings.platforms = uniqueStrings(store.settings.platforms + [cleanPlatform])
     case .expense:
       record = NativeRecord(
+        source: .manual,
         kind: .expense,
         platform: nil,
         vehicle: nil,

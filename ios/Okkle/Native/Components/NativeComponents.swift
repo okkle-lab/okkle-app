@@ -1,5 +1,24 @@
 import MapKit
 import SwiftUI
+import UIKit
+
+private struct NativeIPadPagePresentationModifier: ViewModifier {
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if #available(iOS 18.0, *), UIDevice.current.userInterfaceIdiom == .pad {
+      content.presentationSizing(.page)
+    } else {
+      content
+    }
+  }
+}
+
+extension View {
+  func nativeIPadPagePresentation() -> some View {
+    modifier(NativeIPadPagePresentationModifier())
+  }
+}
+
 enum NativeScreenStyle {
   case standard
 
