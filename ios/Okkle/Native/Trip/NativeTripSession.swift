@@ -99,6 +99,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   private var reviewEndedAt: Date?
   private var timer: Timer?
   private var waitingForAuthorization = false
+  private var requestingFullAccuracy = false
   private let timerInterval: TimeInterval = 5
   private let stationaryPromptDelay: TimeInterval = 12 * 60
   private let minimumTrackingTimeBeforeStopPrompt: TimeInterval = 10 * 60
@@ -114,7 +115,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   override init() {
     super.init()
     manager.delegate = self
-    manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+    manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
     manager.distanceFilter = 10
     manager.activityType = .automotiveNavigation
     manager.pausesLocationUpdatesAutomatically = false
@@ -167,7 +168,32 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       NativeAutoTrackEngine.shared.manualTripStartCancelled()
       return
     }
-    beginTracking()
+    beginTrackingWithPreciseLocation()
+  }
+
+  private func beginTrackingWithPreciseLocation() {
+    guard manager.accuracyAuthorization == .reducedAccuracy else {
+      beginTracking()
+      return
+    }
+    guard !requestingFullAccuracy else { return }
+
+    requestingFullAccuracy = true
+    waitingForAuthorization = true
+    manager.requestTemporaryFullAccuracyAuthorization(withPurposeKey: "TripTracking") { [weak self] _ in
+      DispatchQueue.main.async {
+        guard let self else { return }
+        self.requestingFullAccuracy = false
+        guard self.manager.accuracyAuthorization == .fullAccuracy else {
+          self.waitingForAuthorization = false
+          self.permissionMessage = "Turn on Precise Location for Okkle to record an accurate route."
+          NativeTripWidgetStore.markTripEnded()
+          Task { @MainActor in NativeAutoTrackEngine.shared.manualTripStartCancelled() }
+          return
+        }
+        self.beginTracking()
+      }
+    }
   }
 
   private func beginTracking() {
@@ -309,7 +335,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     if status == .authorizedAlways || status == .authorizedWhenInUse {
       permissionMessage = nil
       if waitingForAuthorization {
-        beginTracking()
+        beginTrackingWithPreciseLocation()
       } else if phase == .live {
         manager.startUpdatingLocation()
       }

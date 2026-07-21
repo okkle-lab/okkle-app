@@ -152,6 +152,20 @@ struct NativeAutoTrackCapability: Equatable {
 }
 
 enum NativeAutoTrackPolicy {
+  /// Once a trip starts, both driving and stationary-wait phases keep the
+  /// standard high-fidelity location stream alive. A brief false stationary
+  /// motion classification must never punch a hole in the recorded route.
+  static func requiresContinuousLocationUpdates(during phase: NativeAutoShiftPhase) -> Bool {
+    phase == .driving || phase == .stationaryPending
+  }
+
+  /// Losing Car Audio is supporting stop evidence, never a stop by itself.
+  /// Only arm its dwell timer after motion has also put the trip into the
+  /// stationary-wait phase; otherwise a flaky audio route can split a drive.
+  static func shouldArmVehicleDisconnectEnd(during phase: NativeAutoShiftPhase) -> Bool {
+    phase == .stationaryPending
+  }
+
   static func capability(
     settings: NativeSettings,
     authorizationStatus: CLAuthorizationStatus,
@@ -500,7 +514,7 @@ final class NativeTripRecorder {
         ) == nil else { continue }
 
         if let previous = state.lastLocation {
-          let delta = location.distance(from: previous) / 1_609.344
+          let delta = (nativeTripMovementDistance(from: previous, to: location) ?? 0) / 1_609.344
           if delta > 0.002, delta < 1 { state.miles += delta }
         }
         state.lastLocation = location
@@ -546,17 +560,13 @@ final class NativeTripRecorder {
     state: inout NativeTripRecordingSnapshot
   ) {
     guard nativeIsPlausibleRoutePoint(location, since: state.lastRoutePointLocation) else { return }
-    let breakBefore = state.lastRoutePointLocation.map {
-      nativeRouteSegmentNeedsBreak(from: $0, to: location)
-    } ?? false
     if let previous = state.lastRoutePointLocation {
       let distance = location.distance(from: previous)
       guard force ? distance > 1 : distance >= routePointDistance else { return }
     }
     state.points.append(RoutePoint(
       location: location,
-      vehicleConnectionActive: vehicleConnectionActive,
-      breakBefore: breakBefore
+      vehicleConnectionActive: vehicleConnectionActive
     ))
     state.lastRoutePointLocation = location
   }
