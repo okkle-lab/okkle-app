@@ -708,16 +708,29 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
       accuracy: 8,
       timestamp: now.addingTimeInterval(-3 * 60)
     )
-    let beforeTrip = location(
+    let slightlyBeforeTrip = location(
       latitude: 51.4990,
       longitude: -0.1200,
       accuracy: 8,
       timestamp: startedAt.addingTimeInterval(-1)
     )
+    let beforeTrip = location(
+      latitude: 51.4980,
+      longitude: -0.1200,
+      accuracy: 8,
+      timestamp: startedAt.addingTimeInterval(-6)
+    )
 
     XCTAssertEqual(nativeTripLocationRejectionReason(batched, since: nil, now: now), .stale)
     XCTAssertNil(nativeTripLocationRejectionReason(
       batched,
+      since: nil,
+      now: now,
+      maximumAge: 10 * 60,
+      earliestTimestamp: startedAt
+    ))
+    XCTAssertNil(nativeTripLocationRejectionReason(
+      slightlyBeforeTrip,
       since: nil,
       now: now,
       maximumAge: 10 * 60,
@@ -730,6 +743,20 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
       maximumAge: 10 * 60,
       earliestTimestamp: startedAt
     ), .beforeTrip)
+  }
+
+  func testVehicleDisconnectCanOnlyEndAStationaryTrip() {
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .idle))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .driving))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .paused))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .stationaryPending))
+  }
+
+  func testDrivingAndStationaryTripsBothRequireContinuousLocationUpdates() {
+    XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .driving))
+    XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .stationaryPending))
+    XCTAssertFalse(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .idle))
+    XCTAssertFalse(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .paused))
   }
 
   func testConnectedVehicleWaitsForRealMovementBeforeStarting() {
