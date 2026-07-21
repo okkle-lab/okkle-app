@@ -76,6 +76,13 @@ enum NativeAutoTrackPolicy {
     phase == .driving || phase == .stationaryPending
   }
 
+  /// Losing Car Audio is supporting stop evidence, never a stop by itself.
+  /// Only arm its dwell timer after motion has also put the trip into the
+  /// stationary-wait phase; otherwise a flaky audio route can split a drive.
+  static func shouldArmVehicleDisconnectEnd(during phase: NativeAutoShiftPhase) -> Bool {
+    phase == .stationaryPending
+  }
+
   static func canStartMonitoring(
     settings: NativeSettings,
     authorizationStatus: CLAuthorizationStatus,
@@ -814,7 +821,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleMotionActivity(_ activity: CMMotionActivity) {
-    catchUpOverdueTimers()
+    let isTrustedDriving = activity.automotive && activity.confidence != .low
+    // Give a fresh, trusted driving signal the chance to cancel an overdue
+    // stop deadline before catch-up evaluates it. Processing the deadline
+    // first can end a trip on the same callback that proves it is still moving.
+    if !isTrustedDriving { catchUpOverdueTimers() }
     guard let settings = store?.settings else { return }
     let isEligible = shiftPhase == .idle
       ? NativeAutoTrackPolicy.canStartMonitoring(
@@ -830,14 +841,16 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     // A manual trip already running takes priority — never double-record.
     guard !manualTrackingOwnsLocation else { return }
 
-    if activity.automotive, activity.confidence != .low {
+    if isTrustedDriving {
       NativeAutoTrackDiagnostics.shared.record(
         kind: "motion.automotive",
         title: "Automotive motion detected",
         detail: "Core Motion confidence: \(motionConfidenceLabel(activity.confidence)).",
         deduplicateWithin: 15
       )
+      if shiftPhase == .driving { cancelVehicleDisconnectDwellTimer() }
       handleDrivingSignal(trigger: "Core Motion automotive")
+      catchUpOverdueTimers()
     } else if activity.stationary, activity.confidence != .low {
       NativeAutoTrackDiagnostics.shared.record(
         kind: "motion.stationary",
@@ -1280,6 +1293,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     }
     let receivedAt = Date()
     let activeTripAge = shiftStartedAt.map { max(30, receivedAt.timeIntervalSince($0) + 30) } ?? 30
+    let routePointCountBeforeBatch = shiftPoints.count
+    var acceptedFixCount = 0
     for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) {
       if let rejection = nativeTripLocationRejectionReason(
         location,
@@ -1291,6 +1306,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         recordRejectedLocation(location, reason: rejection, context: "recording")
         continue
       }
+      acceptedFixCount += 1
       if shiftPhase == .stationaryPending, shouldResumeFromStationaryLocation(location) {
         resumeShift()
       }
@@ -1304,6 +1320,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       trackHomeArrival(at: location)
       armVehicleDisconnectDwellIfNeeded()
     }
+    NativeAutoTrackDiagnostics.shared.record(
+      kind: "gps.sampling",
+      title: "GPS sampling update",
+      detail: "Received \(locations.count) fixes. Accepted \(acceptedFixCount). Added \(shiftPoints.count - routePointCountBeforeBatch) route points. Total route points: \(shiftPoints.count).",
+      deduplicateWithin: 30
+    )
     // Tell the driver recording has started — but only once the shift shows
     // real recorded distance, not on the raw driving signal. A bus ride or a
     // motion blip can open a shift that's discarded as near-zero noise; every
@@ -1413,6 +1435,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// reconnecting before it fires cancels it (see handleVehicleConnectionChanged).
   private func armVehicleDisconnectDwellIfNeeded() {
     guard enhancedAutoTrackingEnabled else { return }
+    guard NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: shiftPhase) else {
+      cancelVehicleDisconnectDwellTimer()
+      return
+    }
     guard shiftSawVehicleConnection, !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle else {
       cancelVehicleDisconnectDwellTimer()
       return
@@ -1440,6 +1466,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     deadlines.vehicleDisconnect = nil
     persistShiftSnapshot()
     guard enhancedAutoTrackingEnabled else { return }
+    guard NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: shiftPhase) else { return }
     guard shiftSawVehicleConnection, !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle else { return }
     concludeShift(endedAt: endedAt, reason: "Vehicle remained disconnected")
   }

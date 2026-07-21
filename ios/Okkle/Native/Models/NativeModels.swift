@@ -156,12 +156,16 @@ func nativeTripLocationRejectionReason(
   now: Date = Date(),
   maximumAge: TimeInterval = 30,
   earliestTimestamp: Date? = nil,
+  startTimestampTolerance: TimeInterval = 5,
   maxAccuracyMeters: CLLocationDistance = 65,
   maxImpliedSpeedMetersPerSecond: Double = 45
 ) -> NativeTripLocationRejectionReason? {
   let age = now.timeIntervalSince(location.timestamp)
   guard age <= maximumAge, age > -30 else { return .stale }
-  if let earliestTimestamp, location.timestamp < earliestTimestamp { return .beforeTrip }
+  if let earliestTimestamp,
+     location.timestamp < earliestTimestamp.addingTimeInterval(-startTimestampTolerance) {
+    return .beforeTrip
+  }
   guard location.horizontalAccuracy >= 0 else { return .invalidAccuracy }
   guard location.horizontalAccuracy <= maxAccuracyMeters else { return .inaccurate }
   guard let previous else { return nil }
