@@ -108,26 +108,22 @@ enum NativeLogKind: String, CaseIterable, Identifiable, Codable {
   }
 }
 
-/// Whether `location` is trustworthy enough to become a permanent vertex in
-/// a recorded route (as opposed to just being accurate enough to update live
-/// mileage/position). A single low-accuracy or GPS-multipath fix — accepted
-/// by the much looser live-tracking filters — can otherwise bake a visible
-/// zigzag spike into the route: the polyline jumps out to the bad point and
-/// back on the very next real fix. Two independent checks: the fix itself
-/// can't be too imprecise, and getting from the last recorded point to this
-/// one can't imply an impossible speed (a GPS teleport, not real movement).
+/// The shipping 1.1 tracker only recorded precise fixes and rejected both
+/// reported and implied speeds above roughly 100 mph. Keep the native tracker
+/// on that proven quality bar so approximate fixes never become route vertices
+/// or mileage.
 func nativeIsPlausibleRoutePoint(
   _ location: CLLocation,
   since lastRoutePointLocation: CLLocation?,
-  maxAccuracyMeters: CLLocationDistance = 65,
+  maxAccuracyMeters: CLLocationDistance = 45,
   maxImpliedSpeedMetersPerSecond: Double = 45
 ) -> Bool {
   guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= maxAccuracyMeters else { return false }
+  guard location.speed < 0 || location.speed <= maxImpliedSpeedMetersPerSecond else { return false }
   guard let lastRoutePointLocation else { return true }
   let elapsed = location.timestamp.timeIntervalSince(lastRoutePointLocation.timestamp)
   guard elapsed > 0 else { return true }
-  let distance = location.distance(from: lastRoutePointLocation)
-  return distance / elapsed <= maxImpliedSpeedMetersPerSecond
+  return location.distance(from: lastRoutePointLocation) / elapsed <= maxImpliedSpeedMetersPerSecond
 }
 
 enum NativeTripLocationRejectionReason: String, Equatable {
@@ -143,7 +139,7 @@ enum NativeTripLocationRejectionReason: String, Equatable {
     case .stale: return "stale timestamp"
     case .beforeTrip: return "timestamp before trip start"
     case .invalidAccuracy: return "invalid accuracy"
-    case .inaccurate: return "accuracy over 65 m"
+    case .inaccurate: return "accuracy too low for trip tracking"
     case .outOfOrder: return "out-of-order timestamp"
     case .implausibleSpeed: return "implausible movement speed"
     }
@@ -156,20 +152,24 @@ func nativeTripLocationRejectionReason(
   now: Date = Date(),
   maximumAge: TimeInterval = 30,
   earliestTimestamp: Date? = nil,
-  maxAccuracyMeters: CLLocationDistance = 65,
+  startTimestampTolerance: TimeInterval = 5,
+  maxAccuracyMeters: CLLocationDistance = 45,
   maxImpliedSpeedMetersPerSecond: Double = 45
 ) -> NativeTripLocationRejectionReason? {
   let age = now.timeIntervalSince(location.timestamp)
   guard age <= maximumAge, age > -30 else { return .stale }
-  if let earliestTimestamp, location.timestamp < earliestTimestamp { return .beforeTrip }
+  if let earliestTimestamp,
+     location.timestamp < earliestTimestamp.addingTimeInterval(-startTimestampTolerance) {
+    return .beforeTrip
+  }
   guard location.horizontalAccuracy >= 0 else { return .invalidAccuracy }
   guard location.horizontalAccuracy <= maxAccuracyMeters else { return .inaccurate }
+  guard location.speed < 0 || location.speed <= maxImpliedSpeedMetersPerSecond else { return .implausibleSpeed }
   guard let previous else { return nil }
   guard location.timestamp > previous.timestamp else { return .outOfOrder }
 
   let elapsed = location.timestamp.timeIntervalSince(previous.timestamp)
-  let distance = location.distance(from: previous)
-  guard distance / elapsed <= maxImpliedSpeedMetersPerSecond else { return .implausibleSpeed }
+  guard location.distance(from: previous) / elapsed <= maxImpliedSpeedMetersPerSecond else { return .implausibleSpeed }
   return nil
 }
 
@@ -193,19 +193,17 @@ func nativeShouldAcceptTripLocation(
   ) == nil
 }
 
-/// When iOS leaves a large hole in the sampled route, a straight polyline is
-/// not evidence of the streets actually driven. Start a new visible run so
-/// the map shows an honest gap instead of cutting across several blocks.
-func nativeRouteSegmentNeedsBreak(
-  from previous: CLLocation,
-  to current: CLLocation,
-  maximumSegmentDistance: CLLocationDistance = 250,
-  maximumSamplingGap: TimeInterval = 45
-) -> Bool {
-  let elapsed = current.timestamp.timeIntervalSince(previous.timestamp)
-  guard elapsed > 0 else { return true }
+/// Match 1.1's stationary-jitter handling for mileage. A precise point can
+/// still wander several metres while the vehicle is stopped; distance inside
+/// the two fixes' accuracy envelope is not real travel and must not be billed.
+func nativeTripMovementDistance(from previous: CLLocation, to current: CLLocation) -> CLLocationDistance? {
   let distance = current.distance(from: previous)
-  return distance > maximumSegmentDistance || (elapsed > maximumSamplingGap && distance > 80)
+  let previousAccuracy = previous.horizontalAccuracy >= 0 ? previous.horizontalAccuracy : 12
+  let currentAccuracy = current.horizontalAccuracy >= 0 ? current.horizontalAccuracy : 12
+  let noiseFloor = max(8, min(30, (previousAccuracy + currentAccuracy) / 2))
+  let reportedStationary = current.speed >= 0 && current.speed < 0.5
+  guard !reportedStationary, distance >= noiseFloor else { return nil }
+  return distance
 }
 
 struct RoutePoint: Identifiable, Codable, Equatable {

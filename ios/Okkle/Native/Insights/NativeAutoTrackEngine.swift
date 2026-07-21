@@ -221,7 +221,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private var shiftArmedForHomeArrival = false
   private var shiftStartTrigger: String?
   private let drivingDistanceFilter: CLLocationDistance = 10
-  private let stationaryDistanceFilter: CLLocationDistance = 150
   private let stationaryResumeDistance: CLLocationDistance = 150
   private let idleWakeDistance: CLLocationDistance = 450
   private let minimumConfidentStopDwell: TimeInterval = 90
@@ -634,6 +633,13 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     manager.requestAlwaysAuthorization()
   }
 
+  func requestPreciseLocationAuthorization() {
+    guard UIApplication.shared.applicationState == .active else { return }
+    manager.requestTemporaryFullAccuracyAuthorization(withPurposeKey: "TripTracking") { [weak self] _ in
+      Task { @MainActor in self?.refresh() }
+    }
+  }
+
   private func stopMonitoring() {
     stopMotionMonitoring()
     if shiftPhase == .idle {
@@ -746,7 +752,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleMotionActivity(_ activity: CMMotionActivity) {
-    catchUpOverdueTimers()
+    let isTrustedDriving = activity.automotive && activity.confidence != .low
+    // Give a fresh, trusted driving signal the chance to cancel an overdue
+    // stop deadline before catch-up evaluates it. Processing the deadline
+    // first can end a trip on the same callback that proves it is still moving.
+    if !isTrustedDriving { catchUpOverdueTimers() }
     guard let settings = store?.settings else { return }
     let isEligible = shiftPhase == .idle
       ? NativeAutoTrackPolicy.canStartTrip(
@@ -764,14 +774,16 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     // A manual trip already running takes priority — never double-record.
     guard !manualTrackingOwnsLocation else { return }
 
-    if activity.automotive, activity.confidence != .low {
+    if isTrustedDriving {
       NativeAutoTrackDiagnostics.shared.record(
         kind: "motion.automotive",
         title: "Automotive motion detected",
         detail: "Core Motion confidence: \(motionConfidenceLabel(activity.confidence)).",
         deduplicateWithin: 15
       )
+      if shiftPhase == .driving { cancelVehicleDisconnectDwellTimer() }
       handleDrivingSignal(trigger: "Core Motion automotive")
+      catchUpOverdueTimers()
     } else if activity.walking, activity.confidence != .low, shiftPhase == .stationaryPending {
       walkingDetectedDuringStop = true
       persistShiftSnapshot()
@@ -1366,6 +1378,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         continue
       }
     }
+    let routePointCountBeforeBatch = shiftPoints.count
     guard let update = recorder.ingest(
       locations,
       owner: .automatic,
@@ -1375,6 +1388,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         : nil
     ) else { return }
     applyRecordingSnapshot(update.snapshot)
+    NativeAutoTrackDiagnostics.shared.record(
+      kind: "gps.sampling",
+      title: "GPS sampling update",
+      detail: "Received \(locations.count) fixes. Accepted \(update.acceptedLocations.count). Added \(shiftPoints.count - routePointCountBeforeBatch) route points. Total route points: \(shiftPoints.count).",
+      deduplicateWithin: 30
+    )
     for location in update.acceptedLocations {
       if shiftPhase == .stationaryPending, shouldResumeFromStationaryLocation(location) {
         apply(.drivingDetected, trigger: "GPS movement resumed")
@@ -1420,18 +1439,19 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func configureLocationForDriving() {
-    manager.stopMonitoringSignificantLocationChanges()
-    manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-    manager.distanceFilter = drivingDistanceFilter
-    manager.pausesLocationUpdatesAutomatically = false
+    configureContinuousLocationUpdates(for: .driving)
   }
 
   private func configureLocationForStationaryWaiting() {
-    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-    manager.distanceFilter = stationaryDistanceFilter
-    manager.pausesLocationUpdatesAutomatically = true
-    manager.stopUpdatingLocation()
-    manager.startMonitoringSignificantLocationChanges()
+    configureContinuousLocationUpdates(for: .stationaryPending)
+  }
+
+  private func configureContinuousLocationUpdates(for phase: NativeAutoShiftPhase) {
+    precondition(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: phase))
+    manager.stopMonitoringSignificantLocationChanges()
+    manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+    manager.distanceFilter = drivingDistanceFilter
+    manager.pausesLocationUpdatesAutomatically = false
   }
 
   private func configureLocationForIdleWakeIfNeeded() {
@@ -1482,6 +1502,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// reconnecting before it fires cancels it (see handleVehicleConnectionChanged).
   private func armVehicleDisconnectDwellIfNeeded() {
     guard enhancedAutoTrackingEnabled else { return }
+    guard NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: shiftPhase) else {
+      cancelVehicleDisconnectDwellTimer()
+      return
+    }
     guard shiftSawVehicleConnection, !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle else {
       cancelVehicleDisconnectDwellTimer()
       return
@@ -1509,6 +1533,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     deadlines.vehicleDisconnect = nil
     persistShiftSnapshot()
     guard enhancedAutoTrackingEnabled else { return }
+    guard NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: shiftPhase) else { return }
     guard shiftSawVehicleConnection, !NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle else { return }
     requestAutomaticEnd(
       reason: "Vehicle remained disconnected",
@@ -2087,6 +2112,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     case .stationaryPending:
       configureLocationForStationaryWaiting()
       setBackgroundTrackingEnabled(true)
+      manager.startUpdatingLocation()
       scheduleStationaryTimeout()
     case .paused, .idle:
       break

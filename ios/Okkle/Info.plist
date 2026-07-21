@@ -59,6 +59,11 @@
 	<string>Allow $(PRODUCT_NAME) to access your location</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Okkle uses your location to track delivery trip distance.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>TripTracking</key>
+		<string>Okkle needs Precise Location while a trip is active to record the roads you travel and calculate mileage accurately.</string>
+	</dict>
 	<key>NSMotionUsageDescription</key>
 	<string>Okkle uses motion to tell when you've started driving, so it can offer to track the trip.</string>
 	<key>NSSupportsLiveActivities</key>

@@ -680,7 +680,9 @@ final class NativeTripRecorderTests: XCTestCase {
       verticalAccuracy: 5,
       course: 0,
       speed: 4,
-      timestamp: start
+      // Core Location commonly delivers the first moving fix just after the
+      // state transition even though its sensor timestamp is a second older.
+      timestamp: start.addingTimeInterval(-1)
     )
     let second = CLLocation(
       coordinate: CLLocationCoordinate2D(latitude: 51.501, longitude: -0.12),
@@ -691,10 +693,20 @@ final class NativeTripRecorderTests: XCTestCase {
       speed: 4,
       timestamp: start.addingTimeInterval(60)
     )
-    let update = recorder.ingest([first, second], owner: .manual, now: start.addingTimeInterval(60))
+    let third = CLLocation(
+      coordinate: CLLocationCoordinate2D(latitude: 51.504, longitude: -0.12),
+      altitude: 0,
+      horizontalAccuracy: 5,
+      verticalAccuracy: 5,
+      course: 0,
+      speed: 5.5,
+      timestamp: start.addingTimeInterval(120)
+    )
+    let update = recorder.ingest([first, second, third], owner: .manual, now: start.addingTimeInterval(120))
 
-    XCTAssertEqual(update?.acceptedLocations.count, 2)
-    XCTAssertEqual(update?.snapshot.points.count, 2)
+    XCTAssertEqual(update?.acceptedLocations.count, 3)
+    XCTAssertEqual(update?.snapshot.points.count, 3)
+    XCTAssertTrue(update?.snapshot.points.allSatisfy { !$0.breakBefore } == true)
     XCTAssertGreaterThan(update?.snapshot.miles ?? 0, 0.05)
   }
 }
@@ -973,6 +985,12 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
       authorizationStatus: .authorizedAlways,
       date: Date()
     ))
+    XCTAssertFalse(NativeAutoTrackPolicy.canMonitor(
+      settings: settings,
+      authorizationStatus: .authorizedAlways,
+      accuracyAuthorization: .reducedAccuracy,
+      date: Date()
+    ))
 
     settings.workingDays = []
     XCTAssertFalse(NativeAutoTrackPolicy.canMonitor(
@@ -999,6 +1017,11 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     XCTAssertFalse(NativeAutoTrackPolicy.canContinueActiveShift(
       settings: settings,
       authorizationStatus: .authorizedWhenInUse
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.canContinueActiveShift(
+      settings: settings,
+      authorizationStatus: .authorizedAlways,
+      accuracyAuthorization: .reducedAccuracy
     ))
 
     settings.autoTrackTrips = false
@@ -1032,21 +1055,55 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     let now = Date()
     let first = location(latitude: 51.5000, longitude: -0.1200, accuracy: 8, timestamp: now)
     let plausible = location(latitude: 51.5005, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(10))
-    let inaccurate = location(latitude: 51.5006, longitude: -0.1200, accuracy: 200, timestamp: now.addingTimeInterval(20))
+    let lastGoodAccuracy = location(latitude: 51.5006, longitude: -0.1200, accuracy: 45, timestamp: now.addingTimeInterval(20))
+    let inaccurate = location(latitude: 51.5007, longitude: -0.1200, accuracy: 46, timestamp: now.addingTimeInterval(30))
     let teleport = location(latitude: 52.0000, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(11))
     let outOfOrder = location(latitude: 51.5006, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(9))
+    let impossibleReportedSpeed = location(
+      latitude: 51.5006, longitude: -0.1200, accuracy: 8,
+      timestamp: now.addingTimeInterval(20), speed: 46
+    )
 
     XCTAssertTrue(NativeAutoTrackPolicy.shouldAcceptTripLocation(first, since: nil))
     XCTAssertTrue(NativeAutoTrackPolicy.shouldAcceptTripLocation(plausible, since: first))
-    XCTAssertFalse(NativeAutoTrackPolicy.shouldAcceptTripLocation(inaccurate, since: plausible))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldAcceptTripLocation(lastGoodAccuracy, since: plausible))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldAcceptTripLocation(inaccurate, since: lastGoodAccuracy))
     XCTAssertFalse(NativeAutoTrackPolicy.shouldAcceptTripLocation(teleport, since: plausible))
     XCTAssertFalse(NativeAutoTrackPolicy.shouldAcceptTripLocation(outOfOrder, since: plausible))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldAcceptTripLocation(impossibleReportedSpeed, since: plausible))
+  }
+
+  func testStationaryGPSJitterDoesNotIncreaseMileage() {
+    let now = Date()
+    let previous = location(latitude: 51.5000, longitude: -0.1200, accuracy: 12, timestamp: now)
+    let jitter = location(latitude: 51.50005, longitude: -0.1200, accuracy: 12, timestamp: now.addingTimeInterval(10))
+    let stopped = location(
+      latitude: 51.5002, longitude: -0.1200, accuracy: 8,
+      timestamp: now.addingTimeInterval(20), speed: 0.2
+    )
+    let moving = location(
+      latitude: 51.5003, longitude: -0.1200, accuracy: 8,
+      timestamp: now.addingTimeInterval(30), speed: 4
+    )
+
+    XCTAssertNil(nativeTripMovementDistance(from: previous, to: jitter))
+    XCTAssertNil(nativeTripMovementDistance(from: jitter, to: stopped))
+    XCTAssertNotNil(nativeTripMovementDistance(from: stopped, to: moving))
+  }
+
+  func testRecordedLocationsDoNotCreateAutomaticDottedBreaks() {
+    let now = Date()
+    let first = RoutePoint(location: location(latitude: 51.5000, longitude: -0.1200, accuracy: 8, timestamp: now))
+    let later = RoutePoint(location: location(latitude: 51.5200, longitude: -0.1100, accuracy: 8, timestamp: now.addingTimeInterval(180)))
+
+    XCTAssertFalse(first.breakBefore)
+    XCTAssertFalse(later.breakBefore)
   }
 
   func testLocationRejectionsExplainWhyAFixWasDropped() {
     let now = Date()
     let previous = location(latitude: 51.5000, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(-10))
-    let inaccurate = location(latitude: 51.5001, longitude: -0.1200, accuracy: 120, timestamp: now)
+    let inaccurate = location(latitude: 51.5001, longitude: -0.1200, accuracy: 46, timestamp: now)
     let outOfOrder = location(latitude: 51.5001, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(-11))
     let teleport = location(latitude: 52.0000, longitude: -0.1200, accuracy: 8, timestamp: now)
 
@@ -1064,16 +1121,29 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
       accuracy: 8,
       timestamp: now.addingTimeInterval(-3 * 60)
     )
-    let beforeTrip = location(
+    let slightlyBeforeTrip = location(
       latitude: 51.4990,
       longitude: -0.1200,
       accuracy: 8,
       timestamp: startedAt.addingTimeInterval(-1)
     )
+    let beforeTrip = location(
+      latitude: 51.4980,
+      longitude: -0.1200,
+      accuracy: 8,
+      timestamp: startedAt.addingTimeInterval(-6)
+    )
 
     XCTAssertEqual(nativeTripLocationRejectionReason(batched, since: nil, now: now), .stale)
     XCTAssertNil(nativeTripLocationRejectionReason(
       batched,
+      since: nil,
+      now: now,
+      maximumAge: 10 * 60,
+      earliestTimestamp: startedAt
+    ))
+    XCTAssertNil(nativeTripLocationRejectionReason(
+      slightlyBeforeTrip,
       since: nil,
       now: now,
       maximumAge: 10 * 60,
@@ -1086,6 +1156,20 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
       maximumAge: 10 * 60,
       earliestTimestamp: startedAt
     ), .beforeTrip)
+  }
+
+  func testVehicleDisconnectCanOnlyEndAStationaryTrip() {
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .idle))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .driving))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .paused))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .stationaryPending))
+  }
+
+  func testDrivingAndStationaryTripsBothRequireContinuousLocationUpdates() {
+    XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .driving))
+    XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .stationaryPending))
+    XCTAssertFalse(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .idle))
+    XCTAssertFalse(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .paused))
   }
 
   func testConnectedVehicleWaitsForRealMovementBeforeStarting() {
@@ -1151,16 +1235,6 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     )
 
     XCTAssertEqual(restored, original)
-  }
-
-  func testSparseSamplesBreakTheRouteInsteadOfDrawingAcrossBlocks() {
-    let now = Date()
-    let previous = location(latitude: 51.5000, longitude: -0.1200, accuracy: 8, timestamp: now)
-    let normal = location(latitude: 51.5002, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(10))
-    let sparse = location(latitude: 51.5200, longitude: -0.1100, accuracy: 8, timestamp: now.addingTimeInterval(180))
-
-    XCTAssertFalse(nativeRouteSegmentNeedsBreak(from: previous, to: normal))
-    XCTAssertTrue(nativeRouteSegmentNeedsBreak(from: previous, to: sparse))
   }
 
   private func location(
