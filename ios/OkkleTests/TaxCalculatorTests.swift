@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreLocation
+import SwiftUI
 import XCTest
 @testable import Okkle
 
@@ -142,6 +143,36 @@ final class TaxCalculatorTests: XCTestCase {
 
   private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
     calendar.date(from: DateComponents(year: year, month: month, day: day))!
+  }
+}
+
+@MainActor
+final class NativeSheetDependencyTests: XCTestCase {
+  func testTripDetailRendersWithExplicitStoreWithoutAmbientEnvironmentObject() {
+    let startedAt = Date(timeIntervalSinceReferenceDate: 100_000)
+    let trip = NativeTrip(
+      vehicle: .car,
+      miles: 2,
+      deduction: 0.9,
+      startedAt: startedAt,
+      endedAt: startedAt.addingTimeInterval(600),
+      points: []
+    )
+    let store = OkkleStore()
+    store.trips = [trip]
+    let detail = NativeHistoryDetailSheet(
+      item: .trip(trip),
+      store: store,
+      onEdit: {},
+      onDelete: {}
+    )
+    let host = UIHostingController(rootView: detail)
+
+    host.loadViewIfNeeded()
+    host.view.frame = CGRect(x: 0, y: 0, width: 900, height: 700)
+    host.view.layoutIfNeeded()
+
+    XCTAssertNotNil(host.view)
   }
 }
 
@@ -564,6 +595,13 @@ final class NativeRouteStopDetectorTests: XCTestCase {
 
 @MainActor
 final class NativeAutoTrackPolicyTests: XCTestCase {
+  func testActiveTripKeepsContinuousGPSWhileWaitingForStationaryTimeout() {
+    XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .driving))
+    XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .stationaryPending))
+    XCTAssertFalse(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .idle))
+    XCTAssertFalse(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .paused))
+  }
+
   func testAutomaticMonitoringRequiresAlwaysAuthorizationAndAWorkingDay() {
     var settings = NativeSettings()
     settings.autoTrackTrips = true

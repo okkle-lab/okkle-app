@@ -4,13 +4,14 @@ import SwiftUI
 import UIKit
 struct NativeHistoryDetailSheet: View {
   let item: NativeHistoryItem
+  let store: OkkleStore
   let onEdit: () -> Void
   let onDelete: () -> Void
 
   var body: some View {
     switch item {
     case .trip(let trip):
-      NativeTripDetailSheet(trip: trip, onEdit: onEdit, onDelete: onDelete)
+      NativeTripDetailSheet(trip: trip, store: store, onEdit: onEdit, onDelete: onDelete)
     case .record(let record):
       NativeRecordDetailSheet(record: record, onEdit: onEdit, onDelete: onDelete)
     }
@@ -22,7 +23,7 @@ struct NativeTripDetailSheet: View {
   let onEdit: () -> Void
   let onDelete: () -> Void
   @Environment(\.dismiss) private var dismiss
-  @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var store: OkkleStore
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var startAddress: String?
   @State private var endAddress: String?
@@ -33,6 +34,13 @@ struct NativeTripDetailSheet: View {
   @State private var showingFullScreenRouteMap = false
   @State private var selectedFeedback: NativeTripFeedback?
   @State private var showsFeedbackPrompt = false
+
+  init(trip: NativeTrip, store: OkkleStore, onEdit: @escaping () -> Void, onDelete: @escaping () -> Void) {
+    self.trip = trip
+    self.onEdit = onEdit
+    self.onDelete = onDelete
+    _store = ObservedObject(wrappedValue: store)
+  }
 
   var body: some View {
     ZStack {
@@ -1078,7 +1086,7 @@ struct NativeRecordEditSheet: View {
   let record: NativeRecord
   let onSave: (NativeRecord) -> Void
   @Environment(\.dismiss) private var dismiss
-  @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var store: OkkleStore
   @State private var amountText: String
   @State private var milesText: String
   @State private var platform: String
@@ -1089,9 +1097,10 @@ struct NativeRecordEditSheet: View {
   @State private var date: Date
   @State private var period: NativePayPeriod
 
-  init(record: NativeRecord, onSave: @escaping (NativeRecord) -> Void) {
+  init(record: NativeRecord, store: OkkleStore, onSave: @escaping (NativeRecord) -> Void) {
     self.record = record
     self.onSave = onSave
+    _store = ObservedObject(wrappedValue: store)
     _amountText = State(initialValue: record.amount.map { String(format: "%.2f", $0) } ?? "")
     _milesText = State(initialValue: record.miles.map { String(format: "%.1f", $0) } ?? "")
     _platform = State(initialValue: record.platform ?? "Uber Eats")
@@ -1270,7 +1279,7 @@ struct NativeTripEditSheet: View {
   let trip: NativeTrip
   let onSave: (NativeTrip) -> Void
   @Environment(\.dismiss) private var dismiss
-  @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var store: OkkleStore
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var vehicle: NativeVehicle
   @State private var milesText: String
@@ -1280,9 +1289,10 @@ struct NativeTripEditSheet: View {
   @State private var routeEndpointNames: [Int: String] = [:]
   @State private var feedback: NativeTripFeedback?
 
-  init(trip: NativeTrip, onSave: @escaping (NativeTrip) -> Void) {
+  init(trip: NativeTrip, store: OkkleStore, onSave: @escaping (NativeTrip) -> Void) {
     self.trip = trip
     self.onSave = onSave
+    _store = ObservedObject(wrappedValue: store)
     _vehicle = State(initialValue: trip.vehicle)
     _milesText = State(initialValue: String(format: "%.1f", trip.miles))
     _startedAt = State(initialValue: trip.startedAt)
