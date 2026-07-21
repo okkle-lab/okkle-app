@@ -67,6 +67,15 @@ enum NativeAutoShiftPhase: String, Equatable {
 /// access iOS cannot relaunch Okkle for a significant-location event, so
 /// presenting the feature as active with When In Use access is misleading.
 enum NativeAutoTrackPolicy {
+  /// Once a trip has started, both the driving and stationary-wait phases
+  /// must keep the standard location service running. Core Motion can report
+  /// a brief/incorrect stationary state while the vehicle is still moving;
+  /// downgrading to significant-location changes at that point leaves only
+  /// sparse fixes hundreds of metres apart and permanently loses the route.
+  static func requiresContinuousLocationUpdates(during phase: NativeAutoShiftPhase) -> Bool {
+    phase == .driving || phase == .stationaryPending
+  }
+
   static func canStartMonitoring(
     settings: NativeSettings,
     authorizationStatus: CLAuthorizationStatus,
@@ -338,7 +347,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private var shiftArmedForHomeArrival = false
   private let routePointDistance: CLLocationDistance = 10
   private let drivingDistanceFilter: CLLocationDistance = 10
-  private let stationaryDistanceFilter: CLLocationDistance = 150
   private let stationaryResumeDistance: CLLocationDistance = 150
   private let idleWakeDistance: CLLocationDistance = 450
   private let minimumConfidentStopDwell: TimeInterval = 90
@@ -1342,18 +1350,19 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func configureLocationForDriving() {
+    configureContinuousLocationUpdates(for: .driving)
+  }
+
+  private func configureLocationForStationaryWaiting() {
+    configureContinuousLocationUpdates(for: .stationaryPending)
+  }
+
+  private func configureContinuousLocationUpdates(for phase: NativeAutoShiftPhase) {
+    precondition(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: phase))
     manager.stopMonitoringSignificantLocationChanges()
     manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
     manager.distanceFilter = drivingDistanceFilter
     manager.pausesLocationUpdatesAutomatically = false
-  }
-
-  private func configureLocationForStationaryWaiting() {
-    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-    manager.distanceFilter = stationaryDistanceFilter
-    manager.pausesLocationUpdatesAutomatically = true
-    manager.stopUpdatingLocation()
-    manager.startMonitoringSignificantLocationChanges()
   }
 
   private func configureLocationForIdleWakeIfNeeded() {
@@ -1927,6 +1936,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     case .stationaryPending:
       configureLocationForStationaryWaiting()
       setBackgroundTrackingEnabled(true)
+      manager.startUpdatingLocation()
       scheduleStationaryTimeout()
     case .paused, .idle:
       break

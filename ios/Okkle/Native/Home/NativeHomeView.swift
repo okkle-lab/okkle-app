@@ -95,18 +95,19 @@ struct NativeProgressView: View {
       let current = currentItem(matching: item) ?? item
       NativeHistoryDetailSheet(
         item: current,
+        store: store,
         onEdit: { requestEdit(current) },
         onDelete: { requestDelete(current) }
       )
     }
     .sheet(item: $tripPendingEdit) { trip in
-      NativeTripEditSheet(trip: currentTrip(matching: trip) ?? trip) { updatedTrip in
+      NativeTripEditSheet(trip: currentTrip(matching: trip) ?? trip, store: store) { updatedTrip in
         store.updateTrip(updatedTrip)
         tripPendingEdit = nil
       }
     }
     .sheet(item: $recordPendingEdit) { record in
-      NativeRecordEditSheet(record: currentRecord(matching: record) ?? record) { updatedRecord in
+      NativeRecordEditSheet(record: currentRecord(matching: record) ?? record, store: store) { updatedRecord in
         store.updateRecord(updatedRecord)
         recordPendingEdit = nil
       }
