@@ -44,7 +44,7 @@ struct NativeTaxDetailView: View {
         .presentationDragIndicator(.visible)
     }
     .sheet(isPresented: $showsDeadlines) {
-      NativeKeyTaxDatesSheet(country: store.settings.taxCountry)
+      NativeKeyTaxDatesSheet(country: store.settings.taxCountry, usState: store.settings.usState)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }

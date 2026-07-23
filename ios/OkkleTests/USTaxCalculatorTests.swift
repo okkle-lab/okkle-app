@@ -83,4 +83,48 @@ final class USTaxCalculatorTests: XCTestCase {
     // Still a single tier — 20k miles is just rate × miles, no threshold break.
     XCTAssertEqual(USTaxCalculator.mileageDeduction(miles: 20_000, on: in2025), 14_000, accuracy: 0.01)
   }
+
+  // California's own estimated-tax schedule is 30/40/0/30, not four equal
+  // 25% payments — confirmed against ftb.ca.gov/pay/estimated-tax-payments.html.
+  // A California driver needs both the federal deadlines AND these.
+  func testCaliforniaHasNonStandardEstimatedTaxDeadlines() {
+    let deadlines = nativeTaxDeadlines(for: .us, usState: .california)
+    let caDeadlines = deadlines.filter { $0.authority == "FTB" }
+    XCTAssertEqual(caDeadlines.count, 3, "No September FTB payment — that share rolls into January.")
+    XCTAssertTrue(caDeadlines.contains { $0.month == 4 && $0.day == 15 })
+    XCTAssertTrue(caDeadlines.contains { $0.month == 6 && $0.day == 15 })
+    XCTAssertTrue(caDeadlines.contains { $0.month == 1 && $0.day == 15 })
+    XCTAssertFalse(caDeadlines.contains { $0.month == 9 })
+    // Federal deadlines are still present and unaffected — CA owes both.
+    XCTAssertTrue(deadlines.contains { $0.authority == "IRS" && $0.month == 9 && $0.day == 15 })
+    // Two CA instalments share the same 30% headline — `id` must still be
+    // unique per date, or SwiftUI's ForEach renders one row for both dates
+    // (this exact bug shipped once already: the January entry displayed
+    // April's date because both entries' `id` was `title` alone).
+    XCTAssertEqual(Set(caDeadlines.map(\.id)).count, caDeadlines.count)
+  }
+
+  // New York (and Illinois/Pennsylvania/Georgia) follow the same four dates
+  // and equal split as the IRS, but still need their own separate voucher.
+  func testNewYorkAddsSeparateStateDeadlinesOnFederalDates() {
+    let deadlines = nativeTaxDeadlines(for: .us, usState: .newYork)
+    let nyDeadlines = deadlines.filter { $0.authority == "NY Tax Dept" }
+    XCTAssertEqual(nyDeadlines.count, 4)
+    let federalDates = Set(deadlines.filter { $0.authority == "IRS" && $0.title.hasPrefix("Q") }.map { "\($0.month)-\($0.day)" })
+    let nyDates = Set(nyDeadlines.map { "\($0.month)-\($0.day)" })
+    XCTAssertEqual(federalDates, nyDates)
+  }
+
+  // A no-income-tax state adds nothing beyond the federal calendar.
+  func testNoIncomeTaxStateAddsNoExtraDeadlines() {
+    let deadlines = nativeTaxDeadlines(for: .us, usState: .texas)
+    XCTAssertTrue(deadlines.allSatisfy { $0.authority == "IRS" })
+  }
+
+  func testUSStateMatchingFromGeocodedPlacemark() {
+    XCTAssertEqual(NativeUSState.matching(administrativeArea: "California"), .california)
+    XCTAssertEqual(NativeUSState.matching(administrativeArea: "new york"), .newYork)
+    XCTAssertEqual(NativeUSState.matching(administrativeArea: "Ohio"), .otherState)
+    XCTAssertEqual(NativeUSState.matching(administrativeArea: nil), .otherState)
+  }
 }

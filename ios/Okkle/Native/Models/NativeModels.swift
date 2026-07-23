@@ -76,6 +76,14 @@ enum NativeTaxCountry: String, CaseIterable, Identifiable, Codable {
     case .us: return "USD"
     }
   }
+
+  /// Best-effort guess from the device's system region, so onboarding can
+  /// pre-select the right market without asking location permission or
+  /// making a network call. Purely a starting point — the picker right
+  /// below it is always there to correct it.
+  static var deviceDefault: NativeTaxCountry {
+    Locale.current.region?.identifier == "US" ? .us : .uk
+  }
 }
 
 /// How a UK driver claims vehicle costs. HMRC lets you pick either the flat
@@ -161,6 +169,15 @@ enum NativeUSState: String, CaseIterable, Identifiable, Codable {
     default:
       return false
     }
+  }
+
+  /// Matches a geocoded placemark's `administrativeArea` (e.g. "California")
+  /// to a case by its display label, for the onboarding "detect from my
+  /// location" flow. Falls back to `.otherState` for a state Okkle doesn't
+  /// model by name, or if the area couldn't be resolved at all.
+  static func matching(administrativeArea: String?) -> NativeUSState {
+    guard let administrativeArea else { return .otherState }
+    return allCases.first { $0.label.caseInsensitiveCompare(administrativeArea) == .orderedSame } ?? .otherState
   }
 }
 

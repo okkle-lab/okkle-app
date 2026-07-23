@@ -8,7 +8,11 @@ struct NativeTaxDeadline: Identifiable {
   let note: String
   var authority: String = "HMRC"   // calendar-event prefix / owning tax body
 
-  var id: String { title }
+  // Includes the date, not just the title — two deadlines can legitimately
+  // share a title (e.g. two California instalments both worth 30%); title
+  // alone as the id let SwiftUI's list conflate them and render one row
+  // twice instead of each on its own real date.
+  var id: String { "\(title)-\(month)-\(day)" }
 
   func nextOccurrence(from reference: Date = Date()) -> Date {
     let calendar = Calendar.current
@@ -24,10 +28,20 @@ struct NativeTaxDeadline: Identifiable {
   }
 }
 
-/// Key tax dates by jurisdiction. UK = HMRC Self Assessment calendar; US = the
-/// IRS 1040-ES quarterly estimated-tax schedule plus the annual return. US
-/// dates verified against irs.gov (Form 1040-ES, Pub 509); review annually.
-func nativeTaxDeadlines(for country: NativeTaxCountry) -> [NativeTaxDeadline] {
+/// Key tax dates by jurisdiction. UK = HMRC Self Assessment calendar; US =
+/// the IRS 1040-ES quarterly estimated-tax schedule plus the annual return,
+/// plus (when the state levies its own income tax) that state's own
+/// estimated-tax deadlines — which are a SEPARATE payment from the federal
+/// one even when the dates coincide. US dates verified against irs.gov
+/// (Form 1040-ES) and each state's own tax authority; review annually.
+///
+/// California is the one built-in state with a genuinely different
+/// schedule: FTB requires 30% / 40% / 0% / 30% (no September instalment —
+/// that share is rolled into January) rather than four equal payments, per
+/// ftb.ca.gov/pay/estimated-tax-payments.html. New York, Illinois,
+/// Pennsylvania and Georgia all use the same four dates and equal 25%
+/// split as the IRS, but still require their own separate voucher/payment.
+func nativeTaxDeadlines(for country: NativeTaxCountry, usState: NativeUSState = .california) -> [NativeTaxDeadline] {
   switch country {
   case .uk:
     return [
@@ -36,13 +50,52 @@ func nativeTaxDeadlines(for country: NativeTaxCountry) -> [NativeTaxDeadline] {
       NativeTaxDeadline(title: "Second payment on account", month: 7, day: 31, note: "Only if HMRC asked you for payments on account.", authority: "HMRC"),
     ]
   case .us:
-    return [
-      NativeTaxDeadline(title: "Q1 estimated tax (1040-ES)", month: 4, day: 15, note: "Estimated income + self-employment tax for Jan–Mar.", authority: "IRS"),
-      NativeTaxDeadline(title: "Q2 estimated tax (1040-ES)", month: 6, day: 15, note: "Estimated tax for Apr–May.", authority: "IRS"),
-      NativeTaxDeadline(title: "Q3 estimated tax (1040-ES)", month: 9, day: 15, note: "Estimated tax for Jun–Aug.", authority: "IRS"),
-      NativeTaxDeadline(title: "Q4 estimated tax (1040-ES)", month: 1, day: 15, note: "Estimated tax for Sep–Dec of the prior year.", authority: "IRS"),
-      NativeTaxDeadline(title: "File your return (Form 1040)", month: 4, day: 15, note: "Annual return; Schedule C + Schedule SE for self-employment.", authority: "IRS"),
+    var deadlines: [NativeTaxDeadline] = [
+      NativeTaxDeadline(title: "Q1 federal estimated tax (1040-ES)", month: 4, day: 15, note: "25% of your estimated federal tax for the year.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q2 federal estimated tax (1040-ES)", month: 6, day: 15, note: "25% of your estimated federal tax for the year.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q3 federal estimated tax (1040-ES)", month: 9, day: 15, note: "25% of your estimated federal tax for the year.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q4 federal estimated tax (1040-ES)", month: 1, day: 15, note: "25% of your estimated federal tax for the year (covers Sep-Dec of the prior year).", authority: "IRS"),
+      NativeTaxDeadline(title: "File your federal return (Form 1040)", month: 4, day: 15, note: "Annual return; Schedule C + Schedule SE for self-employment.", authority: "IRS"),
     ]
+    switch usState {
+    case .california:
+      deadlines.append(contentsOf: [
+        NativeTaxDeadline(title: "CA estimated tax - Q1 30% (Form 540-ES)", month: 4, day: 15, note: "California's own schedule - a separate payment from the IRS one due the same day.", authority: "FTB"),
+        NativeTaxDeadline(title: "CA estimated tax - Q2 40% (Form 540-ES)", month: 6, day: 15, note: "No California payment is due in September - that share is rolled into January instead.", authority: "FTB"),
+        NativeTaxDeadline(title: "CA estimated tax - Q4 30% (Form 540-ES)", month: 1, day: 15, note: "Final California instalment - a separate payment from the IRS one due the same day.", authority: "FTB"),
+      ])
+    case .newYork:
+      deadlines.append(contentsOf: nativeQuarterlyStateDeadlines(state: "New York", form: "IT-2105", authority: "NY Tax Dept"))
+    case .illinois:
+      deadlines.append(contentsOf: nativeQuarterlyStateDeadlines(state: "Illinois", form: "IL-1040-ES", authority: "IL Dept of Revenue"))
+    case .pennsylvania:
+      deadlines.append(contentsOf: nativeQuarterlyStateDeadlines(state: "Pennsylvania", form: "PA-40 ESI", authority: "PA Dept of Revenue"))
+    case .georgia:
+      deadlines.append(contentsOf: nativeQuarterlyStateDeadlines(state: "Georgia", form: "500-ES", authority: "GA Dept of Revenue"))
+    default:
+      break // No-income-tax states, and states Okkle doesn't yet model by name, get federal dates only.
+    }
+    return deadlines
+  }
+}
+
+/// A state whose estimated-tax schedule matches the IRS's four equal 25%
+/// instalments on the same four dates, but which still requires its own
+/// separate voucher/payment rather than being covered by the federal one.
+private func nativeQuarterlyStateDeadlines(state: String, form: String, authority: String) -> [NativeTaxDeadline] {
+  [
+    (quarter: "Q1", month: 4, day: 15),
+    (quarter: "Q2", month: 6, day: 15),
+    (quarter: "Q3", month: 9, day: 15),
+    (quarter: "Q4", month: 1, day: 15),
+  ].map { entry in
+    NativeTaxDeadline(
+      title: "\(state) \(entry.quarter) estimated tax (\(form))",
+      month: entry.month,
+      day: entry.day,
+      note: "Separate \(state) payment, same date as the IRS \(entry.quarter) payment.",
+      authority: authority
+    )
   }
 }
 
@@ -135,7 +188,7 @@ struct NativeKeyTaxDatesPanel: View {
       }
     }
     .sheet(isPresented: $showSheet) {
-      NativeKeyTaxDatesSheet()
+      NativeKeyTaxDatesSheet(country: store.settings.taxCountry, usState: store.settings.usState)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
@@ -144,10 +197,11 @@ struct NativeKeyTaxDatesPanel: View {
 
 struct NativeKeyTaxDatesSheet: View {
   var country: NativeTaxCountry = .uk
+  var usState: NativeUSState = .california
   @Environment(\.dismiss) private var dismiss
   @State private var alertMessage: String?
 
-  private var deadlines: [NativeTaxDeadline] { nativeTaxDeadlines(for: country) }
+  private var deadlines: [NativeTaxDeadline] { nativeTaxDeadlines(for: country, usState: usState) }
 
   private var recordsFootnote: String {
     switch country {

@@ -77,6 +77,7 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
 
   private let manager = CLLocationManager()
   private var onRegion: ((NativeRegion) -> Void)?
+  private var onUSState: ((NativeUSState) -> Void)?
 
   override init() {
     super.init()
@@ -86,6 +87,17 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
 
   func detect(onRegion: @escaping (NativeRegion) -> Void) {
     self.onRegion = onRegion
+    self.onUSState = nil
+    startDetecting()
+  }
+
+  func detectUSState(onUSState: @escaping (NativeUSState) -> Void) {
+    self.onUSState = onUSState
+    self.onRegion = nil
+    startDetecting()
+  }
+
+  private func startDetecting() {
     message = nil
     isDetecting = true
 
@@ -121,17 +133,27 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
     }
 
     CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, _ in
-      let area = [
-        placemarks?.first?.administrativeArea,
-        placemarks?.first?.subAdministrativeArea,
-        placemarks?.first?.country,
-      ]
-      .compactMap { $0 }
-      .joined(separator: " ")
-      let region: NativeRegion = area.localizedCaseInsensitiveContains("scotland") ? .scotland : .ruk
-      DispatchQueue.main.async {
-        self?.onRegion?(region)
-        self?.finish(message: "Set to \(region.label).")
+      guard let self else { return }
+      let placemark = placemarks?.first
+      if let onUSState = self.onUSState {
+        let state = NativeUSState.matching(administrativeArea: placemark?.administrativeArea)
+        DispatchQueue.main.async {
+          onUSState(state)
+          self.finish(message: "Set to \(state.label).")
+        }
+      } else {
+        let area = [
+          placemark?.administrativeArea,
+          placemark?.subAdministrativeArea,
+          placemark?.country,
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        let region: NativeRegion = area.localizedCaseInsensitiveContains("scotland") ? .scotland : .ruk
+        DispatchQueue.main.async {
+          self.onRegion?(region)
+          self.finish(message: "Set to \(region.label).")
+        }
       }
     }
   }
@@ -168,7 +190,7 @@ struct NativeOnboardingView: View {
   @State private var vehicle: NativeVehicle = .car
   @State private var selectedPlatforms: Set<String> = ["Uber Eats"]
   @State private var customPlatformName = ""
-  @State private var country: NativeTaxCountry = .uk
+  @State private var country: NativeTaxCountry = .deviceDefault
   @State private var region: NativeRegion = .ruk
   @State private var expenseMethod: NativeExpenseMethod = .simplified
   @State private var showsSimplifiedLockConfirm = false
@@ -508,6 +530,35 @@ struct NativeOnboardingView: View {
               .fixedSize(horizontal: false, vertical: true)
           }
         case .us:
+          Button {
+            detector.detectUSState { detectedState in
+              usState = detectedState
+            }
+          } label: {
+            HStack(spacing: 10) {
+              if detector.isDetecting {
+                ProgressView()
+                  .tint(OkkleColor.brand)
+              } else {
+                Image(systemName: "location.magnifyingglass")
+              }
+              Text(detector.isDetecting ? "Detecting location" : "Detect from my location")
+                .font(.system(size: 16, weight: .bold))
+              Spacer()
+            }
+            .foregroundStyle(OkkleColor.brandDark)
+            .padding(16)
+            .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+          }
+          .buttonStyle(.plain)
+          .disabled(detector.isDetecting)
+
+          if let message = detector.message {
+            Text(message)
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+          }
+
           Picker("State", selection: $usState) {
             ForEach(NativeUSState.allCases) { Text($0.label).tag($0) }
           }
@@ -834,7 +885,12 @@ struct NativeOnboardingView: View {
     didSeed = true
     name = store.settings.name
     vehicle = store.settings.defaultVehicle
-    country = store.settings.taxCountry
+    // Onboarding only ever shows before hasCompletedOnboarding is set, so a
+    // fresh NativeSettings() here always has taxCountry at its hardcoded
+    // .uk default — trusting it would silently overwrite the device-locale
+    // guess this view starts with. Only respect stored settings if this is
+    // somehow a repeat onboarding for an account that already finished it.
+    country = store.settings.hasCompletedOnboarding ? store.settings.taxCountry : .deviceDefault
     region = store.settings.region
     expenseMethod = store.settings.expenseMethod
     usState = store.settings.usState
