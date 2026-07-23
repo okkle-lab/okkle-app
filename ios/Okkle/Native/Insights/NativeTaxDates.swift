@@ -152,13 +152,13 @@ struct NativeKeyTaxDatesPanel: View {
 
   var body: some View {
     NativeAiCard(banner: "KEY TAX DATES") {
-      VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 18) {
         Text("Keep HMRC deadlines close")
-          .font(.system(size: 26, weight: .bold, design: .rounded))
-          .foregroundStyle(OkkleColor.ink)
+          .font(.title2.bold())
+          .foregroundStyle(.primary)
         Text("Review Self Assessment dates and add reminders to your calendar.")
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
+          .font(.body)
+          .foregroundStyle(.secondary)
         Toggle("Tax deadline reminders", isOn: Binding(
           get: { store.settings.taxDeadlineReminders },
           set: { value in
@@ -167,24 +167,19 @@ struct NativeKeyTaxDatesPanel: View {
             }
           }
         ))
-        .font(.system(size: 17, weight: .bold))
+        .font(.headline)
         .tint(OkkleColor.brand)
         Button {
           showSheet = true
         } label: {
-          HStack {
-            Text("View dates")
-              .font(.system(size: 16, weight: .bold))
-            Spacer()
-            Image(systemName: "chevron.up")
-              .font(.system(size: 15, weight: .bold))
-          }
-          .foregroundStyle(Color.white)
-          .padding(.horizontal, 16)
-          .padding(.vertical, 14)
-          .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+          Label("View dates", systemImage: "calendar")
+            .font(.headline)
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.roundedRectangle(radius: 10))
+        .controlSize(.large)
+        .tint(OkkleColor.brand)
       }
     }
     .sheet(isPresented: $showSheet) {
@@ -215,13 +210,13 @@ struct NativeKeyTaxDatesSheet: View {
   var body: some View {
     NavigationStack {
       ScrollView {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 24) {
           Text("Add these dates to Calendar with a reminder one week before.")
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(OkkleColor.muted)
+            .font(.body)
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
-          NativeGlassCard {
+          NativeAiCard {
             VStack(spacing: 0) {
               ForEach(deadlines) { deadline in
                 NativeTaxDeadlineRow(deadline: deadline) { message in
@@ -248,20 +243,20 @@ struct NativeKeyTaxDatesSheet: View {
             }
           } label: {
             Label("Add all dates", systemImage: "calendar.badge.plus")
-              .font(.system(size: 16, weight: .bold))
+              .font(.headline)
               .frame(maxWidth: .infinity)
-              .padding(.vertical, 15)
-              .foregroundStyle(Color.white)
-              .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(.borderedProminent)
+          .buttonBorderShape(.roundedRectangle(radius: 10))
+          .controlSize(.large)
+          .tint(OkkleColor.brand)
 
           Text(recordsFootnote)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(22)
+        .padding(20)
       }
       .background(NativeBackground())
       .navigationTitle("Key tax dates")
@@ -298,7 +293,7 @@ struct NativeTaxDeadlineRow: View {
           .foregroundStyle(OkkleColor.ink)
         Text("\(nativeTaxDateLabel(next)) - \(daysLabel(days))")
           .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(nativeAIAccentGradient)
+          .foregroundStyle(OkkleColor.brand)
         Text(deadline.note)
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(OkkleColor.muted)
@@ -316,17 +311,16 @@ struct NativeTaxDeadlineRow: View {
         }
       } label: {
         Label(busy ? "Adding" : "Add", systemImage: "calendar.badge.plus")
-          .font(.system(size: 13, weight: .bold))
+          .font(.subheadline.weight(.semibold))
           .labelStyle(.titleAndIcon)
-          .foregroundStyle(nativeAIAccentGradient)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 9)
-          .background(OkkleColor.brand.opacity(0.13), in: Capsule())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(.bordered)
+      .buttonBorderShape(.capsule)
+      .controlSize(.small)
+      .tint(OkkleColor.brand)
       .disabled(busy)
     }
-    .padding(.vertical, 13)
+    .padding(.vertical, 15)
   }
 
   private func daysLabel(_ days: Int) -> String {

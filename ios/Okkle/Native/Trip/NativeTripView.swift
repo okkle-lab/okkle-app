@@ -46,6 +46,11 @@ struct NativeTripView: View {
   // actually stop firing when no trip is being tracked or reviewed, rather
   // than waking up every 5s for the app's whole foreground lifetime.
   @State private var trackingTimer: Timer?
+  @State private var projectedShift = NativeShiftInsights.empty
+
+  private var insightProjectionRevision: String {
+    NativeInsightInput(visits: autoTrack.visits, store: store).revision
+  }
 
   init(session: NativeTripSession = .shared, selectedTab: Binding<NativeTab> = .constant(.trip)) {
     self.session = session
@@ -61,6 +66,14 @@ struct NativeTripView: View {
       }
     }
     .animation(.spring(response: 0.36, dampingFraction: 0.88), value: session.phase)
+    .task(id: insightProjectionRevision) {
+      guard store.settings.insightsEnabled else {
+        projectedShift = .empty
+        return
+      }
+      let input = NativeInsightInput(visits: autoTrack.visits, store: store)
+      projectedShift = await NativeInsightsProjector.shared.project(input).shift
+    }
     .alert("Save this trip?", isPresented: Binding(
       get: { completedTrip != nil },
       set: { isPresented in
@@ -211,6 +224,7 @@ struct NativeTripView: View {
         VStack {
           Spacer()
           missedTripPanel
+            .frame(maxWidth: 620)
             .padding(.horizontal, 18)
             .padding(.bottom, max(proxy.safeAreaInsets.bottom + 18, 24))
         }
@@ -562,6 +576,8 @@ struct NativeTripView: View {
 
       if completedTrip == nil {
         trackingActionButtons
+          .frame(maxWidth: nativeUsesSidebarNavigation ? 680 : .infinity)
+          .frame(maxWidth: .infinity, alignment: .center)
       }
     }
     .padding(.horizontal, 22)
@@ -726,7 +742,7 @@ struct NativeTripView: View {
     }
 
     let elapsedHours = trackingElapsed / 3600
-    let shift = NativeShiftInsights.build(visits: NativeAutoTrackEngine.shared.visits, store: store)
+    let shift = projectedShift
     let plan = shift.todayPlan
     let area = plan?.zone.flatMap { NativeAreaNamer.shared.name(for: $0) }
 

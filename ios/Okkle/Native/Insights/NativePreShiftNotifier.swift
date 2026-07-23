@@ -27,15 +27,20 @@ enum NativePreShiftNotifier {
           store.settings.preShiftAlerts,
           nativeIsWorkingDay(Date(), settings: store.settings) else { return }
 
-    let shift = NativeShiftInsights.build(visits: NativeAutoTrackEngine.shared.visits, store: store)
-    guard let plan = shift.todayPlan, plan.isToday, let peak = plan.peakWindow else { return }
+    let input = NativeInsightInput(visits: NativeAutoTrackEngine.shared.visits, store: store)
+    Task {
+      let shift = await NativeInsightsProjector.shared.project(input).shift
+      guard store.settings.insightsEnabled,
+            let plan = shift.todayPlan,
+            plan.isToday,
+            let peak = plan.peakWindow else { return }
 
-    let calendar = Calendar.current
-    let areaName = NativeAreaNamer.shared.name(for: plan.zone ?? CLLocationCoordinate2D())
-    let areaSuffix = areaName.map { " near \($0)" } ?? ""
-
-    scheduleHeadsUp(store: store, plan: plan, peak: peak, shift: shift, areaSuffix: areaSuffix, calendar: calendar, center: center)
-    scheduleFollowUpIfNeeded(store: store, peak: peak, areaSuffix: areaSuffix, calendar: calendar, center: center)
+      let calendar = Calendar.current
+      let areaName = NativeAreaNamer.shared.name(for: plan.zone ?? CLLocationCoordinate2D())
+      let areaSuffix = areaName.map { " near \($0)" } ?? ""
+      scheduleHeadsUp(store: store, plan: plan, peak: peak, shift: shift, areaSuffix: areaSuffix, calendar: calendar, center: center)
+      scheduleFollowUpIfNeeded(store: store, peak: peak, areaSuffix: areaSuffix, calendar: calendar, center: center)
+    }
   }
 
   private static func scheduleHeadsUp(store: OkkleStore, plan: NativeDayPlan, peak: NativeHourWindow, shift: NativeShiftInsights, areaSuffix: String, calendar: Calendar, center: UNUserNotificationCenter) {

@@ -73,7 +73,9 @@ enum NativeLegacyBackupImporter {
     let miles = double(row["miles"]) ?? 0
     let storedDeduction = double(row["deduction"]) ?? 0
     return NativeTrip(
+      id: legacyTripUUID(id),
       legacyID: "json-trip-\(id)",
+      source: .imported,
       vehicle: tripVehicle,
       miles: miles,
       deduction: storedDeduction > 0 ? storedDeduction : calculatedDeduction(miles: miles, vehicle: tripVehicle, date: startedAt),
@@ -109,6 +111,7 @@ enum NativeLegacyBackupImporter {
 
     return NativeRecord(
       legacyID: "json-record-\(id)",
+      source: .imported,
       kind: kind,
       platform: nonEmpty(string(row["platform"])),
       vehicle: recordVehicle,
@@ -136,6 +139,8 @@ enum NativeLegacyBackupImporter {
     let day = Calendar.current.startOfDay(for: date)
     return NativeRecord(
       legacyID: "json-trip-earnings-\(id)",
+      source: .tripEarnings,
+      tripID: legacyTripUUID(id),
       kind: .income,
       platform: nonEmpty(string(row["platform"])),
       vehicle: nil,
@@ -158,6 +163,10 @@ enum NativeLegacyBackupImporter {
             let value = string(row["value"]) else { return }
       result[key] = value
     }
+  }
+
+  private static func legacyTripUUID(_ id: Int) -> UUID {
+    UUID(uuidString: String(format: "00000000-0000-4000-8002-%012llX", UInt64(id))) ?? UUID()
   }
 
   private static func applyAccountantDetails(_ values: [String: String], to settings: inout NativeSettings) {

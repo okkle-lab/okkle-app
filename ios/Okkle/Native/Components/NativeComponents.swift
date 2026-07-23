@@ -1,7 +1,27 @@
 import MapKit
 import SwiftUI
+import UIKit
+
+private struct NativeIPadPagePresentationModifier: ViewModifier {
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if #available(iOS 18.0, *), UIDevice.current.userInterfaceIdiom == .pad {
+      content.presentationSizing(.page)
+    } else {
+      content
+    }
+  }
+}
+
+extension View {
+  func nativeIPadPagePresentation() -> some View {
+    modifier(NativeIPadPagePresentationModifier())
+  }
+}
+
 enum NativeScreenStyle {
   case standard
+  case grouped
 
   var titleColor: Color {
     OkkleColor.ink
@@ -15,6 +35,12 @@ enum NativeScreenStyle {
     OkkleColor.ink
   }
 
+  var backgroundColor: Color {
+    switch self {
+    case .standard: return OkkleColor.surface
+    case .grouped: return Color(uiColor: .systemGroupedBackground)
+    }
+  }
 }
 
 let nativeScreenContentCoordinateSpace = "NativeScreenContentCoordinateSpace"
@@ -98,7 +124,7 @@ struct NativeScreen<Content: View>: View {
           screenContent(proxy: proxy)
         }
       }
-      .background { NativeBackground() }
+      .background { style.backgroundColor.ignoresSafeArea() }
       .navigationTitle(collapsedTitle ?? title)
       .navigationBarTitleDisplayMode(.large)
       .toolbar {
@@ -271,32 +297,37 @@ struct NativeAiCard<Content: View>: View {
     self.content = content()
   }
 
-  // Deliberately NOT built on NativeGlassCard: that shared component carries
-  // its own shadow (used by Records/Tax/Log/Home), and layering another
-  // shadow on top of it is exactly what kept reading as a "halo" around every
-  // Insights card. This is a flat card — material fill only, no drop shadow —
-  // so there's nothing left to bleed out around the edges.
+  // Insights uses the same semantic grouped surface as native iOS lists. It
+  // stays flat, adapts to light and dark mode, and avoids decorative material
+  // or shadows competing with dense charts and recommendations.
   var body: some View {
     cardBody
-      .padding(20)
+      .padding(.horizontal, 20)
+      .padding(.vertical, 18)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+      .background(
+        Color(uiColor: .secondarySystemGroupedBackground),
+        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+      )
+      .overlay {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+          .stroke(Color(uiColor: .separator).opacity(0.16), lineWidth: 0.5)
+      }
   }
 
   @ViewBuilder private var cardBody: some View {
     if let banner {
-      VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 18) {
         HStack(spacing: 8) {
           Text(banner)
-            .font(.system(size: 12, weight: .heavy))
-            .tracking(0.5)
+            .font(.caption.weight(.semibold))
           Spacer(minLength: 8)
           if let bannerTrailing {
             Text(bannerTrailing)
-              .font(.system(size: 12, weight: .bold))
+              .font(.caption.weight(.semibold))
           }
         }
-        .foregroundStyle(OkkleColor.muted)
+        .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
 
         content

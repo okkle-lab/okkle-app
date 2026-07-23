@@ -456,6 +456,8 @@ struct NativeAutoTrackSettingsView: View {
               store.settings.enhancedAutoTracking = true
               if autoTrack.locationAuthorizationStatus != .authorizedAlways {
                 autoTrack.requestAlwaysLocationAuthorization()
+              } else if autoTrack.locationAccuracyAuthorization == .reducedAccuracy {
+                autoTrack.requestPreciseLocationAuthorization()
               }
             }
           }
@@ -487,6 +489,19 @@ struct NativeAutoTrackSettingsView: View {
           }
         } footer: {
           Text("Okkle does not partially run automatic tracking with While Using access because iOS cannot reliably wake a closed app for a new trip.")
+        }
+      }
+
+      if store.settings.autoTrackTrips,
+         autoTrack.locationAuthorizationStatus == .authorizedAlways,
+         autoTrack.locationAccuracyAuthorization == .reducedAccuracy {
+        Section {
+          Label("Automatic tracking needs Precise Location.", systemImage: "location.slash.fill")
+          Button("Enable Precise Location") {
+            autoTrack.requestPreciseLocationAuthorization()
+          }
+        } footer: {
+          Text("Approximate Location cannot capture the roads you travel or produce reliable mileage.")
         }
       }
 

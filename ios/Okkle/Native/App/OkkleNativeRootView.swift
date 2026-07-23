@@ -200,6 +200,7 @@ struct OkkleNativeRootView: View {
       .environmentObject(store)
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
+      .nativeIPadPagePresentation()
     }
     .sheet(isPresented: $showAddRecord) {
       NativeLogView(
@@ -218,6 +219,7 @@ struct OkkleNativeRootView: View {
       .environmentObject(store)
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
+      .nativeIPadPagePresentation()
     }
     .sheet(isPresented: $showSettings) {
       NativeSettingsView()
@@ -367,15 +369,11 @@ private struct NativeSidebar: View {
           Button {
             selectedTab = tab
           } label: {
-            Label(tab.label, systemImage: tab.symbol)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(.horizontal, 12)
-              .padding(.vertical, 10)
-              .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                  .fill(selectedTab == tab ? OkkleColor.brand.opacity(0.12) : Color.clear)
-              }
-              .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            NativeSidebarRow(
+              title: tab.label,
+              symbol: tab.symbol,
+              isSelected: selectedTab == tab
+            )
           }
           .buttonStyle(.plain)
           .foregroundStyle(selectedTab == tab ? OkkleColor.brand : Color.primary)
@@ -386,23 +384,50 @@ private struct NativeSidebar: View {
 
       Section {
         Button(action: showAddRecord) {
-          Label("Add record", systemImage: "plus.circle.fill")
+          NativeSidebarRow(title: "Add record", symbol: "plus.circle.fill")
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
+        .listRowBackground(Color.clear)
       }
     }
-    .navigationTitle("Okkle")
     .listStyle(.sidebar)
     .safeAreaInset(edge: .bottom) {
       Button(action: showSettings) {
-        Label("Profile", systemImage: "person.crop.circle")
-          .frame(maxWidth: .infinity, alignment: .leading)
+        NativeSidebarRow(title: "Profile", symbol: "person.crop.circle")
       }
       .buttonStyle(.plain)
       .foregroundStyle(.primary)
-      .padding(.horizontal, 18)
-      .padding(.vertical, 12)
+      .padding(.leading, 34)
+      .padding(.trailing, 10)
+      .padding(.vertical, 2)
       .background(.bar)
     }
+  }
+}
+
+private struct NativeSidebarRow: View {
+  let title: String
+  let symbol: String
+  var isSelected = false
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: symbol)
+        .font(.system(size: 17, weight: .medium))
+        .frame(width: 22, alignment: .center)
+      Text(title)
+      Spacer(minLength: 0)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .background {
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .fill(isSelected ? OkkleColor.brand.opacity(0.12) : Color.clear)
+    }
+    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 }
 

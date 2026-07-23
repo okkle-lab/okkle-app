@@ -58,6 +58,7 @@
 		CF15ED97A8AEDE5D3D61ABA2 /* NativeHistoryDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA931E53CF76B03966392C32 /* NativeHistoryDetails.swift */; };
 		D064A003845AB92AD0D13D5F /* NativeShiftMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA72D617231D3C6717321E0 /* NativeShiftMap.swift */; };
 		D30FD8D8D709421B8B1BD003 /* NativeAutoTrackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */; };
+		D30FD8DAD709421B8B1BD004 /* NativeAutoTrackArchitecture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30FD8D9D709421B8B1BD005 /* NativeAutoTrackArchitecture.swift */; };
 		D3A9F6319C794EBD7BF510E2 /* NativeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B488443B25BC5ED20A3CBD6C /* NativeComponents.swift */; };
 		E454F93F40BE326A60E93295 /* NativeInsightArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F6F33FCC220B2D976D3CAA /* NativeInsightArea.swift */; };
 		E4B0F0A54F1E471E8C9F5631 /* NativeLegacyBackupImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B0F0A44F1E471E8C9F5630 /* NativeLegacyBackupImporter.swift */; };
@@ -187,6 +188,7 @@
 		CA7CF6DC51582C5B309BCC83 /* NativeHistoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryItem.swift; sourceTree = "<group>"; };
 		CA931E53CF76B03966392C32 /* NativeHistoryDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHistoryDetails.swift; sourceTree = "<group>"; };
 		D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAutoTrackEngine.swift; sourceTree = "<group>"; };
+		D30FD8D9D709421B8B1BD005 /* NativeAutoTrackArchitecture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAutoTrackArchitecture.swift; sourceTree = "<group>"; };
 		DD6EE03F6A4F4FDC01B37848 /* NativeExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeExportService.swift; sourceTree = "<group>"; };
 		DD9B5661933A968BD56DDF87 /* NativeAreaNameTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeAreaNameTests.swift; sourceTree = "<group>"; };
 		E4B0F0A44F1E471E8C9F5630 /* NativeLegacyBackupImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacyBackupImporter.swift; sourceTree = "<group>"; };
@@ -238,6 +240,7 @@
 				AAA72D617231D3C6717321E0 /* NativeShiftMap.swift */,
 				2E272519B01357A93A5AEF02 /* NativeTaxDates.swift */,
 				D30FD8D7D709421B8B1BD002 /* NativeAutoTrackEngine.swift */,
+				D30FD8D9D709421B8B1BD005 /* NativeAutoTrackArchitecture.swift */,
 				79D4A9B46FBC4E7DA1B3C220 /* NativeRouteStopDetector.swift */,
 				6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */,
 				EAF39469B146AB6A7CF2E14D /* NativeAutoShiftReview.swift */,
@@ -680,6 +683,7 @@
 				D064A003845AB92AD0D13D5F /* NativeShiftMap.swift in Sources */,
 				0A5247338440992A362F9B27 /* NativeTaxDates.swift in Sources */,
 				D30FD8D8D709421B8B1BD003 /* NativeAutoTrackEngine.swift in Sources */,
+				D30FD8DAD709421B8B1BD004 /* NativeAutoTrackArchitecture.swift in Sources */,
 				79D4A9B56FBC4E7DA1B3C221 /* NativeRouteStopDetector.swift in Sources */,
 				6D939B15DD214840A6C00DAE /* NativePreShiftNotifier.swift in Sources */,
 				14FC991062602F3F2D2D8B26 /* NativeRecordsView.swift in Sources */,
