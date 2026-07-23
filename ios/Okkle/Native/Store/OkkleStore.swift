@@ -408,7 +408,9 @@ final class OkkleStore: ObservableObject {
   func completeOnboarding(name: String,
                           defaultVehicle: NativeVehicle,
                           platforms: [String],
+                          taxCountry: NativeTaxCountry = .uk,
                           region: NativeRegion,
+                          usState: NativeUSState = .california,
                           incomeBracket: NativeIncomeBracket,
                           autoTrackTrips: Bool,
                           enhancedAutoTracking: Bool,
@@ -420,7 +422,9 @@ final class OkkleStore: ObservableObject {
     if updated.platforms.isEmpty {
       updated.platforms = ["Uber Eats"]
     }
+    updated.taxCountry = taxCountry
     updated.region = region
+    updated.usState = usState
     updated.incomeBracket = incomeBracket
     updated.autoTrackTrips = autoTrackTrips
     updated.enhancedAutoTracking = autoTrackTrips && enhancedAutoTracking

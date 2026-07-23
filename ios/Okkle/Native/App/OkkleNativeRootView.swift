@@ -406,8 +406,22 @@ private struct NativeSidebar: View {
   }
 }
 
-let nativeOnboardingPlatforms = ["Uber Eats", "Deliveroo", "Just Eat", "Stuart", "Amazon Flex", "Other"]
-let nativeDeliveryServiceOptions = nativeOnboardingPlatforms.filter { $0 != "Other" }
+/// The delivery apps offered in onboarding, by market. A driver can always add
+/// their own via "Other", so this is just the common set for each country.
+func nativeOnboardingPlatforms(for country: NativeTaxCountry) -> [String] {
+  switch country {
+  case .uk: return ["Uber Eats", "Deliveroo", "Just Eat", "Stuart", "Amazon Flex", "Other"]
+  case .us: return ["DoorDash", "Uber Eats", "Grubhub", "Instacart", "Amazon Flex", "Other"]
+  }
+}
+
+/// Every platform Okkle knows by name across all markets — used to decide
+/// whether a saved platform is a "custom" one and to seed the record picker,
+/// independent of the driver's current country.
+let nativeAllKnownPlatforms: [String] = [
+  "Uber Eats", "Deliveroo", "Just Eat", "Stuart", "Amazon Flex",
+  "DoorDash", "Grubhub", "Instacart",
+]
 
 func nativePlatformSymbol(_ platform: String) -> String {
   switch platform {
@@ -415,7 +429,9 @@ func nativePlatformSymbol(_ platform: String) -> String {
   case "Deliveroo": return "takeoutbag.and.cup.and.straw.fill"
   case "Just Eat": return "fork.knife"
   case "Stuart": return "shippingbox.fill"
-  case "Amazon Flex": return "cube.box.fill"
+  case "Amazon Flex", "Instacart": return "cube.box.fill"
+  case "DoorDash": return "bag.fill"
+  case "Grubhub": return "fork.knife"
   default: return "plus.circle.fill"
   }
 }

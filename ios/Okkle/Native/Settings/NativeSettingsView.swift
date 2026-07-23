@@ -9,13 +9,13 @@ struct NativeSettingsPlatformsSection: View {
 
   private var customPlatforms: [String] {
     store.settings.platforms.filter { platform in
-      !nativeOnboardingPlatforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
+      !nativeAllKnownPlatforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
     }
   }
 
   var body: some View {
     Section {
-      ForEach(nativeOnboardingPlatforms.filter { $0 != "Other" }, id: \.self) { platform in
+      ForEach(nativeOnboardingPlatforms(for: store.settings.taxCountry).filter { $0 != "Other" }, id: \.self) { platform in
         Toggle(isOn: platformSelectionBinding(platform)) {
           Label(platform, systemImage: nativePlatformSymbol(platform))
         }

@@ -1356,7 +1356,7 @@ struct NativeRecordEditSheet: View {
     let recent = store.records
       .filter { $0.kind == .income }
       .compactMap { $0.platform }
-    return uniqueStrings(store.settings.platforms + nativeDeliveryServiceOptions + recent + [platform])
+    return uniqueStrings(store.settings.platforms + nativeAllKnownPlatforms + recent + [platform])
   }
 
   private var categoryOptions: [String] {
