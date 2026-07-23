@@ -41,4 +41,25 @@ final class NativeAreaNameTests: XCTestCase {
     ])
     XCTAssertEqual(nativeNeighbourhoodName(from: placemark), "Soho")
   }
+
+  // The area-naming + food-POI overlay is coordinate/placemark-driven with no
+  // UK gating, so it works for US pickups too. A US neighbourhood resolves to
+  // its own name, and the London-borough filter is simply inert stateside.
+  func testUSNeighbourhoodResolves() {
+    let manhattan = MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: 40.7233, longitude: -74.0030), addressDictionary: [
+      "SubLocality": "SoHo",
+      "City": "New York",
+      "State": "NY",
+    ])
+    XCTAssertEqual(nativeNeighbourhoodName(from: manhattan), "SoHo")
+  }
+
+  func testUSStreetFallbackWhenNoNeighbourhood() {
+    let chicago = MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: 41.8827, longitude: -87.6233), addressDictionary: [
+      "Thoroughfare": "W Madison St",
+      "City": "Chicago",
+      "State": "IL",
+    ])
+    XCTAssertEqual(nativeNeighbourhoodName(from: chicago), "W Madison St")
+  }
 }
