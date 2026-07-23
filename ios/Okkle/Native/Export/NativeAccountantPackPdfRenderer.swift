@@ -191,6 +191,14 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
 
   private func drawIncome() {
     drawSectionTitle("Income by platform")
+    drawWrapped(
+      country == .uk
+        ? "For reconciling against platform statements — all gig income is reported as one combined total, regardless of platform."
+        : "For reconciling against 1099s or platform statements — all gig income is reported as one combined total, regardless of platform.",
+      font: .systemFont(ofSize: 10, weight: .regular),
+      color: muted,
+      spacingAfter: 6
+    )
     var totals: [String: Double] = [:]
     incomeRecords.forEach { record in
       totals[record.platform ?? "Other", default: 0] += record.amount ?? 0
@@ -231,7 +239,15 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
   }
 
   private func drawExpenses() {
-    drawSectionTitle("Expenses")
+    // Category subtotals first — this is the number an accountant actually
+    // enters onto the return (e.g. HMRC's "car, van and travel expenses" /
+    // "other business expenses" boxes, or a Schedule C expense line). The
+    // itemized list below is supporting evidence for those totals, not the
+    // thing that gets typed in, so it comes second.
+    drawSectionTitle("Expenses by category")
+    drawExpenseCategoryTable()
+
+    drawSectionTitle("Itemized expenses")
     // The "may already be covered by mileage" flag applies to anyone using a
     // flat mileage rate — UK simplified expenses or the US IRS standard
     // mileage rate both bundle fuel/insurance/repairs into the per-mile
@@ -241,7 +257,6 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     let reviewItems = usesFlatMileageRate ? expenseRecords.filter(nativeNeedsAccountantReview) : []
     let regularItems = usesFlatMileageRate ? expenseRecords.filter { !nativeNeedsAccountantReview($0) } : expenseRecords
     drawExpenseTable(regularItems, emptyMessage: "No expense records logged for this tax year.")
-    drawKeyValue("Expense total", gbp(expenseRecords.reduce(0) { $0 + ($1.amount ?? 0) }))
 
     if !reviewItems.isEmpty {
       drawSectionTitle("Items flagged for review")
@@ -255,6 +270,25 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
       )
       drawExpenseTable(reviewItems)
     }
+  }
+
+  private func drawExpenseCategoryTable() {
+    var totals: [String: Double] = [:]
+    expenseRecords.forEach { record in
+      let category = record.category?.isEmpty == false ? record.category! : "Uncategorised"
+      totals[category, default: 0] += record.amount ?? 0
+    }
+    let rows = totals
+      .sorted { $0.value > $1.value }
+      .map { [$0.key, gbp($0.value)] }
+    drawTable(
+      headers: ["Category", "Amount"],
+      rows: rows,
+      widths: [0.66, 0.34],
+      rightAligned: [1],
+      emptyMessage: "No expense records logged for this tax year."
+    )
+    drawKeyValue("Expense total", gbp(expenseRecords.reduce(0) { $0 + ($1.amount ?? 0) }), highlighted: true)
   }
 
   private func drawExpenseTable(_ records: [NativeRecord], emptyMessage: String = "None.") {

@@ -36,6 +36,23 @@ final class TaxCalculatorTests: XCTestCase {
   }
 
   @MainActor
+  func testExpenseCategoryCsvSubtotalsByCategory() {
+    let store = OkkleStore()
+    store.trips = []
+    let recentDate = Date().addingTimeInterval(-3 * 86_400)
+    store.records = [
+      NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 100, miles: nil, deduction: nil, category: "Fuel", date: recentDate, period: .day, receiptImageData: nil),
+      NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 50, miles: nil, deduction: nil, category: "Fuel", date: recentDate, period: .day, receiptImageData: nil),
+      NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 30, miles: nil, deduction: nil, category: "Parking", date: recentDate, period: .day, receiptImageData: nil),
+      NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 20, miles: nil, deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil)
+    ]
+    let csv = nativeExpenseCategoryCsv(store: store)
+    XCTAssertTrue(csv.contains("Fuel,150.00"), "Two Fuel entries should subtotal to 150 — an accountant needs the category total, not a re-tally of individual rows.")
+    XCTAssertTrue(csv.contains("Parking,30.00"))
+    XCTAssertTrue(csv.contains("Uncategorised,20.00"))
+  }
+
+  @MainActor
   func testActualCostMethodDropsMileageDeductionFromTaxEstimate() {
     let store = OkkleStore()
     store.settings.expenseMethod = .actualCost

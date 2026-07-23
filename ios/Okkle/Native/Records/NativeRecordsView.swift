@@ -1112,7 +1112,7 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     case .accountantPack: return "Mileage, expenses & receipts"
     case .selfAssessment: return "Turnover, profit and tax due"
     case .mileage: return country == .uk ? "Rate-band report or full CSV log" : "Mileage report or full CSV log"
-    case .freeAgent: return "Ready for bank import"
+    case .freeAgent: return country == .uk ? "For FreeAgent, or bank-statement import elsewhere" : "For QuickBooks, Xero, Wave or bank import"
     case .allData: return "Trips, earnings and expenses"
     }
   }

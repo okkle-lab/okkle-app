@@ -189,9 +189,27 @@ func nativeSelfAssessmentCsv(store: OkkleStore) -> String {
 }
 
 @MainActor
+func nativeExpenseCategoryCsv(store: OkkleStore) -> String {
+  var totals: [String: Double] = [:]
+  store.yearRecords
+    .filter { $0.kind == .expense }
+    .forEach { record in
+      let category = record.category?.isEmpty == false ? record.category! : "Uncategorised"
+      totals[category, default: 0] += record.amount ?? 0
+    }
+  let rows = totals
+    .sorted { $0.value > $1.value }
+    .map { [nativeCsvField($0.key), nativeCsvField(nativeDecimal($0.value))].joined(separator: ",") }
+  return (["Category,Amount"] + rows).joined(separator: "\n")
+}
+
+@MainActor
 func nativeAccountantPackCsv(store: OkkleStore) -> String {
   [
     nativeSelfAssessmentCsv(store: store),
+    "",
+    "Expenses by category",
+    nativeExpenseCategoryCsv(store: store),
     "",
     "Mileage log",
     nativeMileageCsv(store: store),
