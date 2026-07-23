@@ -1161,7 +1161,7 @@ struct NativeRecordDetailSheet: View {
   private var tint: Color {
     switch record.kind {
     case .income: return .green
-    case .expense: return OkkleColor.amber
+    case .expense: return OkkleColor.red
     case .mileage: return OkkleColor.brand
     }
   }

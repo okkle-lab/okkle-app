@@ -193,7 +193,7 @@ struct NativeRecordsView: View {
           Divider().frame(height: 46)
           summaryStat(title: "Income", value: gbp(summaryIncome, whole: true), color: .green)
           Divider().frame(height: 46)
-          summaryStat(title: "Expenses", value: gbp(summaryExpense, whole: true), color: OkkleColor.amber)
+          summaryStat(title: "Expenses", value: gbp(summaryExpense, whole: true), color: OkkleColor.red)
         }
       }
     }
@@ -678,7 +678,7 @@ private struct NativeAddRecordPanel: View {
     case .income:
       return .green
     case .expense:
-      return OkkleColor.amber
+      return OkkleColor.red
     case .mileage:
       return OkkleColor.brand
     }
@@ -899,14 +899,14 @@ struct NativeHistoryRow: View {
 
   private var tint: Color {
     switch item {
-    // Matches the same convention used for individual stops inside a trip's
-    // detail screen (routeStopLocationRow/stopTint) — orange for business,
-    // gray for personal — instead of a fixed blue regardless of category.
-    case .trip(let trip): return trip.category == .personal ? .gray : OkkleColor.amber
+    // Indigo for a business trip, gray for personal — kept distinct from
+    // expense's red so the two don't read as the same color in a mixed
+    // list (they used to both be amber, which was the actual complaint).
+    case .trip(let trip): return trip.category == .personal ? .gray : .indigo
     case .record(let record):
       switch record.kind {
       case .income: return .green
-      case .expense: return OkkleColor.amber
+      case .expense: return OkkleColor.red
       case .mileage: return OkkleColor.brand
       }
     }

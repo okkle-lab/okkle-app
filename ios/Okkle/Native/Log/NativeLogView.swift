@@ -685,7 +685,7 @@ struct NativeLogView: View {
     case .income:
       return OkkleColor.brand
     case .expense:
-      return OkkleColor.amber
+      return OkkleColor.red
     case .mileage:
       return OkkleColor.blue
     }
