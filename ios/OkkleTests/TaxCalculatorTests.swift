@@ -4,6 +4,72 @@ import XCTest
 @testable import Okkle
 
 final class TaxCalculatorTests: XCTestCase {
+  // Every region/state combination Okkle ships, generating real PDFs and tax
+  // positions for each so a regression in one config (wrong rate, crash,
+  // duplicate deadline id, mismatched totals) can't slip through even though
+  // day-to-day development mostly exercises just one config at a time.
+  @MainActor
+  func testAllRegionsProduceConsistentReportsAndDeadlines() {
+    struct Config {
+      let country: NativeTaxCountry
+      let usState: NativeUSState
+      let expenseMethod: NativeExpenseMethod
+    }
+    let configs: [Config] = [
+      Config(country: .uk, usState: .california, expenseMethod: .simplified),
+      Config(country: .uk, usState: .california, expenseMethod: .actualCost),
+      Config(country: .us, usState: .california, expenseMethod: .simplified),
+      Config(country: .us, usState: .newYork, expenseMethod: .simplified),
+      Config(country: .us, usState: .illinois, expenseMethod: .simplified),
+      Config(country: .us, usState: .pennsylvania, expenseMethod: .simplified),
+      Config(country: .us, usState: .georgia, expenseMethod: .simplified),
+      Config(country: .us, usState: .texas, expenseMethod: .simplified),
+      Config(country: .us, usState: .otherState, expenseMethod: .simplified)
+    ]
+
+    for config in configs {
+      let store = OkkleStore()
+      store.settings.taxCountry = config.country
+      store.settings.usState = config.usState
+      store.settings.usOtherStateRate = 0.05
+      store.settings.expenseMethod = config.expenseMethod
+      store.settings.name = "Test Driver"
+
+      let recentDate = Date().addingTimeInterval(-3 * 86_400)
+      var trip = NativeTrip(vehicle: .car, miles: 120, deduction: 0, startedAt: recentDate, endedAt: recentDate.addingTimeInterval(3_600), points: [])
+      trip.startAddress = "100 Main St"
+      trip.endAddress = "200 Elm St"
+      store.trips = [trip]
+      store.records = [
+        NativeRecord(kind: .income, platform: "Uber Eats", vehicle: nil, amount: 800, miles: nil, deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .income, platform: "DoorDash", vehicle: nil, amount: 400, miles: nil, deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 120, miles: nil, deduction: nil, category: "Fuel", date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 40, miles: nil, deduction: nil, category: "Fuel", date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 15, miles: nil, deduction: nil, category: "Parking", date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 25, miles: nil, deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil)
+      ]
+
+      let context = "\(config.country) / \(config.usState) / \(config.expenseMethod)"
+      let accountantPdf = nativeAccountantPackPdfData(store: store)
+      let mileagePdf = nativeMileageReportPdfData(store: store)
+      let selfAssessPdf = nativeSelfAssessmentPdfData(store: store)
+      XCTAssertEqual(accountantPdf.prefix(4), Data("%PDF".utf8), context)
+      XCTAssertEqual(mileagePdf.prefix(4), Data("%PDF".utf8), context)
+      XCTAssertEqual(selfAssessPdf.prefix(4), Data("%PDF".utf8), context)
+
+      let deadlines = nativeTaxDeadlines(for: config.country, usState: config.usState)
+      XCTAssertEqual(Set(deadlines.map(\.id)).count, deadlines.count, "Duplicate deadline id in \(context)")
+
+      let tax = store.taxPosition
+      XCTAssertEqual(tax.incomeTax + tax.class4 + tax.stateTax, tax.totalDue, accuracy: 0.01, context)
+      XCTAssertEqual(tax.totalDue / 4, tax.paymentOnAccount, accuracy: 0.01, context)
+      if config.usState.hasNoIncomeTax {
+        XCTAssertEqual(tax.stateTax, 0, context)
+        XCTAssertTrue(deadlines.allSatisfy { $0.authority == "IRS" }, context)
+      }
+    }
+  }
+
   private var calendar: Calendar {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
