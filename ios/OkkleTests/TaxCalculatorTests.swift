@@ -596,6 +596,10 @@ final class NativeRouteStopDetectorTests: XCTestCase {
 @MainActor
 final class NativeAutoTrackPolicyTests: XCTestCase {
   func testActiveTripKeepsContinuousGPSWhileWaitingForStationaryTimeout() {
+    XCTAssertEqual(NativeAutoTrackPolicy.locationStrategy(during: .driving), .continuousWithRelaunchWake)
+    XCTAssertEqual(NativeAutoTrackPolicy.locationStrategy(during: .stationaryPending), .continuousWithRelaunchWake)
+    XCTAssertEqual(NativeAutoTrackPolicy.locationStrategy(during: .idle), .significantChangeOnly)
+    XCTAssertEqual(NativeAutoTrackPolicy.locationStrategy(during: .paused), .off)
     XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .driving))
     XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .stationaryPending))
     XCTAssertFalse(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .idle))
@@ -752,6 +756,29 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     XCTAssertTrue(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .stationaryPending))
   }
 
+  func testStationarySignalsAreIgnoredWhenTheyCannotChangeTrackingState() {
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldProcessStationarySignal(
+      during: .idle,
+      vehicleStartArmed: false
+    ))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldProcessStationarySignal(
+      during: .idle,
+      vehicleStartArmed: true
+    ))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldProcessStationarySignal(
+      during: .driving,
+      vehicleStartArmed: false
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldProcessStationarySignal(
+      during: .stationaryPending,
+      vehicleStartArmed: false
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldProcessStationarySignal(
+      during: .paused,
+      vehicleStartArmed: false
+    ))
+  }
+
   func testDrivingAndStationaryTripsBothRequireContinuousLocationUpdates() {
     XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .driving))
     XCTAssertTrue(NativeAutoTrackPolicy.requiresContinuousLocationUpdates(during: .stationaryPending))
@@ -763,7 +790,7 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     let now = Date()
     let origin = location(latitude: 51.5000, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(-20))
     let parked = location(latitude: 51.5001, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(-10))
-    let movingBySpeed = location(
+    let speedWithoutDisplacement = location(
       latitude: 51.5001, longitude: -0.1200, accuracy: 8,
       timestamp: now.addingTimeInterval(-10), speed: 3.2
     )
@@ -771,23 +798,29 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
       latitude: 51.5004, longitude: -0.1200, accuracy: 8,
       timestamp: now
     )
-    let staleOrigin = location(latitude: 51.5000, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(-40))
-    let staleDrift = location(
+    let slowOrigin = location(latitude: 51.5000, longitude: -0.1200, accuracy: 8, timestamp: now.addingTimeInterval(-90))
+    let slowMovement = location(
       latitude: 51.5004, longitude: -0.1200, accuracy: 8,
-      timestamp: now
+      timestamp: now, speed: -1
+    )
+    let inaccurateOrigin = location(latitude: 51.5000, longitude: -0.1200, accuracy: 30, timestamp: now.addingTimeInterval(-20))
+    let inaccurateDrift = location(
+      latitude: 51.5004, longitude: -0.1200, accuracy: 30,
+      timestamp: now, speed: -1
     )
 
     XCTAssertFalse(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: nil, current: parked))
     XCTAssertFalse(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: origin, current: parked))
-    XCTAssertTrue(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: nil, current: movingBySpeed))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: nil, current: speedWithoutDisplacement))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: origin, current: speedWithoutDisplacement))
     XCTAssertTrue(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: origin, current: movingByDisplacement))
-    XCTAssertFalse(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: staleOrigin, current: staleDrift))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: slowOrigin, current: slowMovement))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: inaccurateOrigin, current: inaccurateDrift))
 
     let initialLocations = NativeAutoTrackPolicy.armedTripInitialLocations(
-      origin: origin,
-      current: movingByDisplacement
+      bufferedLocations: [movingByDisplacement, parked, origin]
     )
-    XCTAssertEqual(initialLocations.count, 2)
+    XCTAssertEqual(initialLocations.count, 3)
     XCTAssertEqual(initialLocations.first?.timestamp, origin.timestamp)
     XCTAssertEqual(initialLocations.last?.timestamp, movingByDisplacement.timestamp)
   }
