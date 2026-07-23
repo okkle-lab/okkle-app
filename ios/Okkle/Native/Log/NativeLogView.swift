@@ -258,7 +258,7 @@ struct NativeLogView: View {
           .frame(maxWidth: .infinity, alignment: .leading)
         nativeTextField(
           title: "Merchant (optional)",
-          placeholder: "e.g. Shell, Halfords, Vodafone",
+          placeholder: merchantPlaceholder,
           text: $merchant
         )
         nativeTextEditor(
@@ -722,6 +722,13 @@ struct NativeLogView: View {
       return savedPlatformOptions[0]
     }
     return platform
+  }
+
+  private var merchantPlaceholder: String {
+    switch store.settings.taxCountry {
+    case .uk: return "e.g. Shell, Halfords, Vodafone"
+    case .us: return "e.g. Shell, AutoZone, Verizon"
+    }
   }
 
   private var categoryOptions: [String] {
