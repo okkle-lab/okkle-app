@@ -160,21 +160,26 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
 
   private func drawUsTaxSummary() {
     let tax = store.taxPosition
+    // These figures span three separate IRS forms — Schedule C (profit or
+    // loss), Schedule SE (self-employment tax) and Form 1040 (the deductions
+    // and tax that apply to the whole return) — so each row cites which one
+    // it actually belongs to, the same way the UK summary cites real SA103S
+    // box numbers rather than implying everything sits on one form.
     drawSectionTitle("Schedule C / SE tax summary")
     drawTable(
-      headers: ["Description", "Amount"],
+      headers: ["Sch. C line", "Description", "Amount"],
       rows: [
-        ["Turnover - business income", gbp(tax.turnover)],
-        ["Allowable business expenses, including mileage/actual costs", gbp(tax.deductionApplied)],
-        ["Taxable profit", gbp(tax.profit)]
+        ["1", "Gross receipts - business income", gbp(tax.turnover)],
+        ["28", "Total expenses, including mileage/actual costs", gbp(tax.deductionApplied)],
+        ["31", "Net profit", gbp(tax.profit)]
       ],
-      widths: [0.72, 0.28],
-      rightAligned: [1]
+      widths: [0.20, 0.52, 0.28],
+      rightAligned: [2]
     )
-    drawKeyValue("Standard deduction", gbp(tax.standardDeduction))
-    drawKeyValue("QBI deduction (20%)", gbp(tax.qbiDeduction))
-    drawKeyValue("Estimated federal income tax", gbp(tax.incomeTax))
-    drawKeyValue("Estimated self-employment tax", gbp(tax.class4))
+    drawKeyValue("Standard deduction (Form 1040)", gbp(tax.standardDeduction))
+    drawKeyValue("QBI deduction (Form 1040, 20% of profit)", gbp(tax.qbiDeduction))
+    drawKeyValue("Estimated federal income tax (Form 1040)", gbp(tax.incomeTax))
+    drawKeyValue("Estimated self-employment tax (Schedule SE)", gbp(tax.class4))
     if tax.stateTax > 0 {
       drawKeyValue("Estimated state tax (\(store.settings.usState.label))", gbp(tax.stateTax))
     }
@@ -297,12 +302,9 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
   }
 
   private func drawLimitations() {
-    drawSectionTitle("Basis and limitations")
-    drawWrapped(
-      "Prepared by Okkle from records kept on the user's device. Figures are estimates derived from logged data, have not been independently verified or reconciled to bank records, and do not constitute tax advice. Confirm completeness, categorisation and final figures before submission.",
-      font: .systemFont(ofSize: 10, weight: .regular),
-      color: muted,
-      spacingAfter: 0
+    drawDisclaimer(
+      "Basis and limitations",
+      "Prepared by Okkle from records kept on the user's device. Figures are estimates derived from logged data, have not been independently verified or reconciled to bank records, and do not constitute tax advice. Confirm completeness, categorisation and final figures before submission."
     )
   }
 }

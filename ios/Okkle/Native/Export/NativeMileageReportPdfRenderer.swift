@@ -170,12 +170,9 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
   }
 
   private func drawLimitations() {
-    drawSectionTitle("Basis and limitations")
-    drawWrapped(
-      "Prepared by Okkle from records kept on the user's device. Figures are estimates derived from logged data and do not constitute tax advice. Confirm completeness and final figures before submission.",
-      font: .systemFont(ofSize: 10, weight: .regular),
-      color: muted,
-      spacingAfter: 0
+    drawDisclaimer(
+      "Basis and limitations",
+      "Prepared by Okkle from records kept on the user's device. Figures are estimates derived from logged data and do not constitute tax advice. Confirm completeness and final figures before submission."
     )
   }
 }

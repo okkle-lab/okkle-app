@@ -93,12 +93,9 @@ final class NativeSelfAssessmentPdfRenderer: NativePdfDocumentRenderer {
   }
 
   private func drawLimitations() {
-    drawSectionTitle("Basis and limitations")
-    drawWrapped(
-      "Prepared by Okkle from records kept on the user's device. Estimates only, not tax advice. Confirm with your accountant.",
-      font: .systemFont(ofSize: 10, weight: .regular),
-      color: muted,
-      spacingAfter: 0
+    drawDisclaimer(
+      "Basis and limitations",
+      "Prepared by Okkle from records kept on the user's device. Estimates only, not tax advice. Confirm with your accountant."
     )
   }
 }

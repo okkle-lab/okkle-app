@@ -93,6 +93,19 @@ class NativePdfDocumentRenderer {
     y += 9
   }
 
+  /// A closing caveat ("basis and limitations", "not tax advice", etc.) —
+  /// deliberately styled much quieter than `drawSectionTitle`'s bold brand
+  /// heading. It still needs to be legible (this is the line doing the
+  /// compliance work of not letting an estimate read as an official filing),
+  /// but visually it should read as a footnote next to the actual figures,
+  /// not compete with them for attention the way a same-weight heading would.
+  func drawDisclaimer(_ title: String, _ body: String) {
+    ensure(30)
+    y += y > margin + 2 ? 14 : 0
+    drawWrapped(title, font: .systemFont(ofSize: 10.5, weight: .semibold), color: muted, spacingAfter: 4)
+    drawWrapped(body, font: .systemFont(ofSize: 9.5, weight: .regular), color: muted, spacingAfter: 0)
+  }
+
   func drawKeyValue(_ label: String, _ value: String, highlighted: Bool = false) {
     let labelWidth = contentWidth * 0.48
     let valueWidth = contentWidth - labelWidth
