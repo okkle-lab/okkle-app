@@ -23,14 +23,9 @@ struct NativeTaxDetailView: View {
           onTapProfit: { detail = .year }
         )
 
-        // Key tax dates are the UK Self Assessment calendar; the US 1040-ES
-        // quarterly schedule is a separate follow-up, so this is UK-only for now
-        // rather than showing a US driver HMRC dates.
-        if store.settings.taxCountry == .uk {
-          NativeTaxOverviewGroup {
-            NativeTaxDeadlinesButton {
-              showsDeadlines = true
-            }
+        NativeTaxOverviewGroup {
+          NativeTaxDeadlinesButton(authority: store.settings.taxCountry == .us ? "IRS" : "HMRC") {
+            showsDeadlines = true
           }
         }
 
@@ -49,7 +44,7 @@ struct NativeTaxDetailView: View {
         .presentationDragIndicator(.visible)
     }
     .sheet(isPresented: $showsDeadlines) {
-      NativeKeyTaxDatesSheet()
+      NativeKeyTaxDatesSheet(country: store.settings.taxCountry)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
@@ -225,6 +220,7 @@ private struct NativeTaxOverviewGroup<Content: View>: View {
 }
 
 private struct NativeTaxDeadlinesButton: View {
+  var authority: String = "HMRC"
   let action: () -> Void
 
   var body: some View {
@@ -240,7 +236,7 @@ private struct NativeTaxDeadlinesButton: View {
           Text("Key tax dates")
             .font(.system(size: 16, weight: .bold))
             .foregroundStyle(OkkleColor.ink)
-          Text("View HMRC deadlines and add to Calendar")
+          Text("View \(authority) deadlines and add to Calendar")
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .lineLimit(2)

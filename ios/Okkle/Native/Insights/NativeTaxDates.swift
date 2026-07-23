@@ -6,6 +6,7 @@ struct NativeTaxDeadline: Identifiable {
   let month: Int
   let day: Int
   let note: String
+  var authority: String = "HMRC"   // calendar-event prefix / owning tax body
 
   var id: String { title }
 
@@ -23,11 +24,27 @@ struct NativeTaxDeadline: Identifiable {
   }
 }
 
-let nativeTaxDeadlines = [
-  NativeTaxDeadline(title: "Register for Self Assessment", month: 10, day: 5, note: "Only if this was your first year self-employed."),
-  NativeTaxDeadline(title: "File your return & pay your tax", month: 1, day: 31, note: "Online Self Assessment deadline for the previous tax year."),
-  NativeTaxDeadline(title: "Second payment on account", month: 7, day: 31, note: "Only if HMRC asked you for payments on account.")
-]
+/// Key tax dates by jurisdiction. UK = HMRC Self Assessment calendar; US = the
+/// IRS 1040-ES quarterly estimated-tax schedule plus the annual return. US
+/// dates verified against irs.gov (Form 1040-ES, Pub 509); review annually.
+func nativeTaxDeadlines(for country: NativeTaxCountry) -> [NativeTaxDeadline] {
+  switch country {
+  case .uk:
+    return [
+      NativeTaxDeadline(title: "Register for Self Assessment", month: 10, day: 5, note: "Only if this was your first year self-employed.", authority: "HMRC"),
+      NativeTaxDeadline(title: "File your return & pay your tax", month: 1, day: 31, note: "Online Self Assessment deadline for the previous tax year.", authority: "HMRC"),
+      NativeTaxDeadline(title: "Second payment on account", month: 7, day: 31, note: "Only if HMRC asked you for payments on account.", authority: "HMRC"),
+    ]
+  case .us:
+    return [
+      NativeTaxDeadline(title: "Q1 estimated tax (1040-ES)", month: 4, day: 15, note: "Estimated income + self-employment tax for Jan–Mar.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q2 estimated tax (1040-ES)", month: 6, day: 15, note: "Estimated tax for Apr–May.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q3 estimated tax (1040-ES)", month: 9, day: 15, note: "Estimated tax for Jun–Aug.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q4 estimated tax (1040-ES)", month: 1, day: 15, note: "Estimated tax for Sep–Dec of the prior year.", authority: "IRS"),
+      NativeTaxDeadline(title: "File your return (Form 1040)", month: 4, day: 15, note: "Annual return; Schedule C + Schedule SE for self-employment.", authority: "IRS"),
+    ]
+  }
+}
 
 func nativeDaysUntil(_ date: Date) -> Int {
   let calendar = Calendar.current
@@ -64,7 +81,7 @@ func nativeAddDeadlineToCalendar(_ deadline: NativeTaxDeadline) async -> Bool {
     let end = Calendar.current.date(byAdding: .minute, value: 30, to: start) ?? start.addingTimeInterval(1800)
     let event = EKEvent(eventStore: eventStore)
     event.calendar = calendar
-    event.title = "HMRC: \(deadline.title)"
+    event.title = "\(deadline.authority): \(deadline.title)"
     event.startDate = start
     event.endDate = end
     event.notes = deadline.note
@@ -126,8 +143,20 @@ struct NativeKeyTaxDatesPanel: View {
 }
 
 struct NativeKeyTaxDatesSheet: View {
+  var country: NativeTaxCountry = .uk
   @Environment(\.dismiss) private var dismiss
   @State private var alertMessage: String?
+
+  private var deadlines: [NativeTaxDeadline] { nativeTaxDeadlines(for: country) }
+
+  private var recordsFootnote: String {
+    switch country {
+    case .uk:
+      return "Keep your records for at least 5 years after the 31 January deadline. MTD for Income Tax adds quarterly updates once your income passes the threshold."
+    case .us:
+      return "Keep your mileage log and records for at least 3 years. Pay estimated tax each quarter if you expect to owe $1,000 or more, to avoid an underpayment penalty."
+    }
+  }
 
   var body: some View {
     NavigationStack {
@@ -140,11 +169,11 @@ struct NativeKeyTaxDatesSheet: View {
 
           NativeGlassCard {
             VStack(spacing: 0) {
-              ForEach(nativeTaxDeadlines) { deadline in
+              ForEach(deadlines) { deadline in
                 NativeTaxDeadlineRow(deadline: deadline) { message in
                   alertMessage = message
                 }
-                if deadline.id != nativeTaxDeadlines.last?.id {
+                if deadline.id != deadlines.last?.id {
                   Divider().padding(.leading, 0)
                 }
               }
@@ -154,14 +183,14 @@ struct NativeKeyTaxDatesSheet: View {
           Button {
             Task {
               var added = 0
-              for deadline in nativeTaxDeadlines {
+              for deadline in deadlines {
                 if await nativeAddDeadlineToCalendar(deadline) {
                   added += 1
                 }
               }
-              alertMessage = added == nativeTaxDeadlines.count
+              alertMessage = added == deadlines.count
                 ? "All key tax dates were added to your calendar."
-                : "Added \(added) of \(nativeTaxDeadlines.count) dates. Please allow calendar access and try again for the rest."
+                : "Added \(added) of \(deadlines.count) dates. Please allow calendar access and try again for the rest."
             }
           } label: {
             Label("Add all dates", systemImage: "calendar.badge.plus")
@@ -173,7 +202,7 @@ struct NativeKeyTaxDatesSheet: View {
           }
           .buttonStyle(.plain)
 
-          Text("Keep your records for at least 5 years after the 31 January deadline. MTD for Income Tax adds quarterly updates once your income passes the threshold.")
+          Text(recordsFootnote)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)
