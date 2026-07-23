@@ -101,6 +101,38 @@ final class TaxCalculatorTests: XCTestCase {
     XCTAssertEqual(deduction, 70, accuracy: 0.001)
   }
 
+  // Each bookkeeping export must match that software's own documented CSV
+  // import spec — verified against FreeAgent, QuickBooks Online, Xero and
+  // Wave's own support articles, since a wrong header/date-format/column
+  // choice means the file silently fails (or misparses) on import.
+  @MainActor
+  func testBookkeepingCsvExportsMatchEachSoftwaresDocumentedFormat() {
+    let store = OkkleStore()
+    let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 3, day: 9))!
+    store.trips = []
+    store.records = [
+      NativeRecord(kind: .income, platform: "Uber Eats", vehicle: nil, amount: 100, miles: nil, deduction: nil, category: nil, date: date, period: .day, receiptImageData: nil)
+    ]
+
+    // FreeAgent: no header row at all, dd/mm/yyyy, Date/Amount/Description order.
+    let freeAgent = nativeFreeAgentCsv(store: store)
+    XCTAssertFalse(freeAgent.contains("Date,Amount,Description"), "FreeAgent's spec forbids a header row")
+    XCTAssertTrue(freeAgent.hasPrefix("09/03/2026,100.00,"))
+
+    // QuickBooks Online: header row, Date/Description/Amount order, dd/mm/yyyy.
+    let quickBooks = nativeQuickBooksCsv(store: store)
+    XCTAssertTrue(quickBooks.hasPrefix("Date,Description,Amount\n09/03/2026,"))
+
+    // Xero: header row, Date/Amount/Description order, unambiguous ISO date.
+    let xero = nativeXeroCsv(store: store)
+    XCTAssertTrue(xero.hasPrefix("Date,Amount,Description\n2026-03-09,100.00,"))
+
+    // Wave: header row, Date/Description/Amount order, year-first date
+    // (Wave's own troubleshooting page confirms MM/DD/YYYY is NOT recognized).
+    let wave = nativeWaveCsv(store: store)
+    XCTAssertTrue(wave.hasPrefix("Date,Description,Amount\n2026-03-09,"))
+  }
+
   @MainActor
   func testExpenseCategoryCsvSubtotalsByCategory() {
     let store = OkkleStore()

@@ -701,10 +701,10 @@ struct NativePlatformShareList: View {
     VStack(spacing: 0) {
       ForEach(Array(shares.enumerated()), id: \.element.id) { index, share in
         HStack(spacing: 12) {
-          Image(systemName: nativePlatformSymbol(share.platform))
+          NativePlatformIcon(platform: share.platform)
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(nativeAIAccentGradient)
-            .frame(width: 24)
+            .frame(width: 24, height: 24)
           Text(share.platform)
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(OkkleColor.ink)

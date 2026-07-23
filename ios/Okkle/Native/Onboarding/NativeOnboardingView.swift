@@ -388,6 +388,7 @@ struct NativeOnboardingView: View {
               title: platform,
               subtitle: nil,
               symbol: nativePlatformSymbol(platform),
+              iconAssetName: nativePlatformIconAssetName(platform),
               selected: selectedPlatforms.contains(platform)
             ) {
               togglePlatform(platform)
@@ -1170,17 +1171,14 @@ struct NativeOnboardingOptionButton: View {
   let title: String
   let subtitle: String?
   let symbol: String
+  var iconAssetName: String? = nil
   let selected: Bool
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
       HStack(spacing: 12) {
-        Image(systemName: symbol)
-          .font(.system(size: 18, weight: .bold))
-          .foregroundStyle(selected ? OkkleColor.brandDark : OkkleColor.muted)
-          .frame(width: 38, height: 38)
-          .background(selected ? OkkleColor.mint : Color(uiColor: .tertiarySystemBackground), in: Circle())
+        iconView
 
         VStack(alignment: .leading, spacing: 3) {
           Text(title)
@@ -1210,6 +1208,23 @@ struct NativeOnboardingOptionButton: View {
       )
     }
     .buttonStyle(.plain)
+  }
+
+  @ViewBuilder
+  private var iconView: some View {
+    if let iconAssetName {
+      Image(iconAssetName)
+        .resizable()
+        .aspectRatio(contentMode: .fill)
+        .frame(width: 38, height: 38)
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+    } else {
+      Image(systemName: symbol)
+        .font(.system(size: 18, weight: .bold))
+        .foregroundStyle(selected ? OkkleColor.brandDark : OkkleColor.muted)
+        .frame(width: 38, height: 38)
+        .background(selected ? OkkleColor.mint : Color(uiColor: .tertiarySystemBackground), in: Circle())
+    }
   }
 }
 

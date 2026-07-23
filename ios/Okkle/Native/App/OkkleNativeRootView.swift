@@ -435,3 +435,39 @@ func nativePlatformSymbol(_ platform: String) -> String {
   default: return "plus.circle.fill"
   }
 }
+
+/// The bundled real app-icon asset for a known platform (sourced from each
+/// platform's own official App Store listing), or nil for a custom/"Other"
+/// platform, which falls back to `nativePlatformSymbol`'s generic glyph.
+func nativePlatformIconAssetName(_ platform: String) -> String? {
+  switch platform {
+  case "Uber Eats": return "PlatformIcon-UberEats"
+  case "Deliveroo": return "PlatformIcon-Deliveroo"
+  case "Just Eat": return "PlatformIcon-JustEat"
+  case "Stuart": return "PlatformIcon-Stuart"
+  case "Amazon Flex": return "PlatformIcon-AmazonFlex"
+  case "DoorDash": return "PlatformIcon-DoorDash"
+  case "Grubhub": return "PlatformIcon-Grubhub"
+  case "Instacart": return "PlatformIcon-Instacart"
+  default: return nil
+  }
+}
+
+/// A platform's real app icon when we have one bundled, falling back to a
+/// generic SF Symbol glyph for a custom/"Other" platform. `foregroundStyle`
+/// only visibly affects the symbol fallback — a real logo image keeps its
+/// own brand colors, which is the point.
+struct NativePlatformIcon: View {
+  let platform: String
+
+  var body: some View {
+    if let assetName = nativePlatformIconAssetName(platform) {
+      Image(assetName)
+        .resizable()
+        .aspectRatio(contentMode: .fill)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    } else {
+      Image(systemName: nativePlatformSymbol(platform))
+    }
+  }
+}

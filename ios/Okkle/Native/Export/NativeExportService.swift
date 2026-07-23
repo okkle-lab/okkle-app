@@ -31,7 +31,7 @@ struct NativeExportCard: View {
       isPresented: Binding(get: { pendingGroup != nil }, set: { if !$0 { pendingGroup = nil } }),
       titleVisibility: .visible
     ) {
-      ForEach(NativeExportDocument.allCases.filter { $0.group == pendingGroup }) { document in
+      ForEach(NativeExportDocument.available(for: store.settings.taxCountry).filter { $0.group == pendingGroup }) { document in
         Button(document.title(for: store.settings.taxCountry)) { selectDocument(document) }
       }
       Button("Cancel", role: .cancel) {}
@@ -62,7 +62,7 @@ struct NativeExportCard: View {
   }
 
   private func groupRow(_ group: NativeTaxExportGroup) -> some View {
-    let documents = NativeExportDocument.allCases.filter { $0.group == group }
+    let documents = NativeExportDocument.available(for: store.settings.taxCountry).filter { $0.group == group }
     return Button {
       if documents.count == 1, let only = documents.first {
         selectDocument(only)
@@ -141,6 +141,12 @@ private func nativeMakeExportFile(_ kind: NativeTaxExportKind, store: OkkleStore
       try nativeMileageCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     case .freeAgent:
       try nativeFreeAgentCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .quickBooks:
+      try nativeQuickBooksCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .xero:
+      try nativeXeroCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .wave:
+      try nativeWaveCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     case .allData:
       try nativeAllDataCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     }
@@ -249,10 +255,18 @@ func nativeMileageCsv(store: OkkleStore) -> String {
   return ([header] + rows).joined(separator: "\n")
 }
 
+/// One bank-statement-style transaction line, shared by every bookkeeping-
+/// software export below — each just formats the same underlying records
+/// differently, per that software's own documented CSV import rules.
+private struct NativeBookkeepingTransaction {
+  let date: Date
+  let amount: Double
+  let description: String
+}
+
 @MainActor
-func nativeFreeAgentCsv(store: OkkleStore) -> String {
-  let country = store.settings.taxCountry
-  let rows = store.records
+private func nativeBookkeepingTransactions(store: OkkleStore) -> [NativeBookkeepingTransaction] {
+  store.records
     .filter { ($0.kind == .income || $0.kind == .expense) && (($0.amount ?? 0) > 0) }
     .sorted { $0.date < $1.date }
     .map { record in
@@ -268,13 +282,74 @@ func nativeFreeAgentCsv(store: OkkleStore) -> String {
       }
       let cleanNote = record.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       let exportDescription = cleanNote.isEmpty ? description : "\(description) - \(cleanNote)"
-      return [
-        nativeCsvField(nativePeriodDateStamp(record.date, country: country)),
-        nativeCsvField(nativeDecimal(amount)),
-        nativeCsvField(exportDescription)
+      return NativeBookkeepingTransaction(date: record.date, amount: amount, description: exportDescription)
+    }
+}
+
+/// FreeAgent's own CSV spec (support.freeagent.com "Format a CSV file to
+/// upload a bank statement"): exactly Date, Amount, Description in that
+/// order, dd/mm/yyyy always (not locale-dependent), a single signed Amount
+/// column, and — unlike most importers — NO header row at all.
+@MainActor
+func nativeFreeAgentCsv(store: OkkleStore) -> String {
+  nativeBookkeepingTransactions(store: store)
+    .map { tx in
+      [
+        nativeCsvField(nativeUkDateStamp(tx.date)),
+        nativeCsvField(nativeDecimal(tx.amount)),
+        nativeCsvField(tx.description)
       ].joined(separator: ",")
     }
+    .joined(separator: "\n")
+}
+
+/// QuickBooks Online's 3-column CSV import (Date, Description, Amount) —
+/// Intuit's own guidance asks for one consistent date format per file and
+/// recommends dd/mm/yyyy specifically, so that's used regardless of the
+/// driver's own country.
+@MainActor
+func nativeQuickBooksCsv(store: OkkleStore) -> String {
+  let rows = nativeBookkeepingTransactions(store: store).map { tx in
+    [
+      nativeCsvField(nativeUkDateStamp(tx.date)),
+      nativeCsvField(tx.description),
+      nativeCsvField(nativeDecimal(tx.amount))
+    ].joined(separator: ",")
+  }
+  return (["Date,Description,Amount"] + rows).joined(separator: "\n")
+}
+
+/// Xero's CSV bank statement import (central.xero.com) only requires Date
+/// and Amount as a single signed column — Description is optional but
+/// worth including. Xero accepts several date formats and confirms
+/// ambiguous ones at import time, so an unambiguous ISO date sidesteps that
+/// prompt entirely.
+@MainActor
+func nativeXeroCsv(store: OkkleStore) -> String {
+  let rows = nativeBookkeepingTransactions(store: store).map { tx in
+    [
+      nativeCsvField(nativeDateStamp(tx.date)),
+      nativeCsvField(nativeDecimal(tx.amount)),
+      nativeCsvField(tx.description)
+    ].joined(separator: ",")
+  }
   return (["Date,Amount,Description"] + rows).joined(separator: "\n")
+}
+
+/// Wave's statement import (support.waveapps.com) maps columns manually
+/// after upload, but its own troubleshooting page confirms the date parser
+/// only reliably recognises year-first formats (YYYY/MM/DD or YYYY-MM-DD) —
+/// not the MM/DD/YYYY often assumed for a US-market product.
+@MainActor
+func nativeWaveCsv(store: OkkleStore) -> String {
+  let rows = nativeBookkeepingTransactions(store: store).map { tx in
+    [
+      nativeCsvField(nativeDateStamp(tx.date)),
+      nativeCsvField(tx.description),
+      nativeCsvField(nativeDecimal(tx.amount))
+    ].joined(separator: ",")
+  }
+  return (["Date,Description,Amount"] + rows).joined(separator: "\n")
 }
 
 @MainActor

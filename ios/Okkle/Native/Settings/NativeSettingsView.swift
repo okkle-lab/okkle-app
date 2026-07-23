@@ -17,7 +17,11 @@ struct NativeSettingsPlatformsSection: View {
     Section {
       ForEach(nativeOnboardingPlatforms(for: store.settings.taxCountry).filter { $0 != "Other" }, id: \.self) { platform in
         Toggle(isOn: platformSelectionBinding(platform)) {
-          Label(platform, systemImage: nativePlatformSymbol(platform))
+          Label {
+            Text(platform)
+          } icon: {
+            NativePlatformIcon(platform: platform).frame(width: 20, height: 20)
+          }
         }
       }
 

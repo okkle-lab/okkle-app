@@ -840,11 +840,7 @@ struct NativeHistoryRow: View {
 
   var body: some View {
     HStack(spacing: 12) {
-      Image(systemName: symbol)
-        .font(.system(size: 18, weight: .bold))
-        .foregroundStyle(tint)
-        .frame(width: 40, height: 40)
-        .background(tint.opacity(0.13), in: Circle())
+      iconView
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
           .font(.system(size: 16, weight: .bold))
@@ -874,6 +870,30 @@ struct NativeHistoryRow: View {
     switch item {
     case .trip: return "location.north.fill"
     case .record(let record): return record.kind.symbol
+    }
+  }
+
+  /// An income row's real platform logo when we have one bundled, otherwise
+  /// falls back to the existing kind/tint-based circle exactly as before —
+  /// trips, expenses and mileage entries aren't tied to a delivery platform,
+  /// so they're untouched.
+  @ViewBuilder
+  private var iconView: some View {
+    if case .record(let record) = item,
+       record.kind == .income,
+       let platform = record.platform,
+       let assetName = nativePlatformIconAssetName(platform) {
+      Image(assetName)
+        .resizable()
+        .aspectRatio(contentMode: .fill)
+        .frame(width: 40, height: 40)
+        .clipShape(Circle())
+    } else {
+      Image(systemName: symbol)
+        .font(.system(size: 18, weight: .bold))
+        .foregroundStyle(tint)
+        .frame(width: 40, height: 40)
+        .background(tint.opacity(0.13), in: Circle())
     }
   }
 
@@ -1093,16 +1113,29 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
   case selfAssessment
   case mileage
   case freeAgent
+  case quickBooks
+  case xero
+  case wave
   case allData
 
   var id: String { rawValue }
+
+  /// The raw-data bookkeeping-software exports, filtered to what's actually
+  /// relevant for the driver's market — FreeAgent is a UK-only product, so
+  /// there's no point offering it to a US driver.
+  static func available(for country: NativeTaxCountry) -> [NativeExportDocument] {
+    allCases.filter { $0 != .freeAgent || country == .uk }
+  }
 
   func title(for country: NativeTaxCountry) -> String {
     switch self {
     case .accountantPack: return "Accountant pack"
     case .selfAssessment: return country == .uk ? "Self Assessment summary" : "Schedule C summary"
     case .mileage: return "Mileage"
-    case .freeAgent: return country == .uk ? "FreeAgent CSV" : "Bookkeeping CSV"
+    case .freeAgent: return "FreeAgent CSV"
+    case .quickBooks: return "QuickBooks CSV"
+    case .xero: return "Xero CSV"
+    case .wave: return "Wave CSV"
     case .allData: return "All data CSV"
     }
   }
@@ -1112,7 +1145,10 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     case .accountantPack: return "Mileage, expenses & receipts"
     case .selfAssessment: return "Turnover, profit and tax due"
     case .mileage: return country == .uk ? "Rate-band report or full CSV log" : "Mileage report or full CSV log"
-    case .freeAgent: return country == .uk ? "For FreeAgent, or bank-statement import elsewhere" : "For QuickBooks, Xero, Wave or bank import"
+    case .freeAgent: return "Ready for FreeAgent's bank statement import"
+    case .quickBooks: return "Ready for QuickBooks Online's transaction import"
+    case .xero: return "Ready for Xero's bank statement import"
+    case .wave: return "Ready for Wave's statement import"
     case .allData: return "Trips, earnings and expenses"
     }
   }
@@ -1122,7 +1158,7 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     case .accountantPack: return "doc.richtext.fill"
     case .selfAssessment: return "doc.text.fill"
     case .mileage: return "map.fill"
-    case .freeAgent: return "arrow.up.doc.fill"
+    case .freeAgent, .quickBooks, .xero, .wave: return "arrow.up.doc.fill"
     case .allData: return "externaldrive.fill"
     }
   }
@@ -1131,14 +1167,14 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     switch self {
     case .accountantPack, .selfAssessment: return .accountant
     case .mileage: return .mileage
-    case .freeAgent, .allData: return .rawData
+    case .freeAgent, .quickBooks, .xero, .wave, .allData: return .rawData
     }
   }
 
   var formats: [NativeExportFormat] {
     switch self {
     case .accountantPack, .selfAssessment, .mileage: return [.pdf, .csv]
-    case .freeAgent, .allData: return [.csv]
+    case .freeAgent, .quickBooks, .xero, .wave, .allData: return [.csv]
     }
   }
 
@@ -1151,6 +1187,9 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     case (.mileage, .pdf): return .mileageReportPdf
     case (.mileage, .csv): return .mileageLogCsv
     case (.freeAgent, _): return .freeAgent
+    case (.quickBooks, _): return .quickBooks
+    case (.xero, _): return .xero
+    case (.wave, _): return .wave
     case (.allData, _): return .allData
     }
   }
@@ -1178,6 +1217,9 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
   case mileageReportPdf
   case mileageLogCsv
   case freeAgent
+  case quickBooks
+  case xero
+  case wave
   case allData
 
   var id: String { rawValue }
@@ -1185,7 +1227,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
   var format: NativeExportFormat {
     switch self {
     case .accountantPackPdf, .selfAssessmentPdf, .mileageReportPdf: return .pdf
-    case .accountantPackCsv, .selfAssessmentCsv, .mileageLogCsv, .freeAgent, .allData: return .csv
+    case .accountantPackCsv, .selfAssessmentCsv, .mileageLogCsv, .freeAgent, .quickBooks, .xero, .wave, .allData: return .csv
     }
   }
 
@@ -1195,7 +1237,10 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .selfAssessmentPdf, .selfAssessmentCsv: return country == .uk ? "SelfAssessment-Summary" : "ScheduleC-Summary"
     case .mileageReportPdf: return "Mileage-Report"
     case .mileageLogCsv: return country == .uk ? "HMRC-Mileage-Log" : "IRS-Mileage-Log"
-    case .freeAgent: return country == .uk ? "FreeAgent-Import" : "Bookkeeping-Import"
+    case .freeAgent: return "FreeAgent-Import"
+    case .quickBooks: return "QuickBooks-Import"
+    case .xero: return "Xero-Import"
+    case .wave: return "Wave-Import"
     case .allData: return "All-Data"
     }
   }

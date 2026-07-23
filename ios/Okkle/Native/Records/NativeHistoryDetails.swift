@@ -1028,11 +1028,7 @@ struct NativeRecordDetailSheet: View {
         VStack(alignment: .leading, spacing: 18) {
           NativeGlassCard(cornerRadius: 30) {
             HStack(alignment: .center, spacing: 14) {
-              Image(systemName: record.kind.symbol)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(tint)
-                .frame(width: 54, height: 54)
-                .background(tint.opacity(0.14), in: Circle())
+              headerIcon
               VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                   .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -1167,6 +1163,27 @@ struct NativeRecordDetailSheet: View {
     case .income: return .green
     case .expense: return OkkleColor.amber
     case .mileage: return OkkleColor.brand
+    }
+  }
+
+  /// The real platform logo for a known-platform income record, otherwise
+  /// the existing kind/tint-based circle exactly as before.
+  @ViewBuilder
+  private var headerIcon: some View {
+    if record.kind == .income,
+       let platform = record.platform,
+       let assetName = nativePlatformIconAssetName(platform) {
+      Image(assetName)
+        .resizable()
+        .aspectRatio(contentMode: .fill)
+        .frame(width: 54, height: 54)
+        .clipShape(Circle())
+    } else {
+      Image(systemName: record.kind.symbol)
+        .font(.system(size: 24, weight: .bold))
+        .foregroundStyle(tint)
+        .frame(width: 54, height: 54)
+        .background(tint.opacity(0.14), in: Circle())
     }
   }
 
