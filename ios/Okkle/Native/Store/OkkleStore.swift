@@ -17,6 +17,7 @@ final class OkkleStore: ObservableObject {
 
   @Published var settings = NativeSettings() {
     didSet {
+      nativeActiveCurrencyCode = settings.taxCountry.currencyCode
       if !isLoading { settingsUpdatedAt = Date() }
       scheduleSave()
     }

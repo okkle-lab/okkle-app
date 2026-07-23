@@ -23,9 +23,14 @@ struct NativeTaxDetailView: View {
           onTapProfit: { detail = .year }
         )
 
-        NativeTaxOverviewGroup {
-          NativeTaxDeadlinesButton {
-            showsDeadlines = true
+        // Key tax dates are the UK Self Assessment calendar; the US 1040-ES
+        // quarterly schedule is a separate follow-up, so this is UK-only for now
+        // rather than showing a US driver HMRC dates.
+        if store.settings.taxCountry == .uk {
+          NativeTaxOverviewGroup {
+            NativeTaxDeadlinesButton {
+              showsDeadlines = true
+            }
           }
         }
 
@@ -61,7 +66,9 @@ struct NativeTaxDetailView: View {
   }
 
   private var shouldShowMileageBandNudge: Bool {
-    (store.settings.defaultVehicle == .car || store.settings.defaultVehicle == .van)
+    // The 10,000-mile rate drop is a UK rule; the US standard rate has no tier.
+    store.settings.taxCountry == .uk
+      && (store.settings.defaultVehicle == .car || store.settings.defaultVehicle == .van)
       && store.yearMiles > 0
       && store.yearMiles < 10_000
   }
