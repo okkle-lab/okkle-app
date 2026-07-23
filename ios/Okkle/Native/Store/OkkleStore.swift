@@ -411,6 +411,7 @@ final class OkkleStore: ObservableObject {
                           platforms: [String],
                           taxCountry: NativeTaxCountry = .uk,
                           region: NativeRegion,
+                          expenseMethod: NativeExpenseMethod = .simplified,
                           usState: NativeUSState = .california,
                           incomeBracket: NativeIncomeBracket,
                           autoTrackTrips: Bool,
@@ -425,6 +426,10 @@ final class OkkleStore: ObservableObject {
     }
     updated.taxCountry = taxCountry
     updated.region = region
+    updated.expenseMethod = expenseMethod
+    // Locks the moment Simplified is chosen — mirrors HMRC's real rule that
+    // it can't be switched away from later. Actual cost stays switchable.
+    updated.expenseMethodLocked = expenseMethod == .simplified
     updated.usState = usState
     updated.incomeBracket = incomeBracket
     updated.autoTrackTrips = autoTrackTrips
@@ -657,6 +662,9 @@ final class OkkleStore: ObservableObject {
   func calcDeduction(miles: Double, vehicle: NativeVehicle, totalBefore: Double = 0, date: Date = Date()) -> Double {
     switch settings.taxCountry {
     case .uk:
+      // Actual-cost drivers claim their real fuel/insurance/servicing/repair
+      // receipts instead of the mileage rate — the rate itself doesn't apply.
+      guard settings.expenseMethod == .simplified else { return 0 }
       return TaxCalculator.mileageDeduction(miles: miles, vehicle: vehicle, totalBefore: totalBefore, date: date)
     case .us:
       // IRS standard mileage rate applies to cars, vans and motorcycles; there

@@ -36,6 +36,48 @@ final class TaxCalculatorTests: XCTestCase {
   }
 
   @MainActor
+  func testActualCostMethodDropsMileageDeductionFromTaxEstimate() {
+    let store = OkkleStore()
+    store.settings.expenseMethod = .actualCost
+    let recentDate = Date().addingTimeInterval(-3 * 86_400)
+    store.trips = [
+      NativeTrip(vehicle: .car, miles: 500, deduction: 0, startedAt: recentDate, endedAt: recentDate.addingTimeInterval(3_600), points: [])
+    ]
+
+    XCTAssertEqual(store.calcDeduction(miles: 500, vehicle: .car), 0)
+    XCTAssertEqual(store.yearMileageDeduction, 0)
+  }
+
+  @MainActor
+  func testSimplifiedMethodKeepsMileageDeductionUnchanged() {
+    let store = OkkleStore()
+    store.settings.expenseMethod = .simplified
+
+    XCTAssertGreaterThan(store.calcDeduction(miles: 500, vehicle: .car), 0)
+  }
+
+  @MainActor
+  func testCompleteOnboardingLocksExpenseMethodOnlyForSimplified() {
+    let simplifiedStore = OkkleStore()
+    simplifiedStore.completeOnboarding(
+      name: "Alex", defaultVehicle: .car, platforms: ["Uber Eats"],
+      taxCountry: .uk, region: .ruk, expenseMethod: .simplified, usState: .california,
+      incomeBracket: .basic, autoTrackTrips: false, enhancedAutoTracking: false, workingDays: []
+    )
+    XCTAssertEqual(simplifiedStore.settings.expenseMethod, .simplified)
+    XCTAssertTrue(simplifiedStore.settings.expenseMethodLocked)
+
+    let actualCostStore = OkkleStore()
+    actualCostStore.completeOnboarding(
+      name: "Alex", defaultVehicle: .car, platforms: ["Uber Eats"],
+      taxCountry: .uk, region: .ruk, expenseMethod: .actualCost, usState: .california,
+      incomeBracket: .basic, autoTrackTrips: false, enhancedAutoTracking: false, workingDays: []
+    )
+    XCTAssertEqual(actualCostStore.settings.expenseMethod, .actualCost)
+    XCTAssertFalse(actualCostStore.settings.expenseMethodLocked)
+  }
+
+  @MainActor
   func testAccountantPackPdfStillRendersAfterSharedRendererRefactor() {
     let store = OkkleStore()
     let recentDate = Date().addingTimeInterval(-3 * 86_400)

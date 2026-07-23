@@ -170,6 +170,8 @@ struct NativeOnboardingView: View {
   @State private var customPlatformName = ""
   @State private var country: NativeTaxCountry = .uk
   @State private var region: NativeRegion = .ruk
+  @State private var expenseMethod: NativeExpenseMethod = .simplified
+  @State private var showsSimplifiedLockConfirm = false
   @State private var usState: NativeUSState = .california
   @State private var incomeBracket: NativeIncomeBracket = .basic
   @State private var autoTrackTrips = true
@@ -475,6 +477,35 @@ struct NativeOnboardingView: View {
               }
             }
           }
+
+          Divider().padding(.top, 4)
+
+          VStack(alignment: .leading, spacing: 10) {
+            Text("How do you claim vehicle costs?")
+              .font(.system(size: 17, weight: .bold))
+              .foregroundStyle(OkkleColor.ink)
+
+            ForEach(NativeExpenseMethod.allCases) { method in
+              NativeOnboardingOptionButton(
+                title: method.label,
+                subtitle: method.subtitle,
+                symbol: method == .simplified ? "gauge.with.dots.needle.50percent" : "receipt.fill",
+                selected: expenseMethod == method
+              ) {
+                guard expenseMethod != method else { return }
+                if method == .simplified {
+                  showsSimplifiedLockConfirm = true
+                } else {
+                  expenseMethod = method
+                }
+              }
+            }
+
+            Text("Simplified expenses lock in once chosen — HMRC requires sticking with them for this vehicle from then on. Actual costs can be switched to Simplified later if you change your mind.")
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         case .us:
           Picker("State", selection: $usState) {
             ForEach(NativeUSState.allCases) { Text($0.label).tag($0) }
@@ -485,6 +516,12 @@ struct NativeOnboardingView: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
         }
+      }
+      .alert("Use simplified expenses?", isPresented: $showsSimplifiedLockConfirm) {
+        Button("Cancel", role: .cancel) {}
+        Button("Confirm") { expenseMethod = .simplified }
+      } message: {
+        Text("Once you choose simplified expenses, HMRC requires you to keep using them for this vehicle for as long as you use it for business. You won't be able to switch to actual costs later.")
       }
 
     case .incomeBracket:
@@ -798,6 +835,7 @@ struct NativeOnboardingView: View {
     vehicle = store.settings.defaultVehicle
     country = store.settings.taxCountry
     region = store.settings.region
+    expenseMethod = store.settings.expenseMethod
     usState = store.settings.usState
     incomeBracket = store.settings.incomeBracket
     autoTrackTrips = store.settings.autoTrackTrips
@@ -980,6 +1018,7 @@ struct NativeOnboardingView: View {
       platforms: orderedPlatforms,
       taxCountry: country,
       region: region,
+      expenseMethod: expenseMethod,
       usState: usState,
       incomeBracket: incomeBracket,
       autoTrackTrips: automaticTrackingEnabled,

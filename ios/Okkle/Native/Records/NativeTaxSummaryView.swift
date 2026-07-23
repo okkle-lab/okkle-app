@@ -61,8 +61,11 @@ struct NativeTaxDetailView: View {
   }
 
   private var shouldShowMileageBandNudge: Bool {
-    // The 10,000-mile rate drop is a UK rule; the US standard rate has no tier.
+    // The 10,000-mile rate drop is a UK simplified-mileage rule; the US
+    // standard rate has no tier, and actual-cost drivers don't use the
+    // mileage rate at all.
     store.settings.taxCountry == .uk
+      && store.settings.expenseMethod == .simplified
       && (store.settings.defaultVehicle == .car || store.settings.defaultVehicle == .van)
       && store.yearMiles > 0
       && store.yearMiles < 10_000

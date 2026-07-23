@@ -161,8 +161,11 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     // against a running total of zero, so the rows below would silently
     // stop summing to the "Mileage deduction" total once combined car/van
     // mileage crosses the 10,000-mile HMRC simplified-rate threshold.
+    let usesActualCost = store.settings.taxCountry == .uk && store.settings.expenseMethod == .actualCost
     drawWrapped(
-      "Tracked trips with saved route points support a contemporaneous mileage log. Your accountant should review the business purpose and completeness.",
+      usesActualCost
+        ? "Actual-cost driver: this log evidences business mileage, but vehicle costs are claimed from the expense records below rather than a mileage rate."
+        : "Tracked trips with saved route points support a contemporaneous mileage log. Your accountant should review the business purpose and completeness.",
       font: .systemFont(ofSize: 10.5, weight: .regular),
       color: muted,
       spacingAfter: 6
@@ -180,8 +183,12 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
 
   private func drawExpenses() {
     drawSectionTitle("Expenses")
-    let reviewItems = expenseRecords.filter(nativeNeedsAccountantReview)
-    let regularItems = expenseRecords.filter { !nativeNeedsAccountantReview($0) }
+    // The "may already be covered by mileage" flag only makes sense for
+    // simplified-mileage drivers; actual-cost drivers are meant to claim
+    // these receipts in full, so nothing needs flagging for them.
+    let usesSimplifiedMileage = store.settings.taxCountry != .uk || store.settings.expenseMethod == .simplified
+    let reviewItems = usesSimplifiedMileage ? expenseRecords.filter(nativeNeedsAccountantReview) : []
+    let regularItems = usesSimplifiedMileage ? expenseRecords.filter { !nativeNeedsAccountantReview($0) } : expenseRecords
     drawExpenseTable(regularItems, emptyMessage: "No expense records logged for this tax year.")
     drawKeyValue("Expense total", gbp(expenseRecords.reduce(0) { $0 + ($1.amount ?? 0) }))
 

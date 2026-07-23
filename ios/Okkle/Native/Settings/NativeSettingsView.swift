@@ -251,6 +251,7 @@ struct NativeProfileSettingsView: View {
 
 struct NativeTaxSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
+  @State private var showsSimplifiedLockConfirm = false
 
   var body: some View {
     Form {
@@ -268,6 +269,7 @@ struct NativeTaxSettingsView: View {
       switch store.settings.taxCountry {
       case .uk:
         ukTaxSection
+        ukExpenseMethodSection
         ukAccountantSection
       case .us:
         usTaxSection
@@ -276,6 +278,15 @@ struct NativeTaxSettingsView: View {
     .navigationTitle("Tax profile")
     .navigationBarTitleDisplayMode(.inline)
     .nativeKeyboardDoneToolbar()
+    .alert("Use simplified expenses?", isPresented: $showsSimplifiedLockConfirm) {
+      Button("Cancel", role: .cancel) {}
+      Button("Confirm") {
+        store.settings.expenseMethod = .simplified
+        store.settings.expenseMethodLocked = true
+      }
+    } message: {
+      Text("Once you choose simplified expenses, HMRC requires you to keep using them for this vehicle for as long as you use it for business. You won't be able to switch to actual costs later.")
+    }
   }
 
   @ViewBuilder private var ukTaxSection: some View {
@@ -299,6 +310,37 @@ struct NativeTaxSettingsView: View {
       NativeSettingsOtherIncomeField()
     } footer: {
       Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
+    }
+  }
+
+  @ViewBuilder private var ukExpenseMethodSection: some View {
+    Section {
+      if store.settings.expenseMethodLocked {
+        HStack {
+          Text("Expense method")
+          Spacer()
+          Text(store.settings.expenseMethod.label)
+            .foregroundStyle(OkkleColor.muted)
+        }
+      } else {
+        Picker("Expense method", selection: Binding(
+          get: { store.settings.expenseMethod },
+          set: { newValue in
+            guard newValue != store.settings.expenseMethod else { return }
+            if newValue == .simplified {
+              showsSimplifiedLockConfirm = true
+            } else {
+              store.settings.expenseMethod = newValue
+            }
+          }
+        )) {
+          ForEach(NativeExpenseMethod.allCases) { Text($0.label).tag($0) }
+        }
+      }
+    } footer: {
+      Text(store.settings.expenseMethodLocked
+        ? "Locked to Simplified — HMRC requires sticking with the mileage rate for this vehicle for as long as you use it for business."
+        : "Simplified uses a flat mileage rate that already covers fuel, insurance, servicing and repairs. Actual costs claims your real receipts instead, with no mileage rate. Choosing Simplified locks it in and can't be switched back to Actual costs.")
     }
   }
 
