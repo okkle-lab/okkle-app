@@ -129,6 +129,12 @@ enum NativeAutoShiftPhase: String, Equatable {
   case paused
 }
 
+enum NativeAutoTrackLocationStrategy: Equatable {
+  case significantChangeOnly
+  case continuousWithRelaunchWake
+  case off
+}
+
 enum NativeAutoTrackReadiness: Equatable {
   case disabled
   case needsAlwaysLocation
@@ -152,11 +158,22 @@ struct NativeAutoTrackCapability: Equatable {
 }
 
 enum NativeAutoTrackPolicy {
+  static func locationStrategy(during phase: NativeAutoShiftPhase) -> NativeAutoTrackLocationStrategy {
+    switch phase {
+    case .idle:
+      return .significantChangeOnly
+    case .driving, .stationaryPending:
+      return .continuousWithRelaunchWake
+    case .paused:
+      return .off
+    }
+  }
+
   /// Once a trip starts, both driving and stationary-wait phases keep the
   /// standard high-fidelity location stream alive. A brief false stationary
   /// motion classification must never punch a hole in the recorded route.
   static func requiresContinuousLocationUpdates(during phase: NativeAutoShiftPhase) -> Bool {
-    phase == .driving || phase == .stationaryPending
+    locationStrategy(during: phase) == .continuousWithRelaunchWake
   }
 
   /// Losing Car Audio is supporting stop evidence, never a stop by itself.
@@ -164,6 +181,13 @@ enum NativeAutoTrackPolicy {
   /// stationary-wait phase; otherwise a flaky audio route can split a drive.
   static func shouldArmVehicleDisconnectEnd(during phase: NativeAutoShiftPhase) -> Bool {
     phase == .stationaryPending
+  }
+
+  static func shouldProcessStationarySignal(
+    during phase: NativeAutoShiftPhase,
+    vehicleStartArmed: Bool
+  ) -> Bool {
+    phase == .driving || (phase == .idle && vehicleStartArmed)
   }
 
   static func capability(
@@ -276,17 +300,15 @@ enum NativeAutoTrackPolicy {
 
   static func shouldStartArmedVehicleTrip(origin: CLLocation?, current: CLLocation) -> Bool {
     guard nativeShouldAcceptTripLocation(current, since: nil) else { return false }
-    if current.speed >= 3 { return true }
     guard let origin else { return false }
-    let elapsed = current.timestamp.timeIntervalSince(origin.timestamp)
-    guard elapsed > 0, elapsed <= 30 else { return false }
+    guard current.timestamp > origin.timestamp else { return false }
     let distance = current.distance(from: origin)
-    return distance >= 35 && distance / elapsed >= 1.5
+    let accuracyAdjustedDistance = max(35, origin.horizontalAccuracy + current.horizontalAccuracy)
+    return distance >= accuracyAdjustedDistance
   }
 
-  static func armedTripInitialLocations(origin: CLLocation?, current: CLLocation) -> [CLLocation] {
-    guard let origin, origin.timestamp < current.timestamp else { return [current] }
-    return [origin, current]
+  static func armedTripInitialLocations(bufferedLocations: [CLLocation]) -> [CLLocation] {
+    bufferedLocations.sorted { $0.timestamp < $1.timestamp }
   }
 }
 
