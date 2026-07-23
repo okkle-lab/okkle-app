@@ -267,16 +267,6 @@ enum NativeDayReliability {
   case reliable, erratic
 }
 
-/// One platform's real, logged share of income this period — the ranked
-/// counterpart to the single "top platform" line, only ever populated when
-/// there's an actual mix (2+ platforms) to rank.
-struct NativePlatformShare: Identifiable {
-  let id = UUID()
-  let platform: String
-  let sharePct: Int
-  let deltaPct: Int?   // vs the same platform's share last period, if meaningful
-}
-
 extension NativeRecord {
   /// Manual income logs are usually daily or weekly aggregates, so they are
   /// useful for tax/reporting totals but too coarse for recommendation math.
@@ -341,7 +331,6 @@ struct NativeShiftInsights {
   let daySpan: Int                             // calendar days from the first tracked stop to the last
   let peakHitRate: Double?                     // how often "your peak" has actually paid off
   let weekdayReliability: [Int: NativeDayReliability]   // per-weekday, week-to-week consistency
-  let platformShares: [NativePlatformShare]             // ranked, only populated with 2+ platforms logged
   let hourCounts: [Int]                                 // 24 buckets: all deliveries in the period by hour of day
 
   var hasData: Bool { deliveries > 0 }
@@ -434,7 +423,7 @@ struct NativeShiftInsights {
     bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
     weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
     activeDays: 0, daySpan: 0, peakHitRate: nil, weekdayReliability: [:],
-    platformShares: [], hourCounts: Array(repeating: 0, count: 24)
+    hourCounts: Array(repeating: 0, count: 24)
   )
 
   static func enrichedVisits(visits: [NativeVisit], trips: [NativeTrip]) -> [NativeVisit] {
@@ -951,37 +940,6 @@ struct NativeShiftInsights {
     let rawPerHour = (income > 0 && recentActive > 1) ? income / recentActive : nil
     let perHour: Double? = rawPerHour.flatMap { (4...45).contains($0) ? $0 : nil }
 
-    let prevWindowStart = windowStart.addingTimeInterval(-14 * 86_400)
-
-    // Platform mix: a real, cross-platform ranking no single delivery app can
-    // offer — every platform's real, logged share of this period's income,
-    // and how each has shifted. Only worth showing once there's an actual mix
-    // (2+ platforms) — a single platform logged isn't a "mix" insight.
-    let currentPlatformIncome = store.records.filter { $0.isInsightRecommendationIncome && $0.date >= windowStart }
-    let previousPlatformIncome = store.records.filter { $0.isInsightRecommendationIncome && $0.date >= prevWindowStart && $0.date < windowStart }
-    func platformTotals(_ records: [NativeRecord]) -> [String: Double] {
-      var totals: [String: Double] = [:]
-      for r in records { totals[r.platform ?? "Other", default: 0] += r.amount ?? 0 }
-      return totals
-    }
-    let currentTotals = platformTotals(currentPlatformIncome)
-    let previousTotals = platformTotals(previousPlatformIncome)
-    let currentSum = currentTotals.values.reduce(0, +)
-    let previousSum = previousTotals.values.reduce(0, +)
-    var platformShares: [NativePlatformShare] = []
-    if currentSum > 0, currentTotals.count >= 2 {
-      for (platform, amount) in currentTotals.sorted(by: { $0.value > $1.value }) {
-        let sharePct = Int((amount / currentSum * 100).rounded())
-        var deltaPct: Int? = nil
-        if previousSum > 0, let prevAmount = previousTotals[platform] {
-          let prevSharePct = Int((prevAmount / previousSum * 100).rounded())
-          let delta = sharePct - prevSharePct
-          if abs(delta) >= 8 { deltaPct = delta }
-        }
-        platformShares.append(NativePlatformShare(platform: platform, sharePct: sharePct, deltaPct: deltaPct))
-      }
-    }
-
     // Reliability: does this weekday look the same week to week, or is one
     // outlier week doing all the work? The per-day counterpart to the
     // consistency check already folded into overall confidence.
@@ -1082,7 +1040,6 @@ struct NativeShiftInsights {
       daySpan: daySpan,
       peakHitRate: NativeOutcomeTracker.shared.peakHitRate,
       weekdayReliability: weekdayReliability,
-      platformShares: platformShares,
       hourCounts: periodHourCounts
     )
   }
