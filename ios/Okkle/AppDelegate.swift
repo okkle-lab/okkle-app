@@ -13,10 +13,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     UNUserNotificationCenter.current().delegate = NativeNotificationRouter.shared
     NativeManualTripStopNotification.registerCategory()
     NativeWatchTripConnector.shared.configure()
+    let launchedForLocationEvent = launchOptions?[.location] != nil
     Task { @MainActor in
       let store = OkkleStore.shared
       if store.settings.hasCompletedOnboarding {
-        NativeAutoTrackEngine.shared.configure(store: store)
+        NativeAutoTrackEngine.shared.configure(
+          store: store,
+          launchedForLocationEvent: launchedForLocationEvent
+        )
       }
     }
     return true
