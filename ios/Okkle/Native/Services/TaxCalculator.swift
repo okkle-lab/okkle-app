@@ -16,11 +16,18 @@ struct NativeTaxPosition {
   var deductionApplied: Double
   var businessProfit: Double
   var profit: Double
+  // UK: income tax on the self-employment profit. US: federal income tax on it.
   var incomeTax: Double
+  // UK: Class 4 NIC. US: self-employment (Social Security + Medicare) tax.
   var class4: Double
   var totalDue: Double
+  // UK: Payment on Account. US: suggested quarterly (1040-ES) set-aside.
   var paymentOnAccount: Double
   var usesTradingAllowance: Bool
+  // US-only, defaulted so the UK path is unchanged.
+  var stateTax: Double = 0
+  var qbiDeduction: Double = 0
+  var standardDeduction: Double = 0
 }
 
 enum TaxCalculator {

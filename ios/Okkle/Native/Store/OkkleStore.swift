@@ -430,7 +430,7 @@ final class OkkleStore: ObservableObject {
   }
 
   var taxYear: DateInterval {
-    TaxCalculator.taxYearInterval(containing: Date())
+    taxYearInterval(containing: Date())
   }
 
   var yearRecords: [NativeRecord] {
@@ -534,14 +534,44 @@ final class OkkleStore: ObservableObject {
   // way to get a figure that can't show a saving larger than the bill.
   var taxSaved: Double {
     let withMileage = taxPosition
-    let withoutMileage = TaxCalculator.estimate(
+    let withoutMileage = estimateTax(
       turnover: yearIncome,
-      expenses: max(0, yearExpenses - yearMileageDeduction),
-      region: settings.region,
-      incomeBracket: settings.incomeBracket,
-      otherIncome: settings.otherIncome
+      expenses: max(0, yearExpenses - yearMileageDeduction)
     )
     return max(0, withoutMileage.totalDue - withMileage.totalDue)
+  }
+
+  /// Single tax-engine entry point — dispatches to the UK or US calculator on
+  /// the driver's chosen jurisdiction so every figure in the app (bill, saved,
+  /// counterfactuals) runs through the same country-correct math.
+  private func estimateTax(turnover: Double, expenses: Double) -> NativeTaxPosition {
+    switch settings.taxCountry {
+    case .uk:
+      return TaxCalculator.estimate(
+        turnover: turnover,
+        expenses: expenses,
+        region: settings.region,
+        incomeBracket: settings.incomeBracket,
+        otherIncome: settings.otherIncome
+      )
+    case .us:
+      return USTaxCalculator.estimate(
+        turnover: turnover,
+        expenses: expenses,
+        state: settings.usState,
+        otherStateRate: settings.usOtherStateRate,
+        wages: settings.otherIncome
+      )
+    }
+  }
+
+  /// Country-aware tax-year window: the UK's 6 Apr–5 Apr year, or the US
+  /// calendar year.
+  func taxYearInterval(containing date: Date) -> DateInterval {
+    switch settings.taxCountry {
+    case .uk: return TaxCalculator.taxYearInterval(containing: date)
+    case .us: return USTaxCalculator.taxYearInterval(containing: date)
+    }
   }
 
   func mileageTaxSavings(for interval: DateInterval?) -> NativeMileageTaxSavings {
@@ -551,7 +581,7 @@ final class OkkleStore: ObservableObject {
 
     for entry in allMileageEntries {
       let selectedMiles = selectedMiles(for: entry, within: interval)
-      let taxYearStart = TaxCalculator.taxYearInterval(containing: entry.date).start
+      let taxYearStart = taxYearInterval(containing: entry.date).start
 
       switch entry.vehicle {
       case .car, .van:
@@ -579,12 +609,9 @@ final class OkkleStore: ObservableObject {
     // (week/month) can't show a saving the year's actual bill wouldn't
     // support either.
     let withMileage = taxPosition
-    let withoutSlice = TaxCalculator.estimate(
+    let withoutSlice = estimateTax(
       turnover: yearIncome,
-      expenses: max(0, yearExpenses - mileageDeduction),
-      region: settings.region,
-      incomeBracket: settings.incomeBracket,
-      otherIncome: settings.otherIncome
+      expenses: max(0, yearExpenses - mileageDeduction)
     )
     return NativeMileageTaxSavings(
       miles: miles,
@@ -594,13 +621,7 @@ final class OkkleStore: ObservableObject {
   }
 
   var taxPosition: NativeTaxPosition {
-    TaxCalculator.estimate(
-      turnover: yearIncome,
-      expenses: yearExpenses,
-      region: settings.region,
-      incomeBracket: settings.incomeBracket,
-      otherIncome: settings.otherIncome
-    )
+    estimateTax(turnover: yearIncome, expenses: yearExpenses)
   }
 
   var history: [NativeHistoryItem] {
@@ -617,7 +638,17 @@ final class OkkleStore: ObservableObject {
   }
 
   func calcDeduction(miles: Double, vehicle: NativeVehicle, totalBefore: Double = 0, date: Date = Date()) -> Double {
-    TaxCalculator.mileageDeduction(miles: miles, vehicle: vehicle, totalBefore: totalBefore, date: date)
+    switch settings.taxCountry {
+    case .uk:
+      return TaxCalculator.mileageDeduction(miles: miles, vehicle: vehicle, totalBefore: totalBefore, date: date)
+    case .us:
+      // IRS standard mileage rate applies to cars, vans and motorcycles; there
+      // is no equivalent flat per-mile deduction for a bicycle.
+      switch vehicle {
+      case .bike: return 0
+      case .car, .van, .motorbike: return USTaxCalculator.mileageDeduction(miles: miles)
+      }
+    }
   }
 
   private func decodeBackupSnapshot(from data: Data) throws -> NativeSnapshot {

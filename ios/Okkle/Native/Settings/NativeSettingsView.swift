@@ -255,59 +255,116 @@ struct NativeTaxSettingsView: View {
   var body: some View {
     Form {
       Section {
-        Picker("Region", selection: Binding(
-          get: { store.settings.region },
-          set: { store.settings.region = $0 }
+        Picker("Country", selection: Binding(
+          get: { store.settings.taxCountry },
+          set: { store.settings.taxCountry = $0 }
         )) {
-          ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
+          ForEach(NativeTaxCountry.allCases) { Text($0.label).tag($0) }
         }
-
-        Picker("Income tax band", selection: Binding(
-          get: { store.settings.incomeBracket },
-          set: { store.settings.incomeBracket = $0 }
-        )) {
-          ForEach(NativeIncomeBracket.allCases) { bracket in
-            Text(bracket.label).tag(bracket)
-          }
-        }
-
-        NativeSettingsOtherIncomeField()
       } footer: {
-        Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
+        Text("Sets your tax year, mileage rate and how your estimate is calculated. Okkle gives estimates to keep you organised — it is not tax advice and does not file your return.")
       }
 
-      Section {
-        NativeNumberDoneTextField(text: Binding(
-          get: { store.settings.accountantUTR },
-          set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
-        .frame(height: 34)
-
-        TextField("QQ 12 34 56 C", text: Binding(
-          get: { store.settings.accountantNINumber },
-          set: { store.settings.accountantNINumber = $0.uppercased() }
-        ))
-        .textInputAutocapitalization(.characters)
-
-        TextField("Home or business address", text: Binding(
-          get: { store.settings.accountantAddress },
-          set: { store.settings.accountantAddress = $0 }
-        ), axis: .vertical)
-        .lineLimit(2...4)
-
-        TextField("Delivery courier", text: Binding(
-          get: { store.settings.accountantBusinessDescription },
-          set: { store.settings.accountantBusinessDescription = $0 }
-        ))
-      } header: {
-        Text("Accountant pack details")
-      } footer: {
-        Text("Optional. These stay on this phone and appear on the accountant pack PDF cover page when you export it.")
+      switch store.settings.taxCountry {
+      case .uk:
+        ukTaxSection
+        ukAccountantSection
+      case .us:
+        usTaxSection
       }
     }
     .navigationTitle("Tax profile")
     .navigationBarTitleDisplayMode(.inline)
     .nativeKeyboardDoneToolbar()
+  }
+
+  @ViewBuilder private var ukTaxSection: some View {
+    Section {
+      Picker("Region", selection: Binding(
+        get: { store.settings.region },
+        set: { store.settings.region = $0 }
+      )) {
+        ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
+      }
+
+      Picker("Income tax band", selection: Binding(
+        get: { store.settings.incomeBracket },
+        set: { store.settings.incomeBracket = $0 }
+      )) {
+        ForEach(NativeIncomeBracket.allCases) { bracket in
+          Text(bracket.label).tag(bracket)
+        }
+      }
+
+      NativeSettingsOtherIncomeField()
+    } footer: {
+      Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
+    }
+  }
+
+  @ViewBuilder private var ukAccountantSection: some View {
+    Section {
+      NativeNumberDoneTextField(text: Binding(
+        get: { store.settings.accountantUTR },
+        set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
+      .frame(height: 34)
+
+      TextField("QQ 12 34 56 C", text: Binding(
+        get: { store.settings.accountantNINumber },
+        set: { store.settings.accountantNINumber = $0.uppercased() }
+      ))
+      .textInputAutocapitalization(.characters)
+
+      TextField("Home or business address", text: Binding(
+        get: { store.settings.accountantAddress },
+        set: { store.settings.accountantAddress = $0 }
+      ), axis: .vertical)
+      .lineLimit(2...4)
+
+      TextField("Delivery courier", text: Binding(
+        get: { store.settings.accountantBusinessDescription },
+        set: { store.settings.accountantBusinessDescription = $0 }
+      ))
+    } header: {
+      Text("Accountant pack details")
+    } footer: {
+      Text("Optional. These stay on this phone and appear on the accountant pack PDF cover page when you export it.")
+    }
+  }
+
+  @ViewBuilder private var usTaxSection: some View {
+    Section {
+      Picker("State", selection: Binding(
+        get: { store.settings.usState },
+        set: { store.settings.usState = $0 }
+      )) {
+        ForEach(NativeUSState.allCases) { Text($0.label).tag($0) }
+      }
+
+      if store.settings.usState == .otherState {
+        HStack {
+          Text("State tax rate")
+          Spacer()
+          NativeNumberDoneTextField(text: Binding(
+            get: {
+              let pct = store.settings.usOtherStateRate * 100
+              return pct == 0 ? "" : String(format: "%g", pct)
+            },
+            set: { store.settings.usOtherStateRate = max(0, min((Double($0) ?? 0) / 100, 0.15)) }
+          ), placeholder: "e.g. 5", keyboardType: .decimalPad)
+          .multilineTextAlignment(.trailing)
+          .frame(width: 90, height: 34)
+          Text("%")
+        }
+      }
+
+      NativeSettingsOtherIncomeField()
+    } header: {
+      Text("United States")
+    } footer: {
+      Text("Estimate covers federal income tax, self-employment tax (Social Security + Medicare) and state income tax. The other income field is your W-2 wages, if any. Figures are estimates, not tax advice — you or your accountant file your return.")
+    }
   }
 }
 

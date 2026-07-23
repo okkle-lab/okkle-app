@@ -53,6 +53,91 @@ enum NativeRegion: String, CaseIterable, Identifiable, Codable {
   }
 }
 
+/// The tax jurisdiction the estimate runs under. `region` (rUK/Scotland) still
+/// applies within the UK; `usState` applies within the US. Everything tax-side
+/// — the tax-year window, the mileage rate, the calculation itself and the
+/// on-screen labels — branches on this.
+enum NativeTaxCountry: String, CaseIterable, Identifiable, Codable {
+  case uk
+  case us
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .uk: return "United Kingdom"
+    case .us: return "United States"
+    }
+  }
+
+  var currencyCode: String {
+    switch self {
+    case .uk: return "GBP"
+    case .us: return "USD"
+    }
+  }
+}
+
+/// US states, for the state-income-tax layer. The five biggest gig markets
+/// (CA, NY, IL, PA, GA) carry their own brackets/flat rates; the nine states
+/// with no wage income tax resolve to zero; every other state falls back to a
+/// flat rate the driver enters themselves (`otherState`) until per-state
+/// brackets are added in a later release. All figures are for the 2025 tax
+/// year and single filing status — they must be reviewed against official
+/// state sources each year before shipping.
+enum NativeUSState: String, CaseIterable, Identifiable, Codable {
+  // Built-in brackets / flat rates.
+  case california, newYork, illinois, pennsylvania, georgia
+  // No wage income tax.
+  case alaska, florida, nevada, southDakota, tennessee, texas, washington, wyoming, newHampshire
+  // Anything else — user supplies a flat percentage in settings.
+  case otherState
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .california: return "California"
+    case .newYork: return "New York"
+    case .illinois: return "Illinois"
+    case .pennsylvania: return "Pennsylvania"
+    case .georgia: return "Georgia"
+    case .alaska: return "Alaska"
+    case .florida: return "Florida"
+    case .nevada: return "Nevada"
+    case .southDakota: return "South Dakota"
+    case .tennessee: return "Tennessee"
+    case .texas: return "Texas"
+    case .washington: return "Washington"
+    case .wyoming: return "Wyoming"
+    case .newHampshire: return "New Hampshire"
+    case .otherState: return "Another state"
+    }
+  }
+
+  /// True when this state levies no tax on ordinary wage / self-employment
+  /// income, so the state layer is a hard zero regardless of profit.
+  var hasNoIncomeTax: Bool {
+    switch self {
+    case .alaska, .florida, .nevada, .southDakota, .tennessee, .texas, .washington, .wyoming, .newHampshire:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// True when the app models this state's brackets itself; false means the
+  /// driver's manually-entered flat rate is used instead.
+  var hasBuiltInBrackets: Bool {
+    switch self {
+    case .california, .newYork, .illinois, .pennsylvania, .georgia:
+      return true
+    default:
+      return false
+    }
+  }
+}
+
 enum NativeIncomeBracket: String, CaseIterable, Identifiable, Codable {
   case basic
   case higher
@@ -446,8 +531,20 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
 struct NativeSettings: Codable, Equatable {
   var name = ""
   var defaultVehicle: NativeVehicle = .car
+  // Tax jurisdiction. Defaults to the UK (the launch market); a US driver
+  // switches this in Settings, which changes the tax-year window, the mileage
+  // rate and the whole tax calculation. Decoded with a default so existing
+  // UK snapshots (saved before this field existed) load as .uk.
+  var taxCountry: NativeTaxCountry = .uk
   var region: NativeRegion = .ruk
+  // US state for the state-income-tax layer (ignored when taxCountry == .uk).
+  var usState: NativeUSState = .california
+  // Flat state rate (as a fraction, e.g. 0.05 = 5%) used only when usState is
+  // .otherState — a state Okkle doesn't yet model with its own brackets.
+  var usOtherStateRate: Double = 0
   var incomeBracket: NativeIncomeBracket = .basic
+  // UK: other PAYE income stacked under self-employment. US: W-2 wages, used
+  // the same way (self-employment profit is taxed on top at the right bracket).
   var otherIncome: Double = 0
   var platforms = ["Uber Eats", "Deliveroo", "Just Eat"]
   var accountantUTR = ""
@@ -494,7 +591,10 @@ struct NativeSettings: Codable, Equatable {
   private enum CodingKeys: String, CodingKey {
     case name
     case defaultVehicle
+    case taxCountry
     case region
+    case usState
+    case usOtherStateRate
     case incomeBracket
     case otherIncome
     case platforms
@@ -523,7 +623,10 @@ struct NativeSettings: Codable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
     defaultVehicle = try container.decodeIfPresent(NativeVehicle.self, forKey: .defaultVehicle) ?? .car
+    taxCountry = try container.decodeIfPresent(NativeTaxCountry.self, forKey: .taxCountry) ?? .uk
     region = try container.decodeIfPresent(NativeRegion.self, forKey: .region) ?? .ruk
+    usState = try container.decodeIfPresent(NativeUSState.self, forKey: .usState) ?? .california
+    usOtherStateRate = try container.decodeIfPresent(Double.self, forKey: .usOtherStateRate) ?? 0
     incomeBracket = try container.decodeIfPresent(NativeIncomeBracket.self, forKey: .incomeBracket) ?? .basic
     otherIncome = try container.decodeIfPresent(Double.self, forKey: .otherIncome) ?? 0
     platforms = try container.decodeIfPresent([String].self, forKey: .platforms) ?? ["Uber Eats", "Deliveroo", "Just Eat"]
