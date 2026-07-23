@@ -437,6 +437,18 @@ final class OkkleStore: ObservableObject {
     taxYearInterval(containing: Date())
   }
 
+  /// Deliveries (stops) on a trip: the driver's manual correction if they set
+  /// one, otherwise the count Okkle detected from the route and recorded stops.
+  func deliveryCount(for trip: NativeTrip) -> Int {
+    if let manual = trip.manualStopCount { return max(0, manual) }
+    return NativeRouteStopDetector.routeStops(
+      in: trip.points,
+      startedAt: trip.startedAt,
+      endedAt: trip.endedAt,
+      recordedVisits: NativeAutoTrackEngine.shared.visits
+    ).count
+  }
+
   var yearRecords: [NativeRecord] {
     records.filter { recordOverlapsTaxYear($0) }
   }

@@ -239,7 +239,7 @@ func nativeFreeAgentCsv(store: OkkleStore) -> String {
 
 @MainActor
 func nativeAllDataCsv(store: OkkleStore) -> String {
-  let header = "date,type,platform,vehicle,miles,deduction,amount,category,merchant,note"
+  let header = "date,type,platform,vehicle,miles,deduction,amount,category,deliveries,merchant,note"
   let tripRows = store.trips.map { trip in
     [
       nativeCsvField(nativeDateStamp(trip.startedAt)),
@@ -250,6 +250,7 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(nativeDecimal(trip.deduction)),
       nativeCsvField(""),
       nativeCsvField(trip.category.label),
+      nativeCsvField(String(store.deliveryCount(for: trip))),
       nativeCsvField(""),
       nativeCsvField("")
     ].joined(separator: ",")
@@ -264,6 +265,7 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(record.deduction.map(nativeDecimal) ?? ""),
       nativeCsvField(record.amount.map(nativeDecimal) ?? ""),
       nativeCsvField(record.category ?? ""),
+      nativeCsvField(""),
       nativeCsvField(record.merchant ?? ""),
       nativeCsvField(record.note ?? "")
     ].joined(separator: ",")

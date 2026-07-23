@@ -58,6 +58,8 @@ struct NativeTripDetailSheet: View {
                 tripDetailRow("Vehicle", value: trip.vehicle.label, symbol: trip.vehicle.symbol)
                 Divider()
                 tripDetailRow("Duration", value: nativeDurationLabel(trip.endedAt.timeIntervalSince(trip.startedAt)), symbol: "timer")
+                Divider()
+                deliveriesRow
               }
             }
 
@@ -343,6 +345,47 @@ struct NativeTripDetailSheet: View {
     .background(
       isSelected ? stopTint(for: stop.visit).opacity(0.10) : Color.clear,
       in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+    )
+  }
+
+  // The detected delivery count is a best guess from the route; a stepper lets
+  // the driver correct it (stored as manualStopCount) so the record is right.
+  private var deliveriesRow: some View {
+    HStack(spacing: 12) {
+      Image(systemName: "shippingbox.fill")
+        .font(.system(size: 16, weight: .bold))
+        .foregroundStyle(OkkleColor.brand)
+        .frame(width: 34, height: 34)
+        .background(OkkleColor.brand.opacity(0.13), in: Circle())
+      VStack(alignment: .leading, spacing: 1) {
+        Text("Deliveries")
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(OkkleColor.muted)
+        if currentTrip.manualStopCount != nil {
+          Text("Edited")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(OkkleColor.brand)
+        }
+      }
+      Spacer()
+      Stepper(value: stopCountBinding, in: 0...99) {
+        Text("\(store.deliveryCount(for: currentTrip))")
+          .font(.system(size: 17, weight: .bold))
+          .foregroundStyle(OkkleColor.ink)
+          .monospacedDigit()
+      }
+      .fixedSize()
+    }
+  }
+
+  private var stopCountBinding: Binding<Int> {
+    Binding(
+      get: { store.deliveryCount(for: currentTrip) },
+      set: { newValue in
+        var updated = currentTrip
+        updated.manualStopCount = max(0, newValue)
+        store.updateTrip(updated)
+      }
     )
   }
 

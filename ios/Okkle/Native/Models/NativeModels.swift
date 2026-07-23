@@ -421,6 +421,12 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   // miles is stronger evidence for an audit than one with entries quietly
   // removed, and it lets the total reconcile against the car's real mileage.
   var category: NativeTripCategory = .business
+  // Driver-corrected number of deliveries (stops) on this trip. Nil means
+  // "use the count Okkle detected from the route + recorded stops"; setting it
+  // overrides that when the automatic count got it wrong. Records/display only
+  // — it doesn't change mileage, tax or the Insights zone math (which needs
+  // where each stop was, not just how many). Optional, so old trips decode nil.
+  var manualStopCount: Int? = nil
 }
 
 enum NativeTripCategory: String, CaseIterable, Identifiable, Codable {
