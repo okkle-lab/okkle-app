@@ -23,6 +23,7 @@ struct NativeTripDetailSheet: View {
   let onDelete: () -> Void
   @Environment(\.dismiss) private var dismiss
   @EnvironmentObject private var store: OkkleStore
+  @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @State private var startAddress: String?
   @State private var endAddress: String?
   @State private var stopPlaceNames: [UUID: String] = [:]
@@ -49,7 +50,7 @@ struct NativeTripDetailSheet: View {
 
             HStack(spacing: 12) {
               NativeTripFlatMetric(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
-              NativeTripFlatMetric(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: "sterlingsign.circle.fill", color: .green)
+              NativeTripFlatMetric(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"), color: .green)
             }
 
             NativeGlassCard {
@@ -1110,7 +1111,7 @@ struct NativeRecordDetailSheet: View {
     switch record.kind {
     case .income:
       recordDetailRow("Platform", value: record.platform ?? "Earnings", symbol: "app.badge")
-      recordDetailRow("Amount", value: gbp(record.amount ?? 0), symbol: "sterlingsign.circle")
+      recordDetailRow("Amount", value: gbp(record.amount ?? 0), symbol: nativeCurrencySymbolName("sterlingsign.circle"))
     case .expense:
       recordDetailRow("Category", value: record.category ?? "Expense", symbol: "tag")
       if let merchant = record.merchant, !merchant.isEmpty {
@@ -1123,7 +1124,7 @@ struct NativeRecordDetailSheet: View {
     case .mileage:
       recordDetailRow("Vehicle", value: record.vehicle?.label ?? "Vehicle", symbol: record.vehicle?.symbol ?? "car.fill")
       recordDetailRow("Miles", value: miles(record.miles ?? 0), symbol: "road.lanes")
-      recordDetailRow("Deduction", value: gbp(record.deduction ?? 0, whole: true), symbol: "sterlingsign.circle")
+      recordDetailRow("Deduction", value: gbp(record.deduction ?? 0, whole: true), symbol: nativeCurrencySymbolName("sterlingsign.circle"))
     }
   }
 

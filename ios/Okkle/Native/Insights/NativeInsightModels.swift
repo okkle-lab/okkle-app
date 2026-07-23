@@ -539,7 +539,8 @@ struct NativeShiftInsights {
     guard let perHour, perHour > 0 else { return nil }
     let lower = Int((perHour * 0.85 / 1).rounded(.down))
     let upper = Int((perHour * 1.15 / 1).rounded(.up))
-    return "£\(lower)–\(upper)"
+    let symbol = nativeActiveCurrencyCode == "USD" ? "$" : "£"
+    return "\(symbol)\(lower)–\(upper)"
   }
 
   /// The single most useful warning — one only, per the "instruction beats
@@ -1055,7 +1056,14 @@ struct NativeShiftInsights {
     // result lands outside a believable gig-delivery range, stay quiet rather than
     // show a number that undermines trust.
     let rawPerHour = (income > 0 && recentActive > 1) ? income / recentActive : nil
-    let perHour: Double? = rawPerHour.flatMap { (4...45).contains($0) ? $0 : nil }
+    // The believable ceiling is currency-specific, not just a nominal number:
+    // US gig pay (tipping culture, higher urban cost of living, e.g. SF/NYC)
+    // routinely nets a genuinely-earned $45-60/hr on a strong shift in a way
+    // £45 rarely does in the UK market this range was first calibrated
+    // against — a flat 4...45 would silently hide real, legitimate US £/hr
+    // figures rather than just implausible ones.
+    let plausiblePerHourRange: ClosedRange<Double> = input.settings.taxCountry == .us ? 5...65 : 4...45
+    let perHour: Double? = rawPerHour.flatMap { plausiblePerHourRange.contains($0) ? $0 : nil }
 
     // Reliability: does this weekday look the same week to week, or is one
     // outlier week doing all the work? The per-day counterpart to the

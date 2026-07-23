@@ -516,7 +516,7 @@ struct NativeTaxSummaryView: View {
       }
 
       HStack(spacing: 12) {
-        taxMetricPanel(title: "Turnover", value: gbp(tax.turnover), symbol: "sterlingsign.circle.fill", color: .green)
+        taxMetricPanel(title: "Turnover", value: gbp(tax.turnover), symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"), color: .green)
         taxMetricPanel(title: "Logged expenses", value: gbp(tax.expenses), symbol: "minus.circle.fill", color: OkkleColor.red)
       }
 

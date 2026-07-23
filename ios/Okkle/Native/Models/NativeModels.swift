@@ -229,7 +229,7 @@ enum NativeLogKind: String, CaseIterable, Identifiable, Codable {
 
   var symbol: String {
     switch self {
-    case .income: return "sterlingsign.circle.fill"
+    case .income: return nativeCurrencySymbolName("sterlingsign.circle.fill")
     case .expense: return "receipt.fill"
     case .mileage: return "map.fill"
     }
@@ -482,6 +482,7 @@ enum NativeTripCategory: String, CaseIterable, Identifiable, Codable {
 
   var id: String { rawValue }
   var label: String { rawValue.capitalized }
+}
 
 enum NativeTripFeedback: String, CaseIterable, Identifiable, Codable {
   case good

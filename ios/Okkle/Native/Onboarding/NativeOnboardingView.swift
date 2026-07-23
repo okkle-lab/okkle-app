@@ -314,7 +314,7 @@ struct NativeOnboardingView: View {
             .foregroundStyle(OkkleColor.ink)
             .fixedSize(horizontal: false, vertical: true)
             .minimumScaleFactor(0.82)
-          Text("Built for UK delivery couriers. Track trips, log pay, and stay ready for tax without the spreadsheet.")
+          Text("Built for \(NativeTaxCountry.deviceDefault == .us ? "US" : "UK") delivery couriers. Track trips, log pay, and stay ready for tax without the spreadsheet.")
             .font(.system(size: 17, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)
@@ -817,7 +817,7 @@ struct NativeOnboardingView: View {
                                    title: autoTrackTrips ? "Automatic tracking is ready" : "Start a trip when you set off")
             NativeOnboardingBullet(symbol: iCloudSyncEnabled ? "icloud.fill" : "internaldrive.fill",
                                    title: iCloudSyncEnabled ? "iCloud sync is ready" : "Records will stay on this device")
-            NativeOnboardingBullet(symbol: "sterlingsign.circle.fill", title: "Log pay when it arrives")
+            NativeOnboardingBullet(symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"), title: "Log pay when it arrives")
             NativeOnboardingBullet(symbol: "sparkles", title: "Check Insights once you have data")
           }
         }

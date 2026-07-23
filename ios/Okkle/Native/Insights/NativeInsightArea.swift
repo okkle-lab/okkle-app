@@ -542,9 +542,9 @@ enum NativeAreaSuggester {
 /// addresses, subLocality itself is where a borough name shows up when
 /// Apple has no finer-grained neighbourhood tag for a point — subAdministrativeArea
 /// is typically empty or just "Greater London" for these addresses, so it
-/// can't be used to detect the duplication the way it might elsewhere.
-/// Okkle is UK-only, so a fixed list here is a reliable, direct fix rather
-/// than a guess at a general heuristic.
+/// can't be used to detect the duplication the way it might elsewhere. Only
+/// ever consulted for London coordinates (see nativeNeighbourhoodName), so a
+/// US city that happens to share a borough's name isn't affected.
 private let nativeLondonBoroughNames: Set<String> = [
   "barking and dagenham", "barnet", "bexley", "brent", "bromley", "camden",
   "city of london", "croydon", "ealing", "enfield", "greenwich", "hackney",
@@ -571,11 +571,10 @@ func nativeNeighbourhoodName(from placemark: CLPlacemark) -> String? {
      !nativeLondonBoroughNames.contains(subLocality.lowercased()) {
     return subLocality
   }
-  // No locality fallback: for a London-only app, CLPlacemark.locality
-  // resolves to "London" for virtually every coordinate in Greater
-  // London, which tells a driver nothing actionable — as useless as no
-  // name at all, so this returns nil and lets the "fails silently" path
-  // above omit the zone rather than surface it.
+  // No locality fallback, in any market: CLPlacemark.locality is a whole
+  // city ("London", but just as unhelpfully "Chicago" or "San Francisco")
+  // — as broad as the borough case above, so it's skipped the same way in
+  // favor of the street, which is at least somewhere specific.
   return placemark.thoroughfare
 }
 

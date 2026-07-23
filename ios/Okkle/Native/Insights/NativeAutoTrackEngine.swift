@@ -324,6 +324,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       Task { @MainActor in self?.handleManualTripPhaseChanged() }
     }
     runRealisticWeekSimulationIfRequested()
+    runCaliforniaTestDayIfRequested()
   }
 
   /// TEMPORARY verification-only hook — drives the real beginShift/
@@ -542,6 +543,171 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       for v in self.visits {
         print("OKKLE-SIM: visit kind=\(v.kind) arrival=\(v.arrival) dwell=\(Int(v.dwell))s place=\(v.placeName ?? "nil") coord=\(v.coordinate)")
       }
+    }
+  }
+
+  /// TEMPORARY verification-only hook — builds a realistic multi-day San
+  /// Francisco courier history (6 consecutive pickup→dropoff cycles/day
+  /// against real, well-known SF restaurants) with the store switched to
+  /// US/California, so Insights/Reports/exports get exercised against real
+  /// trip/record data instead of just unit-test fixtures.
+  ///
+  /// Deliberately builds `NativeTrip`/`RoutePoint` data directly and hands it
+  /// to `NativeTripAnalysisProjector.build` (the same stop-detection pass a
+  /// manually-logged trip gets) rather than driving the live
+  /// NativeAutoTrackEngine state machine or any MapKit network call — a
+  /// Simulator without real network/motion access can otherwise hang this
+  /// indefinitely with nothing to show for it. Will be removed after
+  /// verification.
+  private func runCaliforniaTestDayIfRequested() {
+    guard ProcessInfo.processInfo.arguments.contains("OKKLE_TEST_SF_CALIFORNIA_DAY") else { return }
+    Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 1_000_000_000)
+      guard let store = self.store else { return }
+      store.settings.taxCountry = .us
+      store.settings.usState = .california
+      store.settings.platforms = ["DoorDash", "Uber Eats", "Grubhub"]
+
+      let home = CLLocationCoordinate2D(latitude: 37.7599, longitude: -122.4148)   // Mission District
+
+      // Real, well-known San Francisco restaurants — hardcoded rather than a
+      // live MapKit lookup, which a Simulator without real network access
+      // can hang on indefinitely (see the doc comment above).
+      let shops: [(name: String, coordinate: CLLocationCoordinate2D)] = [
+        ("Tadich Grill", CLLocationCoordinate2D(latitude: 37.7929, longitude: -122.4033)),
+        ("House of Prime Rib", CLLocationCoordinate2D(latitude: 37.7909, longitude: -122.4217)),
+        ("Zuni Café", CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4241)),
+        ("Tartine Bakery", CLLocationCoordinate2D(latitude: 37.7614, longitude: -122.4241)),
+        ("Nopa", CLLocationCoordinate2D(latitude: 37.7757, longitude: -122.4376)),
+        ("Foreign Cinema", CLLocationCoordinate2D(latitude: 37.7526, longitude: -122.4204)),
+      ]
+      print("OKKLE-SIM-CA: using \(shops.count) real San Francisco restaurants")
+
+      // Straight-line leg with a few lightly-jittered intermediate points (so
+      // the trip map isn't one dead-straight segment), plus a stationary
+      // dwell pair at the destination — two same-spot points far enough
+      // apart in time for NativeRouteStopDetector's real dwell gate
+      // (>=4 minutes, matching production) to recognize a genuine stop.
+      func appendLeg(
+        to points: inout [RoutePoint], miles: inout Double,
+        from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D,
+        arriveAt clock: inout Date, thenDwell dwell: TimeInterval
+      ) {
+        let originLocation = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+        let destinationLocation = CLLocation(latitude: destination.latitude, longitude: destination.longitude)
+        let distanceMeters = destinationLocation.distance(from: originLocation)
+        let travelTime = max(60, distanceMeters / 6.7)   // ~15 mph, realistic dense-city driving
+
+        let steps = 4
+        let legStart = clock
+        var previousLocation = originLocation
+        for step in 1...steps {
+          let fraction = Double(step) / Double(steps)
+          var point = CLLocationCoordinate2D(
+            latitude: origin.latitude + (destination.latitude - origin.latitude) * fraction,
+            longitude: origin.longitude + (destination.longitude - origin.longitude) * fraction
+          )
+          if step < steps {
+            point.latitude += Double.random(in: -0.0006...0.0006)
+            point.longitude += Double.random(in: -0.0006...0.0006)
+          }
+          let pointLocation = CLLocation(latitude: point.latitude, longitude: point.longitude)
+          let deltaMiles = pointLocation.distance(from: previousLocation) / 1_609.344
+          if deltaMiles > 0.002 && deltaMiles < 1 { miles += deltaMiles }
+          points.append(RoutePoint(
+            latitude: point.latitude, longitude: point.longitude,
+            timestamp: legStart.addingTimeInterval(travelTime * fraction)
+          ))
+          previousLocation = pointLocation
+        }
+        clock = legStart.addingTimeInterval(travelTime)
+        // The stationary pair: same spot, dwell minutes apart.
+        points.append(RoutePoint(latitude: destination.latitude, longitude: destination.longitude, timestamp: clock))
+        clock = clock.addingTimeInterval(dwell)
+        points.append(RoutePoint(latitude: destination.latitude, longitude: destination.longitude, timestamp: clock))
+      }
+
+      // Same day-shape as the UK realistic-week simulation: 13 active days
+      // spanning a 14-day window (one rest day) so Insights actually clears
+      // the High-confidence bar (daySpan>=14, activeDays>=8, deliveries>=20)
+      // instead of sitting cold — 6 consecutive deliveries/day comfortably
+      // clears that on its own across 13 days.
+      let daysAgo = [14, 13, 12, 11, 10, 9, 7, 6, 5, 4, 3, 2, 0]
+      let platforms = ["DoorDash", "Uber Eats", "Grubhub"]
+      var totalEarnings = 0.0
+      var totalDeliveries = 0
+
+      for (dayIndex, dOffset) in daysAgo.enumerated() {
+        guard let dayAnchor = Calendar.current.date(byAdding: .day, value: -dOffset, to: Date()),
+              let dayStart = Calendar.current.date(bySettingHour: 11, minute: 0, second: 0, of: dayAnchor)
+        else { continue }
+
+        var clock = dayStart
+        var points: [RoutePoint] = [RoutePoint(latitude: home.latitude, longitude: home.longitude, timestamp: clock)]
+        var miles = 0.0
+        var previous = home
+
+        for cycle in 1...6 {
+          let shop = shops[(dayIndex * 7 + cycle) % shops.count]
+          let pickupDwell = TimeInterval.random(in: 260...420)
+          appendLeg(to: &points, miles: &miles, from: previous, to: shop.coordinate, arriveAt: &clock, thenDwell: pickupDwell)
+
+          let bearing = Double((dayIndex * 5 + cycle) * 47 % 360)
+          let distanceKm = 0.4 + Double((dayIndex + cycle) % 5) * 0.35
+          let dropoff = nativeOffsetCoordinate(shop.coordinate, distanceKm: distanceKm, bearingDeg: bearing)
+          let dropoffDwell = TimeInterval.random(in: 250...340)
+          appendLeg(to: &points, miles: &miles, from: shop.coordinate, to: dropoff, arriveAt: &clock, thenDwell: dropoffDwell)
+          totalDeliveries += 1
+
+          // A real, per-delivery earnings record — the platform mix and
+          // amounts a real SF DoorDash/Uber Eats/Grubhub driver would log.
+          let platform = platforms[(dayIndex + cycle) % platforms.count]
+          let fare = Double.random(in: 6.5...13.5)
+          totalEarnings += fare
+          store.addRecord(NativeRecord(
+            kind: .income, platform: platform, amount: (fare * 100).rounded() / 100, date: clock, period: .day
+          ))
+
+          clock = clock.addingTimeInterval(TimeInterval.random(in: 120...480))
+          points.append(RoutePoint(latitude: dropoff.latitude, longitude: dropoff.longitude, timestamp: clock))
+          previous = dropoff
+        }
+
+        var dummyMiles = 0.0
+        appendLeg(to: &points, miles: &dummyMiles, from: previous, to: home, arriveAt: &clock, thenDwell: 0)
+        miles += dummyMiles
+
+        var trip = NativeTrip(
+          source: .automatic,
+          vehicle: .car,
+          miles: miles,
+          deduction: store.calcDeduction(miles: miles, vehicle: .car, date: dayStart),
+          startedAt: dayStart,
+          endedAt: clock,
+          points: points
+        )
+        trip.category = .business
+        trip.analysis = NativeTripAnalysisProjector.build(for: trip, source: .automatic)
+        store.addTrip(trip)
+        print("OKKLE-SIM-CA: day -\(dOffset) trip saved, miles=\(String(format: "%.1f", miles)) stops=\(trip.analysis?.stops.count ?? 0)")
+
+        // Real expenses too — gas (San Francisco prices) every driving day,
+        // plus the odd bigger one, so Reports/Schedule C has something to
+        // reconcile against besides mileage and the standard-mileage
+        // deduction.
+        store.addRecord(NativeRecord(
+          kind: .expense, amount: Double.random(in: 22...38).rounded(), category: "Fuel",
+          merchant: "Chevron", date: clock, period: .day
+        ))
+        if dayIndex % 4 == 0 {
+          store.addRecord(NativeRecord(
+            kind: .expense, amount: 24.99, category: "Equipment", merchant: "AutoZone", date: clock, period: .day
+          ))
+        }
+      }
+
+      store.save()
+      print("OKKLE-SIM-CA: FINAL trips=\(store.trips.count) totalDeliveries=\(totalDeliveries) earnings=$\(String(format: "%.2f", totalEarnings))")
     }
   }
 

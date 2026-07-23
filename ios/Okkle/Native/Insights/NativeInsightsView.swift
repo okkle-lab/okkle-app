@@ -1209,8 +1209,14 @@ private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint])
 private func nativePerHourBand(income: Double, activeHours: Double) -> String? {
   guard income > 0, activeHours > 1 else { return nil }
   let rate = income / activeHours
-  guard (4.0...45.0).contains(rate) else { return nil }
-  return "£\(Int((rate * 0.85).rounded(.down)))–\(Int((rate * 1.15).rounded(.up)))"
+  // Matches NativeShiftInsights's currency-specific plausibility range — US
+  // gig pay (tipping, higher urban cost of living) genuinely clears £45's
+  // worth in dollars on a strong shift far more often than the UK market
+  // this range was first calibrated against.
+  let plausibleRange: ClosedRange<Double> = nativeActiveCurrencyCode == "USD" ? 5.0...65.0 : 4.0...45.0
+  guard plausibleRange.contains(rate) else { return nil }
+  let symbol = nativeActiveCurrencyCode == "USD" ? "$" : "£"
+  return "\(symbol)\(Int((rate * 0.85).rounded(.down)))–\(Int((rate * 1.15).rounded(.up)))"
 }
 
 // MARK: - Monthly panel: earnings + tax relief + efficiency, over 30 days
@@ -1479,7 +1485,7 @@ struct NativeYearlyInsightPanel: View {
       }
       if month.income > 0 || savings.miles > 0 {
         breakdownRow("map.fill", "Business miles", miles(savings.miles))
-        breakdownRow("sterlingsign.circle.fill", "Tax relief", gbp(savings.taxSaved, whole: true))
+        breakdownRow(nativeCurrencySymbolName("sterlingsign.circle.fill"), "Tax relief", gbp(savings.taxSaved, whole: true))
         breakdownRow("percent", "Deduction", gbp(savings.mileageDeduction, whole: true))
       } else {
         Text("Nothing logged for \(month.name).")

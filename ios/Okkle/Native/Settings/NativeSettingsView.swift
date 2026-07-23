@@ -1329,6 +1329,8 @@ struct NativeHelpSettingsView: View {
 // MARK: About
 
 struct NativeAboutSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
   var body: some View {
     Form {
       Section {
@@ -1340,7 +1342,7 @@ struct NativeAboutSettingsView: View {
         }
       }
       Section {
-        Text("Okkle — mileage and tax tracking built for UK self-employed couriers. Your records stay on your device.")
+        Text("Okkle — mileage and tax tracking built for \(store.settings.taxCountry == .us ? "US" : "UK") self-employed couriers. Your records stay on your device.")
           .font(.footnote)
           .foregroundStyle(.secondary)
       }

@@ -787,7 +787,7 @@ struct NativeTripView: View {
   private var trackingDeductionRow: some View {
     carouselCard {
       HStack(spacing: 12) {
-        Image(systemName: "sterlingsign.arrow.circlepath")
+        Image(systemName: nativeCurrencySymbolName("sterlingsign.arrow.circlepath"))
           .font(.system(size: 17, weight: .bold))
           .foregroundStyle(.green)
           .frame(width: 36, height: 36)

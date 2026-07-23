@@ -65,6 +65,13 @@ func gbp(_ value: Double, whole: Bool = false) -> String {
     ?? "\(nativeActiveCurrencyCode) \(String(format: "%.2f", value))"
 }
 
+/// SF Symbol name for the active currency's coin/circle glyph — the icon
+/// counterpart to `gbp(...)`, so money-themed rows don't show a literal £
+/// symbol for a US/USD driver.
+func nativeCurrencySymbolName(_ base: String) -> String {
+  nativeActiveCurrencyCode == "USD" ? base.replacingOccurrences(of: "sterlingsign", with: "dollarsign") : base
+}
+
 func miles(_ value: Double) -> String {
   value >= 1_000 ? "\(Int(value.rounded()).formatted()) mi" : String(format: "%.1f mi", value)
 }
