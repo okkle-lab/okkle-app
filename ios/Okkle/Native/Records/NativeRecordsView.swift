@@ -1097,21 +1097,21 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
 
   var id: String { rawValue }
 
-  var title: String {
+  func title(for country: NativeTaxCountry) -> String {
     switch self {
     case .accountantPack: return "Accountant pack"
-    case .selfAssessment: return "Self Assessment summary"
+    case .selfAssessment: return country == .uk ? "Self Assessment summary" : "Schedule C summary"
     case .mileage: return "Mileage"
-    case .freeAgent: return "FreeAgent CSV"
+    case .freeAgent: return country == .uk ? "FreeAgent CSV" : "Bookkeeping CSV"
     case .allData: return "All data CSV"
     }
   }
 
-  var subtitle: String {
+  func subtitle(for country: NativeTaxCountry) -> String {
     switch self {
     case .accountantPack: return "Mileage, expenses & receipts"
     case .selfAssessment: return "Turnover, profit and tax due"
-    case .mileage: return "Rate-band report or full CSV log"
+    case .mileage: return country == .uk ? "Rate-band report or full CSV log" : "Mileage report or full CSV log"
     case .freeAgent: return "Ready for bank import"
     case .allData: return "Trips, earnings and expenses"
     }
@@ -1157,13 +1157,13 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
 }
 
 enum NativeTaxExportGroup: CaseIterable {
-  case accountant
   case mileage
+  case accountant
   case rawData
 
   var title: String {
     switch self {
-    case .accountant: return "For your accountant"
+    case .accountant: return "Accountant & tax summary"
     case .mileage: return "Mileage"
     case .rawData: return "Raw data"
     }
@@ -1189,13 +1189,13 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     }
   }
 
-  var fileStem: String {
+  func fileStem(for country: NativeTaxCountry) -> String {
     switch self {
     case .accountantPackPdf, .accountantPackCsv: return "Accountant-Pack"
-    case .selfAssessmentPdf, .selfAssessmentCsv: return "SelfAssessment-Summary"
+    case .selfAssessmentPdf, .selfAssessmentCsv: return country == .uk ? "SelfAssessment-Summary" : "ScheduleC-Summary"
     case .mileageReportPdf: return "Mileage-Report"
-    case .mileageLogCsv: return "HMRC-Mileage-Log"
-    case .freeAgent: return "FreeAgent-Import"
+    case .mileageLogCsv: return country == .uk ? "HMRC-Mileage-Log" : "IRS-Mileage-Log"
+    case .freeAgent: return country == .uk ? "FreeAgent-Import" : "Bookkeeping-Import"
     case .allData: return "All-Data"
     }
   }

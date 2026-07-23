@@ -339,10 +339,11 @@ struct NativeOnboardingView: View {
         )
         VStack(spacing: 10) {
           ForEach(NativeVehicle.allCases) { item in
-            let band = item.rateBand(on: Date())
+            // No mileage-rate hint here — the country/region step (which
+            // sets the actual rate, UK or US) comes right after this one.
             NativeOnboardingOptionButton(
               title: item.label,
-              subtitle: String(format: "%.0fp/mi first 10k", band.first * 100),
+              subtitle: nil,
               symbol: item.symbol,
               selected: vehicle == item
             ) {

@@ -1,14 +1,17 @@
 import Foundation
 import UIKit
 
-/// A standalone HMRC-style mileage report — driver/period details, a
-/// summary grouped by rate band (matching the "first 10,000 miles" /
-/// "remaining miles" split HMRC's simplified mileage rate uses), then the
+/// A standalone mileage report — driver/period details, a summary (grouped
+/// by rate band for a UK simplified-mileage driver, matching the "first
+/// 10,000 miles" / "remaining miles" split HMRC's flat rate uses; a single
+/// per-vehicle line for a US IRS standard-mileage driver; a note instead for
+/// a UK actual-cost driver, who doesn't use a mileage rate at all), then the
 /// full per-entry log. A lighter companion to the full accountant pack, for
 /// when only the mileage evidence is needed.
 @MainActor
 final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
   private let store: OkkleStore
+  private var country: NativeTaxCountry { store.settings.taxCountry }
 
   init(store: OkkleStore) {
     self.store = store
@@ -36,25 +39,47 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
     Calendar.current.date(byAdding: .day, value: -1, to: store.taxYear.end) ?? store.taxYear.end
   }
 
+  private var mileageReportSubtitle: String {
+    switch country {
+    case .uk:
+      return store.settings.expenseMethod == .simplified
+        ? "HMRC simplified-rate mileage log for Self Assessment"
+        : "Business mileage log — vehicle costs claimed as actual expenses"
+    case .us:
+      return "IRS standard mileage rate log for Schedule C"
+    }
+  }
+
+  private var mileageReportExplainer: String {
+    switch country {
+    case .uk:
+      return store.settings.expenseMethod == .simplified
+        ? "Mileage claimed using HMRC's simplified expenses flat rate — figures are generated on-device from records logged in Okkle."
+        : "This log evidences business mileage. Vehicle costs are claimed from expense records rather than a mileage rate — figures are generated on-device from records logged in Okkle."
+    case .us:
+      return "Mileage claimed using the IRS standard mileage rate — figures are generated on-device from records logged in Okkle."
+    }
+  }
+
   private func drawCover() {
     brand.setFill()
     UIBezierPath(roundedRect: CGRect(x: margin, y: y, width: 86, height: 5), cornerRadius: 2.5).fill()
     y += 20
 
     drawWrapped("Mileage Report", font: .systemFont(ofSize: 27, weight: .heavy), color: ink, spacingAfter: 4)
-    drawWrapped("HMRC simplified-rate mileage log for Self Assessment", font: .systemFont(ofSize: 14, weight: .semibold), color: muted, spacingAfter: 13)
+    drawWrapped(mileageReportSubtitle, font: .systemFont(ofSize: 14, weight: .semibold), color: muted, spacingAfter: 13)
 
     let clientName = store.settings.name.isEmpty ? "Courier" : store.settings.name
     drawInfoBox([
       ("Driver", clientName),
       ("Vehicle", store.settings.defaultVehicle.label),
-      ("Period", "\(nativeUkDateStamp(store.taxYear.start)) to \(nativeUkDateStamp(taxYearEndDate))"),
+      ("Period", "\(nativePeriodDateStamp(store.taxYear.start, country: country)) to \(nativePeriodDateStamp(taxYearEndDate, country: country))"),
       ("Tax year", nativeTaxYearLabel(for: store.taxYear)),
-      ("Prepared", nativeLongDate(Date()))
+      ("Prepared", nativeLongDate(Date(), country: country))
     ])
 
     drawWrapped(
-      "Mileage claimed using HMRC's simplified expenses flat rate — figures are generated on-device from records logged in Okkle.",
+      mileageReportExplainer,
       font: .systemFont(ofSize: 10.5, weight: .regular),
       color: muted,
       spacingAfter: 14
@@ -63,6 +88,24 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
 
   private func drawSummary() {
     drawSectionTitle("Summary")
+    switch (country, store.settings.expenseMethod) {
+    case (.uk, .simplified):
+      drawUkSimplifiedSummaryRows()
+    case (.uk, .actualCost):
+      drawWrapped(
+        "Vehicle costs are claimed as actual expenses on this account, so no mileage rate applies here — see the expense records in the accountant pack for the costs claimed.",
+        font: .systemFont(ofSize: 10.5, weight: .regular),
+        color: muted,
+        spacingAfter: 8
+      )
+    case (.us, _):
+      drawUsSummaryRows()
+    }
+    drawKeyValue("Total miles", miles(store.yearMiles))
+    drawKeyValue("Total deduction", gbp(store.yearMileageDeduction), highlighted: true)
+  }
+
+  private func drawUkSimplifiedSummaryRows() {
     let rows = store.yearMileageLogRows
     let referenceDate = store.taxYear.start
 
@@ -94,84 +137,36 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
       rightAligned: [1, 2],
       emptyMessage: "No mileage logged for this tax year."
     )
-    drawKeyValue("Total miles", miles(store.yearMiles))
-    drawKeyValue("Total deduction", gbp(store.yearMileageDeduction), highlighted: true)
+  }
+
+  /// The US IRS standard mileage rate has no UK-style 10,000-mile band, so
+  /// this groups by vehicle only, deriving each row's rate from the rows'
+  /// own (already country-dispatched) deduction total rather than reading
+  /// the UK-only NativeVehicle.rateBand table directly.
+  private func drawUsSummaryRows() {
+    let rows = store.yearMileageLogRows
+    var summaryRows: [[String]] = []
+    for vehicle in NativeVehicle.allCases {
+      let vehicleRows = rows.filter { $0.vehicle == vehicle }
+      let vehicleMiles = vehicleRows.reduce(0.0) { $0 + $1.miles }
+      guard vehicleMiles > 0 else { continue }
+      let deduction = vehicleRows.reduce(0.0) { $0 + $1.deduction }
+      let effectiveRate = vehicleMiles > 0 ? deduction / vehicleMiles : 0
+      summaryRows.append(["Business - \(vehicle.label) @ \(gbp(effectiveRate))/mi", miles(vehicleMiles), gbp(deduction)])
+    }
+
+    drawTable(
+      headers: ["Type", "Distance", "Amount"],
+      rows: summaryRows,
+      widths: [0.52, 0.24, 0.24],
+      rightAligned: [1, 2],
+      emptyMessage: "No mileage logged for this tax year."
+    )
   }
 
   private func drawLog() {
     drawSectionTitle("Mileage log")
-    let rows = store.yearMileageLogRows
-    guard !rows.isEmpty else {
-      drawWrapped("No mileage logged for this tax year.", font: .systemFont(ofSize: 10, weight: .regular), color: muted, spacingAfter: 0)
-      return
-    }
-
-    var lastDateKey: String?
-    for row in rows {
-      let dateKey = nativeDateStamp(row.date)
-      drawJourneyEntry(row, showDate: dateKey != lastDateKey)
-      lastDateKey = dateKey
-    }
-  }
-
-  /// One journey — a from/to address pair (when resolved) plus its
-  /// business/distance/rate/amount line, in the style of a standard HMRC
-  /// mileage log rather than a bare summary table. Falls back to a plain
-  /// one-line entry for manual records or trips whose address hasn't been
-  /// resolved yet (no network at the time, or logged before this existed).
-  private func drawJourneyEntry(_ row: NativeMileageLogRow, showDate: Bool) {
-    if showDate {
-      ensure(24)
-      drawWrapped(nativeLongDate(row.date), font: .systemFont(ofSize: 11.5, weight: .heavy), color: ink, spacingAfter: 6)
-    }
-
-    let addressFont = UIFont.systemFont(ofSize: 10, weight: .medium)
-    let dotColumn: CGFloat = 16
-    let addressWidth = contentWidth - dotColumn
-
-    if let from = row.fromAddress, let to = row.toAddress {
-      let rowGap: CGFloat = 5
-      let fromHeight = measuredHeight(from, font: addressFont, width: addressWidth)
-      let toHeight = measuredHeight(to, font: addressFont, width: addressWidth)
-      ensure(fromHeight + toHeight + rowGap + 4)
-
-      let topDotY = y + fromHeight / 2
-      let bottomDotY = y + fromHeight + rowGap + toHeight / 2
-      let dotX = margin + 4
-
-      line.setStroke()
-      let connector = UIBezierPath()
-      connector.move(to: CGPoint(x: dotX, y: topDotY + 4))
-      connector.addLine(to: CGPoint(x: dotX, y: bottomDotY - 4))
-      connector.lineWidth = 1
-      connector.setLineDash([1.5, 1.8], count: 2, phase: 0)
-      connector.stroke()
-
-      muted.setStroke()
-      [topDotY, bottomDotY].forEach { dotY in
-        let dot = UIBezierPath(ovalIn: CGRect(x: dotX - 2.5, y: dotY - 2.5, width: 5, height: 5))
-        dot.lineWidth = 1.1
-        dot.stroke()
-      }
-
-      drawString(from, in: CGRect(x: margin + dotColumn, y: y, width: addressWidth, height: fromHeight), font: addressFont, color: ink)
-      drawString(to, in: CGRect(x: margin + dotColumn, y: y + fromHeight + rowGap, width: addressWidth, height: toHeight), font: addressFont, color: ink)
-      y += fromHeight + rowGap + toHeight + 8
-    } else {
-      let label = row.source == "GPS" ? "\(row.vehicle.label) trip" : "Manual entry - \(row.vehicle.label)"
-      drawWrapped(label, font: addressFont, color: muted, spacingAfter: 8)
-    }
-
-    let rate = row.miles > 0 ? row.deduction / row.miles : 0
-    ensure(34)
-    drawString("Business", in: CGRect(x: margin, y: y, width: contentWidth * 0.5, height: 16), font: .systemFont(ofSize: 10.5, weight: .semibold), color: ink)
-    drawString(gbp(row.deduction), in: CGRect(x: margin + contentWidth * 0.5, y: y, width: contentWidth * 0.5, height: 16), font: .systemFont(ofSize: 11, weight: .bold), color: ink, alignment: .right)
-    y += 16
-    drawString(miles(row.miles), in: CGRect(x: margin, y: y, width: contentWidth * 0.5, height: 14), font: .systemFont(ofSize: 9.5, weight: .regular), color: muted)
-    drawString("\(gbp(rate)) / mi", in: CGRect(x: margin + contentWidth * 0.5, y: y, width: contentWidth * 0.5, height: 14), font: .systemFont(ofSize: 9.5, weight: .regular), color: muted, alignment: .right)
-    y += 18
-    drawHairline()
-    y += 8
+    drawMileageJournal(store.yearMileageLogRows, country: country)
   }
 
   private func drawLimitations() {

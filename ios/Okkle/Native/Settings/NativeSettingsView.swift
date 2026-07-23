@@ -252,13 +252,18 @@ struct NativeProfileSettingsView: View {
 struct NativeTaxSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var showsSimplifiedLockConfirm = false
+  @State private var showsActualCostConfirm = false
+  @State private var pendingCountry: NativeTaxCountry?
 
   var body: some View {
     Form {
       Section {
         Picker("Country", selection: Binding(
           get: { store.settings.taxCountry },
-          set: { store.settings.taxCountry = $0 }
+          set: { newValue in
+            guard newValue != store.settings.taxCountry else { return }
+            pendingCountry = newValue
+          }
         )) {
           ForEach(NativeTaxCountry.allCases) { Text($0.label).tag($0) }
         }
@@ -278,6 +283,20 @@ struct NativeTaxSettingsView: View {
     .navigationTitle("Tax profile")
     .navigationBarTitleDisplayMode(.inline)
     .nativeKeyboardDoneToolbar()
+    .alert(
+      "Switch to \(pendingCountry?.label ?? "")?",
+      isPresented: Binding(get: { pendingCountry != nil }, set: { if !$0 { pendingCountry = nil } })
+    ) {
+      Button("Cancel", role: .cancel) {}
+      Button("Switch") {
+        if let newCountry = pendingCountry {
+          store.settings.taxCountry = newCountry
+        }
+        pendingCountry = nil
+      }
+    } message: {
+      Text("This changes your currency, tax year and every figure in Reports to \(pendingCountry?.label ?? "")'s rules. Past records aren't affected, but your tax estimate, saved amount and exports will all recalculate.")
+    }
     .alert("Use simplified expenses?", isPresented: $showsSimplifiedLockConfirm) {
       Button("Cancel", role: .cancel) {}
       Button("Confirm") {
@@ -286,6 +305,12 @@ struct NativeTaxSettingsView: View {
       }
     } message: {
       Text("Once you choose simplified expenses, HMRC requires you to keep using them for this vehicle for as long as you use it for business. You won't be able to switch to actual costs later.")
+    }
+    .alert("Switch to actual costs?", isPresented: $showsActualCostConfirm) {
+      Button("Cancel", role: .cancel) {}
+      Button("Switch") { store.settings.expenseMethod = .actualCost }
+    } message: {
+      Text("Your mileage deduction will stop applying — instead, your logged fuel, insurance, servicing and repair expenses will count toward your tax estimate.")
     }
   }
 
@@ -330,7 +355,7 @@ struct NativeTaxSettingsView: View {
             if newValue == .simplified {
               showsSimplifiedLockConfirm = true
             } else {
-              store.settings.expenseMethod = newValue
+              showsActualCostConfirm = true
             }
           }
         )) {

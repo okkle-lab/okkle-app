@@ -32,12 +32,12 @@ struct NativeExportCard: View {
       titleVisibility: .visible
     ) {
       ForEach(NativeExportDocument.allCases.filter { $0.group == pendingGroup }) { document in
-        Button(document.title) { selectDocument(document) }
+        Button(document.title(for: store.settings.taxCountry)) { selectDocument(document) }
       }
       Button("Cancel", role: .cancel) {}
     }
     .confirmationDialog(
-      "Export \(pendingDocument?.title ?? "") as",
+      "Export \(pendingDocument?.title(for: store.settings.taxCountry) ?? "") as",
       isPresented: Binding(get: { pendingDocument != nil }, set: { if !$0 { pendingDocument = nil } }),
       titleVisibility: .visible
     ) {
@@ -80,7 +80,7 @@ struct NativeExportCard: View {
           Text(group.title)
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(OkkleColor.ink)
-          Text(documents.map(\.title).joined(separator: " · "))
+          Text(documents.map { $0.title(for: store.settings.taxCountry) }.joined(separator: " · "))
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .lineLimit(1)
@@ -122,7 +122,7 @@ func nativeMakeExport(_ kinds: [NativeTaxExportKind], store: OkkleStore) -> Nati
 
 @MainActor
 private func nativeMakeExportFile(_ kind: NativeTaxExportKind, store: OkkleStore) -> URL? {
-  let fileName = "Okkle_\(kind.fileStem)_TaxYear-\(nativeTaxYearLabel(for: store.taxYear))_\(nativeTodayStamp()).\(kind.fileExtension)"
+  let fileName = "Okkle_\(kind.fileStem(for: store.settings.taxCountry))_TaxYear-\(nativeTaxYearLabel(for: store.taxYear))_\(nativeTodayStamp()).\(kind.fileExtension)"
     .replacingOccurrences(of: "/", with: "-")
   let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
   do {
@@ -153,21 +153,35 @@ private func nativeMakeExportFile(_ kind: NativeTaxExportKind, store: OkkleStore
 @MainActor
 func nativeSelfAssessmentCsv(store: OkkleStore) -> String {
   let tax = store.taxPosition
+  let country = store.settings.taxCountry
   var rows: [[String]] = [
     ["Field", "Value"],
     ["Tax year", nativeTaxYearLabel(for: store.taxYear)],
     ["Turnover (income)", nativeDecimal(tax.turnover)],
     ["Logged expenses", nativeDecimal(tax.expenses)],
     ["Deduction applied", nativeDecimal(tax.deductionApplied)],
-    ["Taxable profit", nativeDecimal(tax.profit)],
-    ["Income tax band", store.settings.incomeBracket.label],
-    ["Other income", nativeDecimal(store.settings.otherIncome)],
-    ["Estimated Income Tax", nativeDecimal(tax.incomeTax)],
-    ["Estimated Class 4 NIC", nativeDecimal(tax.class4)],
-    ["Estimated total due", nativeDecimal(tax.totalDue)]
+    ["Taxable profit", nativeDecimal(tax.profit)]
   ]
+  switch country {
+  case .uk:
+    rows.append(["Income tax band", store.settings.incomeBracket.label])
+    rows.append(["Other income", nativeDecimal(store.settings.otherIncome)])
+    rows.append(["Estimated Income Tax", nativeDecimal(tax.incomeTax)])
+    rows.append(["Estimated Class 4 NIC", nativeDecimal(tax.class4)])
+  case .us:
+    rows.append(["Standard deduction", nativeDecimal(tax.standardDeduction)])
+    rows.append(["QBI deduction (20%)", nativeDecimal(tax.qbiDeduction)])
+    rows.append(["Other W-2 wages", nativeDecimal(store.settings.otherIncome)])
+    rows.append(["Estimated federal income tax", nativeDecimal(tax.incomeTax)])
+    rows.append(["Estimated self-employment tax", nativeDecimal(tax.class4)])
+    if tax.stateTax > 0 {
+      rows.append(["Estimated state tax (\(store.settings.usState.label))", nativeDecimal(tax.stateTax)])
+    }
+  }
+  rows.append(["Estimated total due", nativeDecimal(tax.totalDue)])
   if tax.paymentOnAccount > 0 {
-    rows.append(["Payment on account (each)", nativeDecimal(tax.paymentOnAccount)])
+    let label = country == .uk ? "Payment on account (each)" : "Suggested quarterly set-aside (1040-ES)"
+    rows.append([label, nativeDecimal(tax.paymentOnAccount)])
   }
   rows.append(["Business miles", nativeDecimal(store.yearMiles)])
   rows.append(["Mileage deduction", nativeDecimal(store.yearMileageDeduction)])
@@ -194,14 +208,21 @@ func nativeMileageCsv(store: OkkleStore) -> String {
   // set at logging time against a running total of zero, so it's only
   // right below the 10,000-mile HMRC simplified-rate threshold; this way
   // the exported total always matches the tax-year figure shown in Reports.
-  let header = "Date,Vehicle,Source,Miles,Basis,Deduction GBP,From,To"
+  let country = store.settings.taxCountry
+  let basis: String
+  switch (country, store.settings.expenseMethod) {
+  case (.uk, .simplified): basis = "HMRC simplified"
+  case (.uk, .actualCost): basis = "Actual cost (no mileage rate)"
+  case (.us, _): basis = "IRS standard mileage"
+  }
+  let header = "Date,Vehicle,Source,Miles,Basis,Deduction \(country.currencyCode),From,To"
   let rows = store.yearMileageLogRows.map { row in
     [
       nativeCsvField(nativeDateStamp(row.date)),
       nativeCsvField(row.vehicle.label),
       nativeCsvField(row.source),
       nativeCsvField(nativeDecimal(row.miles)),
-      nativeCsvField("HMRC simplified"),
+      nativeCsvField(basis),
       nativeCsvField(nativeDecimal(row.deduction)),
       nativeCsvField(row.fromAddress ?? ""),
       nativeCsvField(row.toAddress ?? "")
@@ -212,6 +233,7 @@ func nativeMileageCsv(store: OkkleStore) -> String {
 
 @MainActor
 func nativeFreeAgentCsv(store: OkkleStore) -> String {
+  let country = store.settings.taxCountry
   let rows = store.records
     .filter { ($0.kind == .income || $0.kind == .expense) && (($0.amount ?? 0) > 0) }
     .sorted { $0.date < $1.date }
@@ -229,7 +251,7 @@ func nativeFreeAgentCsv(store: OkkleStore) -> String {
       let cleanNote = record.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       let exportDescription = cleanNote.isEmpty ? description : "\(description) - \(cleanNote)"
       return [
-        nativeCsvField(nativeUkDateStamp(record.date)),
+        nativeCsvField(nativePeriodDateStamp(record.date, country: country)),
         nativeCsvField(nativeDecimal(amount)),
         nativeCsvField(exportDescription)
       ].joined(separator: ",")
@@ -302,6 +324,22 @@ func nativeUkDateStamp(_ date: Date) -> String {
   formatter.locale = Locale(identifier: "en_GB")
   formatter.dateFormat = "dd/MM/yyyy"
   return formatter.string(from: date)
+}
+
+func nativeUsDateStamp(_ date: Date) -> String {
+  let formatter = DateFormatter()
+  formatter.calendar = Calendar(identifier: .gregorian)
+  formatter.locale = Locale(identifier: "en_US")
+  formatter.dateFormat = "MM/dd/yyyy"
+  return formatter.string(from: date)
+}
+
+/// Display date stamp for the jurisdiction the export is for — dd/MM/yyyy
+/// for the UK, MM/dd/yyyy for the US. `nativeDateStamp` (ISO yyyy-MM-dd)
+/// stays the one used for filenames and raw-data CSVs, which want an
+/// unambiguous, locale-independent format regardless of country.
+func nativePeriodDateStamp(_ date: Date, country: NativeTaxCountry) -> String {
+  country == .uk ? nativeUkDateStamp(date) : nativeUsDateStamp(date)
 }
 
 @MainActor
