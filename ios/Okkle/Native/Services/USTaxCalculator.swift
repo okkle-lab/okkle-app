@@ -24,12 +24,21 @@ enum USTaxCalculator {
     return DateInterval(start: start, end: end)
   }
 
-  /// IRS standard mileage rate — a single rate per business mile with no
-  /// UK-style 10,000-mile second tier. 2025: 70¢/mi.
-  static let standardMileageRate = 0.70
+  /// IRS standard mileage rate for business use — a single rate per mile with
+  /// no UK-style 10,000-mile second tier, but it does change by date:
+  /// 2025 = 70¢; 2026 = 72.5¢ from 1 Jan, then 76¢ from 1 Jul (a mid-year fuel
+  /// revision, Notice 2026-10). Verify each year / whenever the IRS revises it.
+  static func standardMileageRate(on date: Date, calendar: Calendar = .current) -> Double {
+    let comps = calendar.dateComponents([.year, .month], from: date)
+    let year = comps.year ?? 2026
+    let month = comps.month ?? 1
+    if year <= 2025 { return 0.70 }
+    if year == 2026 { return month >= 7 ? 0.76 : 0.725 }
+    return 0.76   // most recent known rate; refresh for future tax years
+  }
 
-  static func mileageDeduction(miles: Double) -> Double {
-    max(0, miles) * standardMileageRate
+  static func mileageDeduction(miles: Double, on date: Date = Date()) -> Double {
+    max(0, miles) * standardMileageRate(on: date)
   }
 
   // MARK: - Top-level estimate
@@ -91,8 +100,9 @@ enum USTaxCalculator {
 
   // MARK: - Federal
 
-  /// 2025 standard deduction, single filer.
-  static let standardDeduction = 15_000.0
+  /// 2025 standard deduction, single filer — $15,750 after the One Big
+  /// Beautiful Bill raised it from the $15,000 TCJA projection. Verify annually.
+  static let standardDeduction = 15_750.0
 
   /// 2025 federal self-employment tax: 12.4% Social Security up to the wage
   /// base, 2.9% Medicare on everything, plus the 0.9% Additional Medicare on
@@ -147,7 +157,7 @@ enum USTaxCalculator {
     case .pennsylvania:
       return income * 0.0307   // flat
     case .georgia:
-      return income * 0.0539   // 2024 flat rate; verify current year
+      return income * 0.0519   // 2025 flat rate (phasing down to 4.99%)
     case .otherState:
       return income * max(0, min(otherStateRate, 0.15))
     default:

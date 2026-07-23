@@ -646,7 +646,7 @@ final class OkkleStore: ObservableObject {
       // is no equivalent flat per-mile deduction for a bicycle.
       switch vehicle {
       case .bike: return 0
-      case .car, .van, .motorbike: return USTaxCalculator.mileageDeduction(miles: miles)
+      case .car, .van, .motorbike: return USTaxCalculator.mileageDeduction(miles: miles, on: date)
       }
     }
   }

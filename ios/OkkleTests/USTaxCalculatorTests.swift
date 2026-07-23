@@ -10,10 +10,11 @@ final class USTaxCalculatorTests: XCTestCase {
     // SE tax = 30,000 * 0.9235 * 0.153 = 4,238.87
     XCTAssertEqual(p.class4, 4_238.87, accuracy: 1.0)
     XCTAssertEqual(p.stateTax, 0, accuracy: 0.01)
-    // Federal income tax on the business (10% band after std + QBI deductions)
-    XCTAssertEqual(p.incomeTax, 1_030.45, accuracy: 1.5)
+    // Federal income tax on the business (10% band after $15,750 standard
+    // deduction and the QBI deduction).
+    XCTAssertEqual(p.incomeTax, 970.45, accuracy: 1.5)
     // Total = federal + SE + state
-    XCTAssertEqual(p.totalDue, 5_269.31, accuracy: 2.0)
+    XCTAssertEqual(p.totalDue, 5_209.31, accuracy: 2.0)
     // Quarterly 1040-ES set-aside = total / 4
     XCTAssertEqual(p.paymentOnAccount, p.totalDue / 4, accuracy: 0.01)
     XCTAssertFalse(p.usesTradingAllowance)
@@ -58,7 +59,7 @@ final class USTaxCalculatorTests: XCTestCase {
     // (profit - standard deduction) * rate would give.
     let p = USTaxCalculator.estimate(turnover: 40_000, expenses: 10_000, state: .texas, otherStateRate: 0)
     XCTAssertGreaterThan(p.qbiDeduction, 0)
-    XCTAssertEqual(p.standardDeduction, 15_000, accuracy: 0.01)
+    XCTAssertEqual(p.standardDeduction, 15_750, accuracy: 0.01)
   }
 
   func testUSTaxYearIsCalendarYear() {
@@ -70,9 +71,16 @@ final class USTaxCalculatorTests: XCTestCase {
     XCTAssertEqual(cal.component(.day, from: interval.start), 1)
   }
 
-  func testStandardMileageIsSingleFlatRate() {
-    // No UK-style two-tier threshold — every business mile is the flat rate.
-    XCTAssertEqual(USTaxCalculator.mileageDeduction(miles: 1_000), 700, accuracy: 0.01)
-    XCTAssertEqual(USTaxCalculator.mileageDeduction(miles: 20_000), 14_000, accuracy: 0.01)
+  func testStandardMileageIsSingleFlatRateByDate() {
+    let cal = Calendar(identifier: .gregorian)
+    let in2025 = cal.date(from: DateComponents(year: 2025, month: 6, day: 1))!
+    let early2026 = cal.date(from: DateComponents(year: 2026, month: 3, day: 1))!
+    let late2026 = cal.date(from: DateComponents(year: 2026, month: 8, day: 1))!
+    // No UK-style two-tier threshold, but the flat rate changes by date.
+    XCTAssertEqual(USTaxCalculator.mileageDeduction(miles: 1_000, on: in2025), 700, accuracy: 0.01)     // 70¢
+    XCTAssertEqual(USTaxCalculator.mileageDeduction(miles: 1_000, on: early2026), 725, accuracy: 0.01)  // 72.5¢
+    XCTAssertEqual(USTaxCalculator.mileageDeduction(miles: 1_000, on: late2026), 760, accuracy: 0.01)   // 76¢
+    // Still a single tier — 20k miles is just rate × miles, no threshold break.
+    XCTAssertEqual(USTaxCalculator.mileageDeduction(miles: 20_000, on: in2025), 14_000, accuracy: 0.01)
   }
 }
