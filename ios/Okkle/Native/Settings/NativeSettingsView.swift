@@ -242,7 +242,9 @@ struct NativeProfileSettingsView: View {
             pendingCountry = newValue
           }
         )) {
-          ForEach(NativeTaxCountry.allCases) { Text($0.label).tag($0) }
+          ForEach(NativeTaxCountry.allCases) {
+            Text("\($0.flagEmoji)  \($0.label)").tag($0)
+          }
         }
 
         Picker("Default vehicle", selection: Binding(

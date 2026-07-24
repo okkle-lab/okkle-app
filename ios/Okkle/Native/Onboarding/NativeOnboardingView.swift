@@ -71,13 +71,50 @@ final class NativeOnboardingLocationRequester: NSObject, ObservableObject, CLLoc
   }
 }
 
+struct NativeOnboardingDetectedTaxLocation: Equatable {
+  var country: NativeTaxCountry
+  var region: NativeRegion?
+  var usState: NativeUSState?
+}
+
+func nativeOnboardingDetectedTaxLocation(
+  isoCountryCode: String?,
+  countryName: String?,
+  administrativeArea: String?,
+  subAdministrativeArea: String?
+) -> NativeOnboardingDetectedTaxLocation? {
+  let code = isoCountryCode?
+    .trimmingCharacters(in: .whitespacesAndNewlines)
+    .uppercased()
+  let countryText = countryName?.lowercased() ?? ""
+
+  if code == "US" || code == "USA" || countryText.contains("united states") {
+    return NativeOnboardingDetectedTaxLocation(
+      country: .us,
+      region: nil,
+      usState: NativeUSState.matching(administrativeArea: administrativeArea)
+    )
+  }
+
+  let isUnitedKingdom = code == "GB" || code == "GBR" || code == "UK" ||
+    countryText.contains("united kingdom")
+  guard isUnitedKingdom else { return nil }
+  let area = [administrativeArea, subAdministrativeArea, countryName]
+    .compactMap { $0 }
+    .joined(separator: " ")
+  return NativeOnboardingDetectedTaxLocation(
+    country: .uk,
+    region: area.localizedCaseInsensitiveContains("scotland") ? .scotland : .ruk,
+    usState: nil
+  )
+}
+
 final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocationManagerDelegate {
   @Published var isDetecting = false
   @Published var message: String?
 
   private let manager = CLLocationManager()
-  private var onRegion: ((NativeRegion) -> Void)?
-  private var onUSState: ((NativeUSState) -> Void)?
+  private var onLocation: ((NativeOnboardingDetectedTaxLocation) -> Void)?
 
   override init() {
     super.init()
@@ -85,16 +122,13 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
     manager.desiredAccuracy = kCLLocationAccuracyKilometer
   }
 
-  func detect(onRegion: @escaping (NativeRegion) -> Void) {
-    self.onRegion = onRegion
-    self.onUSState = nil
+  func detect(onLocation: @escaping (NativeOnboardingDetectedTaxLocation) -> Void) {
+    self.onLocation = onLocation
     startDetecting()
   }
 
-  func detectUSState(onUSState: @escaping (NativeUSState) -> Void) {
-    self.onUSState = onUSState
-    self.onRegion = nil
-    startDetecting()
+  func clearMessage() {
+    message = nil
   }
 
   private func startDetecting() {
@@ -107,65 +141,60 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
     case .authorizedAlways, .authorizedWhenInUse:
       manager.requestLocation()
     case .denied, .restricted:
-      finish(message: "Location access is off. Choose your region below.")
+      finish(message: "Location access is off. Choose your country and region or state below.")
     @unknown default:
-      finish(message: "Choose your region below.")
+      finish(message: "Choose your country and region or state below.")
     }
   }
 
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    guard isDetecting else { return }
     switch manager.authorizationStatus {
     case .authorizedAlways, .authorizedWhenInUse:
       manager.requestLocation()
     case .denied, .restricted:
-      finish(message: "Location access is off. Choose your region below.")
+      finish(message: "Location access is off. Choose your country and region or state below.")
     case .notDetermined:
       break
     @unknown default:
-      finish(message: "Choose your region below.")
+      finish(message: "Choose your country and region or state below.")
     }
   }
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     guard let location = locations.last else {
-      finish(message: "Choose your region below.")
+      finish(message: "Choose your country and region or state below.")
       return
     }
 
     CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, _ in
       guard let self else { return }
       let placemark = placemarks?.first
-      if let onUSState = self.onUSState {
-        let state = NativeUSState.matching(administrativeArea: placemark?.administrativeArea)
-        DispatchQueue.main.async {
-          onUSState(state)
-          self.finish(message: "Set to \(state.label).")
+      let detected = nativeOnboardingDetectedTaxLocation(
+        isoCountryCode: placemark?.isoCountryCode,
+        countryName: placemark?.country,
+        administrativeArea: placemark?.administrativeArea,
+        subAdministrativeArea: placemark?.subAdministrativeArea
+      )
+      DispatchQueue.main.async {
+        guard let detected else {
+          self.finish(message: "Okkle currently supports the UK and US. Choose your country below.")
+          return
         }
-      } else {
-        let area = [
-          placemark?.administrativeArea,
-          placemark?.subAdministrativeArea,
-          placemark?.country,
-        ]
-        .compactMap { $0 }
-        .joined(separator: " ")
-        let region: NativeRegion = area.localizedCaseInsensitiveContains("scotland") ? .scotland : .ruk
-        DispatchQueue.main.async {
-          self.onRegion?(region)
-          self.finish(message: "Set to \(region.label).")
-        }
+        self.onLocation?(detected)
+        self.finish(message: nil)
       }
     }
   }
 
   func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-    finish(message: "Could not detect your region. Choose it below.")
+    finish(message: "Could not detect your location. Choose your country and region or state below.")
   }
 
   private func finish(message: String?) {
     self.message = message
     isDetecting = false
-    onRegion = nil
+    onLocation = nil
   }
 }
 
@@ -439,65 +468,107 @@ struct NativeOnboardingView: View {
           subtitle: "Sets your tax year, mileage rate and delivery apps. This is where you live, not where you drive."
         )
 
-        VStack(spacing: 10) {
-          ForEach(NativeTaxCountry.allCases) { item in
-            NativeOnboardingOptionButton(
-              title: item.label,
-              subtitle: item == .us ? "Federal + self-employment tax" : "HMRC Self Assessment",
-              symbol: item == .us ? "flag.fill" : "building.columns.fill",
-              selected: country == item
+        Button {
+          detector.detect { detectedLocation in
+            applyDetectedTaxLocation(detectedLocation)
+          }
+        } label: {
+          HStack(spacing: 10) {
+            if detector.isDetecting {
+              ProgressView()
+                .tint(OkkleColor.brand)
+            } else {
+              Image(systemName: "location.magnifyingglass")
+            }
+            Text(detector.isDetecting ? "Detecting location" : "Detect from my location")
+              .font(.system(size: 16, weight: .bold))
+            Spacer()
+          }
+          .foregroundStyle(OkkleColor.brandDark)
+          .padding(16)
+          .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(detector.isDetecting)
+
+        if let message = detector.message {
+          Text(message)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(OkkleColor.muted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        VStack(spacing: 0) {
+          NativeOnboardingDropdownRow(
+            title: "Country",
+            value: "\(country.flagEmoji)  \(country.label)",
+            symbol: "globe.europe.africa.fill"
+          ) {
+            ForEach(NativeTaxCountry.allCases) { item in
+              Button {
+                detector.clearMessage()
+                selectCountry(item)
+              } label: {
+                if country == item {
+                  Label("\(item.flagEmoji)  \(item.label)", systemImage: "checkmark")
+                } else {
+                  Text("\(item.flagEmoji)  \(item.label)")
+                }
+              }
+            }
+          }
+
+          Divider()
+            .padding(.leading, 52)
+
+          switch country {
+          case .uk:
+            NativeOnboardingDropdownRow(
+              title: "Region",
+              value: region.label,
+              symbol: "map.fill"
             ) {
-              guard country != item else { return }
-              country = item
-              selectedPlatforms = Set(nativePlatformsAfterCountryChange(Array(selectedPlatforms), to: item))
+              ForEach(NativeRegion.allCases) { item in
+                Button {
+                  detector.clearMessage()
+                  region = item
+                } label: {
+                  if region == item {
+                    Label(item.label, systemImage: "checkmark")
+                  } else {
+                    Text(item.label)
+                  }
+                }
+              }
+            }
+          case .us:
+            NativeOnboardingDropdownRow(
+              title: "State",
+              value: usState.label,
+              symbol: "map.fill"
+            ) {
+              ForEach(NativeUSState.allCases) { item in
+                Button {
+                  detector.clearMessage()
+                  usState = item
+                } label: {
+                  if usState == item {
+                    Label(item.label, systemImage: "checkmark")
+                  } else {
+                    Text(item.label)
+                  }
+                }
+              }
             }
           }
         }
+        .background(
+          Color(uiColor: .secondarySystemBackground).opacity(0.86),
+          in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
 
         switch country {
         case .uk:
-          Button {
-            detector.detect { detectedRegion in
-              region = detectedRegion
-            }
-          } label: {
-            HStack(spacing: 10) {
-              if detector.isDetecting {
-                ProgressView()
-                  .tint(OkkleColor.brand)
-              } else {
-                Image(systemName: "location.magnifyingglass")
-              }
-              Text(detector.isDetecting ? "Detecting location" : "Detect from my location")
-                .font(.system(size: 16, weight: .bold))
-              Spacer()
-            }
-            .foregroundStyle(OkkleColor.brandDark)
-            .padding(16)
-            .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-          }
-          .buttonStyle(.plain)
-          .disabled(detector.isDetecting)
-
-          if let message = detector.message {
-            Text(message)
-              .font(.system(size: 13, weight: .semibold))
-              .foregroundStyle(OkkleColor.muted)
-          }
-
-          VStack(spacing: 10) {
-            ForEach(NativeRegion.allCases) { item in
-              NativeOnboardingOptionButton(
-                title: item.label,
-                subtitle: item == .scotland ? "Scottish income-tax bands" : "Rest of UK income-tax bands",
-                symbol: item == .scotland ? "mountain.2.fill" : "map.fill",
-                selected: region == item
-              ) {
-                region = item
-              }
-            }
-          }
-
           Divider().padding(.top, 4)
 
           VStack(alignment: .leading, spacing: 10) {
@@ -527,43 +598,7 @@ struct NativeOnboardingView: View {
               .fixedSize(horizontal: false, vertical: true)
           }
         case .us:
-          Button {
-            detector.detectUSState { detectedState in
-              usState = detectedState
-            }
-          } label: {
-            HStack(spacing: 10) {
-              if detector.isDetecting {
-                ProgressView()
-                  .tint(OkkleColor.brand)
-              } else {
-                Image(systemName: "location.magnifyingglass")
-              }
-              Text(detector.isDetecting ? "Detecting location" : "Detect from my location")
-                .font(.system(size: 16, weight: .bold))
-              Spacer()
-            }
-            .foregroundStyle(OkkleColor.brandDark)
-            .padding(16)
-            .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-          }
-          .buttonStyle(.plain)
-          .disabled(detector.isDetecting)
-
-          if let message = detector.message {
-            Text(message)
-              .font(.system(size: 13, weight: .semibold))
-              .foregroundStyle(OkkleColor.muted)
-          }
-
-          Picker("State", selection: $usState) {
-            ForEach(NativeUSState.allCases) { Text($0.label).tag($0) }
-          }
-          .pickerStyle(.navigationLink)
-          .padding(.horizontal, 4)
-          Text("Used for state income tax. Federal and self-employment tax apply everywhere.")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
+          EmptyView()
         }
       }
       .alert("Use simplified expenses?", isPresented: $showsSimplifiedLockConfirm) {
@@ -877,6 +912,24 @@ struct NativeOnboardingView: View {
       .sorted()
   }
 
+  private func selectCountry(_ newCountry: NativeTaxCountry) {
+    guard country != newCountry else { return }
+    country = newCountry
+    selectedPlatforms = Set(
+      nativePlatformsAfterCountryChange(Array(selectedPlatforms), to: newCountry)
+    )
+  }
+
+  private func applyDetectedTaxLocation(_ detectedLocation: NativeOnboardingDetectedTaxLocation) {
+    selectCountry(detectedLocation.country)
+    if let detectedRegion = detectedLocation.region {
+      region = detectedRegion
+    }
+    if let detectedState = detectedLocation.usState {
+      usState = detectedState
+    }
+  }
+
   private func seedFromStore() {
     guard !didSeed else { return }
     didSeed = true
@@ -1168,6 +1221,7 @@ struct NativeOnboardingOptionButton: View {
   let subtitle: String?
   let symbol: String
   var iconAssetName: String? = nil
+  var emoji: String? = nil
   let selected: Bool
   let action: () -> Void
 
@@ -1214,6 +1268,11 @@ struct NativeOnboardingOptionButton: View {
         .aspectRatio(contentMode: .fill)
         .frame(width: 38, height: 38)
         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+    } else if let emoji {
+      Text(emoji)
+        .font(.system(size: 23))
+        .frame(width: 38, height: 38)
+        .background(selected ? OkkleColor.mint : Color(uiColor: .tertiarySystemBackground), in: Circle())
     } else {
       Image(systemName: symbol)
         .font(.system(size: 18, weight: .bold))
@@ -1221,6 +1280,60 @@ struct NativeOnboardingOptionButton: View {
         .frame(width: 38, height: 38)
         .background(selected ? OkkleColor.mint : Color(uiColor: .tertiarySystemBackground), in: Circle())
     }
+  }
+}
+
+private struct NativeOnboardingDropdownRow<MenuContent: View>: View {
+  let title: String
+  let value: String
+  let symbol: String
+  let menuContent: MenuContent
+
+  init(
+    title: String,
+    value: String,
+    symbol: String,
+    @ViewBuilder menuContent: () -> MenuContent
+  ) {
+    self.title = title
+    self.value = value
+    self.symbol = symbol
+    self.menuContent = menuContent()
+  }
+
+  var body: some View {
+    Menu {
+      menuContent
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: symbol)
+          .font(.system(size: 16, weight: .bold))
+          .foregroundStyle(OkkleColor.brandDark)
+          .frame(width: 32, height: 32)
+          .background(OkkleColor.mint, in: Circle())
+
+        Text(title)
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(OkkleColor.ink)
+
+        Spacer(minLength: 8)
+
+        Text(value)
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(OkkleColor.brandDark)
+          .lineLimit(1)
+
+        Image(systemName: "chevron.up.chevron.down")
+          .font(.system(size: 11, weight: .bold))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      .padding(.horizontal, 14)
+      .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("\(title), \(value)")
+    .accessibilityHint("Double tap to choose")
   }
 }
 

@@ -70,6 +70,13 @@ enum NativeTaxCountry: String, CaseIterable, Identifiable, Codable {
     }
   }
 
+  var flagEmoji: String {
+    switch self {
+    case .uk: return "🇬🇧"
+    case .us: return "🇺🇸"
+    }
+  }
+
   var currencyCode: String {
     switch self {
     case .uk: return "GBP"
@@ -149,6 +156,26 @@ enum NativeUSState: String, CaseIterable, Identifiable, Codable {
     }
   }
 
+  var abbreviation: String? {
+    switch self {
+    case .california: return "CA"
+    case .newYork: return "NY"
+    case .illinois: return "IL"
+    case .pennsylvania: return "PA"
+    case .georgia: return "GA"
+    case .alaska: return "AK"
+    case .florida: return "FL"
+    case .nevada: return "NV"
+    case .southDakota: return "SD"
+    case .tennessee: return "TN"
+    case .texas: return "TX"
+    case .washington: return "WA"
+    case .wyoming: return "WY"
+    case .newHampshire: return "NH"
+    case .otherState: return nil
+    }
+  }
+
   /// True when this state levies no tax on ordinary wage / self-employment
   /// income, so the state layer is a hard zero regardless of profit.
   var hasNoIncomeTax: Bool {
@@ -177,7 +204,11 @@ enum NativeUSState: String, CaseIterable, Identifiable, Codable {
   /// model by name, or if the area couldn't be resolved at all.
   static func matching(administrativeArea: String?) -> NativeUSState {
     guard let administrativeArea else { return .otherState }
-    return allCases.first { $0.label.caseInsensitiveCompare(administrativeArea) == .orderedSame } ?? .otherState
+    let area = administrativeArea.trimmingCharacters(in: .whitespacesAndNewlines)
+    return allCases.first {
+      $0.label.caseInsensitiveCompare(area) == .orderedSame ||
+        ($0.abbreviation?.caseInsensitiveCompare(area) == .orderedSame)
+    } ?? .otherState
   }
 }
 

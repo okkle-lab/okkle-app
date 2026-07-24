@@ -136,10 +136,12 @@ struct NativeKeyboardDoneToolbar: ViewModifier {
     content.toolbar {
       ToolbarItemGroup(placement: .keyboard) {
         Spacer()
-        Button("Done") {
+        Button {
           hideKeyboard()
+        } label: {
+          Text("Done")
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .buttonStyle(.borderless)
       }
     }
   }
