@@ -955,8 +955,20 @@ struct NativeOnboardingView: View {
   @ViewBuilder
   private var iCloudSyncOffer: some View {
     switch iCloudCheckState {
-    case .idle, .none, .declined, .failed(_):
-      EmptyView()
+    case .idle, .none, .declined:
+      Button {
+        loadICloudBackup()
+      } label: {
+        iCloudSyncOfferContent(
+          symbol: "icloud.and.arrow.down.fill",
+          title: "Load from iCloud backup",
+          subtitle: iCloudCheckState == .none
+            ? "No backup found yet. Tap to check again."
+            : "Restore your existing Okkle data before setup",
+          showsChevron: true
+        )
+      }
+      .buttonStyle(.plain)
     case .checking:
       NativeGlassCard {
         HStack(spacing: 12) {
@@ -994,7 +1006,7 @@ struct NativeOnboardingView: View {
       .allowsHitTesting(false)
     case .downloading:
       Button {
-        checkForExistingICloudDataIfNeeded(force: true)
+        checkForExistingICloudDataIfNeeded(force: true, reportsMissingData: true)
       } label: {
         iCloudSyncOfferContent(
           symbol: "icloud.and.arrow.down",
@@ -1004,7 +1016,27 @@ struct NativeOnboardingView: View {
         )
       }
       .buttonStyle(.plain)
+    case .failed(let message):
+      Button {
+        checkForExistingICloudDataIfNeeded(force: true, reportsMissingData: true)
+      } label: {
+        iCloudSyncOfferContent(
+          symbol: "exclamationmark.icloud.fill",
+          title: "Try loading iCloud backup again",
+          subtitle: message,
+          showsChevron: true
+        )
+      }
+      .buttonStyle(.plain)
     }
+  }
+
+  private func loadICloudBackup() {
+    if iCloudCheckState == .available {
+      showICloudSyncPrompt = true
+      return
+    }
+    checkForExistingICloudDataIfNeeded(force: true, reportsMissingData: true)
   }
 
   private func iCloudSyncOfferContent(symbol: String, title: String, subtitle: String, showsChevron: Bool) -> some View {
@@ -1045,7 +1077,10 @@ struct NativeOnboardingView: View {
     return "Found \(summary.name)'s \(itemSummary) in iCloud"
   }
 
-  private func checkForExistingICloudDataIfNeeded(force: Bool = false) {
+  private func checkForExistingICloudDataIfNeeded(
+    force: Bool = false,
+    reportsMissingData: Bool = false
+  ) {
     guard force || iCloudCheckState == .idle else { return }
     guard store.isFreshInstallForICloudOffer else { return }
     iCloudCheckState = .checking
@@ -1053,14 +1088,22 @@ struct NativeOnboardingView: View {
       switch await store.existingICloudDataCheck() {
       case .none:
         iCloudCheckState = .none
+        if reportsMissingData {
+          restoreMessage = "No Okkle backup was found for this iCloud account."
+        }
       case .downloading:
         iCloudCheckState = .downloading
       case .available(let summary):
         iCloudSnapshotSummary = summary
         iCloudCheckState = .available
         showICloudSyncPrompt = true
-      case .unavailable:
-        iCloudCheckState = .none
+      case .unavailable(let message):
+        if reportsMissingData {
+          iCloudCheckState = .failed(message)
+          restoreMessage = message
+        } else {
+          iCloudCheckState = .none
+        }
       }
     }
   }
