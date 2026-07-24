@@ -1627,6 +1627,28 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
 
 
 final class NativeICloudSyncMergeTests: XCTestCase {
+  func testTripFromOlderICloudSnapshotDefaultsMissingCategoryToBusiness() throws {
+    let tripID = UUID()
+    let json = """
+      {
+        "id": "\(tripID.uuidString)",
+        "vehicle": "car",
+        "miles": 12.5,
+        "deduction": 8.4,
+        "startedAt": 1000,
+        "endedAt": 1600,
+        "points": []
+      }
+      """
+
+    let trip = try JSONDecoder().decode(NativeTrip.self, from: Data(json.utf8))
+
+    XCTAssertEqual(trip.id, tripID)
+    XCTAssertEqual(trip.category, .business)
+    XCTAssertNil(trip.currencyCode)
+    XCTAssertNil(trip.analysis)
+  }
+
   func testInsightEvidenceMergesWithTheUserSnapshot() throws {
     let now = Date(timeIntervalSinceReferenceDate: 30_000)
     var localEvidence = NativeInsightEvidence()

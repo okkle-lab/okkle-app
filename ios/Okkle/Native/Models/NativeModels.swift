@@ -516,6 +516,74 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   }
 }
 
+// Keep iCloud snapshots and exported backups readable as NativeTrip evolves.
+// Swift's synthesized Codable conformance does not use a stored property's
+// default when the key is absent, so trips written before `category` existed
+// otherwise make the entire snapshot fail to decode.
+extension NativeTrip {
+  private enum CodingKeys: String, CodingKey {
+    case id
+    case legacyID
+    case updatedAt
+    case source
+    case vehicle
+    case miles
+    case deduction
+    case startedAt
+    case endedAt
+    case points
+    case currencyCode
+    case startAddress
+    case endAddress
+    case feedback
+    case category
+    case manualStopCount
+    case analysis
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+    legacyID = try container.decodeIfPresent(String.self, forKey: .legacyID)
+    updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+    source = try container.decodeIfPresent(NativeTripSource.self, forKey: .source)
+    vehicle = try container.decode(NativeVehicle.self, forKey: .vehicle)
+    miles = try container.decode(Double.self, forKey: .miles)
+    deduction = try container.decode(Double.self, forKey: .deduction)
+    startedAt = try container.decode(Date.self, forKey: .startedAt)
+    endedAt = try container.decode(Date.self, forKey: .endedAt)
+    points = try container.decode([RoutePoint].self, forKey: .points)
+    currencyCode = try container.decodeIfPresent(String.self, forKey: .currencyCode)
+    startAddress = try container.decodeIfPresent(String.self, forKey: .startAddress)
+    endAddress = try container.decodeIfPresent(String.self, forKey: .endAddress)
+    feedback = try container.decodeIfPresent(NativeTripFeedback.self, forKey: .feedback)
+    category = try container.decodeIfPresent(NativeTripCategory.self, forKey: .category) ?? .business
+    manualStopCount = try container.decodeIfPresent(Int.self, forKey: .manualStopCount)
+    analysis = try container.decodeIfPresent(NativeTripAnalysis.self, forKey: .analysis)
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encodeIfPresent(legacyID, forKey: .legacyID)
+    try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+    try container.encodeIfPresent(source, forKey: .source)
+    try container.encode(vehicle, forKey: .vehicle)
+    try container.encode(miles, forKey: .miles)
+    try container.encode(deduction, forKey: .deduction)
+    try container.encode(startedAt, forKey: .startedAt)
+    try container.encode(endedAt, forKey: .endedAt)
+    try container.encode(points, forKey: .points)
+    try container.encodeIfPresent(currencyCode, forKey: .currencyCode)
+    try container.encodeIfPresent(startAddress, forKey: .startAddress)
+    try container.encodeIfPresent(endAddress, forKey: .endAddress)
+    try container.encodeIfPresent(feedback, forKey: .feedback)
+    try container.encode(category, forKey: .category)
+    try container.encodeIfPresent(manualStopCount, forKey: .manualStopCount)
+    try container.encodeIfPresent(analysis, forKey: .analysis)
+  }
+}
+
 enum NativeTripCategory: String, CaseIterable, Identifiable, Codable {
   case business
   case personal
