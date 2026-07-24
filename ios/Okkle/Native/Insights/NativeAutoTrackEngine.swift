@@ -310,15 +310,18 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     motionQueue.name = "uk.okkle.native.auto-track-motion"
     motionQueue.qualityOfService = .utility
     loadLegacyVisits()
-    // The Live Activity's "Done driving"/"Still driving" buttons run
+    // The Live Activity's Pause/Resume/End buttons run
     // in-process (LiveActivityIntent) but can't reference this singleton
     // directly — see OkkleTripLiveActivityIntents.swift for why — so they
     // signal over NotificationCenter instead.
     NotificationCenter.default.addObserver(forName: .nativeLiveActivityStopTrackingRequested, object: nil, queue: .main) { [weak self] _ in
       Task { @MainActor in self?.endCurrentShift() }
     }
-    NotificationCenter.default.addObserver(forName: .nativeLiveActivityStillDrivingRequested, object: nil, queue: .main) { [weak self] _ in
-      Task { @MainActor in self?.confirmStillDriving() }
+    NotificationCenter.default.addObserver(forName: .nativeLiveActivityPauseTrackingRequested, object: nil, queue: .main) { [weak self] _ in
+      Task { @MainActor in self?.pauseCurrentShift() }
+    }
+    NotificationCenter.default.addObserver(forName: .nativeLiveActivityResumeTrackingRequested, object: nil, queue: .main) { [weak self] _ in
+      Task { @MainActor in self?.resumeFromLiveActivity() }
     }
     NotificationCenter.default.addObserver(forName: .nativeManualTripPhaseDidChange, object: nil, queue: .main) { [weak self] _ in
       Task { @MainActor in self?.handleManualTripPhaseChanged() }
@@ -711,11 +714,22 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     }
   }
 
-  /// The Live Activity's "Still driving" button — confirms whatever
+  /// The Live Activity's Resume button — confirms whatever
   /// stationary/dwell window is pending is a false alarm and continues the
   /// same shift, same as CoreMotion detecting real driving motion again.
   func confirmStillDriving() {
     apply(.drivingDetected)
+  }
+
+  private func resumeFromLiveActivity() {
+    switch shiftPhase {
+    case .paused:
+      resumeCurrentShift()
+    case .stationaryPending:
+      confirmStillDriving()
+    case .idle, .driving:
+      break
+    }
   }
 
   func configure(store: OkkleStore, launchedForLocationEvent: Bool = false) {
@@ -1357,7 +1371,14 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     liveShiftVehicle = store?.settings.defaultVehicle ?? .car
     publishLiveShift()
     persistShiftSnapshot()
-    NativeTripLiveActivityController.start(source: "auto", vehicleLabel: liveShiftVehicle.label, miles: 0, elapsed: 0, isDriving: true)
+    NativeTripLiveActivityController.start(
+      source: "auto",
+      vehicleLabel: liveShiftVehicle.label,
+      miles: 0,
+      elapsed: 0,
+      isDriving: true,
+      automaticStartReason: liveActivityStartReason(trigger: trigger)
+    )
     ensureActiveLocationRecording(reason: "Trip start")
     NativeAutoTrackDiagnostics.shared.record(
       kind: "shift.started",
@@ -1368,6 +1389,23 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       handleShiftLocationUpdates(initialLocations)
       persistShiftSnapshot()
     }
+  }
+
+  /// Keep diagnostics technical while presenting the driver with a short,
+  /// understandable explanation of why Okkle enabled tracking on its own.
+  private func liveActivityStartReason(trigger: String?) -> String {
+    if shiftSawVehicleConnection {
+      return "CarPlay or Car Audio detected"
+    }
+    guard let trigger else { return "Driving motion detected" }
+    if trigger.localizedCaseInsensitiveContains("motion") {
+      return "Driving motion detected"
+    }
+    if trigger.localizedCaseInsensitiveContains("speed") ||
+       trigger.localizedCaseInsensitiveContains("displacement") {
+      return "Vehicle movement detected"
+    }
+    return "Driving detected"
   }
 
   func pauseCurrentShift() {
@@ -1394,7 +1432,14 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       title: "Automatic trip paused",
       detail: "Paused by the driver."
     )
-    NativeTripLiveActivityController.update(miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()), isDriving: false, vehicleLabel: liveShiftVehicle.label, force: true)
+    NativeTripLiveActivityController.update(
+      miles: shiftMiles,
+      elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()),
+      isDriving: false,
+      isPausedByUser: true,
+      vehicleLabel: liveShiftVehicle.label,
+      force: true
+    )
   }
 
   func resumeCurrentShift() {
@@ -2591,7 +2636,9 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     NativeTripLiveActivityController.start(
       source: "auto", vehicleLabel: liveShiftVehicle.label,
       miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()),
-      isDriving: phase == .driving
+      isDriving: phase == .driving,
+      isPausedByUser: phase == .paused,
+      automaticStartReason: liveActivityStartReason(trigger: shiftStartTrigger)
     )
 
     switch phase {

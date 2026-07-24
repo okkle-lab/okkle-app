@@ -1,13 +1,16 @@
 import SwiftUI
+
+private struct NativeExportRequest {
+  let document: NativeExportDocument
+  let formats: [NativeExportFormat]
+}
+
 struct NativeExportCard: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var shareItem: NativeShareItem?
   @State private var exportFailed = false
-  // Group row -> document (when a group holds more than one) -> format,
-  // rather than a fixed row per file kind — same underlying exports, far
-  // less to scan, and PDF/CSV/both is only asked where more than one exists.
   @State private var pendingGroup: NativeTaxExportGroup?
-  @State private var pendingDocument: NativeExportDocument?
+  @State private var queuedExport: NativeExportRequest?
 
   var body: some View {
     NativeGlassCard(cornerRadius: 30) {
@@ -26,30 +29,15 @@ struct NativeExportCard: View {
         }
       }
     }
-    .confirmationDialog(
-      pendingGroup?.title ?? "",
-      isPresented: Binding(get: { pendingGroup != nil }, set: { if !$0 { pendingGroup = nil } }),
-      titleVisibility: .visible
-    ) {
-      ForEach(NativeExportDocument.available(for: store.settings.taxCountry).filter { $0.group == pendingGroup }) { document in
-        Button(document.title(for: store.settings.taxCountry)) { selectDocument(document) }
+    .sheet(item: $pendingGroup, onDismiss: performQueuedExport) { group in
+      NativeExportSelectionPanel(group: group, country: store.settings.taxCountry) { request in
+        queuedExport = request
       }
-      Button("Cancel", role: .cancel) {}
-    }
-    .confirmationDialog(
-      "Export \(pendingDocument?.title(for: store.settings.taxCountry) ?? "") as",
-      isPresented: Binding(get: { pendingDocument != nil }, set: { if !$0 { pendingDocument = nil } }),
-      titleVisibility: .visible
-    ) {
-      if let document = pendingDocument {
-        ForEach(document.formats) { format in
-          Button(format.label) { export(document, formats: [format]) }
-        }
-        if document.formats.count > 1 {
-          Button("Both") { export(document, formats: document.formats) }
-        }
-      }
-      Button("Cancel", role: .cancel) {}
+      .presentationDetents([.medium, .large])
+      .presentationDragIndicator(.visible)
+      .presentationBackground(.ultraThinMaterial)
+      .presentationCornerRadius(36)
+      .nativeIPadPagePresentation()
     }
     .sheet(item: $shareItem) { item in
       NativeShareSheet(items: item.urls)
@@ -64,11 +52,7 @@ struct NativeExportCard: View {
   private func groupRow(_ group: NativeTaxExportGroup) -> some View {
     let documents = NativeExportDocument.available(for: store.settings.taxCountry).filter { $0.group == group }
     return Button {
-      if documents.count == 1, let only = documents.first {
-        selectDocument(only)
-      } else {
-        pendingGroup = group
-      }
+      pendingGroup = group
     } label: {
       HStack(spacing: 12) {
         Image(systemName: documents.first?.symbol ?? "doc.fill")
@@ -95,12 +79,10 @@ struct NativeExportCard: View {
     .buttonStyle(.plain)
   }
 
-  private func selectDocument(_ document: NativeExportDocument) {
-    if document.formats.count > 1 {
-      pendingDocument = document
-    } else if let format = document.formats.first {
-      export(document, formats: [format])
-    }
+  private func performQueuedExport() {
+    guard let request = queuedExport else { return }
+    queuedExport = nil
+    export(request.document, formats: request.formats)
   }
 
   private func export(_ document: NativeExportDocument, formats: [NativeExportFormat]) {
@@ -110,6 +92,144 @@ struct NativeExportCard: View {
     } else {
       exportFailed = true
     }
+  }
+}
+
+/// A material-backed bottom sheet matching the Add Record type selector. It
+/// keeps document and format selection in one native panel so iPad never
+/// turns either step into an anchored confirmation popover.
+private struct NativeExportSelectionPanel: View {
+  let group: NativeTaxExportGroup
+  let country: NativeTaxCountry
+  let onSelect: (NativeExportRequest) -> Void
+  @Environment(\.dismiss) private var dismiss
+  @State private var selectedDocument: NativeExportDocument?
+
+  private var documents: [NativeExportDocument] {
+    NativeExportDocument.available(for: country).filter { $0.group == group }
+  }
+
+  private var activeDocument: NativeExportDocument? {
+    selectedDocument ?? (documents.count == 1 ? documents.first : nil)
+  }
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          if let document = activeDocument {
+            formatRows(for: document)
+          } else {
+            documentRows
+          }
+        }
+      }
+      .listStyle(.insetGrouped)
+      .scrollContentBackground(.hidden)
+      .background(Color.clear)
+      .navigationTitle(navigationTitle)
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        if selectedDocument != nil, documents.count > 1 {
+          ToolbarItem(placement: .topBarLeading) {
+            Button {
+              withAnimation(.easeInOut(duration: 0.18)) {
+                selectedDocument = nil
+              }
+            } label: {
+              Label("Back", systemImage: "chevron.left")
+            }
+          }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+            .fontWeight(.semibold)
+        }
+      }
+    }
+  }
+
+  private var navigationTitle: String {
+    guard let document = activeDocument else { return group.title }
+    return document.formats.count > 1 ? "Export \(document.title(for: country))" : group.title
+  }
+
+  @ViewBuilder private var documentRows: some View {
+    ForEach(documents) { document in
+      exportOptionRow(
+        title: document.title(for: country),
+        subtitle: document.subtitle(for: country),
+        symbol: document.symbol
+      ) {
+        if document.formats.count > 1 {
+          withAnimation(.easeInOut(duration: 0.18)) {
+            selectedDocument = document
+          }
+        } else if let format = document.formats.first {
+          choose(document, formats: [format])
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private func formatRows(for document: NativeExportDocument) -> some View {
+    ForEach(document.formats) { format in
+      exportOptionRow(
+        title: format.label,
+        subtitle: format == .pdf ? "A formatted document ready to share" : "Spreadsheet-ready raw data",
+        symbol: format == .pdf ? "doc.richtext.fill" : "tablecells.fill"
+      ) {
+        choose(document, formats: [format])
+      }
+    }
+    if document.formats.count > 1 {
+      exportOptionRow(
+        title: "PDF & CSV",
+        subtitle: "Create both files together",
+        symbol: "doc.on.doc.fill"
+      ) {
+        choose(document, formats: document.formats)
+      }
+    }
+  }
+
+  private func exportOptionRow(
+    title: String,
+    subtitle: String,
+    symbol: String,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      HStack(spacing: 14) {
+        Image(systemName: symbol)
+          .font(.system(size: 18, weight: .bold))
+          .foregroundStyle(OkkleColor.brand)
+          .frame(width: 38, height: 38)
+          .background(OkkleColor.brand.opacity(0.13), in: Circle())
+        VStack(alignment: .leading, spacing: 3) {
+          Text(title)
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(OkkleColor.ink)
+          Text(subtitle)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Spacer(minLength: 10)
+        Image(systemName: "chevron.right")
+          .font(.system(size: 13, weight: .semibold))
+          .foregroundStyle(.tertiary)
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+    .listRowBackground(Color.white.opacity(0.20))
+  }
+
+  private func choose(_ document: NativeExportDocument, formats: [NativeExportFormat]) {
+    onSelect(NativeExportRequest(document: document, formats: formats))
+    dismiss()
   }
 }
 

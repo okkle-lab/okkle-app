@@ -52,11 +52,17 @@ final class NativeRankAnnotation: MKPointAnnotation {
   var weight: Double = 0.5
 }
 
+enum NativeShiftMapPresentation {
+  case history
+  case recommendation
+}
+
 struct NativeShiftMapRepresentable: UIViewRepresentable {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
   var interactive: Bool = false
   var pinLimit: Int = 5
+  var presentation: NativeShiftMapPresentation = .history
   @ObservedObject private var locator = NativeOneShotLocator.shared
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
 
@@ -77,30 +83,40 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     mapView.removeOverlays(mapView.overlays)
     mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
 
-    for trip in trips {
-      let coordinates = trip.points.map(\.coordinate)
-      guard coordinates.count > 1 else { continue }
-      let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-      mapView.addOverlay(polyline)
+    if presentation == .history {
+      for trip in trips {
+        let coordinates = trip.points.map(\.coordinate)
+        guard coordinates.count > 1 else { continue }
+        let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+        mapView.addOverlay(polyline)
+      }
     }
 
-    // Zones layer gradually as stops accumulate — with none yet, nothing draws
-    // and the map just centres on you; each new pattern adds a coloured cell.
-    for zone in zones {
-      let circle = NativeZoneCircle(center: zone.coordinate, radius: 220)
+    // The recommendation surface strips away routes and pins, leaving only a
+    // soft heat glow over the learned zones. Zone weights already combine the
+    // driver's past stops with the cached Apple Maps food/shopping-area prior.
+    let displayedZones = presentation == .recommendation
+      ? nativeTopZones(zones, near: locator.coordinate, limit: 5)
+      : zones
+    for zone in displayedZones {
+      let radius: CLLocationDistance = presentation == .recommendation ? 480 : 220
+      let circle = NativeZoneCircle(center: zone.coordinate, radius: radius)
       circle.weight = zone.weight
+      circle.rendersAsGlow = presentation == .recommendation
       mapView.addOverlay(circle)
     }
 
-    // Numbered pins that line up with the "Where to go" list — pin 2 is list
-    // row 2, the same named place — so the ranking reads as one idea.
     let ranked = nativeRankedAreas(zones, near: locator.coordinate, namer: areaNamer, limit: pinLimit)
-    for area in ranked {
-      let pin = NativeRankAnnotation()
-      pin.coordinate = area.coordinate
-      pin.rank = area.rank
-      pin.weight = area.weight
-      mapView.addAnnotation(pin)
+    if presentation == .history {
+      // Numbered pins that line up with the "Where to go" list — pin 2 is list
+      // row 2, the same named place — so the ranking reads as one idea.
+      for area in ranked {
+        let pin = NativeRankAnnotation()
+        pin.coordinate = area.coordinate
+        pin.rank = area.rank
+        pin.weight = area.weight
+        mapView.addAnnotation(pin)
+      }
     }
 
     // Both the mini preview and the full detail map centre on you — when your
@@ -116,7 +132,11 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     // anything to do with the driver. The actual driven routes are real
     // data already in hand at that point, so their centroid is a far
     // better stand-in than a fixed default.
-    if !interactive {
+    if presentation == .recommendation {
+      let focus = displayedZones.first?.coordinate ?? tripsCentroid ?? locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
+      let delta = interactive ? 0.055 : 0.04
+      mapView.setRegion(MKCoordinateRegion(center: focus, span: MKCoordinateSpan(latitudeDelta: delta, longitudeDelta: delta)), animated: false)
+    } else if !interactive {
       let focus = ranked.first?.coordinate ?? tripsCentroid ?? locator.coordinate ?? CLLocationCoordinate2D(latitude: 51.5072, longitude: -0.1276)
       mapView.setRegion(MKCoordinateRegion(center: focus, span: MKCoordinateSpan(latitudeDelta: 0.055, longitudeDelta: 0.055)), animated: false)
     } else {
@@ -147,6 +167,9 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
         return renderer
       }
       if let circle = overlay as? NativeZoneCircle {
+        if circle.rendersAsGlow {
+          return NativeZoneGlowRenderer(circle: circle)
+        }
         let color = nativeHeatUIColor(circle.weight)
         let renderer = MKCircleRenderer(circle: circle)
         renderer.fillColor = color.withAlphaComponent(0.34)
@@ -174,8 +197,90 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
   }
 }
 
-/// A small live heat-map of your busy areas, right on the daily panel — a glance
-/// tells you where the warm patches are. Tap to open the full explorable map.
+/// A radial overlay with a vivid centre and transparent edge, so the map reads
+/// as a recommendation heat map instead of a collection of bordered circles.
+final class NativeZoneGlowRenderer: MKCircleRenderer {
+  private let glowColor: UIColor
+
+  override init(circle: MKCircle) {
+    let weight = (circle as? NativeZoneCircle)?.weight ?? 0.5
+    glowColor = nativeHeatUIColor(weight)
+    super.init(circle: circle)
+  }
+
+  override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+    let drawRect = rect(for: overlay.boundingMapRect)
+    guard drawRect.width > 0, drawRect.height > 0 else { return }
+    let strength = 0.5 + (((overlay as? NativeZoneCircle)?.weight ?? 0.5) * 0.35)
+    let colors = [
+      glowColor.withAlphaComponent(strength).cgColor,
+      glowColor.withAlphaComponent(strength * 0.38).cgColor,
+      glowColor.withAlphaComponent(0).cgColor
+    ] as CFArray
+    guard let gradient = CGGradient(
+      colorsSpace: CGColorSpaceCreateDeviceRGB(),
+      colors: colors,
+      locations: [0, 0.42, 1]
+    ) else { return }
+
+    context.saveGState()
+    context.addEllipse(in: drawRect)
+    context.clip()
+    let center = CGPoint(x: drawRect.midX, y: drawRect.midY)
+    context.drawRadialGradient(
+      gradient,
+      startCenter: center,
+      startRadius: 0,
+      endCenter: center,
+      endRadius: max(drawRect.width, drawRect.height) / 2,
+      options: []
+    )
+    context.restoreGState()
+  }
+}
+
+/// The focused Place preview for Today: historical routes and ranking pins are
+/// intentionally hidden so the strongest recommendation is clear at a glance.
+struct NativeRecommendationHeatMap: View {
+  let trips: [NativeTrip]
+  let zones: [NativeZonePoint]
+  @State private var showDetail = false
+
+  var body: some View {
+    Button { showDetail = true } label: {
+      ZStack(alignment: .bottomTrailing) {
+        NativeShiftMapRepresentable(
+          trips: trips,
+          zones: zones,
+          interactive: false,
+          pinLimit: 0,
+          presentation: .recommendation
+        )
+        .frame(height: 180)
+        .allowsHitTesting(false)
+        HStack(spacing: 5) {
+          Image(systemName: "arrow.up.left.and.arrow.down.right")
+          Text("Expand")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.thinMaterial, in: Capsule())
+        .padding(10)
+      }
+      .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Open recommended areas heat map")
+    .sheet(isPresented: $showDetail) {
+      NativeShiftMapDetailView(trips: trips, zones: zones, presentation: .recommendation)
+    }
+  }
+}
+
+/// A compact historical heat-map used by the longer-period overviews. Tap to
+/// open the full explorable map with routes and ranked pins.
 struct NativeZoneMiniMap: View {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
@@ -328,25 +433,30 @@ func nativeOpenDirections(to coordinate: CLLocationCoordinate2D, name: String, a
 struct NativeShiftMapDetailView: View {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
+  var presentation: NativeShiftMapPresentation = .history
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: true)
+        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: true, presentation: presentation)
           .ignoresSafeArea(edges: .bottom)
         VStack(spacing: 16) {
-          Text("Numbered pins are your busiest areas near you, ranked 1–5. Warmer patches are where you pick up and drop off most.")
+          Text(presentation == .recommendation
+               ? "Brighter glows mark the areas that best combine your past trip patterns with nearby shopping and food activity."
+               : "Numbered pins are your busiest areas near you, ranked 1–5. Warmer patches are where you pick up and drop off most.")
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-          NativeHeatLegend()
+          if presentation == .history {
+            NativeHeatLegend()
+          }
         }
         .padding(20)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
       }
-      .navigationTitle("Where you earn")
+      .navigationTitle(presentation == .recommendation ? "Where to go" : "Where you earn")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {

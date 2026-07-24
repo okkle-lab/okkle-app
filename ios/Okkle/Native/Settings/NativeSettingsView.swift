@@ -45,7 +45,7 @@ struct NativeSettingsPlatformsSection: View {
         }
       }
     } header: {
-      Text("Platforms")
+      Text("Delivery apps")
     } footer: {
       Text("Choose the platforms you use for logging. Turn on Other to add a custom delivery app.")
     }
@@ -225,43 +225,16 @@ struct NativeSettingsProfileHeader: View {
 
 struct NativeProfileSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
-
-  var body: some View {
-    Form {
-      Section("Profile") {
-        TextField("Name", text: Binding(
-          get: { store.settings.name },
-          set: { store.settings.name = $0 }
-        ))
-
-        Picker("Default vehicle", selection: Binding(
-          get: { store.settings.defaultVehicle },
-          set: { store.settings.defaultVehicle = $0 }
-        )) {
-          ForEach(NativeVehicle.allCases) { vehicle in
-            Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
-          }
-        }
-      }
-
-      NativeSettingsPlatformsSection()
-    }
-    .navigationTitle("Profile details")
-    .navigationBarTitleDisplayMode(.inline)
-  }
-}
-
-// MARK: Tax settings
-
-struct NativeTaxSettingsView: View {
-  @EnvironmentObject private var store: OkkleStore
-  @State private var showsSimplifiedLockConfirm = false
-  @State private var showsActualCostConfirm = false
   @State private var pendingCountry: NativeTaxCountry?
 
   var body: some View {
     Form {
       Section {
+        TextField("Name", text: Binding(
+          get: { store.settings.name },
+          set: { store.settings.name = $0 }
+        ))
+
         Picker("Country", selection: Binding(
           get: { store.settings.taxCountry },
           set: { newValue in
@@ -271,10 +244,54 @@ struct NativeTaxSettingsView: View {
         )) {
           ForEach(NativeTaxCountry.allCases) { Text($0.label).tag($0) }
         }
+
+        Picker("Default vehicle", selection: Binding(
+          get: { store.settings.defaultVehicle },
+          set: { store.settings.defaultVehicle = $0 }
+        )) {
+          ForEach(NativeVehicle.allCases) { vehicle in
+            Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
+          }
+        }
+      } header: {
+        Text("Profile")
       } footer: {
-        Text("Sets your tax year, mileage rate and how your estimate is calculated. Okkle gives estimates to keep you organised — it is not tax advice and does not file your return.")
+        Text("Country sets your currency and common delivery apps. Region and tax details stay under Tax profile.")
       }
 
+      NativeSettingsPlatformsSection()
+    }
+    .navigationTitle("Profile details")
+    .navigationBarTitleDisplayMode(.inline)
+    .alert(
+      "Switch to \(pendingCountry?.label ?? "")?",
+      isPresented: Binding(get: { pendingCountry != nil }, set: { if !$0 { pendingCountry = nil } })
+    ) {
+      Button("Cancel", role: .cancel) {}
+      Button("Switch") {
+        if let country = pendingCountry {
+          var updated = store.settings
+          updated.taxCountry = country
+          updated.platforms = nativePlatformsAfterCountryChange(updated.platforms, to: country)
+          store.settings = updated
+        }
+        pendingCountry = nil
+      }
+    } message: {
+      Text("This updates your currency, tax rules and delivery-app list for \(pendingCountry?.label ?? ""). Past records stay unchanged, but Reports and tax estimates will recalculate.")
+    }
+  }
+}
+
+// MARK: Tax settings
+
+struct NativeTaxSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+  @State private var showsSimplifiedLockConfirm = false
+  @State private var showsActualCostConfirm = false
+
+  var body: some View {
+    Form {
       switch store.settings.taxCountry {
       case .uk:
         ukTaxSection
@@ -287,20 +304,6 @@ struct NativeTaxSettingsView: View {
     .navigationTitle("Tax profile")
     .navigationBarTitleDisplayMode(.inline)
     .nativeKeyboardDoneToolbar()
-    .alert(
-      "Switch to \(pendingCountry?.label ?? "")?",
-      isPresented: Binding(get: { pendingCountry != nil }, set: { if !$0 { pendingCountry = nil } })
-    ) {
-      Button("Cancel", role: .cancel) {}
-      Button("Switch") {
-        if let newCountry = pendingCountry {
-          store.settings.taxCountry = newCountry
-        }
-        pendingCountry = nil
-      }
-    } message: {
-      Text("This changes your currency, tax year and every figure in Reports to \(pendingCountry?.label ?? "")'s rules. Past records aren't affected, but your tax estimate, saved amount and exports will all recalculate.")
-    }
     .alert("Use simplified expenses?", isPresented: $showsSimplifiedLockConfirm) {
       Button("Cancel", role: .cancel) {}
       Button("Confirm") {
@@ -431,8 +434,6 @@ struct NativeTaxSettingsView: View {
       }
 
       NativeSettingsOtherIncomeField()
-    } header: {
-      Text("United States")
     } footer: {
       Text("Estimate covers federal income tax, self-employment tax (Social Security + Medicare) and state income tax. The other income field is your W-2 wages, if any. Figures are estimates, not tax advice — you or your accountant file your return.")
     }
@@ -1112,6 +1113,14 @@ struct NativeDataSettingsView: View {
           }
         }
 
+        if iCloudSyncCanRetry {
+          Button {
+            store.retryICloudSync()
+          } label: {
+            Label("Retry iCloud sync", systemImage: "arrow.clockwise")
+          }
+        }
+
       } header: {
         Text("iCloud sync")
       }
@@ -1263,8 +1272,10 @@ struct NativeDataSettingsView: View {
       return "icloud.slash"
     case .unavailable, .failed:
       return "exclamationmark.icloud"
-    case .syncing, .waitingForDownload:
+    case .syncing:
       return "icloud.and.arrow.up"
+    case .waitingForDownload:
+      return "icloud.and.arrow.down"
     case .synced:
       return "checkmark.icloud"
     }
@@ -1280,6 +1291,15 @@ struct NativeDataSettingsView: View {
       return OkkleColor.brand
     case .synced:
       return .green
+    }
+  }
+
+  private var iCloudSyncCanRetry: Bool {
+    switch store.iCloudSyncState {
+    case .waitingForDownload, .unavailable, .failed:
+      return true
+    case .disabled, .syncing, .synced:
+      return false
     }
   }
 }

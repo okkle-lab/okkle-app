@@ -449,11 +449,7 @@ struct NativeOnboardingView: View {
             ) {
               guard country != item else { return }
               country = item
-              // Reset the platform selection to this market's default unless
-              // the driver has already picked something bespoke.
-              if selectedPlatforms.count <= 1 {
-                selectedPlatforms = [nativeOnboardingPlatforms(for: item).first ?? "Uber Eats"]
-              }
+              selectedPlatforms = Set(nativePlatformsAfterCountryChange(Array(selectedPlatforms), to: item))
             }
           }
         }

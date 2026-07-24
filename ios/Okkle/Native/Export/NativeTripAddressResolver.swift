@@ -30,7 +30,10 @@ enum NativeTripAddressResolver {
       let candidates: [NativeTrip] = await MainActor.run {
         Array(
           store.yearTrips
-            .filter { $0.startAddress == nil && !$0.points.isEmpty }
+            .filter {
+              !$0.points.isEmpty &&
+                ($0.startAddress == nil || $0.endAddress == nil || $0.currencyCode == nil)
+            }
             .sorted { $0.startedAt > $1.startedAt }
             .prefix(limit)
         )
@@ -44,23 +47,42 @@ enum NativeTripAddressResolver {
   private static func resolve(trip: NativeTrip, store: OkkleStore) async {
     guard let first = trip.points.first else { return }
     let last = trip.points.last ?? first
-    let startAddress = await address(for: CLLocationCoordinate2D(latitude: first.latitude, longitude: first.longitude))
-    let endAddress = await address(for: CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude))
-    guard startAddress != nil || endAddress != nil else { return }
+    let start = await placeDetails(for: CLLocationCoordinate2D(latitude: first.latitude, longitude: first.longitude))
+    let end = await placeDetails(for: CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude))
+    let currencyCode = start.currencyCode ?? end.currencyCode
+    guard start.address != nil || end.address != nil || currencyCode != nil else { return }
     await MainActor.run {
       guard var updated = store.trips.first(where: { $0.id == trip.id }) else { return }
-      updated.startAddress = startAddress ?? updated.startAddress
-      updated.endAddress = endAddress ?? updated.endAddress
+      updated.startAddress = start.address ?? updated.startAddress
+      updated.endAddress = end.address ?? updated.endAddress
+      updated.currencyCode = currencyCode ?? updated.currencyCode
       store.updateTrip(updated)
     }
   }
 
-  private static func address(for coordinate: CLLocationCoordinate2D) async -> String? {
+  private struct PlaceDetails {
+    var address: String?
+    var currencyCode: String?
+  }
+
+  private static func placeDetails(for coordinate: CLLocationCoordinate2D) async -> PlaceDetails {
     await withCheckedContinuation { continuation in
       CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) { placemarks, _ in
-        continuation.resume(returning: placemarks?.first.flatMap(formattedAddress))
+        guard let placemark = placemarks?.first else {
+          continuation.resume(returning: PlaceDetails())
+          return
+        }
+        continuation.resume(returning: PlaceDetails(
+          address: formattedAddress(placemark),
+          currencyCode: currencyCode(for: placemark)
+        ))
       }
     }
+  }
+
+  private static func currencyCode(for placemark: CLPlacemark) -> String? {
+    guard let countryCode = placemark.isoCountryCode else { return nil }
+    return Locale(identifier: "en_\(countryCode)").currency?.identifier
   }
 
   private static func formattedAddress(_ placemark: CLPlacemark) -> String? {

@@ -18,8 +18,9 @@ struct NativeLogView: View {
   @State private var receiptItem: PhotosPickerItem?
   @State private var receiptImage: UIImage?
   @State private var receiptData: Data?
-  @State private var receiptScanMessage = "Add a receipt and Okkle will try to fill the expense details."
+  @State private var receiptScanMessage = ""
   @State private var receiptScanning = false
+  @State private var dateEditedByUser = false
   @State private var showCamera = false
   @State private var savedRecord: NativeRecord?
   @State private var showSavedNotice = false
@@ -29,7 +30,6 @@ struct NativeLogView: View {
   private let screenTitle: String
   private let screenSubtitle: String
   private let onCloseAction: () -> Void
-  private let onViewRecordsAction: () -> Void
 
   private enum LogStep: String {
     case kind
@@ -50,8 +50,7 @@ struct NativeLogView: View {
     allowedKinds: [NativeLogKind] = NativeLogKind.allCases,
     title: String = "Log",
     subtitle: String = "Add one record at a time.",
-    onClose: @escaping () -> Void,
-    onViewRecords: @escaping () -> Void
+    onClose: @escaping () -> Void
   ) {
     let normalizedKinds = NativeLogView.normalizedKinds(allowedKinds)
     let startingKind = normalizedKinds.contains(initialKind) ? initialKind : normalizedKinds[0]
@@ -61,7 +60,6 @@ struct NativeLogView: View {
     self.screenTitle = title
     self.screenSubtitle = subtitle
     self.onCloseAction = onClose
-    self.onViewRecordsAction = onViewRecords
   }
 
   var body: some View {
@@ -212,7 +210,7 @@ struct NativeLogView: View {
   private var receiptStep: some View {
     VStack(alignment: .leading, spacing: 12) {
       receiptBetaPanel
-      Text(kind == .income ? "This is optional. Attach a payout screenshot if you want it stored with the record." : "This is optional. Okkle will try to read the receipt, but you can always enter details yourself.")
+      Text(kind == .income ? "This is optional. Okkle will try to read the payout amount and date, and you can correct either before saving." : "This is optional. Okkle will try to read the receipt amount, date and details, but you can always enter them yourself.")
         .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(OkkleColor.muted)
     }
@@ -291,7 +289,17 @@ struct NativeLogView: View {
       }
       .pickerStyle(.segmented)
 
-      DatePicker(period == .week ? "Week ending" : "Date", selection: $date, displayedComponents: .date)
+      DatePicker(
+        period == .week ? "Week ending" : "Date",
+        selection: Binding(
+          get: { date },
+          set: { newDate in
+            date = newDate
+            dateEditedByUser = true
+          }
+        ),
+        displayedComponents: .date
+      )
         .datePickerStyle(.compact)
 
       Text(dateCaption)
@@ -508,12 +516,14 @@ struct NativeLogView: View {
   }
 
   private var receiptPanelMessage: String {
-    if kind == .income {
-      return receiptData == nil
-        ? "Attach a payout screenshot or other proof for your records."
-        : "Photo attached and ready to save with this earning."
+    if receiptData == nil {
+      return kind == .income
+        ? "Add a payout screenshot and Okkle will try to fill the amount and date."
+        : "Add a receipt and Okkle will try to fill the amount, date and expense details."
     }
-    return receiptScanning ? "Scanning receipt..." : receiptScanMessage
+    return receiptScanning
+      ? (kind == .income ? "Scanning payout..." : "Scanning receipt...")
+      : receiptScanMessage
   }
 
   private func goBack() {
@@ -624,31 +634,17 @@ struct NativeLogView: View {
         }
         .frame(maxWidth: 360)
 
-        HStack(spacing: 12) {
-          Button {
-            resetEntry()
-            onCloseAction()
-          } label: {
-            Text("Done")
-              .font(.system(size: 16, weight: .bold))
-              .frame(maxWidth: .infinity)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.large)
-          .tint(.white)
-
-          Button {
-            resetEntry()
-            onViewRecordsAction()
-          } label: {
-            Text("View records")
-              .font(.system(size: 16, weight: .bold))
-              .frame(maxWidth: .infinity)
-          }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.large)
-          .tint(.green)
+        Button {
+          resetEntry()
+          onCloseAction()
+        } label: {
+          Text("Done")
+            .font(.system(size: 16, weight: .bold))
+            .frame(maxWidth: .infinity)
         }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .tint(.green)
         .frame(maxWidth: 360)
 
         Spacer()
@@ -759,7 +755,7 @@ struct NativeLogView: View {
   private var receiptBetaPanel: some View {
     ZStack(alignment: .topTrailing) {
       VStack(alignment: .leading, spacing: 12) {
-        Label(kind == .income ? "Photo attachment" : "Receipt scan", systemImage: kind == .income ? "photo" : "wand.and.stars")
+        Label(kind == .income ? "Payout scan" : "Receipt scan", systemImage: "wand.and.stars")
           .font(.system(size: 15, weight: .heavy))
           .foregroundStyle(OkkleColor.brandDark)
           .padding(.trailing, 74)
@@ -818,24 +814,31 @@ struct NativeLogView: View {
   }
 
   private func scanReceipt(_ data: Data) {
-    guard kind == .expense, let image = UIImage(data: data), let cgImage = image.cgImage else { return }
+    guard kind != .mileage, let image = UIImage(data: data), let cgImage = image.cgImage else { return }
+    let scanKind = kind
+    let dateOrder: NativeReceiptDateOrder = store.settings.taxCountry == .us ? .monthDayYear : .dayMonthYear
     receiptScanning = true
-    receiptScanMessage = "Scanning receipt..."
+    receiptScanMessage = scanKind == .income ? "Scanning payout..." : "Scanning receipt..."
 
     let request = VNRecognizeTextRequest { request, error in
       let observations = request.results as? [VNRecognizedTextObservation] ?? []
       let lines = observations.compactMap { $0.topCandidates(1).first?.string }
-      let parsed = nativeParseReceipt(lines: lines)
+      let parsed = nativeParseReceipt(lines: lines, dateOrder: dateOrder)
+      let result = scanKind == .income
+        ? NativeReceiptScanResult(amount: parsed.amount, date: parsed.date, category: nil, merchant: nil)
+        : parsed
 
       DispatchQueue.main.async {
         receiptScanning = false
-        applyReceiptScan(parsed)
-        if parsed.hasValues {
-          receiptScanMessage = parsed.summary
+        applyReceiptScan(result)
+        if result.hasValues {
+          receiptScanMessage = result.summary
         } else if let error {
-          receiptScanMessage = "Could not scan this receipt. \(error.localizedDescription)"
+          receiptScanMessage = "Could not scan this image. \(error.localizedDescription)"
         } else {
-          receiptScanMessage = "Could not confidently read amount, category or merchant. You can still enter them manually."
+          receiptScanMessage = scanKind == .income
+            ? "Could not confidently read an amount or date. You can still enter them manually."
+            : "Could not confidently read an amount, date, category or merchant. You can still enter them manually."
         }
       }
     }
@@ -848,7 +851,7 @@ struct NativeLogView: View {
       } catch {
         DispatchQueue.main.async {
           receiptScanning = false
-          receiptScanMessage = "Could not scan this receipt. \(error.localizedDescription)"
+          receiptScanMessage = "Could not scan this image. \(error.localizedDescription)"
         }
       }
     }
@@ -857,6 +860,9 @@ struct NativeLogView: View {
   private func applyReceiptScan(_ result: NativeReceiptScanResult) {
     if amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let parsedAmount = result.amount {
       amount = String(format: "%.2f", parsedAmount)
+    }
+    if !dateEditedByUser, let parsedDate = result.date {
+      date = parsedDate
     }
     if category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let parsedCategory = result.category {
       category = parsedCategory
@@ -999,8 +1005,9 @@ struct NativeLogView: View {
     receiptImage = nil
     receiptData = nil
     receiptItem = nil
-    receiptScanMessage = "Add a receipt and Okkle will try to fill the expense details."
+    receiptScanMessage = ""
     receiptScanning = false
+    dateEditedByUser = false
     savedRecord = nil
     showSavedNotice = false
     stepIndex = 0

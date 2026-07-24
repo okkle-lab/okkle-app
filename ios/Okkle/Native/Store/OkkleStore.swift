@@ -320,6 +320,11 @@ final class OkkleStore: ObservableObject {
     NativeICloudSyncEngine.shared.refresh(store: self)
   }
 
+  func retryICloudSync() {
+    guard settings.iCloudSyncEnabled else { return }
+    NativeICloudSyncEngine.shared.retry(store: self)
+  }
+
   func existingICloudDataCheck() async -> NativeICloudRemoteSnapshotCheck {
     await NativeICloudSyncEngine.shared.remoteSnapshotSummary()
   }
@@ -368,8 +373,12 @@ final class OkkleStore: ObservableObject {
   func updateTrip(_ trip: NativeTrip) {
     guard let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
     var updated = trip
+    let routeChanged = updated.points != trips[index].points
     updated.source = updated.source ?? trips[index].source ?? updated.analysis?.source ?? .unknown
-    if updated.points != trips[index].points || updated.analysis?.isCurrent(for: updated) != true {
+    if routeChanged {
+      updated.currencyCode = nativeTripCurrencyCode(for: updated.points)
+    }
+    if routeChanged || updated.analysis?.isCurrent(for: updated) != true {
       let previousAnalysis = trips[index].analysis ?? updated.analysis
       updated.analysis = NativeTripAnalysisProjector.build(
         for: updated,
@@ -382,6 +391,9 @@ final class OkkleStore: ObservableObject {
     updated.updatedAt = Date()
     tripTombstones.removeAll { $0.id == updated.id }
     trips[index] = updated
+    if routeChanged {
+      NativeTripAddressResolver.resolveAddresses(for: updated.id, store: self)
+    }
   }
 
   func setTripCategory(_ trip: NativeTrip, to category: NativeTripCategory) {

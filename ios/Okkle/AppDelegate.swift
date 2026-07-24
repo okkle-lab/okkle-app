@@ -11,6 +11,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     UNUserNotificationCenter.current().delegate = NativeNotificationRouter.shared
+    NativeTripLiveActivityController.configureLifecycle()
     NativeManualTripStopNotification.registerCategory()
     NativeWatchTripConnector.shared.configure()
     let launchedForLocationEvent = launchOptions?[.location] != nil

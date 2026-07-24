@@ -100,7 +100,7 @@ struct NativeTripView: View {
       }
     } message: {
       if let completedTrip {
-        Text("\(miles(completedTrip.miles)) with \(gbp(completedTrip.deduction, whole: true)) deduction.")
+        Text("\(miles(completedTrip.miles)) with \(nativeMoney(completedTrip.deduction, currencyCode: completedTrip.displayCurrencyCode, whole: true)) deduction.")
       }
     }
     .alert("Still tracking this trip?", isPresented: Binding(
@@ -787,7 +787,7 @@ struct NativeTripView: View {
   private var trackingDeductionRow: some View {
     carouselCard {
       HStack(spacing: 12) {
-        Image(systemName: nativeCurrencySymbolName("sterlingsign.arrow.circlepath"))
+        Image(systemName: nativeCurrencySymbolName("sterlingsign.arrow.circlepath", currencyCode: trackingCurrencyCode))
           .font(.system(size: 17, weight: .bold))
           .foregroundStyle(.green)
           .frame(width: 36, height: 36)
@@ -804,7 +804,11 @@ struct NativeTripView: View {
 
         Spacer(minLength: 12)
 
-        Text(gbp(store.calcDeduction(miles: trackingMiles, vehicle: trackingVehicle), whole: true))
+        Text(nativeMoney(
+          store.calcDeduction(miles: trackingMiles, vehicle: trackingVehicle),
+          currencyCode: trackingCurrencyCode,
+          whole: true
+        ))
           .font(.system(size: 20, weight: .bold, design: .rounded))
           .foregroundStyle(trackingPrimaryText)
       }
@@ -927,6 +931,10 @@ struct NativeTripView: View {
 
   private var trackingVehicle: NativeVehicle {
     isAutomaticTrackingVisible ? autoTrack.liveShiftVehicle : session.vehicle
+  }
+
+  private var trackingCurrencyCode: String {
+    nativeTripCurrencyCode(for: trackingPoints) ?? nativeActiveCurrencyCode
   }
 
   private var trackingElapsed: TimeInterval {
