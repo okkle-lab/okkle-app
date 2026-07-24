@@ -140,6 +140,45 @@ final class TaxCalculatorTests: XCTestCase {
     XCTAssertTrue(wave.hasPrefix("Date,Description,Amount\n03/09/2026,"))
   }
 
+  // A US driver only ever sees QuickBooks/Xero/Wave (FreeAgent and Sage are
+  // both UK-only products, filtered out of NativeExportDocument.available).
+  // QuickBooks Online's CSV importer wants dd/mm/yyyy regardless of country
+  // (a well-documented QBO quirk, confirmed via multiple en-us support
+  // threads about it silently swapping day/month otherwise) — Xero and Wave
+  // do vary by region/product, so this locks in the country-aware branch
+  // actually firing correctly for a US driver rather than just assuming it.
+  @MainActor
+  func testBookkeepingCsvExportsForUSDriver() {
+    let store = OkkleStore()
+    store.settings.taxCountry = .us
+    let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 3, day: 9))!
+    store.trips = []
+    store.records = [
+      NativeRecord(kind: .income, platform: "DoorDash", vehicle: nil, amount: 100, miles: nil, deduction: nil, category: nil, date: date, period: .day, receiptImageData: nil)
+    ]
+
+    // QuickBooks Online: still dd/mm/yyyy even for a US driver — this is a
+    // genuine QBO CSV-importer quirk, not a UK/US split.
+    let quickBooks = nativeQuickBooksCsv(store: store)
+    XCTAssertTrue(quickBooks.hasPrefix("Date,Description,Amount\n09/03/2026,"))
+
+    // Xero: date format follows the org's own region setting — mm/dd/yyyy
+    // for a US org.
+    let xero = nativeXeroCsv(store: store)
+    XCTAssertTrue(xero.hasPrefix("Date,Amount,Description\n03/09/2026,100.00,"), "Xero should use mm/dd/yyyy for a US org, not the UK dd/mm/yyyy")
+
+    // Wave: US-style MM/DD/YYYY, same as the UK case — Wave's own spec
+    // isn't locale-conditional.
+    let wave = nativeWaveCsv(store: store)
+    XCTAssertTrue(wave.hasPrefix("Date,Description,Amount\n03/09/2026,"))
+
+    // FreeAgent and Sage must not be offered to a US driver at all — neither
+    // is a real product fit for a US self-employed courier.
+    let available = NativeExportDocument.available(for: .us)
+    XCTAssertFalse(available.contains(.freeAgent))
+    XCTAssertFalse(available.contains(.sage))
+  }
+
   // A realistic month of mixed income/expense records, including the messy
   // real-world text (commas, quote marks, apostrophes) a merchant name or
   // note can genuinely contain — this is what actually breaks a naive CSV
