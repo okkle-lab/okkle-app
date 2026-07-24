@@ -95,7 +95,7 @@ enum NativeMedalEngine {
     medals += tiered(
       prefix: "earn",
       category: "Earnings",
-      symbol: "sterlingsign.circle.fill",
+      symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"),
       value: stats.earnings,
       unit: "logged income",
       money: true,
@@ -187,12 +187,18 @@ enum NativeMedalEngine {
       category: "Journeys",
       symbol: "signpost.right.fill",
       value: stats.miles,
-      unit: "miles — iconic UK routes",
-      specs: [
-        (54, "London → Brighton"), (120, "London → Bristol"), (200, "London → Manchester"),
-        (330, "London → Edinburgh"), (560, "Cardiff → Inverness"), (874, "Land's End → John o' Groats"),
-        (1_407, "Coast to coast, twice"),
-      ]
+      unit: store.settings.taxCountry == .us ? "miles — iconic US routes" : "miles — iconic UK routes",
+      specs: store.settings.taxCountry == .us
+        ? [
+          (54, "Boston → Providence"), (120, "Los Angeles → San Diego"), (200, "Dallas → Austin"),
+          (330, "Houston → New Orleans"), (560, "Chicago → Memphis"), (874, "Chicago → Denver"),
+          (1_407, "Los Angeles → Dallas"),
+        ]
+        : [
+          (54, "London → Brighton"), (120, "London → Bristol"), (200, "London → Manchester"),
+          (330, "London → Edinburgh"), (560, "Cardiff → Inverness"), (874, "Land's End → John o' Groats"),
+          (1_407, "Coast to coast, twice"),
+        ]
     )
 
     medals.append(flag(
@@ -350,12 +356,12 @@ enum NativeMedalEngine {
       )
       return (
         store.records.filter { interval.contains($0.date) },
-        store.trips.filter { interval.contains($0.startedAt) }
+        store.businessTrips.filter { interval.contains($0.startedAt) }
       )
     case .yearToDate:
       return (store.yearRecords, store.yearTrips)
     case .allTime:
-      return (store.records, store.trips)
+      return (store.records, store.businessTrips)
     }
   }
 

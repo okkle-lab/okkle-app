@@ -40,26 +40,36 @@ enum OkkleColor {
   })
 }
 
-let gbpFormatter: NumberFormatter = {
-  let formatter = NumberFormatter()
-  formatter.numberStyle = .currency
-  formatter.currencyCode = "GBP"
-  formatter.maximumFractionDigits = 2
-  formatter.minimumFractionDigits = 2
-  return formatter
-}()
+/// The currency the money formatter renders in — "GBP" or "USD". OkkleStore
+/// sets this from the driver's tax country so £/$ follow the jurisdiction. A
+/// global (rather than threading currency through every `gbp(...)` call site)
+/// is fine here: the app shows one driver's single currency at a time, and
+/// currency changes ride the same @Published settings update that re-renders
+/// the views that call this.
+var nativeActiveCurrencyCode = "GBP"
 
-let wholeGbpFormatter: NumberFormatter = {
+private func nativeCurrencyFormatter(whole: Bool) -> NumberFormatter {
   let formatter = NumberFormatter()
   formatter.numberStyle = .currency
-  formatter.currencyCode = "GBP"
-  formatter.maximumFractionDigits = 0
+  formatter.currencyCode = nativeActiveCurrencyCode
+  // Anchor the locale to the currency so the symbol is the clean "$"/"£"
+  // rather than "US$" that a mismatched locale can produce.
+  formatter.locale = Locale(identifier: nativeActiveCurrencyCode == "USD" ? "en_US" : "en_GB")
+  formatter.maximumFractionDigits = whole ? 0 : 2
+  formatter.minimumFractionDigits = whole ? 0 : 2
   return formatter
-}()
+}
 
 func gbp(_ value: Double, whole: Bool = false) -> String {
-  let formatter = whole ? wholeGbpFormatter : gbpFormatter
-  return formatter.string(from: NSNumber(value: value)) ?? "GBP \(String(format: "%.2f", value))"
+  nativeCurrencyFormatter(whole: whole).string(from: NSNumber(value: value))
+    ?? "\(nativeActiveCurrencyCode) \(String(format: "%.2f", value))"
+}
+
+/// SF Symbol name for the active currency's coin/circle glyph — the icon
+/// counterpart to `gbp(...)`, so money-themed rows don't show a literal £
+/// symbol for a US/USD driver.
+func nativeCurrencySymbolName(_ base: String) -> String {
+  nativeActiveCurrencyCode == "USD" ? base.replacingOccurrences(of: "sterlingsign", with: "dollarsign") : base
 }
 
 func miles(_ value: Double) -> String {

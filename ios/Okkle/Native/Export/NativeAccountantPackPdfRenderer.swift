@@ -4,6 +4,7 @@ import UIKit
 @MainActor
 final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
   private let store: OkkleStore
+  private var country: NativeTaxCountry { store.settings.taxCountry }
 
   init(store: OkkleStore) {
     self.store = store
@@ -22,7 +23,10 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
       beginPage()
       drawCover()
       drawBasis()
-      drawSelfAssessment()
+      switch country {
+      case .uk: drawSelfAssessment()
+      case .us: drawUsTaxSummary()
+      }
       drawIncome()
       drawMileage()
       drawExpenses()
@@ -59,6 +63,17 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     "\(store.settings.incomeBracket.label) (\(Int(store.settings.incomeBracket.marginalRate(region: store.settings.region) * 100))% tax-saved estimate)"
   }
 
+  private var mileageMethodLine: String {
+    switch country {
+    case .uk:
+      return store.settings.expenseMethod == .simplified
+        ? "Simplified mileage using HMRC flat rates"
+        : "Actual vehicle costs claimed — no mileage rate applied"
+    case .us:
+      return "IRS standard mileage rate"
+    }
+  }
+
   private func drawCover() {
     func clean(_ value: String) -> String {
       value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -77,19 +92,26 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     drawWrapped("\(clientName) - \(businessLine)", font: .systemFont(ofSize: 12, weight: .medium), color: ink, spacingAfter: 18)
 
     var coverRows: [(String, String)] = []
-    let utr = clean(store.settings.accountantUTR)
-    let niNumber = clean(store.settings.accountantNINumber)
-    let address = clean(store.settings.accountantAddress).replacingOccurrences(of: "\n", with: ", ")
-    if !utr.isEmpty { coverRows.append(("UTR", utr)) }
-    if !niNumber.isEmpty { coverRows.append(("National Insurance no.", niNumber)) }
-    if !address.isEmpty { coverRows.append(("Address", address)) }
+    if country == .uk {
+      let utr = clean(store.settings.accountantUTR)
+      let niNumber = clean(store.settings.accountantNINumber)
+      let address = clean(store.settings.accountantAddress).replacingOccurrences(of: "\n", with: ", ")
+      if !utr.isEmpty { coverRows.append(("UTR", utr)) }
+      if !niNumber.isEmpty { coverRows.append(("National Insurance no.", niNumber)) }
+      if !address.isEmpty { coverRows.append(("Address", address)) }
+    }
     coverRows.append(contentsOf: [
-      ("Accounting period", "\(nativeUkDateStamp(store.taxYear.start)) to \(nativeUkDateStamp(taxYearEndDate))"),
+      ("Accounting period", "\(nativePeriodDateStamp(store.taxYear.start, country: country)) to \(nativePeriodDateStamp(taxYearEndDate, country: country))"),
       ("Tax year", nativeTaxYearLabel(for: store.taxYear)),
-      ("Prepared", nativeLongDate(Date())),
-      ("Tax region", store.settings.region.label),
-      ("Income tax band", incomeBracketLine)
+      ("Prepared", nativeLongDate(Date(), country: country))
     ])
+    switch country {
+    case .uk:
+      coverRows.append(("Tax region", store.settings.region.label))
+      coverRows.append(("Income tax band", incomeBracketLine))
+    case .us:
+      coverRows.append(("Tax state", store.settings.usState.label))
+    }
     drawInfoBox(coverRows)
 
     drawWrapped(
@@ -103,10 +125,12 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
   private func drawBasis() {
     drawSectionTitle("Basis of preparation")
     drawKeyValue("Accounting basis", "Cash basis")
-    drawKeyValue("Mileage method", "Simplified mileage using HMRC flat rates")
+    drawKeyValue("Mileage method", mileageMethodLine)
     drawKeyValue("Records source", "Tracked trips and manual entries logged in Okkle")
-    drawKeyValue("Income tax band", incomeBracketLine)
-    drawKeyValue("Other income", gbp(store.settings.otherIncome))
+    if country == .uk {
+      drawKeyValue("Income tax band", incomeBracketLine)
+    }
+    drawKeyValue(country == .uk ? "Other income" : "Other W-2 wages", gbp(store.settings.otherIncome))
     drawKeyValue("Income entries", "\(incomeRecords.count)")
     drawKeyValue("Expense entries", "\(expenseRecords.count) (\(expenseRecords.filter { $0.receiptImageData != nil }.count) with receipts)")
     drawKeyValue("Mileage entries", "\(yearTrips.count) tracked trips, \(manualMileageRecords.count) manual entries")
@@ -134,8 +158,47 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     drawKeyValue("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
   }
 
+  private func drawUsTaxSummary() {
+    let tax = store.taxPosition
+    // These figures span three separate IRS forms — Schedule C (profit or
+    // loss), Schedule SE (self-employment tax) and Form 1040 (the deductions
+    // and tax that apply to the whole return) — so each row cites which one
+    // it actually belongs to, the same way the UK summary cites real SA103S
+    // box numbers rather than implying everything sits on one form.
+    drawSectionTitle("Schedule C / SE tax summary")
+    drawTable(
+      headers: ["Sch. C line", "Description", "Amount"],
+      rows: [
+        ["1", "Gross receipts - business income", gbp(tax.turnover)],
+        ["28", "Total expenses, including mileage/actual costs", gbp(tax.deductionApplied)],
+        ["31", "Net profit", gbp(tax.profit)]
+      ],
+      widths: [0.20, 0.52, 0.28],
+      rightAligned: [2]
+    )
+    drawKeyValue("Standard deduction (Form 1040)", gbp(tax.standardDeduction))
+    drawKeyValue("QBI deduction (Form 1040, 20% of profit)", gbp(tax.qbiDeduction))
+    drawKeyValue("Estimated federal income tax (Form 1040)", gbp(tax.incomeTax))
+    drawKeyValue("Estimated self-employment tax (Schedule SE)", gbp(tax.class4))
+    if tax.stateTax > 0 {
+      drawKeyValue("Estimated state tax (\(store.settings.usState.label))", gbp(tax.stateTax))
+    }
+    drawKeyValue("Estimated total due", gbp(tax.totalDue), highlighted: true)
+    if tax.paymentOnAccount > 0 {
+      drawKeyValue("Suggested quarterly set-aside (1040-ES)", gbp(tax.paymentOnAccount))
+    }
+  }
+
   private func drawIncome() {
     drawSectionTitle("Income by platform")
+    drawWrapped(
+      country == .uk
+        ? "For reconciling against platform statements — all gig income is reported as one combined total, regardless of platform."
+        : "For reconciling against 1099s or platform statements — all gig income is reported as one combined total, regardless of platform.",
+      font: .systemFont(ofSize: 10, weight: .regular),
+      color: muted,
+      spacingAfter: 6
+    )
     var totals: [String: Double] = [:]
     incomeRecords.forEach { record in
       totals[record.platform ?? "Other", default: 0] += record.amount ?? 0
@@ -161,34 +224,46 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     // against a running total of zero, so the rows below would silently
     // stop summing to the "Mileage deduction" total once combined car/van
     // mileage crosses the 10,000-mile HMRC simplified-rate threshold.
+    let usesActualCost = country == .uk && store.settings.expenseMethod == .actualCost
     drawWrapped(
-      "Tracked trips with saved route points support a contemporaneous mileage log. Your accountant should review the business purpose and completeness.",
+      usesActualCost
+        ? "Actual-cost driver: this log evidences business mileage, but vehicle costs are claimed from the expense records below rather than a mileage rate."
+        : "Tracked trips with saved route points support a contemporaneous mileage log. Your accountant should review the business purpose and completeness.",
       font: .systemFont(ofSize: 10.5, weight: .regular),
       color: muted,
       spacingAfter: 6
     )
-    drawTable(
-      headers: ["Date", "Vehicle", "Source", "Miles", "Deduction"],
-      rows: nativeMileageLogTableRows(store.yearMileageLogRows),
-      widths: [0.20, 0.22, 0.20, 0.16, 0.22],
-      rightAligned: [3, 4],
-      emptyMessage: "No mileage records logged for this tax year."
-    )
+    drawMileageJournal(store.yearMileageLogRows, country: country)
     drawKeyValue("Business miles", miles(store.yearMiles), highlighted: true)
     drawKeyValue("Mileage deduction", gbp(store.yearMileageDeduction), highlighted: true)
   }
 
   private func drawExpenses() {
-    drawSectionTitle("Expenses")
-    let reviewItems = expenseRecords.filter(nativeNeedsAccountantReview)
-    let regularItems = expenseRecords.filter { !nativeNeedsAccountantReview($0) }
+    // Category subtotals first — this is the number an accountant actually
+    // enters onto the return (e.g. HMRC's "car, van and travel expenses" /
+    // "other business expenses" boxes, or a Schedule C expense line). The
+    // itemized list below is supporting evidence for those totals, not the
+    // thing that gets typed in, so it comes second.
+    drawSectionTitle("Expenses by category")
+    drawExpenseCategoryTable()
+
+    drawSectionTitle("Itemized expenses")
+    // The "may already be covered by mileage" flag applies to anyone using a
+    // flat mileage rate — UK simplified expenses or the US IRS standard
+    // mileage rate both bundle fuel/insurance/repairs into the per-mile
+    // figure — so it only drops out for a UK actual-cost driver, who claims
+    // these receipts directly instead.
+    let usesFlatMileageRate = country != .uk || store.settings.expenseMethod == .simplified
+    let reviewItems = usesFlatMileageRate ? expenseRecords.filter(nativeNeedsAccountantReview) : []
+    let regularItems = usesFlatMileageRate ? expenseRecords.filter { !nativeNeedsAccountantReview($0) } : expenseRecords
     drawExpenseTable(regularItems, emptyMessage: "No expense records logged for this tax year.")
-    drawKeyValue("Expense total", gbp(expenseRecords.reduce(0) { $0 + ($1.amount ?? 0) }))
 
     if !reviewItems.isEmpty {
       drawSectionTitle("Items flagged for review")
       drawWrapped(
-        "These look like vehicle running costs. If simplified mileage is used, they may already be covered by the mileage rate.",
+        country == .uk
+          ? "These look like vehicle running costs. If simplified mileage is used, they may already be covered by the mileage rate."
+          : "These look like vehicle running costs. The IRS standard mileage rate already covers them, so check you're not claiming them twice.",
         font: .systemFont(ofSize: 10.5, weight: .regular),
         color: muted,
         spacingAfter: 6
@@ -197,10 +272,29 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     }
   }
 
+  private func drawExpenseCategoryTable() {
+    var totals: [String: Double] = [:]
+    expenseRecords.forEach { record in
+      let category = record.category?.isEmpty == false ? record.category! : "Uncategorised"
+      totals[category, default: 0] += record.amount ?? 0
+    }
+    let rows = totals
+      .sorted { $0.value > $1.value }
+      .map { [$0.key, gbp($0.value)] }
+    drawTable(
+      headers: ["Category", "Amount"],
+      rows: rows,
+      widths: [0.66, 0.34],
+      rightAligned: [1],
+      emptyMessage: "No expense records logged for this tax year."
+    )
+    drawKeyValue("Expense total", gbp(expenseRecords.reduce(0) { $0 + ($1.amount ?? 0) }), highlighted: true)
+  }
+
   private func drawExpenseTable(_ records: [NativeRecord], emptyMessage: String = "None.") {
     let rows = records.map { record in
       [
-        nativeUkDateStamp(record.date),
+        nativePeriodDateStamp(record.date, country: country),
         nativeExpenseDescription(record),
         record.note ?? "",
         gbp(record.amount ?? 0),
@@ -225,7 +319,7 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
 
     drawSectionTitle("Receipt images")
     for (record, image) in receipts {
-      let caption = "\(nativeUkDateStamp(record.date)) - \(nativeExpenseDescription(record)) - \(gbp(record.amount ?? 0))"
+      let caption = "\(nativePeriodDateStamp(record.date, country: country)) - \(nativeExpenseDescription(record)) - \(gbp(record.amount ?? 0))"
       let captionHeight = measuredHeight(caption, font: .systemFont(ofSize: 9.5, weight: .semibold), width: contentWidth)
       let maxImageWidth = contentWidth
       let maxImageHeight: CGFloat = 270
@@ -242,12 +336,9 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
   }
 
   private func drawLimitations() {
-    drawSectionTitle("Basis and limitations")
-    drawWrapped(
-      "Prepared by Okkle from records kept on the user's device. Figures are estimates derived from logged data, have not been independently verified or reconciled to bank records, and do not constitute tax advice. Confirm completeness, categorisation and final figures before submission.",
-      font: .systemFont(ofSize: 10, weight: .regular),
-      color: muted,
-      spacingAfter: 0
+    drawDisclaimer(
+      "Basis and limitations",
+      "Prepared by Okkle from records kept on the user's device. Figures are estimates derived from logged data, have not been independently verified or reconciled to bank records, and do not constitute tax advice. Confirm completeness, categorisation and final figures before submission."
     )
   }
 }
@@ -267,24 +358,10 @@ func nativeNeedsAccountantReview(_ record: NativeRecord) -> Bool {
   return terms.contains { text.contains($0) }
 }
 
-func nativeLongDate(_ date: Date) -> String {
+func nativeLongDate(_ date: Date, country: NativeTaxCountry = .uk) -> String {
   let formatter = DateFormatter()
   formatter.calendar = Calendar(identifier: .gregorian)
-  formatter.locale = Locale(identifier: "en_GB")
+  formatter.locale = Locale(identifier: country == .uk ? "en_GB" : "en_US")
   formatter.dateStyle = .long
   return formatter.string(from: date)
-}
-
-/// Shared table-row shape for a mileage log, used by both the accountant
-/// pack's "Mileage log" section and the standalone mileage report.
-func nativeMileageLogTableRows(_ rows: [NativeMileageLogRow]) -> [[String]] {
-  rows.map { row in
-    [
-      nativeUkDateStamp(row.date),
-      row.vehicle.label,
-      row.source == "GPS" ? "GPS trip" : "Manual",
-      miles(row.miles),
-      gbp(row.deduction)
-    ]
-  }
 }

@@ -18,11 +18,18 @@ enum NativeTripAddressResolver {
   /// Best-effort catch-up for trips saved before this existed, or where the
   /// initial resolve failed (no network, geocoder timeout). Call this from
   /// a screen that's about to show or export a mileage log.
-  static func backfillMissingAddresses(store: OkkleStore, limit: Int = 25) {
+  ///
+  /// Scoped to the current tax year (not all-time) and given a high cap —
+  /// a newest-first, low-cap backfill would let a busy driver's older trips
+  /// within the SAME tax year get permanently starved: every visit re-picks
+  /// the newest still-missing trips, so anything past the cap never gets a
+  /// turn while it keeps competing with genuinely new trips added since.
+  /// The mileage log needs the whole tax year addressed, not just the tail.
+  static func backfillMissingAddresses(store: OkkleStore, limit: Int = 500) {
     Task.detached(priority: .background) {
       let candidates: [NativeTrip] = await MainActor.run {
         Array(
-          store.trips
+          store.yearTrips
             .filter { $0.startAddress == nil && !$0.points.isEmpty }
             .sorted { $0.startedAt > $1.startedAt }
             .prefix(limit)

@@ -276,7 +276,12 @@ struct NativeGlassCard<Content: View>: View {
     content
       .padding(contentPadding)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+      .background(.regularMaterial)
+      // Clips content, not just the background — a child that draws its own
+      // opaque/material background flush to the edge (e.g. a swipeable row)
+      // would otherwise square off past this card's rounded corners at the
+      // first/last row, instead of following the card's silhouette.
+      .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
       .shadow(color: .black.opacity(0.07), radius: 22, y: 12)
   }
 }

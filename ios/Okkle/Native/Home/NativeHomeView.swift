@@ -219,7 +219,7 @@ struct NativeProgressView: View {
       flatMetricTile(
         title: "Earnings",
         value: gbp(store.yearIncome),
-        symbol: "sterlingsign.circle.fill",
+        symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"),
         color: OkkleColor.brand
       )
     }

@@ -93,6 +93,19 @@ class NativePdfDocumentRenderer {
     y += 9
   }
 
+  /// A closing caveat ("basis and limitations", "not tax advice", etc.) —
+  /// deliberately styled much quieter than `drawSectionTitle`'s bold brand
+  /// heading. It still needs to be legible (this is the line doing the
+  /// compliance work of not letting an estimate read as an official filing),
+  /// but visually it should read as a footnote next to the actual figures,
+  /// not compete with them for attention the way a same-weight heading would.
+  func drawDisclaimer(_ title: String, _ body: String) {
+    ensure(30)
+    y += y > margin + 2 ? 14 : 0
+    drawWrapped(title, font: .systemFont(ofSize: 10.5, weight: .semibold), color: muted, spacingAfter: 4)
+    drawWrapped(body, font: .systemFont(ofSize: 9.5, weight: .regular), color: muted, spacingAfter: 0)
+  }
+
   func drawKeyValue(_ label: String, _ value: String, highlighted: Bool = false) {
     let labelWidth = contentWidth * 0.48
     let valueWidth = contentWidth - labelWidth
@@ -195,5 +208,81 @@ class NativePdfDocumentRenderer {
       context: nil
     )
     return ceil(rect.height)
+  }
+
+  /// The full per-journey mileage log — date, from/to addresses (or a plain
+  /// fallback), stated business purpose, distance and deduction. Shared by
+  /// the accountant pack and the standalone mileage report so both PDFs
+  /// present the exact same record for the same trip, at the level of detail
+  /// (date, start/destination, purpose, miles) IRS Publication 463 requires
+  /// and HMRC expects to be able to reconstruct a journey during an enquiry —
+  /// a bare date/vehicle/miles/deduction table falls short of both.
+  func drawMileageJournal(_ rows: [NativeMileageLogRow], country: NativeTaxCountry) {
+    guard !rows.isEmpty else {
+      drawWrapped("No mileage logged for this tax year.", font: .systemFont(ofSize: 10, weight: .regular), color: muted, spacingAfter: 0)
+      return
+    }
+
+    var lastDateKey: String?
+    for row in rows {
+      let dateKey = nativeDateStamp(row.date)
+      drawMileageJournalEntry(row, showDate: dateKey != lastDateKey, country: country)
+      lastDateKey = dateKey
+    }
+  }
+
+  private func drawMileageJournalEntry(_ row: NativeMileageLogRow, showDate: Bool, country: NativeTaxCountry) {
+    if showDate {
+      ensure(24)
+      drawWrapped(nativeLongDate(row.date, country: country), font: .systemFont(ofSize: 11.5, weight: .heavy), color: ink, spacingAfter: 6)
+    }
+
+    let addressFont = UIFont.systemFont(ofSize: 10, weight: .medium)
+    let dotColumn: CGFloat = 16
+    let addressWidth = contentWidth - dotColumn
+
+    if let from = row.fromAddress, let to = row.toAddress {
+      let rowGap: CGFloat = 5
+      let fromHeight = measuredHeight(from, font: addressFont, width: addressWidth)
+      let toHeight = measuredHeight(to, font: addressFont, width: addressWidth)
+      ensure(fromHeight + toHeight + rowGap + 4)
+
+      let topDotY = y + fromHeight / 2
+      let bottomDotY = y + fromHeight + rowGap + toHeight / 2
+      let dotX = margin + 4
+
+      line.setStroke()
+      let connector = UIBezierPath()
+      connector.move(to: CGPoint(x: dotX, y: topDotY + 4))
+      connector.addLine(to: CGPoint(x: dotX, y: bottomDotY - 4))
+      connector.lineWidth = 1
+      connector.setLineDash([1.5, 1.8], count: 2, phase: 0)
+      connector.stroke()
+
+      muted.setStroke()
+      [topDotY, bottomDotY].forEach { dotY in
+        let dot = UIBezierPath(ovalIn: CGRect(x: dotX - 2.5, y: dotY - 2.5, width: 5, height: 5))
+        dot.lineWidth = 1.1
+        dot.stroke()
+      }
+
+      drawString(from, in: CGRect(x: margin + dotColumn, y: y, width: addressWidth, height: fromHeight), font: addressFont, color: ink)
+      drawString(to, in: CGRect(x: margin + dotColumn, y: y + fromHeight + rowGap, width: addressWidth, height: toHeight), font: addressFont, color: ink)
+      y += fromHeight + rowGap + toHeight + 8
+    } else {
+      let label = row.source == "GPS" ? "\(row.vehicle.label) trip" : "Manual entry - \(row.vehicle.label)"
+      drawWrapped(label, font: addressFont, color: muted, spacingAfter: 8)
+    }
+
+    let rate = row.miles > 0 ? row.deduction / row.miles : 0
+    ensure(34)
+    drawString("Business - delivery driving (\(row.vehicle.label))", in: CGRect(x: margin, y: y, width: contentWidth * 0.5, height: 16), font: .systemFont(ofSize: 10.5, weight: .semibold), color: ink)
+    drawString(gbp(row.deduction), in: CGRect(x: margin + contentWidth * 0.5, y: y, width: contentWidth * 0.5, height: 16), font: .systemFont(ofSize: 11, weight: .bold), color: ink, alignment: .right)
+    y += 16
+    drawString(miles(row.miles), in: CGRect(x: margin, y: y, width: contentWidth * 0.5, height: 14), font: .systemFont(ofSize: 9.5, weight: .regular), color: muted)
+    drawString("\(gbp(rate)) / mi", in: CGRect(x: margin + contentWidth * 0.5, y: y, width: contentWidth * 0.5, height: 14), font: .systemFont(ofSize: 9.5, weight: .regular), color: muted, alignment: .right)
+    y += 18
+    drawHairline()
+    y += 8
   }
 }

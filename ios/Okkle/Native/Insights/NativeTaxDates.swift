@@ -6,8 +6,13 @@ struct NativeTaxDeadline: Identifiable {
   let month: Int
   let day: Int
   let note: String
+  var authority: String = "HMRC"   // calendar-event prefix / owning tax body
 
-  var id: String { title }
+  // Includes the date, not just the title — two deadlines can legitimately
+  // share a title (e.g. two California instalments both worth 30%); title
+  // alone as the id let SwiftUI's list conflate them and render one row
+  // twice instead of each on its own real date.
+  var id: String { "\(title)-\(month)-\(day)" }
 
   func nextOccurrence(from reference: Date = Date()) -> Date {
     let calendar = Calendar.current
@@ -23,11 +28,76 @@ struct NativeTaxDeadline: Identifiable {
   }
 }
 
-let nativeTaxDeadlines = [
-  NativeTaxDeadline(title: "Register for Self Assessment", month: 10, day: 5, note: "Only if this was your first year self-employed."),
-  NativeTaxDeadline(title: "File your return & pay your tax", month: 1, day: 31, note: "Online Self Assessment deadline for the previous tax year."),
-  NativeTaxDeadline(title: "Second payment on account", month: 7, day: 31, note: "Only if HMRC asked you for payments on account.")
-]
+/// Key tax dates by jurisdiction. UK = HMRC Self Assessment calendar; US =
+/// the IRS 1040-ES quarterly estimated-tax schedule plus the annual return,
+/// plus (when the state levies its own income tax) that state's own
+/// estimated-tax deadlines — which are a SEPARATE payment from the federal
+/// one even when the dates coincide. US dates verified against irs.gov
+/// (Form 1040-ES) and each state's own tax authority; review annually.
+///
+/// California is the one built-in state with a genuinely different
+/// schedule: FTB requires 30% / 40% / 0% / 30% (no September instalment —
+/// that share is rolled into January) rather than four equal payments, per
+/// ftb.ca.gov/pay/estimated-tax-payments.html. New York, Illinois,
+/// Pennsylvania and Georgia all use the same four dates and equal 25%
+/// split as the IRS, but still require their own separate voucher/payment.
+func nativeTaxDeadlines(for country: NativeTaxCountry, usState: NativeUSState = .california) -> [NativeTaxDeadline] {
+  switch country {
+  case .uk:
+    return [
+      NativeTaxDeadline(title: "Register for Self Assessment", month: 10, day: 5, note: "Only if this was your first year self-employed.", authority: "HMRC"),
+      NativeTaxDeadline(title: "File your return & pay your tax", month: 1, day: 31, note: "Online Self Assessment deadline for the previous tax year.", authority: "HMRC"),
+      NativeTaxDeadline(title: "Second payment on account", month: 7, day: 31, note: "Only if HMRC asked you for payments on account.", authority: "HMRC"),
+    ]
+  case .us:
+    var deadlines: [NativeTaxDeadline] = [
+      NativeTaxDeadline(title: "Q1 federal estimated tax (1040-ES)", month: 4, day: 15, note: "25% of your estimated federal tax for the year.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q2 federal estimated tax (1040-ES)", month: 6, day: 15, note: "25% of your estimated federal tax for the year.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q3 federal estimated tax (1040-ES)", month: 9, day: 15, note: "25% of your estimated federal tax for the year.", authority: "IRS"),
+      NativeTaxDeadline(title: "Q4 federal estimated tax (1040-ES)", month: 1, day: 15, note: "25% of your estimated federal tax for the year (covers Sep-Dec of the prior year).", authority: "IRS"),
+      NativeTaxDeadline(title: "File your federal return (Form 1040)", month: 4, day: 15, note: "Annual return; Schedule C + Schedule SE for self-employment.", authority: "IRS"),
+    ]
+    switch usState {
+    case .california:
+      deadlines.append(contentsOf: [
+        NativeTaxDeadline(title: "CA estimated tax - Q1 30% (Form 540-ES)", month: 4, day: 15, note: "California's own schedule - a separate payment from the IRS one due the same day.", authority: "FTB"),
+        NativeTaxDeadline(title: "CA estimated tax - Q2 40% (Form 540-ES)", month: 6, day: 15, note: "No California payment is due in September - that share is rolled into January instead.", authority: "FTB"),
+        NativeTaxDeadline(title: "CA estimated tax - Q4 30% (Form 540-ES)", month: 1, day: 15, note: "Final California instalment - a separate payment from the IRS one due the same day.", authority: "FTB"),
+      ])
+    case .newYork:
+      deadlines.append(contentsOf: nativeQuarterlyStateDeadlines(state: "New York", form: "IT-2105", authority: "NY Tax Dept"))
+    case .illinois:
+      deadlines.append(contentsOf: nativeQuarterlyStateDeadlines(state: "Illinois", form: "IL-1040-ES", authority: "IL Dept of Revenue"))
+    case .pennsylvania:
+      deadlines.append(contentsOf: nativeQuarterlyStateDeadlines(state: "Pennsylvania", form: "PA-40 ESI", authority: "PA Dept of Revenue"))
+    case .georgia:
+      deadlines.append(contentsOf: nativeQuarterlyStateDeadlines(state: "Georgia", form: "500-ES", authority: "GA Dept of Revenue"))
+    default:
+      break // No-income-tax states, and states Okkle doesn't yet model by name, get federal dates only.
+    }
+    return deadlines
+  }
+}
+
+/// A state whose estimated-tax schedule matches the IRS's four equal 25%
+/// instalments on the same four dates, but which still requires its own
+/// separate voucher/payment rather than being covered by the federal one.
+private func nativeQuarterlyStateDeadlines(state: String, form: String, authority: String) -> [NativeTaxDeadline] {
+  [
+    (quarter: "Q1", month: 4, day: 15),
+    (quarter: "Q2", month: 6, day: 15),
+    (quarter: "Q3", month: 9, day: 15),
+    (quarter: "Q4", month: 1, day: 15),
+  ].map { entry in
+    NativeTaxDeadline(
+      title: "\(state) \(entry.quarter) estimated tax (\(form))",
+      month: entry.month,
+      day: entry.day,
+      note: "Separate \(state) payment, same date as the IRS \(entry.quarter) payment.",
+      authority: authority
+    )
+  }
+}
 
 func nativeDaysUntil(_ date: Date) -> Int {
   let calendar = Calendar.current
@@ -64,7 +134,7 @@ func nativeAddDeadlineToCalendar(_ deadline: NativeTaxDeadline) async -> Bool {
     let end = Calendar.current.date(byAdding: .minute, value: 30, to: start) ?? start.addingTimeInterval(1800)
     let event = EKEvent(eventStore: eventStore)
     event.calendar = calendar
-    event.title = "HMRC: \(deadline.title)"
+    event.title = "\(deadline.authority): \(deadline.title)"
     event.startDate = start
     event.endDate = end
     event.notes = deadline.note
@@ -113,7 +183,7 @@ struct NativeKeyTaxDatesPanel: View {
       }
     }
     .sheet(isPresented: $showSheet) {
-      NativeKeyTaxDatesSheet()
+      NativeKeyTaxDatesSheet(country: store.settings.taxCountry, usState: store.settings.usState)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
@@ -121,8 +191,21 @@ struct NativeKeyTaxDatesPanel: View {
 }
 
 struct NativeKeyTaxDatesSheet: View {
+  var country: NativeTaxCountry = .uk
+  var usState: NativeUSState = .california
   @Environment(\.dismiss) private var dismiss
   @State private var alertMessage: String?
+
+  private var deadlines: [NativeTaxDeadline] { nativeTaxDeadlines(for: country, usState: usState) }
+
+  private var recordsFootnote: String {
+    switch country {
+    case .uk:
+      return "Keep your records for at least 5 years after the 31 January deadline. MTD for Income Tax adds quarterly updates once your income passes the threshold."
+    case .us:
+      return "Keep your mileage log and records for at least 3 years. Pay estimated tax each quarter if you expect to owe $1,000 or more, to avoid an underpayment penalty."
+    }
+  }
 
   var body: some View {
     NavigationStack {
@@ -135,11 +218,11 @@ struct NativeKeyTaxDatesSheet: View {
 
           NativeAiCard {
             VStack(spacing: 0) {
-              ForEach(nativeTaxDeadlines) { deadline in
+              ForEach(deadlines) { deadline in
                 NativeTaxDeadlineRow(deadline: deadline) { message in
                   alertMessage = message
                 }
-                if deadline.id != nativeTaxDeadlines.last?.id {
+                if deadline.id != deadlines.last?.id {
                   Divider().padding(.leading, 0)
                 }
               }
@@ -149,14 +232,14 @@ struct NativeKeyTaxDatesSheet: View {
           Button {
             Task {
               var added = 0
-              for deadline in nativeTaxDeadlines {
+              for deadline in deadlines {
                 if await nativeAddDeadlineToCalendar(deadline) {
                   added += 1
                 }
               }
-              alertMessage = added == nativeTaxDeadlines.count
+              alertMessage = added == deadlines.count
                 ? "All key tax dates were added to your calendar."
-                : "Added \(added) of \(nativeTaxDeadlines.count) dates. Please allow calendar access and try again for the rest."
+                : "Added \(added) of \(deadlines.count) dates. Please allow calendar access and try again for the rest."
             }
           } label: {
             Label("Add all dates", systemImage: "calendar.badge.plus")
@@ -168,7 +251,7 @@ struct NativeKeyTaxDatesSheet: View {
           .controlSize(.large)
           .tint(OkkleColor.brand)
 
-          Text("Keep your records for at least 5 years after the 31 January deadline. MTD for Income Tax adds quarterly updates once your income passes the threshold.")
+          Text(recordsFootnote)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)

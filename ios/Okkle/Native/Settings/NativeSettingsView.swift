@@ -9,15 +9,19 @@ struct NativeSettingsPlatformsSection: View {
 
   private var customPlatforms: [String] {
     store.settings.platforms.filter { platform in
-      !nativeOnboardingPlatforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
+      !nativeAllKnownPlatforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
     }
   }
 
   var body: some View {
     Section {
-      ForEach(nativeOnboardingPlatforms.filter { $0 != "Other" }, id: \.self) { platform in
+      ForEach(nativeOnboardingPlatforms(for: store.settings.taxCountry).filter { $0 != "Other" }, id: \.self) { platform in
         Toggle(isOn: platformSelectionBinding(platform)) {
-          Label(platform, systemImage: nativePlatformSymbol(platform))
+          Label {
+            Text(platform)
+          } icon: {
+            NativePlatformIcon(platform: platform).frame(width: 20, height: 20)
+          }
         }
       }
 
@@ -251,63 +255,187 @@ struct NativeProfileSettingsView: View {
 
 struct NativeTaxSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
+  @State private var showsSimplifiedLockConfirm = false
+  @State private var showsActualCostConfirm = false
+  @State private var pendingCountry: NativeTaxCountry?
 
   var body: some View {
     Form {
       Section {
-        Picker("Region", selection: Binding(
-          get: { store.settings.region },
-          set: { store.settings.region = $0 }
-        )) {
-          ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
-        }
-
-        Picker("Income tax band", selection: Binding(
-          get: { store.settings.incomeBracket },
-          set: { store.settings.incomeBracket = $0 }
-        )) {
-          ForEach(NativeIncomeBracket.allCases) { bracket in
-            Text(bracket.label).tag(bracket)
+        Picker("Country", selection: Binding(
+          get: { store.settings.taxCountry },
+          set: { newValue in
+            guard newValue != store.settings.taxCountry else { return }
+            pendingCountry = newValue
           }
+        )) {
+          ForEach(NativeTaxCountry.allCases) { Text($0.label).tag($0) }
         }
-
-        NativeSettingsOtherIncomeField()
       } footer: {
-        Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
+        Text("Sets your tax year, mileage rate and how your estimate is calculated. Okkle gives estimates to keep you organised — it is not tax advice and does not file your return.")
       }
 
-      Section {
-        NativeNumberDoneTextField(text: Binding(
-          get: { store.settings.accountantUTR },
-          set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
-        .frame(height: 34)
-
-        TextField("QQ 12 34 56 C", text: Binding(
-          get: { store.settings.accountantNINumber },
-          set: { store.settings.accountantNINumber = $0.uppercased() }
-        ))
-        .textInputAutocapitalization(.characters)
-
-        TextField("Home or business address", text: Binding(
-          get: { store.settings.accountantAddress },
-          set: { store.settings.accountantAddress = $0 }
-        ), axis: .vertical)
-        .lineLimit(2...4)
-
-        TextField("Delivery courier", text: Binding(
-          get: { store.settings.accountantBusinessDescription },
-          set: { store.settings.accountantBusinessDescription = $0 }
-        ))
-      } header: {
-        Text("Accountant pack details")
-      } footer: {
-        Text("Optional. These stay on this phone and appear on the accountant pack PDF cover page when you export it.")
+      switch store.settings.taxCountry {
+      case .uk:
+        ukTaxSection
+        ukExpenseMethodSection
+        ukAccountantSection
+      case .us:
+        usTaxSection
       }
     }
     .navigationTitle("Tax profile")
     .navigationBarTitleDisplayMode(.inline)
     .nativeKeyboardDoneToolbar()
+    .alert(
+      "Switch to \(pendingCountry?.label ?? "")?",
+      isPresented: Binding(get: { pendingCountry != nil }, set: { if !$0 { pendingCountry = nil } })
+    ) {
+      Button("Cancel", role: .cancel) {}
+      Button("Switch") {
+        if let newCountry = pendingCountry {
+          store.settings.taxCountry = newCountry
+        }
+        pendingCountry = nil
+      }
+    } message: {
+      Text("This changes your currency, tax year and every figure in Reports to \(pendingCountry?.label ?? "")'s rules. Past records aren't affected, but your tax estimate, saved amount and exports will all recalculate.")
+    }
+    .alert("Use simplified expenses?", isPresented: $showsSimplifiedLockConfirm) {
+      Button("Cancel", role: .cancel) {}
+      Button("Confirm") {
+        store.settings.expenseMethod = .simplified
+        store.settings.expenseMethodLocked = true
+      }
+    } message: {
+      Text("Once you choose simplified expenses, HMRC requires you to keep using them for this vehicle for as long as you use it for business. You won't be able to switch to actual costs later.")
+    }
+    .alert("Switch to actual costs?", isPresented: $showsActualCostConfirm) {
+      Button("Cancel", role: .cancel) {}
+      Button("Switch") { store.settings.expenseMethod = .actualCost }
+    } message: {
+      Text("Your mileage deduction will stop applying — instead, your logged fuel, insurance, servicing and repair expenses will count toward your tax estimate.")
+    }
+  }
+
+  @ViewBuilder private var ukTaxSection: some View {
+    Section {
+      Picker("Region", selection: Binding(
+        get: { store.settings.region },
+        set: { store.settings.region = $0 }
+      )) {
+        ForEach(NativeRegion.allCases) { Text($0.label).tag($0) }
+      }
+
+      Picker("Income tax band", selection: Binding(
+        get: { store.settings.incomeBracket },
+        set: { store.settings.incomeBracket = $0 }
+      )) {
+        ForEach(NativeIncomeBracket.allCases) { bracket in
+          Text(bracket.label).tag(bracket)
+        }
+      }
+
+      NativeSettingsOtherIncomeField()
+    } footer: {
+      Text("Region and band set your tax saved. Estimated tax due also uses the other income field.")
+    }
+  }
+
+  @ViewBuilder private var ukExpenseMethodSection: some View {
+    Section {
+      if store.settings.expenseMethodLocked {
+        HStack {
+          Text("Expense method")
+          Spacer()
+          Text(store.settings.expenseMethod.label)
+            .foregroundStyle(OkkleColor.muted)
+        }
+      } else {
+        Picker("Expense method", selection: Binding(
+          get: { store.settings.expenseMethod },
+          set: { newValue in
+            guard newValue != store.settings.expenseMethod else { return }
+            if newValue == .simplified {
+              showsSimplifiedLockConfirm = true
+            } else {
+              showsActualCostConfirm = true
+            }
+          }
+        )) {
+          ForEach(NativeExpenseMethod.allCases) { Text($0.label).tag($0) }
+        }
+      }
+    } footer: {
+      Text(store.settings.expenseMethodLocked
+        ? "Locked to Simplified — HMRC requires sticking with the mileage rate for this vehicle for as long as you use it for business."
+        : "Simplified uses a flat mileage rate that already covers fuel, insurance, servicing and repairs. Actual costs claims your real receipts instead, with no mileage rate. Choosing Simplified locks it in and can't be switched back to Actual costs.")
+    }
+  }
+
+  @ViewBuilder private var ukAccountantSection: some View {
+    Section {
+      NativeNumberDoneTextField(text: Binding(
+        get: { store.settings.accountantUTR },
+        set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
+      .frame(height: 34)
+
+      TextField("QQ 12 34 56 C", text: Binding(
+        get: { store.settings.accountantNINumber },
+        set: { store.settings.accountantNINumber = $0.uppercased() }
+      ))
+      .textInputAutocapitalization(.characters)
+
+      TextField("Home or business address", text: Binding(
+        get: { store.settings.accountantAddress },
+        set: { store.settings.accountantAddress = $0 }
+      ), axis: .vertical)
+      .lineLimit(2...4)
+
+      TextField("Delivery courier", text: Binding(
+        get: { store.settings.accountantBusinessDescription },
+        set: { store.settings.accountantBusinessDescription = $0 }
+      ))
+    } header: {
+      Text("Accountant pack details")
+    } footer: {
+      Text("Optional. These stay on this phone and appear on the accountant pack PDF cover page when you export it.")
+    }
+  }
+
+  @ViewBuilder private var usTaxSection: some View {
+    Section {
+      Picker("State", selection: Binding(
+        get: { store.settings.usState },
+        set: { store.settings.usState = $0 }
+      )) {
+        ForEach(NativeUSState.allCases) { Text($0.label).tag($0) }
+      }
+
+      if store.settings.usState == .otherState {
+        HStack {
+          Text("State tax rate")
+          Spacer()
+          NativeNumberDoneTextField(text: Binding(
+            get: {
+              let pct = store.settings.usOtherStateRate * 100
+              return pct == 0 ? "" : String(format: "%g", pct)
+            },
+            set: { store.settings.usOtherStateRate = max(0, min((Double($0) ?? 0) / 100, 0.15)) }
+          ), placeholder: "e.g. 5", keyboardType: .decimalPad)
+          .multilineTextAlignment(.trailing)
+          .frame(width: 90, height: 34)
+          Text("%")
+        }
+      }
+
+      NativeSettingsOtherIncomeField()
+    } header: {
+      Text("United States")
+    } footer: {
+      Text("Estimate covers federal income tax, self-employment tax (Social Security + Medicare) and state income tax. The other income field is your W-2 wages, if any. Figures are estimates, not tax advice — you or your accountant file your return.")
+    }
   }
 }
 
@@ -1201,6 +1329,8 @@ struct NativeHelpSettingsView: View {
 // MARK: About
 
 struct NativeAboutSettingsView: View {
+  @EnvironmentObject private var store: OkkleStore
+
   var body: some View {
     Form {
       Section {
@@ -1212,7 +1342,7 @@ struct NativeAboutSettingsView: View {
         }
       }
       Section {
-        Text("Okkle — mileage and tax tracking built for UK self-employed couriers. Your records stay on your device.")
+        Text("Okkle — mileage and tax tracking built for \(store.settings.taxCountry == .us ? "US" : "UK") self-employed couriers. Your records stay on your device.")
           .font(.footnote)
           .foregroundStyle(.secondary)
       }

@@ -31,13 +31,13 @@ struct NativeExportCard: View {
       isPresented: Binding(get: { pendingGroup != nil }, set: { if !$0 { pendingGroup = nil } }),
       titleVisibility: .visible
     ) {
-      ForEach(NativeExportDocument.allCases.filter { $0.group == pendingGroup }) { document in
-        Button(document.title) { selectDocument(document) }
+      ForEach(NativeExportDocument.available(for: store.settings.taxCountry).filter { $0.group == pendingGroup }) { document in
+        Button(document.title(for: store.settings.taxCountry)) { selectDocument(document) }
       }
       Button("Cancel", role: .cancel) {}
     }
     .confirmationDialog(
-      "Export \(pendingDocument?.title ?? "") as",
+      "Export \(pendingDocument?.title(for: store.settings.taxCountry) ?? "") as",
       isPresented: Binding(get: { pendingDocument != nil }, set: { if !$0 { pendingDocument = nil } }),
       titleVisibility: .visible
     ) {
@@ -62,7 +62,7 @@ struct NativeExportCard: View {
   }
 
   private func groupRow(_ group: NativeTaxExportGroup) -> some View {
-    let documents = NativeExportDocument.allCases.filter { $0.group == group }
+    let documents = NativeExportDocument.available(for: store.settings.taxCountry).filter { $0.group == group }
     return Button {
       if documents.count == 1, let only = documents.first {
         selectDocument(only)
@@ -80,7 +80,7 @@ struct NativeExportCard: View {
           Text(group.title)
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(OkkleColor.ink)
-          Text(documents.map(\.title).joined(separator: " · "))
+          Text(documents.map { $0.title(for: store.settings.taxCountry) }.joined(separator: " · "))
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .lineLimit(1)
@@ -122,7 +122,7 @@ func nativeMakeExport(_ kinds: [NativeTaxExportKind], store: OkkleStore) -> Nati
 
 @MainActor
 private func nativeMakeExportFile(_ kind: NativeTaxExportKind, store: OkkleStore) -> URL? {
-  let fileName = "Okkle_\(kind.fileStem)_TaxYear-\(nativeTaxYearLabel(for: store.taxYear))_\(nativeTodayStamp()).\(kind.fileExtension)"
+  let fileName = "Okkle_\(kind.fileStem(for: store.settings.taxCountry))_TaxYear-\(nativeTaxYearLabel(for: store.taxYear))_\(nativeTodayStamp()).\(kind.fileExtension)"
     .replacingOccurrences(of: "/", with: "-")
   let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
   do {
@@ -141,6 +141,14 @@ private func nativeMakeExportFile(_ kind: NativeTaxExportKind, store: OkkleStore
       try nativeMileageCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     case .freeAgent:
       try nativeFreeAgentCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .sage:
+      try nativeSageCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .quickBooks:
+      try nativeQuickBooksCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .xero:
+      try nativeXeroCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .wave:
+      try nativeWaveCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     case .allData:
       try nativeAllDataCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     }
@@ -153,21 +161,35 @@ private func nativeMakeExportFile(_ kind: NativeTaxExportKind, store: OkkleStore
 @MainActor
 func nativeSelfAssessmentCsv(store: OkkleStore) -> String {
   let tax = store.taxPosition
+  let country = store.settings.taxCountry
   var rows: [[String]] = [
     ["Field", "Value"],
     ["Tax year", nativeTaxYearLabel(for: store.taxYear)],
     ["Turnover (income)", nativeDecimal(tax.turnover)],
     ["Logged expenses", nativeDecimal(tax.expenses)],
     ["Deduction applied", nativeDecimal(tax.deductionApplied)],
-    ["Taxable profit", nativeDecimal(tax.profit)],
-    ["Income tax band", store.settings.incomeBracket.label],
-    ["Other income", nativeDecimal(store.settings.otherIncome)],
-    ["Estimated Income Tax", nativeDecimal(tax.incomeTax)],
-    ["Estimated Class 4 NIC", nativeDecimal(tax.class4)],
-    ["Estimated total due", nativeDecimal(tax.totalDue)]
+    ["Taxable profit", nativeDecimal(tax.profit)]
   ]
+  switch country {
+  case .uk:
+    rows.append(["Income tax band", store.settings.incomeBracket.label])
+    rows.append(["Other income", nativeDecimal(store.settings.otherIncome)])
+    rows.append(["Estimated Income Tax", nativeDecimal(tax.incomeTax)])
+    rows.append(["Estimated Class 4 NIC", nativeDecimal(tax.class4)])
+  case .us:
+    rows.append(["Standard deduction", nativeDecimal(tax.standardDeduction)])
+    rows.append(["QBI deduction (20%)", nativeDecimal(tax.qbiDeduction)])
+    rows.append(["Other W-2 wages", nativeDecimal(store.settings.otherIncome)])
+    rows.append(["Estimated federal income tax", nativeDecimal(tax.incomeTax)])
+    rows.append(["Estimated self-employment tax", nativeDecimal(tax.class4)])
+    if tax.stateTax > 0 {
+      rows.append(["Estimated state tax (\(store.settings.usState.label))", nativeDecimal(tax.stateTax)])
+    }
+  }
+  rows.append(["Estimated total due", nativeDecimal(tax.totalDue)])
   if tax.paymentOnAccount > 0 {
-    rows.append(["Payment on account (each)", nativeDecimal(tax.paymentOnAccount)])
+    let label = country == .uk ? "Payment on account (each)" : "Suggested quarterly set-aside (1040-ES)"
+    rows.append([label, nativeDecimal(tax.paymentOnAccount)])
   }
   rows.append(["Business miles", nativeDecimal(store.yearMiles)])
   rows.append(["Mileage deduction", nativeDecimal(store.yearMileageDeduction)])
@@ -175,9 +197,27 @@ func nativeSelfAssessmentCsv(store: OkkleStore) -> String {
 }
 
 @MainActor
+func nativeExpenseCategoryCsv(store: OkkleStore) -> String {
+  var totals: [String: Double] = [:]
+  store.yearRecords
+    .filter { $0.kind == .expense }
+    .forEach { record in
+      let category = record.category?.isEmpty == false ? record.category! : "Uncategorised"
+      totals[category, default: 0] += record.amount ?? 0
+    }
+  let rows = totals
+    .sorted { $0.value > $1.value }
+    .map { [nativeCsvField($0.key), nativeCsvField(nativeDecimal($0.value))].joined(separator: ",") }
+  return (["Category,Amount"] + rows).joined(separator: "\n")
+}
+
+@MainActor
 func nativeAccountantPackCsv(store: OkkleStore) -> String {
   [
     nativeSelfAssessmentCsv(store: store),
+    "",
+    "Expenses by category",
+    nativeExpenseCategoryCsv(store: store),
     "",
     "Mileage log",
     nativeMileageCsv(store: store),
@@ -194,14 +234,21 @@ func nativeMileageCsv(store: OkkleStore) -> String {
   // set at logging time against a running total of zero, so it's only
   // right below the 10,000-mile HMRC simplified-rate threshold; this way
   // the exported total always matches the tax-year figure shown in Reports.
-  let header = "Date,Vehicle,Source,Miles,Basis,Deduction GBP,From,To"
+  let country = store.settings.taxCountry
+  let basis: String
+  switch (country, store.settings.expenseMethod) {
+  case (.uk, .simplified): basis = "HMRC simplified"
+  case (.uk, .actualCost): basis = "Actual cost (no mileage rate)"
+  case (.us, _): basis = "IRS standard mileage"
+  }
+  let header = "Date,Vehicle,Source,Miles,Basis,Deduction \(country.currencyCode),From,To"
   let rows = store.yearMileageLogRows.map { row in
     [
       nativeCsvField(nativeDateStamp(row.date)),
       nativeCsvField(row.vehicle.label),
       nativeCsvField(row.source),
       nativeCsvField(nativeDecimal(row.miles)),
-      nativeCsvField("HMRC simplified"),
+      nativeCsvField(basis),
       nativeCsvField(nativeDecimal(row.deduction)),
       nativeCsvField(row.fromAddress ?? ""),
       nativeCsvField(row.toAddress ?? "")
@@ -210,9 +257,18 @@ func nativeMileageCsv(store: OkkleStore) -> String {
   return ([header] + rows).joined(separator: "\n")
 }
 
+/// One bank-statement-style transaction line, shared by every bookkeeping-
+/// software export below — each just formats the same underlying records
+/// differently, per that software's own documented CSV import rules.
+private struct NativeBookkeepingTransaction {
+  let date: Date
+  let amount: Double
+  let description: String
+}
+
 @MainActor
-func nativeFreeAgentCsv(store: OkkleStore) -> String {
-  let rows = store.records
+private func nativeBookkeepingTransactions(store: OkkleStore) -> [NativeBookkeepingTransaction] {
+  store.records
     .filter { ($0.kind == .income || $0.kind == .expense) && (($0.amount ?? 0) > 0) }
     .sorted { $0.date < $1.date }
     .map { record in
@@ -228,18 +284,109 @@ func nativeFreeAgentCsv(store: OkkleStore) -> String {
       }
       let cleanNote = record.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       let exportDescription = cleanNote.isEmpty ? description : "\(description) - \(cleanNote)"
-      return [
-        nativeCsvField(nativeUkDateStamp(record.date)),
-        nativeCsvField(nativeDecimal(amount)),
-        nativeCsvField(exportDescription)
+      return NativeBookkeepingTransaction(date: record.date, amount: amount, description: exportDescription)
+    }
+}
+
+/// FreeAgent's own CSV spec (support.freeagent.com "Format a CSV file to
+/// upload a bank statement"): exactly Date, Amount, Description in that
+/// order, dd/mm/yyyy always (not locale-dependent), a single signed Amount
+/// column, and — unlike most importers — NO header row at all. FreeAgent's
+/// spec also explicitly forbids commas and quote marks anywhere in the file
+/// (there's no quote-escaping convention it recognises), so descriptions are
+/// sanitised here rather than CSV-quoted the normal way.
+@MainActor
+func nativeFreeAgentCsv(store: OkkleStore) -> String {
+  nativeBookkeepingTransactions(store: store)
+    .map { tx in
+      [
+        nativeUkDateStamp(tx.date),
+        nativeDecimal(tx.amount),
+        nativeFreeAgentSafeText(tx.description)
       ].joined(separator: ",")
     }
+    .joined(separator: "\n")
+}
+
+/// FreeAgent has no comma/quote-escaping convention, so those characters are
+/// stripped (rather than quoted) to keep the column count intact.
+private func nativeFreeAgentSafeText(_ value: String) -> String {
+  value
+    .replacingOccurrences(of: ",", with: ";")
+    .replacingOccurrences(of: "\"", with: "'")
+    .replacingOccurrences(of: "\n", with: " ")
+}
+
+/// Sage Business Cloud Accounting's CSV bank-statement import (Sage
+/// Knowledgebase "Formatting CSV bank statements"): a required header row of
+/// Date, Description, Amount, a single signed Amount column (negative =
+/// payment/expense, positive = receipt/income — same convention already used
+/// for the transactions below), and Sage's own UK default of dd/mm/yyyy.
+@MainActor
+func nativeSageCsv(store: OkkleStore) -> String {
+  let rows = nativeBookkeepingTransactions(store: store).map { tx in
+    [
+      nativeCsvField(nativeUkDateStamp(tx.date)),
+      nativeCsvField(tx.description),
+      nativeCsvField(nativeDecimal(tx.amount))
+    ].joined(separator: ",")
+  }
+  return (["Date,Description,Amount"] + rows).joined(separator: "\n")
+}
+
+/// QuickBooks Online's 3-column CSV import (Date, Description, Amount) —
+/// Intuit's own guidance asks for one consistent date format per file and
+/// recommends dd/mm/yyyy specifically, so that's used regardless of the
+/// driver's own country.
+@MainActor
+func nativeQuickBooksCsv(store: OkkleStore) -> String {
+  let rows = nativeBookkeepingTransactions(store: store).map { tx in
+    [
+      nativeCsvField(nativeUkDateStamp(tx.date)),
+      nativeCsvField(tx.description),
+      nativeCsvField(nativeDecimal(tx.amount))
+    ].joined(separator: ",")
+  }
+  return (["Date,Description,Amount"] + rows).joined(separator: "\n")
+}
+
+/// Xero's CSV bank statement import (central.xero.com "Import a bank
+/// statement in CSV format") requires the date format to match the Xero
+/// organisation's own region setting — dd/mm/yyyy for a UK org, mm/dd/yyyy
+/// for a US one — not a fixed ISO stamp, which risks Xero's ambiguous-date
+/// prompt or a misread date. Amount is a single signed column; Description
+/// is optional but worth including.
+@MainActor
+func nativeXeroCsv(store: OkkleStore) -> String {
+  let country = store.settings.taxCountry
+  let rows = nativeBookkeepingTransactions(store: store).map { tx in
+    [
+      nativeCsvField(nativePeriodDateStamp(tx.date, country: country)),
+      nativeCsvField(nativeDecimal(tx.amount)),
+      nativeCsvField(tx.description)
+    ].joined(separator: ",")
+  }
   return (["Date,Amount,Description"] + rows).joined(separator: "\n")
+}
+
+/// Wave's statement import (support.waveapps.com "Upload a bank or credit
+/// card statement in .csv format") documents its minimum required columns as
+/// Date (MM/DD/YYYY), Description, Amount — US-style, not year-first.
+@MainActor
+func nativeWaveCsv(store: OkkleStore) -> String {
+  let rows = nativeBookkeepingTransactions(store: store).map { tx in
+    [
+      nativeCsvField(nativeUsDateStamp(tx.date)),
+      nativeCsvField(tx.description),
+      nativeCsvField(nativeDecimal(tx.amount))
+    ].joined(separator: ",")
+  }
+  return (["Date,Description,Amount"] + rows).joined(separator: "\n")
 }
 
 @MainActor
 func nativeAllDataCsv(store: OkkleStore) -> String {
-  let header = "date,type,platform,vehicle,miles,deduction,amount,category,merchant,note"
+  let header = "date,type,platform,vehicle,miles,deduction,amount,category,deliveries,merchant,note"
   let tripRows = store.trips.map { trip in
     [
       nativeCsvField(nativeDateStamp(trip.startedAt)),
@@ -249,7 +396,8 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(nativeDecimal(trip.miles)),
       nativeCsvField(nativeDecimal(trip.deduction)),
       nativeCsvField(""),
-      nativeCsvField(""),
+      nativeCsvField(trip.category.label),
+      nativeCsvField(String(store.deliveryCount(for: trip))),
       nativeCsvField(""),
       nativeCsvField("")
     ].joined(separator: ",")
@@ -264,6 +412,7 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(record.deduction.map(nativeDecimal) ?? ""),
       nativeCsvField(record.amount.map(nativeDecimal) ?? ""),
       nativeCsvField(record.category ?? ""),
+      nativeCsvField(""),
       nativeCsvField(record.merchant ?? ""),
       nativeCsvField(record.note ?? "")
     ].joined(separator: ",")
@@ -300,6 +449,22 @@ func nativeUkDateStamp(_ date: Date) -> String {
   formatter.locale = Locale(identifier: "en_GB")
   formatter.dateFormat = "dd/MM/yyyy"
   return formatter.string(from: date)
+}
+
+func nativeUsDateStamp(_ date: Date) -> String {
+  let formatter = DateFormatter()
+  formatter.calendar = Calendar(identifier: .gregorian)
+  formatter.locale = Locale(identifier: "en_US")
+  formatter.dateFormat = "MM/dd/yyyy"
+  return formatter.string(from: date)
+}
+
+/// Display date stamp for the jurisdiction the export is for — dd/MM/yyyy
+/// for the UK, MM/dd/yyyy for the US. `nativeDateStamp` (ISO yyyy-MM-dd)
+/// stays the one used for filenames and raw-data CSVs, which want an
+/// unambiguous, locale-independent format regardless of country.
+func nativePeriodDateStamp(_ date: Date, country: NativeTaxCountry) -> String {
+  country == .uk ? nativeUkDateStamp(date) : nativeUsDateStamp(date)
 }
 
 @MainActor

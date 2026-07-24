@@ -431,8 +431,22 @@ private struct NativeSidebarRow: View {
   }
 }
 
-let nativeOnboardingPlatforms = ["Uber Eats", "Deliveroo", "Just Eat", "Stuart", "Amazon Flex", "Other"]
-let nativeDeliveryServiceOptions = nativeOnboardingPlatforms.filter { $0 != "Other" }
+/// The delivery apps offered in onboarding, by market. A driver can always add
+/// their own via "Other", so this is just the common set for each country.
+func nativeOnboardingPlatforms(for country: NativeTaxCountry) -> [String] {
+  switch country {
+  case .uk: return ["Uber Eats", "Deliveroo", "Just Eat", "Stuart", "Amazon Flex", "Other"]
+  case .us: return ["DoorDash", "Uber Eats", "Grubhub", "Instacart", "Amazon Flex", "Other"]
+  }
+}
+
+/// Every platform Okkle knows by name across all markets — used to decide
+/// whether a saved platform is a "custom" one and to seed the record picker,
+/// independent of the driver's current country.
+let nativeAllKnownPlatforms: [String] = [
+  "Uber Eats", "Deliveroo", "Just Eat", "Stuart", "Amazon Flex",
+  "DoorDash", "Grubhub", "Instacart",
+]
 
 func nativePlatformSymbol(_ platform: String) -> String {
   switch platform {
@@ -440,7 +454,45 @@ func nativePlatformSymbol(_ platform: String) -> String {
   case "Deliveroo": return "takeoutbag.and.cup.and.straw.fill"
   case "Just Eat": return "fork.knife"
   case "Stuart": return "shippingbox.fill"
-  case "Amazon Flex": return "cube.box.fill"
+  case "Amazon Flex", "Instacart": return "cube.box.fill"
+  case "DoorDash": return "bag.fill"
+  case "Grubhub": return "fork.knife"
   default: return "plus.circle.fill"
+  }
+}
+
+/// The bundled real app-icon asset for a known platform (sourced from each
+/// platform's own official App Store listing), or nil for a custom/"Other"
+/// platform, which falls back to `nativePlatformSymbol`'s generic glyph.
+func nativePlatformIconAssetName(_ platform: String) -> String? {
+  switch platform {
+  case "Uber Eats": return "PlatformIcon-UberEats"
+  case "Deliveroo": return "PlatformIcon-Deliveroo"
+  case "Just Eat": return "PlatformIcon-JustEat"
+  case "Stuart": return "PlatformIcon-Stuart"
+  case "Amazon Flex": return "PlatformIcon-AmazonFlex"
+  case "DoorDash": return "PlatformIcon-DoorDash"
+  case "Grubhub": return "PlatformIcon-Grubhub"
+  case "Instacart": return "PlatformIcon-Instacart"
+  default: return nil
+  }
+}
+
+/// A platform's real app icon when we have one bundled, falling back to a
+/// generic SF Symbol glyph for a custom/"Other" platform. `foregroundStyle`
+/// only visibly affects the symbol fallback — a real logo image keeps its
+/// own brand colors, which is the point.
+struct NativePlatformIcon: View {
+  let platform: String
+
+  var body: some View {
+    if let assetName = nativePlatformIconAssetName(platform) {
+      Image(assetName)
+        .resizable()
+        .aspectRatio(contentMode: .fill)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    } else {
+      Image(systemName: nativePlatformSymbol(platform))
+    }
   }
 }

@@ -53,6 +53,134 @@ enum NativeRegion: String, CaseIterable, Identifiable, Codable {
   }
 }
 
+/// The tax jurisdiction the estimate runs under. `region` (rUK/Scotland) still
+/// applies within the UK; `usState` applies within the US. Everything tax-side
+/// — the tax-year window, the mileage rate, the calculation itself and the
+/// on-screen labels — branches on this.
+enum NativeTaxCountry: String, CaseIterable, Identifiable, Codable {
+  case uk
+  case us
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .uk: return "United Kingdom"
+    case .us: return "United States"
+    }
+  }
+
+  var currencyCode: String {
+    switch self {
+    case .uk: return "GBP"
+    case .us: return "USD"
+    }
+  }
+
+  /// Best-effort guess from the device's system region, so onboarding can
+  /// pre-select the right market without asking location permission or
+  /// making a network call. Purely a starting point — the picker right
+  /// below it is always there to correct it.
+  static var deviceDefault: NativeTaxCountry {
+    Locale.current.region?.identifier == "US" ? .us : .uk
+  }
+}
+
+/// How a UK driver claims vehicle costs. HMRC lets you pick either the flat
+/// simplified mileage rate or your real running costs — not both, and once
+/// you start using simplified expenses for a vehicle you must keep using
+/// them for that vehicle for as long as it's in business use. US drivers
+/// only ever use the IRS standard mileage rate, so this doesn't apply there.
+enum NativeExpenseMethod: String, CaseIterable, Identifiable, Codable {
+  case simplified
+  case actualCost
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .simplified: return "Simplified expenses"
+    case .actualCost: return "Actual costs"
+    }
+  }
+
+  var subtitle: String {
+    switch self {
+    case .simplified: return "A flat mileage rate covers fuel, insurance, servicing and repairs."
+    case .actualCost: return "Claim your real fuel, insurance, servicing and repair receipts."
+    }
+  }
+}
+
+/// US states, for the state-income-tax layer. The five biggest gig markets
+/// (CA, NY, IL, PA, GA) carry their own brackets/flat rates; the nine states
+/// with no wage income tax resolve to zero; every other state falls back to a
+/// flat rate the driver enters themselves (`otherState`) until per-state
+/// brackets are added in a later release. All figures are for the 2025 tax
+/// year and single filing status — they must be reviewed against official
+/// state sources each year before shipping.
+enum NativeUSState: String, CaseIterable, Identifiable, Codable {
+  // Built-in brackets / flat rates.
+  case california, newYork, illinois, pennsylvania, georgia
+  // No wage income tax.
+  case alaska, florida, nevada, southDakota, tennessee, texas, washington, wyoming, newHampshire
+  // Anything else — user supplies a flat percentage in settings.
+  case otherState
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .california: return "California"
+    case .newYork: return "New York"
+    case .illinois: return "Illinois"
+    case .pennsylvania: return "Pennsylvania"
+    case .georgia: return "Georgia"
+    case .alaska: return "Alaska"
+    case .florida: return "Florida"
+    case .nevada: return "Nevada"
+    case .southDakota: return "South Dakota"
+    case .tennessee: return "Tennessee"
+    case .texas: return "Texas"
+    case .washington: return "Washington"
+    case .wyoming: return "Wyoming"
+    case .newHampshire: return "New Hampshire"
+    case .otherState: return "Another state"
+    }
+  }
+
+  /// True when this state levies no tax on ordinary wage / self-employment
+  /// income, so the state layer is a hard zero regardless of profit.
+  var hasNoIncomeTax: Bool {
+    switch self {
+    case .alaska, .florida, .nevada, .southDakota, .tennessee, .texas, .washington, .wyoming, .newHampshire:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// True when the app models this state's brackets itself; false means the
+  /// driver's manually-entered flat rate is used instead.
+  var hasBuiltInBrackets: Bool {
+    switch self {
+    case .california, .newYork, .illinois, .pennsylvania, .georgia:
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// Matches a geocoded placemark's `administrativeArea` (e.g. "California")
+  /// to a case by its display label, for the onboarding "detect from my
+  /// location" flow. Falls back to `.otherState` for a state Okkle doesn't
+  /// model by name, or if the area couldn't be resolved at all.
+  static func matching(administrativeArea: String?) -> NativeUSState {
+    guard let administrativeArea else { return .otherState }
+    return allCases.first { $0.label.caseInsensitiveCompare(administrativeArea) == .orderedSame } ?? .otherState
+  }
+}
+
 enum NativeIncomeBracket: String, CaseIterable, Identifiable, Codable {
   case basic
   case higher
@@ -101,7 +229,7 @@ enum NativeLogKind: String, CaseIterable, Identifiable, Codable {
 
   var symbol: String {
     switch self {
-    case .income: return "sterlingsign.circle.fill"
+    case .income: return nativeCurrencySymbolName("sterlingsign.circle.fill")
     case .expense: return "receipt.fill"
     case .mileage: return "map.fill"
     }
@@ -329,9 +457,31 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var startAddress: String? = nil
   var endAddress: String? = nil
   var feedback: NativeTripFeedback? = nil
+  // Almost every trip logged here is a delivery, so business is the sane
+  // default — the driver only ever has to act to flag the exception (an
+  // errand auto-tracking picked up), not to classify every single trip.
+  // Personal trips are kept, not deleted, and excluded from mileage/tax
+  // totals and Insights instead — a complete log with excluded personal
+  // miles is stronger evidence for an audit than one with entries quietly
+  // removed, and it lets the total reconcile against the car's real mileage.
+  var category: NativeTripCategory = .business
+  // Driver-corrected number of deliveries (stops) on this trip. Nil means
+  // "use the count Okkle detected from the route + recorded stops"; setting it
+  // overrides that when the automatic count got it wrong. Records/display only
+  // — it doesn't change mileage, tax or the Insights zone math (which needs
+  // where each stop was, not just how many). Optional, so old trips decode nil.
+  var manualStopCount: Int? = nil
   // Stop analysis is owned by the trip so edits, deletion, backup and iCloud
   // sync all operate on one coherent aggregate. Nil decodes older snapshots.
   var analysis: NativeTripAnalysis? = nil
+}
+
+enum NativeTripCategory: String, CaseIterable, Identifiable, Codable {
+  case business
+  case personal
+
+  var id: String { rawValue }
+  var label: String { rawValue.capitalized }
 }
 
 enum NativeTripFeedback: String, CaseIterable, Identifiable, Codable {
@@ -434,8 +584,31 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
 struct NativeSettings: Codable, Equatable {
   var name = ""
   var defaultVehicle: NativeVehicle = .car
+  // Tax jurisdiction. Defaults to the UK (the launch market); a US driver
+  // switches this in Settings, which changes the tax-year window, the mileage
+  // rate and the whole tax calculation. Decoded with a default so existing
+  // UK snapshots (saved before this field existed) load as .uk.
+  var taxCountry: NativeTaxCountry = .uk
   var region: NativeRegion = .ruk
+  // UK-only: whether vehicle costs are claimed via HMRC's simplified mileage
+  // rate or via real (actual) running costs. Irrelevant for US drivers, who
+  // only ever use the IRS standard mileage rate. Defaults to .simplified so
+  // existing UK snapshots keep behaving exactly as they always have.
+  var expenseMethod: NativeExpenseMethod = .simplified
+  // Once true, expenseMethod can no longer be switched away from .simplified —
+  // mirrors HMRC's real rule that once you use simplified expenses for a
+  // vehicle, you must keep using them for that vehicle for as long as it's in
+  // business use. Set the moment the driver chooses Simplified (onboarding or
+  // Settings); never set for Actual cost, which stays switchable.
+  var expenseMethodLocked: Bool = false
+  // US state for the state-income-tax layer (ignored when taxCountry == .uk).
+  var usState: NativeUSState = .california
+  // Flat state rate (as a fraction, e.g. 0.05 = 5%) used only when usState is
+  // .otherState — a state Okkle doesn't yet model with its own brackets.
+  var usOtherStateRate: Double = 0
   var incomeBracket: NativeIncomeBracket = .basic
+  // UK: other PAYE income stacked under self-employment. US: W-2 wages, used
+  // the same way (self-employment profit is taxed on top at the right bracket).
   var otherIncome: Double = 0
   var platforms = ["Uber Eats", "Deliveroo", "Just Eat"]
   var accountantUTR = ""
@@ -482,7 +655,12 @@ struct NativeSettings: Codable, Equatable {
   private enum CodingKeys: String, CodingKey {
     case name
     case defaultVehicle
+    case taxCountry
     case region
+    case expenseMethod
+    case expenseMethodLocked
+    case usState
+    case usOtherStateRate
     case incomeBracket
     case otherIncome
     case platforms
@@ -511,7 +689,12 @@ struct NativeSettings: Codable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
     defaultVehicle = try container.decodeIfPresent(NativeVehicle.self, forKey: .defaultVehicle) ?? .car
+    taxCountry = try container.decodeIfPresent(NativeTaxCountry.self, forKey: .taxCountry) ?? .uk
     region = try container.decodeIfPresent(NativeRegion.self, forKey: .region) ?? .ruk
+    expenseMethod = try container.decodeIfPresent(NativeExpenseMethod.self, forKey: .expenseMethod) ?? .simplified
+    expenseMethodLocked = try container.decodeIfPresent(Bool.self, forKey: .expenseMethodLocked) ?? false
+    usState = try container.decodeIfPresent(NativeUSState.self, forKey: .usState) ?? .california
+    usOtherStateRate = try container.decodeIfPresent(Double.self, forKey: .usOtherStateRate) ?? 0
     incomeBracket = try container.decodeIfPresent(NativeIncomeBracket.self, forKey: .incomeBracket) ?? .basic
     otherIncome = try container.decodeIfPresent(Double.self, forKey: .otherIncome) ?? 0
     platforms = try container.decodeIfPresent([String].self, forKey: .platforms) ?? ["Uber Eats", "Deliveroo", "Just Eat"]

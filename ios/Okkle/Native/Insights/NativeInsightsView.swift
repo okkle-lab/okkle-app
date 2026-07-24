@@ -739,34 +739,108 @@ struct NativeHourStrip: View {
   }
 }
 
-/// A ranked, real (logged, not modelled) breakdown of this period's earnings
-/// by platform — a cross-platform view no single delivery app can offer.
-struct NativePlatformShareList: View {
-  let shares: [NativePlatformShare]
+/// One platform's real, logged earnings for a period, ranked, with how that
+/// compares to the same platform's earnings the equivalent period before.
+struct NativeTopPlatformEarning: Identifiable {
+  let id = UUID()
+  let rank: Int
+  let platform: String
+  let amount: Double
+  let deltaPct: Int?   // vs the same platform's earnings last period; nil if no comparable prior data
+}
+
+/// Ranks platforms by real, logged income in `current`, comparing each to its
+/// own total in `previous` (the equivalent prior period) for a trend arrow.
+/// Only ever worth showing once there's an actual mix — a single platform
+/// logged isn't a "ranking".
+func nativeTopPlatformEarnings(current: [NativeRecord], previous: [NativeRecord], limit: Int = 3) -> [NativeTopPlatformEarning] {
+  func totals(_ records: [NativeRecord]) -> [String: Double] {
+    var totals: [String: Double] = [:]
+    for record in records where record.kind == .income {
+      totals[record.platform ?? "Other", default: 0] += record.amount ?? 0
+    }
+    return totals
+  }
+  let currentTotals = totals(current)
+  guard currentTotals.count >= 2 else { return [] }
+  let previousTotals = totals(previous)
+  return currentTotals
+    .sorted { $0.value > $1.value }
+    .prefix(limit)
+    .enumerated()
+    .map { index, entry in
+      var deltaPct: Int?
+      if let prevAmount = previousTotals[entry.key], prevAmount > 0 {
+        let delta = Int(((entry.value - prevAmount) / prevAmount * 100).rounded())
+        if delta != 0 { deltaPct = delta }
+      }
+      return NativeTopPlatformEarning(rank: index + 1, platform: entry.key, amount: entry.value, deltaPct: deltaPct)
+    }
+}
+
+/// A ranked, real (logged, not modelled) breakdown of this period's top
+/// earning platforms — a cross-platform view no single delivery app can
+/// offer — styled to match NativeTopAreasList directly above it.
+struct NativeTopPlatformsList: View {
+  let platforms: [NativeTopPlatformEarning]
+  var previousPeriodLabel: String = "last period"
 
   var body: some View {
     VStack(spacing: 0) {
-      ForEach(Array(shares.enumerated()), id: \.element.id) { index, share in
+      ForEach(platforms) { entry in
         HStack(spacing: 12) {
-          Image(systemName: nativePlatformSymbol(share.platform))
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(nativeAIAccentGradient)
-            .frame(width: 24)
-          Text(share.platform)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(OkkleColor.ink)
-          Spacer(minLength: 8)
-          if let delta = share.deltaPct {
-            Image(systemName: delta > 0 ? "arrow.up.right" : "arrow.down.right")
-              .font(.system(size: 12, weight: .bold))
-              .foregroundStyle(delta > 0 ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.muted))
+          Text("\(entry.rank)")
+            .font(.system(size: 13, weight: .heavy))
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .background(OkkleColor.brand, in: Circle())
+          NativePlatformIcon(platform: entry.platform)
+            .frame(width: 30, height: 30)
+            .clipShape(Circle())
+          VStack(alignment: .leading, spacing: 2) {
+            Text(entry.platform)
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(OkkleColor.ink)
+            if let delta = entry.deltaPct {
+              HStack(spacing: 3) {
+                Image(systemName: delta > 0 ? "arrow.up.right" : "arrow.down.right")
+                  .font(.system(size: 10, weight: .bold))
+                Text("\(abs(delta))% vs \(previousPeriodLabel)")
+                  .font(.system(size: 12, weight: .semibold))
+              }
+              .foregroundStyle(delta > 0 ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.red))
+            } else {
+              Text("New this period")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(OkkleColor.muted)
+            }
           }
-          Text("\(share.sharePct)%")
+          Spacer(minLength: 8)
+          Text(gbp(entry.amount, whole: true))
             .font(.system(size: 16, weight: .bold, design: .rounded))
             .foregroundStyle(OkkleColor.ink)
         }
-        .padding(.vertical, 14)
-        if index < shares.count - 1 { Divider() }
+        .padding(.vertical, 10)
+        if entry.id != platforms.last?.id { Divider().padding(.leading, 36) }
+      }
+    }
+  }
+}
+
+/// Shared "TOP PLATFORMS" card for the Weekly/Monthly/Yearly panels — only
+/// appears once there's an actual multi-platform mix to rank.
+@ViewBuilder
+func nativeTopPlatformsCard(current: [NativeRecord], previous: [NativeRecord], previousPeriodLabel: String) -> some View {
+  let ranked = nativeTopPlatformEarnings(current: current, previous: previous)
+  if !ranked.isEmpty {
+    NativeAiCard {
+      VStack(alignment: .leading, spacing: 12) {
+        nativeInsightKicker("TOP PLATFORMS")
+        Text("Real, logged earnings by app — a cross-platform view no single delivery app can offer.")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(OkkleColor.muted.opacity(0.8))
+          .fixedSize(horizontal: false, vertical: true)
+        NativeTopPlatformsList(platforms: ranked, previousPeriodLabel: previousPeriodLabel)
       }
     }
   }
@@ -776,9 +850,21 @@ struct NativePlatformShareList: View {
 
 struct NativeWeeklyInsightPanel: View {
   let shift: NativeShiftInsights
+  @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @State private var selectedWeekday: Int?
   private var todayWeekday: Int { Calendar.current.component(.weekday, from: Date()) - 1 }
+
+  private var currentWeekRecords: [NativeRecord] {
+    let start = Date().addingTimeInterval(-7 * 86_400)
+    return store.records.filter { $0.date >= start }
+  }
+
+  private var previousWeekRecords: [NativeRecord] {
+    let start = Date().addingTimeInterval(-14 * 86_400)
+    let end = Date().addingTimeInterval(-7 * 86_400)
+    return store.records.filter { $0.date >= start && $0.date < end }
+  }
 
   private var orderedWeekdayStats: [NativeWeekdayStat] {
     [1, 2, 3, 4, 5, 6, 0].compactMap { wd in shift.weekdayStats.first { $0.weekday == wd } }
@@ -966,22 +1052,17 @@ struct NativeWeeklyInsightPanel: View {
         }
       }
 
-      // Card 3 — real, logged platform ranking. Only worth showing once
-      // there's an actual mix — a single platform isn't a "ranking".
-      if shift.platformShares.count >= 2 {
-        NativeAiCard {
-          section("Platform mix", subtitle: "Share of your logged earnings this period, by app.") {
-            NativePlatformShareList(shares: shift.platformShares)
-          }
-        }
-      }
-
-      // Card 4 — your top areas, with how much of your work each one carries.
+      // Card 3 — your top areas, with how much of your work each one carries.
       NativeAiCard {
         section("Your top areas", subtitle: "Bar shows how busy each area is compared to your #1 spot.") {
           NativeTopAreasList(zones: shift.zones, limit: 4, showShareBar: true)
         }
       }
+
+      // Card 4 — real, logged platform ranking, underneath top areas. Only
+      // worth showing once there's an actual mix — a single platform isn't
+      // a "ranking".
+      nativeTopPlatformsCard(current: currentWeekRecords, previous: previousWeekRecords, previousPeriodLabel: "last week")
     }
   }
 
@@ -1128,8 +1209,14 @@ private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint])
 private func nativePerHourBand(income: Double, activeHours: Double) -> String? {
   guard income > 0, activeHours > 1 else { return nil }
   let rate = income / activeHours
-  guard (4.0...45.0).contains(rate) else { return nil }
-  return "£\(Int((rate * 0.85).rounded(.down)))–\(Int((rate * 1.15).rounded(.up)))"
+  // Matches NativeShiftInsights's currency-specific plausibility range — US
+  // gig pay (tipping, higher urban cost of living) genuinely clears £45's
+  // worth in dollars on a strong shift far more often than the UK market
+  // this range was first calibrated against.
+  let plausibleRange: ClosedRange<Double> = nativeActiveCurrencyCode == "USD" ? 5.0...65.0 : 4.0...45.0
+  guard plausibleRange.contains(rate) else { return nil }
+  let symbol = nativeActiveCurrencyCode == "USD" ? "$" : "£"
+  return "\(symbol)\(Int((rate * 0.85).rounded(.down)))–\(Int((rate * 1.15).rounded(.up)))"
 }
 
 // MARK: - Monthly panel: earnings + tax relief + efficiency, over 30 days
@@ -1152,6 +1239,16 @@ struct NativeMonthlyInsightPanel: View {
 
   private var incomeThis: Double { windowIncome(fromDaysAgo: 30, toDaysAgo: 0) }
   private var incomePrev: Double { windowIncome(fromDaysAgo: 60, toDaysAgo: 30) }
+
+  private var currentMonthRecords: [NativeRecord] {
+    store.records.filter { $0.date >= Date().addingTimeInterval(-30 * day) }
+  }
+
+  private var previousMonthRecords: [NativeRecord] {
+    let start = Date().addingTimeInterval(-60 * day)
+    let end = Date().addingTimeInterval(-30 * day)
+    return store.records.filter { $0.date >= start && $0.date < end }
+  }
 
   private var savings: NativeMileageTaxSavings {
     store.mileageTaxSavings(for: DateInterval(start: Date().addingTimeInterval(-30 * day), end: Date()))
@@ -1227,7 +1324,10 @@ struct NativeMonthlyInsightPanel: View {
       }
 
       // Card 3 — where you earn, over the last 30 days.
-      nativeHotspotMapCard(trips: store.trips, zones: shift.zones)
+      nativeHotspotMapCard(trips: store.businessTrips, zones: shift.zones)
+
+      // Card 4 — top earning platforms, underneath where you earn.
+      nativeTopPlatformsCard(current: currentMonthRecords, previous: previousMonthRecords, previousPeriodLabel: "the 30 days before")
     }
   }
 }
@@ -1238,6 +1338,16 @@ struct NativeYearlyInsightPanel: View {
   let shift: NativeShiftInsights
   @EnvironmentObject private var store: OkkleStore
   @State private var selectedMonth: Int?
+
+  private var currentTaxYearRecords: [NativeRecord] {
+    let year = store.taxYear
+    return store.records.filter { year.contains($0.date) }
+  }
+
+  private var previousTaxYearRecords: [NativeRecord] {
+    let previousYear = store.taxYearInterval(containing: store.taxYear.start.addingTimeInterval(-1))
+    return store.records.filter { previousYear.contains($0.date) }
+  }
 
   private struct MonthStat: Identifiable {
     let index: Int
@@ -1352,7 +1462,10 @@ struct NativeYearlyInsightPanel: View {
       }
 
       // Card 4 — where you earn, across the year.
-      nativeHotspotMapCard(trips: store.trips, zones: shift.zones)
+      nativeHotspotMapCard(trips: store.businessTrips, zones: shift.zones)
+
+      // Card 5 — top earning platforms, underneath where you earn.
+      nativeTopPlatformsCard(current: currentTaxYearRecords, previous: previousTaxYearRecords, previousPeriodLabel: "last tax year")
     }
   }
 
@@ -1372,7 +1485,7 @@ struct NativeYearlyInsightPanel: View {
       }
       if month.income > 0 || savings.miles > 0 {
         breakdownRow("map.fill", "Business miles", miles(savings.miles))
-        breakdownRow("sterlingsign.circle.fill", "Tax relief", gbp(savings.taxSaved, whole: true))
+        breakdownRow(nativeCurrencySymbolName("sterlingsign.circle.fill"), "Tax relief", gbp(savings.taxSaved, whole: true))
         breakdownRow("percent", "Deduction", gbp(savings.mileageDeduction, whole: true))
       } else {
         Text("Nothing logged for \(month.name).")
@@ -1407,7 +1520,7 @@ struct NativeInsightsView: View {
   // inputs changes rather than on every body evaluation.
   @State private var cachedShift: NativeShiftInsights?
   private var insightVisits: [NativeVisit] {
-    NativeShiftInsights.enrichedVisits(visits: autoTrack.visits, trips: store.trips)
+    NativeShiftInsights.enrichedVisits(visits: autoTrack.visits, trips: store.businessTrips)
   }
 
   private var shift: NativeShiftInsights {
@@ -1446,7 +1559,7 @@ struct NativeInsightsView: View {
           NativeShiftPatternsCard(
             shift: shift,
             visits: insightVisits,
-            trips: store.trips,
+            trips: store.businessTrips,
             autoTrackTrips: Binding(
               get: { store.settings.autoTrackTrips },
               set: { value in

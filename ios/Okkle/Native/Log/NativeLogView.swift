@@ -258,7 +258,7 @@ struct NativeLogView: View {
           .frame(maxWidth: .infinity, alignment: .leading)
         nativeTextField(
           title: "Merchant (optional)",
-          placeholder: "e.g. Shell, Halfords, Vodafone",
+          placeholder: merchantPlaceholder,
           text: $merchant
         )
         nativeTextEditor(
@@ -685,20 +685,32 @@ struct NativeLogView: View {
     case .income:
       return OkkleColor.brand
     case .expense:
-      return OkkleColor.amber
+      return OkkleColor.red
     case .mileage:
       return OkkleColor.blue
     }
   }
 
   private func mileageRateDescription(for vehicle: NativeVehicle) -> String {
-    let band = vehicle.rateBand(on: date)
-    let first = Int((band.first * 100).rounded())
-    let after = Int((band.after * 100).rounded())
-    if first == after {
-      return "\(first)p per business mile."
+    switch store.settings.taxCountry {
+    case .uk:
+      guard store.settings.expenseMethod == .simplified else {
+        return "Actual costs claimed - no mileage rate applied."
+      }
+      let band = vehicle.rateBand(on: date)
+      let first = Int((band.first * 100).rounded())
+      let after = Int((band.after * 100).rounded())
+      if first == after {
+        return "\(first)p per business mile."
+      }
+      return "\(first)p first band, then \(after)p per mile."
+    case .us:
+      guard vehicle != .bike else {
+        return "No IRS mileage rate for bicycles."
+      }
+      let cents = Int((USTaxCalculator.standardMileageRate(on: date) * 100).rounded())
+      return "\(cents)c per business mile (IRS standard rate)."
     }
-    return "\(first)p first band, then \(after)p per mile."
   }
 
   private var platformOptions: [String] {
@@ -710,6 +722,13 @@ struct NativeLogView: View {
       return savedPlatformOptions[0]
     }
     return platform
+  }
+
+  private var merchantPlaceholder: String {
+    switch store.settings.taxCountry {
+    case .uk: return "e.g. Shell, Halfords, Vodafone"
+    case .us: return "e.g. Shell, AutoZone, Verizon"
+    }
   }
 
   private var categoryOptions: [String] {

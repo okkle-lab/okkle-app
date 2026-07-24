@@ -1,0 +1,194 @@
+import Foundation
+
+/// US self-employment tax engine — the American counterpart to `TaxCalculator`.
+///
+/// Scope (2.2 foundation): federal income tax, self-employment (SE) tax, the
+/// standard deduction and the 20% QBI deduction, plus state income tax for the
+/// five biggest gig markets (CA, NY, IL, PA, GA), the nine no-income-tax states
+/// as a hard zero, and a manual flat rate for every other state.
+///
+/// Like the UK engine, figures are reported *incrementally*: the tax owed on the
+/// driver's self-employment profit, stacked on top of any W-2 wages
+/// (`otherIncome`) — so the driver sees what their gig work adds to their bill.
+///
+/// IMPORTANT: every rate table below is for the **2026 tax year, single filing
+/// status** (verified against IRS Rev. Proc. 2025-32 and current state
+/// guidance as of July 2026), and must be reviewed against official IRS /
+/// state sources before each release. These are estimates to keep the driver
+/// organised, not tax advice, and Okkle never files a return.
+enum USTaxCalculator {
+  // The US federal tax year is the calendar year.
+  static func taxYearInterval(containing date: Date, calendar: Calendar = .current) -> DateInterval {
+    let year = calendar.component(.year, from: date)
+    let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1)) ?? date
+    let end = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1)) ?? date
+    return DateInterval(start: start, end: end)
+  }
+
+  /// IRS standard mileage rate for business use — a single rate per mile with
+  /// no UK-style 10,000-mile second tier, but it does change by date:
+  /// 2025 = 70¢; 2026 = 72.5¢ from 1 Jan, then 76¢ from 1 Jul (a rare mid-year
+  /// revision, announced by the IRS on 13 Jul 2026 due to high fuel prices —
+  /// the first mid-year change since 2022). Verify each year / whenever the
+  /// IRS revises it.
+  static func standardMileageRate(on date: Date, calendar: Calendar = .current) -> Double {
+    let comps = calendar.dateComponents([.year, .month], from: date)
+    let year = comps.year ?? 2026
+    let month = comps.month ?? 1
+    if year <= 2025 { return 0.70 }
+    if year == 2026 { return month >= 7 ? 0.76 : 0.725 }
+    return 0.76   // most recent known rate; refresh for future tax years
+  }
+
+  static func mileageDeduction(miles: Double, on date: Date = Date()) -> Double {
+    max(0, miles) * standardMileageRate(on: date)
+  }
+
+  // MARK: - Top-level estimate
+
+  static func estimate(
+    turnover: Double,
+    expenses: Double,
+    state: NativeUSState,
+    otherStateRate: Double,
+    wages: Double = 0
+  ) -> NativeTaxPosition {
+    let netProfit = max(0, turnover - expenses)
+    let wages = max(0, wages)
+
+    // 1. Self-employment tax (on 92.35% of net profit).
+    let seTax = selfEmploymentTax(netProfit: netProfit)
+    let seDeduction = seTax * 0.5   // half of SE tax is deductible from income
+
+    // 2. Adjusted gross income, then taxable income after the standard
+    //    deduction and the QBI deduction.
+    let agiWithBusiness = wages + netProfit - seDeduction
+    let taxableBeforeQBIWith = max(0, agiWithBusiness - standardDeduction)
+    let qbiBase = max(0, netProfit - seDeduction)
+    let qbiDeduction = min(0.20 * qbiBase, 0.20 * taxableBeforeQBIWith)
+    let taxableWith = max(0, taxableBeforeQBIWith - qbiDeduction)
+
+    // 3. Federal income tax attributable to the business — the increment over
+    //    taxing wages alone (wages get no QBI deduction).
+    let taxableWagesOnly = max(0, wages - standardDeduction)
+    let federalWith = federalIncomeTax(taxable: taxableWith)
+    let federalWithout = federalIncomeTax(taxable: taxableWagesOnly)
+    let federalOnBusiness = max(0, federalWith - federalWithout)
+
+    // 4. State income tax on the business profit (also incremental over wages).
+    let stateWith = stateIncomeTax(taxable: max(0, wages + netProfit), state: state, otherStateRate: otherStateRate)
+    let stateWithout = stateIncomeTax(taxable: wages, state: state, otherStateRate: otherStateRate)
+    let stateOnBusiness = max(0, stateWith - stateWithout)
+
+    let totalDue = federalOnBusiness + seTax + stateOnBusiness
+
+    return NativeTaxPosition(
+      turnover: turnover,
+      expenses: expenses,
+      deductionApplied: expenses,
+      businessProfit: netProfit,
+      profit: netProfit,
+      incomeTax: federalOnBusiness,
+      class4: seTax,
+      totalDue: totalDue,
+      // The IRS expects quarterly estimated payments; a quarter of the year's
+      // liability is the simplest "set aside this each quarter" figure.
+      paymentOnAccount: totalDue / 4,
+      usesTradingAllowance: false,
+      stateTax: stateOnBusiness,
+      qbiDeduction: qbiDeduction,
+      standardDeduction: standardDeduction
+    )
+  }
+
+  // MARK: - Federal
+
+  /// 2026 standard deduction, single filer — $16,100 (inflation-adjusted from
+  /// 2025's $15,750 per IRS Rev. Proc. 2025-32). Verify annually.
+  static let standardDeduction = 16_100.0
+
+  /// 2026 federal self-employment tax: 12.4% Social Security up to the wage
+  /// base ($184,500 for 2026, up from $176,100 in 2025), 2.9% Medicare on
+  /// everything, plus the 0.9% Additional Medicare on net earnings over
+  /// $200,000 (single) — all on 92.35% of net profit.
+  static func selfEmploymentTax(netProfit: Double) -> Double {
+    let netEarnings = max(0, netProfit) * 0.9235
+    guard netEarnings > 0 else { return 0 }
+    let socialSecurityWageBase = 184_500.0
+    let socialSecurity = min(netEarnings, socialSecurityWageBase) * 0.124
+    let medicare = netEarnings * 0.029
+    let additionalMedicare = max(0, netEarnings - 200_000) * 0.009
+    return socialSecurity + medicare + additionalMedicare
+  }
+
+  /// 2026 federal income tax, single filer, applied to taxable income
+  /// (IRS Rev. Proc. 2025-32).
+  static func federalIncomeTax(taxable: Double) -> Double {
+    let bands: [(upTo: Double, rate: Double)] = [
+      (12_400, 0.10),
+      (50_400, 0.12),
+      (105_700, 0.22),
+      (201_775, 0.24),
+      (256_225, 0.32),
+      (640_600, 0.35),
+      (.infinity, 0.37),
+    ]
+    return progressiveTax(on: taxable, bands: bands)
+  }
+
+  // MARK: - State
+
+  static func stateIncomeTax(taxable: Double, state: NativeUSState, otherStateRate: Double) -> Double {
+    let income = max(0, taxable)
+    guard income > 0 else { return 0 }
+    if state.hasNoIncomeTax { return 0 }
+
+    switch state {
+    case .california:
+      // Latest FTB-published single brackets (2025 tax year — the FTB
+      // indexes these to CA inflation and doesn't publish 2026's final
+      // dollar thresholds until late 2026; expect a low-single-digit rise
+      // once it does). Verify annually.
+      return progressiveTax(on: income, bands: [
+        (11_079, 0.01), (26_264, 0.02), (41_452, 0.04), (57_542, 0.06),
+        (72_724, 0.08), (371_479, 0.093), (445_771, 0.103), (742_953, 0.113),
+        (.infinity, 0.123),
+      ])
+    case .newYork:
+      // 2026: the FY2026 budget cut the bottom five bracket rates by 0.1pt;
+      // thresholds unchanged from 2025.
+      return progressiveTax(on: income, bands: [
+        (8_500, 0.039), (11_700, 0.044), (13_900, 0.0515), (80_650, 0.054),
+        (215_400, 0.059), (1_077_550, 0.0685), (5_000_000, 0.0965),
+        (25_000_000, 0.103), (.infinity, 0.109),
+      ])
+    case .illinois:
+      return income * 0.0495   // flat
+    case .pennsylvania:
+      return income * 0.0307   // flat
+    case .georgia:
+      return income * 0.0499   // 2026 flat rate (HB 463 accelerated the phase-down from 5.19% in 2025)
+    case .otherState:
+      return income * max(0, min(otherStateRate, 0.15))
+    default:
+      return 0
+    }
+  }
+
+  // MARK: - Shared
+
+  private static func progressiveTax(on taxable: Double, bands: [(upTo: Double, rate: Double)]) -> Double {
+    guard taxable > 0 else { return 0 }
+    var tax = 0.0
+    var previous = 0.0
+    for band in bands {
+      let slice = min(taxable, band.upTo) - previous
+      if slice > 0 {
+        tax += slice * band.rate
+        previous = min(taxable, band.upTo)
+      }
+      if taxable <= band.upTo { break }
+    }
+    return max(0, tax)
+  }
+}

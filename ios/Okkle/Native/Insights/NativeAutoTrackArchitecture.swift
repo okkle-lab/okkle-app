@@ -50,6 +50,13 @@ struct NativeVisit: Codable, Identifiable, Equatable {
   var vehicleDisconnectConfirmed: Bool? = nil
   var confidence: Double? = nil
   var evidence: [NativeTripStopEvidence]? = nil
+  // Flagged by the driver from the trip-detail screen — a personal errand
+  // mid-shift, not a delivery. Kept in the log (see NativeTrip.category for
+  // the same "don't delete" reasoning) but excluded from NativeShiftInsights
+  // entirely, same as an excluded place. Doesn't touch the trip's own
+  // mileage/deduction — those stay a whole-trip figure from the real GPS
+  // route, not attributed per leg.
+  var isPersonal: Bool = false
 
   enum Kind: String, Codable, CaseIterable { case pickup, dropoff, other }
 

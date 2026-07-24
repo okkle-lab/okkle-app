@@ -15,7 +15,7 @@ enum NativeProgressSummary {
     )
     return totals(
       records: store.records.filter { interval.contains($0.date) },
-      trips: store.trips.filter { interval.contains($0.startedAt) }
+      trips: store.businessTrips.filter { interval.contains($0.startedAt) }
     )
   }
 
@@ -24,7 +24,7 @@ enum NativeProgressSummary {
   }
 
   static func allTime(store: OkkleStore) -> NativeProgressTotals {
-    totals(records: store.records, trips: store.trips)
+    totals(records: store.records, trips: store.businessTrips)
   }
 
   static func mileageTaxSavings(store: OkkleStore, period: NativeProgressPeriod, now: Date = Date(), calendar: Calendar = .current) -> NativeMileageTaxSavings {

@@ -24,7 +24,7 @@ struct NativeTaxDetailView: View {
         )
 
         NativeTaxOverviewGroup {
-          NativeTaxDeadlinesButton {
+          NativeTaxDeadlinesButton(authority: store.settings.taxCountry == .us ? "IRS" : "HMRC") {
             showsDeadlines = true
           }
         }
@@ -44,7 +44,7 @@ struct NativeTaxDetailView: View {
         .presentationDragIndicator(.visible)
     }
     .sheet(isPresented: $showsDeadlines) {
-      NativeKeyTaxDatesSheet()
+      NativeKeyTaxDatesSheet(country: store.settings.taxCountry, usState: store.settings.usState)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
@@ -61,7 +61,12 @@ struct NativeTaxDetailView: View {
   }
 
   private var shouldShowMileageBandNudge: Bool {
-    (store.settings.defaultVehicle == .car || store.settings.defaultVehicle == .van)
+    // The 10,000-mile rate drop is a UK simplified-mileage rule; the US
+    // standard rate has no tier, and actual-cost drivers don't use the
+    // mileage rate at all.
+    store.settings.taxCountry == .uk
+      && store.settings.expenseMethod == .simplified
+      && (store.settings.defaultVehicle == .car || store.settings.defaultVehicle == .van)
       && store.yearMiles > 0
       && store.yearMiles < 10_000
   }
@@ -218,6 +223,7 @@ private struct NativeTaxOverviewGroup<Content: View>: View {
 }
 
 private struct NativeTaxDeadlinesButton: View {
+  var authority: String = "HMRC"
   let action: () -> Void
 
   var body: some View {
@@ -233,7 +239,7 @@ private struct NativeTaxDeadlinesButton: View {
           Text("Key tax dates")
             .font(.system(size: 16, weight: .bold))
             .foregroundStyle(OkkleColor.ink)
-          Text("View HMRC deadlines and add to Calendar")
+          Text("View \(authority) deadlines and add to Calendar")
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
             .lineLimit(2)
@@ -510,8 +516,8 @@ struct NativeTaxSummaryView: View {
       }
 
       HStack(spacing: 12) {
-        taxMetricPanel(title: "Turnover", value: gbp(tax.turnover), symbol: "sterlingsign.circle.fill", color: .green)
-        taxMetricPanel(title: "Logged expenses", value: gbp(tax.expenses), symbol: "minus.circle.fill", color: OkkleColor.amber)
+        taxMetricPanel(title: "Turnover", value: gbp(tax.turnover), symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"), color: .green)
+        taxMetricPanel(title: "Logged expenses", value: gbp(tax.expenses), symbol: "minus.circle.fill", color: OkkleColor.red)
       }
 
       NativeGlassCard {

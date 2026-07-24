@@ -5,8 +5,10 @@ enum NativeOnboardingStep: Int, CaseIterable {
   case welcome
   case name
   case vehicle
-  case platforms
+  // Region (which now also picks country) comes before platforms so the
+  // delivery-app list can reflect the driver's market (UK vs US).
   case region
+  case platforms
   case incomeBracket
   case automaticTracking
   case locationPermission
@@ -75,6 +77,7 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
 
   private let manager = CLLocationManager()
   private var onRegion: ((NativeRegion) -> Void)?
+  private var onUSState: ((NativeUSState) -> Void)?
 
   override init() {
     super.init()
@@ -84,6 +87,17 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
 
   func detect(onRegion: @escaping (NativeRegion) -> Void) {
     self.onRegion = onRegion
+    self.onUSState = nil
+    startDetecting()
+  }
+
+  func detectUSState(onUSState: @escaping (NativeUSState) -> Void) {
+    self.onUSState = onUSState
+    self.onRegion = nil
+    startDetecting()
+  }
+
+  private func startDetecting() {
     message = nil
     isDetecting = true
 
@@ -119,17 +133,27 @@ final class NativeOnboardingRegionDetector: NSObject, ObservableObject, CLLocati
     }
 
     CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, _ in
-      let area = [
-        placemarks?.first?.administrativeArea,
-        placemarks?.first?.subAdministrativeArea,
-        placemarks?.first?.country,
-      ]
-      .compactMap { $0 }
-      .joined(separator: " ")
-      let region: NativeRegion = area.localizedCaseInsensitiveContains("scotland") ? .scotland : .ruk
-      DispatchQueue.main.async {
-        self?.onRegion?(region)
-        self?.finish(message: "Set to \(region.label).")
+      guard let self else { return }
+      let placemark = placemarks?.first
+      if let onUSState = self.onUSState {
+        let state = NativeUSState.matching(administrativeArea: placemark?.administrativeArea)
+        DispatchQueue.main.async {
+          onUSState(state)
+          self.finish(message: "Set to \(state.label).")
+        }
+      } else {
+        let area = [
+          placemark?.administrativeArea,
+          placemark?.subAdministrativeArea,
+          placemark?.country,
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        let region: NativeRegion = area.localizedCaseInsensitiveContains("scotland") ? .scotland : .ruk
+        DispatchQueue.main.async {
+          self.onRegion?(region)
+          self.finish(message: "Set to \(region.label).")
+        }
       }
     }
   }
@@ -166,7 +190,11 @@ struct NativeOnboardingView: View {
   @State private var vehicle: NativeVehicle = .car
   @State private var selectedPlatforms: Set<String> = ["Uber Eats"]
   @State private var customPlatformName = ""
+  @State private var country: NativeTaxCountry = .deviceDefault
   @State private var region: NativeRegion = .ruk
+  @State private var expenseMethod: NativeExpenseMethod = .simplified
+  @State private var showsSimplifiedLockConfirm = false
+  @State private var usState: NativeUSState = .california
   @State private var incomeBracket: NativeIncomeBracket = .basic
   @State private var autoTrackTrips = true
   @State private var enhancedAutoTracking = true
@@ -286,7 +314,7 @@ struct NativeOnboardingView: View {
             .foregroundStyle(OkkleColor.ink)
             .fixedSize(horizontal: false, vertical: true)
             .minimumScaleFactor(0.82)
-          Text("Built for UK delivery couriers. Track trips, log pay, and stay ready for tax without the spreadsheet.")
+          Text("Built for \(NativeTaxCountry.deviceDefault == .us ? "US" : "UK") delivery couriers. Track trips, log pay, and stay ready for tax without the spreadsheet.")
             .font(.system(size: 17, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)
@@ -333,10 +361,11 @@ struct NativeOnboardingView: View {
         )
         VStack(spacing: 10) {
           ForEach(NativeVehicle.allCases) { item in
-            let band = item.rateBand(on: Date())
+            // No mileage-rate hint here — the country/region step (which
+            // sets the actual rate, UK or US) comes right after this one.
             NativeOnboardingOptionButton(
               title: item.label,
-              subtitle: String(format: "%.0fp/mi first 10k", band.first * 100),
+              subtitle: nil,
               symbol: item.symbol,
               selected: vehicle == item
             ) {
@@ -354,11 +383,12 @@ struct NativeOnboardingView: View {
           subtitle: "Pick all that apply. Okkle uses this to keep your logs quick and compare performance later."
         )
         VStack(spacing: 10) {
-          ForEach(nativeOnboardingPlatforms, id: \.self) { platform in
+          ForEach(nativeOnboardingPlatforms(for: country), id: \.self) { platform in
             NativeOnboardingOptionButton(
               title: platform,
               subtitle: nil,
               symbol: nativePlatformSymbol(platform),
+              iconAssetName: nativePlatformIconAssetName(platform),
               selected: selectedPlatforms.contains(platform)
             ) {
               togglePlatform(platform)
@@ -404,52 +434,147 @@ struct NativeOnboardingView: View {
     case .region:
       VStack(alignment: .leading, spacing: 18) {
         NativeOnboardingHeader(
-          eyebrow: "Tax region",
+          eyebrow: "Tax location",
           title: "Where are you based?",
-          subtitle: "Scotland has different income-tax bands. This is where you live, not where you drive."
+          subtitle: "Sets your tax year, mileage rate and delivery apps. This is where you live, not where you drive."
         )
 
-        Button {
-          detector.detect { detectedRegion in
-            region = detectedRegion
-          }
-        } label: {
-          HStack(spacing: 10) {
-            if detector.isDetecting {
-              ProgressView()
-                .tint(OkkleColor.brand)
-            } else {
-              Image(systemName: "location.magnifyingglass")
+        VStack(spacing: 10) {
+          ForEach(NativeTaxCountry.allCases) { item in
+            NativeOnboardingOptionButton(
+              title: item.label,
+              subtitle: item == .us ? "Federal + self-employment tax" : "HMRC Self Assessment",
+              symbol: item == .us ? "flag.fill" : "building.columns.fill",
+              selected: country == item
+            ) {
+              guard country != item else { return }
+              country = item
+              // Reset the platform selection to this market's default unless
+              // the driver has already picked something bespoke.
+              if selectedPlatforms.count <= 1 {
+                selectedPlatforms = [nativeOnboardingPlatforms(for: item).first ?? "Uber Eats"]
+              }
             }
-            Text(detector.isDetecting ? "Detecting location" : "Detect from my location")
-              .font(.system(size: 16, weight: .bold))
-            Spacer()
           }
-          .foregroundStyle(OkkleColor.brandDark)
-          .padding(16)
-          .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .disabled(detector.isDetecting)
 
-        if let message = detector.message {
-          Text(message)
+        switch country {
+        case .uk:
+          Button {
+            detector.detect { detectedRegion in
+              region = detectedRegion
+            }
+          } label: {
+            HStack(spacing: 10) {
+              if detector.isDetecting {
+                ProgressView()
+                  .tint(OkkleColor.brand)
+              } else {
+                Image(systemName: "location.magnifyingglass")
+              }
+              Text(detector.isDetecting ? "Detecting location" : "Detect from my location")
+                .font(.system(size: 16, weight: .bold))
+              Spacer()
+            }
+            .foregroundStyle(OkkleColor.brandDark)
+            .padding(16)
+            .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+          }
+          .buttonStyle(.plain)
+          .disabled(detector.isDetecting)
+
+          if let message = detector.message {
+            Text(message)
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+          }
+
+          VStack(spacing: 10) {
+            ForEach(NativeRegion.allCases) { item in
+              NativeOnboardingOptionButton(
+                title: item.label,
+                subtitle: item == .scotland ? "Scottish income-tax bands" : "Rest of UK income-tax bands",
+                symbol: item == .scotland ? "mountain.2.fill" : "map.fill",
+                selected: region == item
+              ) {
+                region = item
+              }
+            }
+          }
+
+          Divider().padding(.top, 4)
+
+          VStack(alignment: .leading, spacing: 10) {
+            Text("How do you claim vehicle costs?")
+              .font(.system(size: 17, weight: .bold))
+              .foregroundStyle(OkkleColor.ink)
+
+            ForEach(NativeExpenseMethod.allCases) { method in
+              NativeOnboardingOptionButton(
+                title: method.label,
+                subtitle: method.subtitle,
+                symbol: method == .simplified ? "gauge.with.dots.needle.50percent" : "receipt.fill",
+                selected: expenseMethod == method
+              ) {
+                guard expenseMethod != method else { return }
+                if method == .simplified {
+                  showsSimplifiedLockConfirm = true
+                } else {
+                  expenseMethod = method
+                }
+              }
+            }
+
+            Text("Simplified expenses lock in once chosen — HMRC requires sticking with them for this vehicle from then on. Actual costs can be switched to Simplified later if you change your mind.")
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        case .us:
+          Button {
+            detector.detectUSState { detectedState in
+              usState = detectedState
+            }
+          } label: {
+            HStack(spacing: 10) {
+              if detector.isDetecting {
+                ProgressView()
+                  .tint(OkkleColor.brand)
+              } else {
+                Image(systemName: "location.magnifyingglass")
+              }
+              Text(detector.isDetecting ? "Detecting location" : "Detect from my location")
+                .font(.system(size: 16, weight: .bold))
+              Spacer()
+            }
+            .foregroundStyle(OkkleColor.brandDark)
+            .padding(16)
+            .background(OkkleColor.mint, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+          }
+          .buttonStyle(.plain)
+          .disabled(detector.isDetecting)
+
+          if let message = detector.message {
+            Text(message)
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(OkkleColor.muted)
+          }
+
+          Picker("State", selection: $usState) {
+            ForEach(NativeUSState.allCases) { Text($0.label).tag($0) }
+          }
+          .pickerStyle(.navigationLink)
+          .padding(.horizontal, 4)
+          Text("Used for state income tax. Federal and self-employment tax apply everywhere.")
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(OkkleColor.muted)
         }
-
-        VStack(spacing: 10) {
-          ForEach(NativeRegion.allCases) { item in
-            NativeOnboardingOptionButton(
-              title: item.label,
-              subtitle: item == .scotland ? "Scottish income-tax bands" : "Rest of UK income-tax bands",
-              symbol: item == .scotland ? "mountain.2.fill" : "map.fill",
-              selected: region == item
-            ) {
-              region = item
-            }
-          }
-        }
+      }
+      .alert("Use simplified expenses?", isPresented: $showsSimplifiedLockConfirm) {
+        Button("Cancel", role: .cancel) {}
+        Button("Confirm") { expenseMethod = .simplified }
+      } message: {
+        Text("Once you choose simplified expenses, HMRC requires you to keep using them for this vehicle for as long as you use it for business. You won't be able to switch to actual costs later.")
       }
 
     case .incomeBracket:
@@ -692,7 +817,7 @@ struct NativeOnboardingView: View {
                                    title: autoTrackTrips ? "Automatic tracking is ready" : "Start a trip when you set off")
             NativeOnboardingBullet(symbol: iCloudSyncEnabled ? "icloud.fill" : "internaldrive.fill",
                                    title: iCloudSyncEnabled ? "iCloud sync is ready" : "Records will stay on this device")
-            NativeOnboardingBullet(symbol: "sterlingsign.circle.fill", title: "Log pay when it arrives")
+            NativeOnboardingBullet(symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"), title: "Log pay when it arrives")
             NativeOnboardingBullet(symbol: "sparkles", title: "Check Insights once you have data")
           }
         }
@@ -742,7 +867,7 @@ struct NativeOnboardingView: View {
   }
 
   private var orderedPlatforms: [String] {
-    let standard = nativeOnboardingPlatforms.filter { platform in
+    let standard = nativeOnboardingPlatforms(for: country).filter { platform in
       platform != "Other" && selectedPlatforms.contains(platform)
     }
     return uniqueStrings(standard + customSelectedPlatforms)
@@ -751,7 +876,7 @@ struct NativeOnboardingView: View {
   private var customSelectedPlatforms: [String] {
     selectedPlatforms
       .filter { platform in
-        !nativeOnboardingPlatforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
+        !nativeAllKnownPlatforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
       }
       .sorted()
   }
@@ -761,7 +886,15 @@ struct NativeOnboardingView: View {
     didSeed = true
     name = store.settings.name
     vehicle = store.settings.defaultVehicle
+    // Onboarding only ever shows before hasCompletedOnboarding is set, so a
+    // fresh NativeSettings() here always has taxCountry at its hardcoded
+    // .uk default — trusting it would silently overwrite the device-locale
+    // guess this view starts with. Only respect stored settings if this is
+    // somehow a repeat onboarding for an account that already finished it.
+    country = store.settings.hasCompletedOnboarding ? store.settings.taxCountry : .deviceDefault
     region = store.settings.region
+    expenseMethod = store.settings.expenseMethod
+    usState = store.settings.usState
     incomeBracket = store.settings.incomeBracket
     autoTrackTrips = store.settings.autoTrackTrips
     enhancedAutoTracking = store.settings.autoTrackTrips ? store.settings.enhancedAutoTracking : true
@@ -899,6 +1032,12 @@ struct NativeOnboardingView: View {
   private func advance() {
     guard canContinue,
           var next = NativeOnboardingStep(rawValue: step.rawValue + 1) else { return }
+    // The income-tax-band step is UK-only (basic/higher rate); the US engine
+    // works from actual profit and wages instead.
+    if next == .incomeBracket, country == .us,
+       let skipped = NativeOnboardingStep(rawValue: next.rawValue + 1) {
+      next = skipped
+    }
     if step == .locationPermission, !locationRequester.hasAlwaysAuthorization {
       autoTrackTrips = false
       enhancedAutoTracking = false
@@ -915,6 +1054,10 @@ struct NativeOnboardingView: View {
 
   private func goBack() {
     guard var previous = NativeOnboardingStep(rawValue: step.rawValue - 1) else { return }
+    if previous == .incomeBracket, country == .us,
+       let skipped = NativeOnboardingStep(rawValue: previous.rawValue - 1) {
+      previous = skipped
+    }
     if previous == .locationPermission, !autoTrackTrips,
        let skipped = NativeOnboardingStep(rawValue: previous.rawValue - 1) {
       previous = skipped
@@ -931,7 +1074,10 @@ struct NativeOnboardingView: View {
       name: name,
       defaultVehicle: vehicle,
       platforms: orderedPlatforms,
+      taxCountry: country,
       region: region,
+      expenseMethod: expenseMethod,
+      usState: usState,
       incomeBracket: incomeBracket,
       autoTrackTrips: automaticTrackingEnabled,
       enhancedAutoTracking: automaticTrackingEnabled && enhancedAutoTracking,
@@ -1025,17 +1171,14 @@ struct NativeOnboardingOptionButton: View {
   let title: String
   let subtitle: String?
   let symbol: String
+  var iconAssetName: String? = nil
   let selected: Bool
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
       HStack(spacing: 12) {
-        Image(systemName: symbol)
-          .font(.system(size: 18, weight: .bold))
-          .foregroundStyle(selected ? OkkleColor.brandDark : OkkleColor.muted)
-          .frame(width: 38, height: 38)
-          .background(selected ? OkkleColor.mint : Color(uiColor: .tertiarySystemBackground), in: Circle())
+        iconView
 
         VStack(alignment: .leading, spacing: 3) {
           Text(title)
@@ -1065,6 +1208,23 @@ struct NativeOnboardingOptionButton: View {
       )
     }
     .buttonStyle(.plain)
+  }
+
+  @ViewBuilder
+  private var iconView: some View {
+    if let iconAssetName {
+      Image(iconAssetName)
+        .resizable()
+        .aspectRatio(contentMode: .fill)
+        .frame(width: 38, height: 38)
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+    } else {
+      Image(systemName: symbol)
+        .font(.system(size: 18, weight: .bold))
+        .foregroundStyle(selected ? OkkleColor.brandDark : OkkleColor.muted)
+        .frame(width: 38, height: 38)
+        .background(selected ? OkkleColor.mint : Color(uiColor: .tertiarySystemBackground), in: Circle())
+    }
   }
 }
 

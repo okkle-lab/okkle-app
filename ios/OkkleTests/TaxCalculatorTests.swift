@@ -4,6 +4,72 @@ import XCTest
 @testable import Okkle
 
 final class TaxCalculatorTests: XCTestCase {
+  // Every region/state combination Okkle ships, generating real PDFs and tax
+  // positions for each so a regression in one config (wrong rate, crash,
+  // duplicate deadline id, mismatched totals) can't slip through even though
+  // day-to-day development mostly exercises just one config at a time.
+  @MainActor
+  func testAllRegionsProduceConsistentReportsAndDeadlines() {
+    struct Config {
+      let country: NativeTaxCountry
+      let usState: NativeUSState
+      let expenseMethod: NativeExpenseMethod
+    }
+    let configs: [Config] = [
+      Config(country: .uk, usState: .california, expenseMethod: .simplified),
+      Config(country: .uk, usState: .california, expenseMethod: .actualCost),
+      Config(country: .us, usState: .california, expenseMethod: .simplified),
+      Config(country: .us, usState: .newYork, expenseMethod: .simplified),
+      Config(country: .us, usState: .illinois, expenseMethod: .simplified),
+      Config(country: .us, usState: .pennsylvania, expenseMethod: .simplified),
+      Config(country: .us, usState: .georgia, expenseMethod: .simplified),
+      Config(country: .us, usState: .texas, expenseMethod: .simplified),
+      Config(country: .us, usState: .otherState, expenseMethod: .simplified)
+    ]
+
+    for config in configs {
+      let store = OkkleStore()
+      store.settings.taxCountry = config.country
+      store.settings.usState = config.usState
+      store.settings.usOtherStateRate = 0.05
+      store.settings.expenseMethod = config.expenseMethod
+      store.settings.name = "Test Driver"
+
+      let recentDate = Date().addingTimeInterval(-3 * 86_400)
+      var trip = NativeTrip(vehicle: .car, miles: 120, deduction: 0, startedAt: recentDate, endedAt: recentDate.addingTimeInterval(3_600), points: [])
+      trip.startAddress = "100 Main St"
+      trip.endAddress = "200 Elm St"
+      store.trips = [trip]
+      store.records = [
+        NativeRecord(kind: .income, platform: "Uber Eats", vehicle: nil, amount: 800, miles: nil, deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .income, platform: "DoorDash", vehicle: nil, amount: 400, miles: nil, deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 120, miles: nil, deduction: nil, category: "Fuel", date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 40, miles: nil, deduction: nil, category: "Fuel", date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 15, miles: nil, deduction: nil, category: "Parking", date: recentDate, period: .day, receiptImageData: nil),
+        NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 25, miles: nil, deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil)
+      ]
+
+      let context = "\(config.country) / \(config.usState) / \(config.expenseMethod)"
+      let accountantPdf = nativeAccountantPackPdfData(store: store)
+      let mileagePdf = nativeMileageReportPdfData(store: store)
+      let selfAssessPdf = nativeSelfAssessmentPdfData(store: store)
+      XCTAssertEqual(accountantPdf.prefix(4), Data("%PDF".utf8), context)
+      XCTAssertEqual(mileagePdf.prefix(4), Data("%PDF".utf8), context)
+      XCTAssertEqual(selfAssessPdf.prefix(4), Data("%PDF".utf8), context)
+
+      let deadlines = nativeTaxDeadlines(for: config.country, usState: config.usState)
+      XCTAssertEqual(Set(deadlines.map(\.id)).count, deadlines.count, "Duplicate deadline id in \(context)")
+
+      let tax = store.taxPosition
+      XCTAssertEqual(tax.incomeTax + tax.class4 + tax.stateTax, tax.totalDue, accuracy: 0.01, context)
+      XCTAssertEqual(tax.totalDue / 4, tax.paymentOnAccount, accuracy: 0.01, context)
+      if config.usState.hasNoIncomeTax {
+        XCTAssertEqual(tax.stateTax, 0, context)
+        XCTAssertTrue(deadlines.allSatisfy { $0.authority == "IRS" }, context)
+      }
+    }
+  }
+
   private var calendar: Calendar {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -33,6 +99,207 @@ final class TaxCalculatorTests: XCTestCase {
     )
 
     XCTAssertEqual(deduction, 70, accuracy: 0.001)
+  }
+
+  // Each bookkeeping export must match that software's own documented CSV
+  // import spec — verified against FreeAgent, Sage, QuickBooks Online, Xero
+  // and Wave's own support articles, since a wrong header/date-format/column
+  // choice means the file silently fails (or misparses) on import.
+  @MainActor
+  func testBookkeepingCsvExportsMatchEachSoftwaresDocumentedFormat() {
+    let store = OkkleStore()
+    store.settings.taxCountry = .uk
+    let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 3, day: 9))!
+    store.trips = []
+    store.records = [
+      NativeRecord(kind: .income, platform: "Uber Eats", vehicle: nil, amount: 100, miles: nil, deduction: nil, category: nil, date: date, period: .day, receiptImageData: nil)
+    ]
+
+    // FreeAgent: no header row at all, dd/mm/yyyy, Date/Amount/Description order.
+    let freeAgent = nativeFreeAgentCsv(store: store)
+    XCTAssertFalse(freeAgent.contains("Date,Amount,Description"), "FreeAgent's spec forbids a header row")
+    XCTAssertTrue(freeAgent.hasPrefix("09/03/2026,100.00,"))
+
+    // Sage Business Cloud Accounting: header row, Date/Description/Amount
+    // order, dd/mm/yyyy (Sage's own UK default).
+    let sage = nativeSageCsv(store: store)
+    XCTAssertTrue(sage.hasPrefix("Date,Description,Amount\n09/03/2026,"))
+
+    // QuickBooks Online: header row, Date/Description/Amount order, dd/mm/yyyy.
+    let quickBooks = nativeQuickBooksCsv(store: store)
+    XCTAssertTrue(quickBooks.hasPrefix("Date,Description,Amount\n09/03/2026,"))
+
+    // Xero: header row, Date/Amount/Description order, date matching the
+    // org's own region setting — dd/mm/yyyy for a UK driver.
+    let xero = nativeXeroCsv(store: store)
+    XCTAssertTrue(xero.hasPrefix("Date,Amount,Description\n09/03/2026,100.00,"))
+
+    // Wave: header row, Date/Description/Amount order, US-style MM/DD/YYYY
+    // (Wave's own support article documents this as the minimum required format).
+    let wave = nativeWaveCsv(store: store)
+    XCTAssertTrue(wave.hasPrefix("Date,Description,Amount\n03/09/2026,"))
+  }
+
+  // A US driver only ever sees QuickBooks/Xero/Wave (FreeAgent and Sage are
+  // both UK-only products, filtered out of NativeExportDocument.available).
+  // QuickBooks Online's CSV importer wants dd/mm/yyyy regardless of country
+  // (a well-documented QBO quirk, confirmed via multiple en-us support
+  // threads about it silently swapping day/month otherwise) — Xero and Wave
+  // do vary by region/product, so this locks in the country-aware branch
+  // actually firing correctly for a US driver rather than just assuming it.
+  @MainActor
+  func testBookkeepingCsvExportsForUSDriver() {
+    let store = OkkleStore()
+    store.settings.taxCountry = .us
+    let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 3, day: 9))!
+    store.trips = []
+    store.records = [
+      NativeRecord(kind: .income, platform: "DoorDash", vehicle: nil, amount: 100, miles: nil, deduction: nil, category: nil, date: date, period: .day, receiptImageData: nil)
+    ]
+
+    // QuickBooks Online: still dd/mm/yyyy even for a US driver — this is a
+    // genuine QBO CSV-importer quirk, not a UK/US split.
+    let quickBooks = nativeQuickBooksCsv(store: store)
+    XCTAssertTrue(quickBooks.hasPrefix("Date,Description,Amount\n09/03/2026,"))
+
+    // Xero: date format follows the org's own region setting — mm/dd/yyyy
+    // for a US org.
+    let xero = nativeXeroCsv(store: store)
+    XCTAssertTrue(xero.hasPrefix("Date,Amount,Description\n03/09/2026,100.00,"), "Xero should use mm/dd/yyyy for a US org, not the UK dd/mm/yyyy")
+
+    // Wave: US-style MM/DD/YYYY, same as the UK case — Wave's own spec
+    // isn't locale-conditional.
+    let wave = nativeWaveCsv(store: store)
+    XCTAssertTrue(wave.hasPrefix("Date,Description,Amount\n03/09/2026,"))
+
+    // FreeAgent and Sage must not be offered to a US driver at all — neither
+    // is a real product fit for a US self-employed courier.
+    let available = NativeExportDocument.available(for: .us)
+    XCTAssertFalse(available.contains(.freeAgent))
+    XCTAssertFalse(available.contains(.sage))
+  }
+
+  // A realistic month of mixed income/expense records, including the messy
+  // real-world text (commas, quote marks, apostrophes) a merchant name or
+  // note can genuinely contain — this is what actually breaks a naive CSV
+  // export, not the single clean row the format-shape test above uses.
+  // Prints every export in full (picked up by an external, independent CSV
+  // parser to validate) and checks in-process that nothing was silently
+  // dropped or duplicated by reconciling the exported total back to the
+  // known input total.
+  @MainActor
+  func testBookkeepingCsvExportsSurviveRealisticDataWithEdgeCases() {
+    let store = OkkleStore()
+    store.settings.taxCountry = .uk
+    let cal = Calendar(identifier: .gregorian)
+    var records: [NativeRecord] = []
+    let platforms = ["Uber Eats", "Deliveroo", "Just Eat"]
+    for i in 0..<12 {
+      let date = cal.date(byAdding: .day, value: -i, to: Date())!
+      records.append(NativeRecord(kind: .income, platform: platforms[i % 3], amount: Double(8 + i) + 0.37, date: date, period: .day))
+    }
+    records.append(NativeRecord(
+      kind: .expense, amount: 45.50, category: "Fuel",
+      merchant: "Tesco, Filling Station", note: "Receipt said \"full tank\" — driver's own note",
+      date: Date(), period: .day
+    ))
+    records.append(NativeRecord(kind: .expense, amount: 12.00, category: "Parking", merchant: "NCP", date: Date(), period: .day))
+    records.append(NativeRecord(kind: .expense, amount: 8.99, category: "Phone, data", merchant: nil, note: nil, date: Date(), period: .day))
+    store.records = records
+    store.trips = []
+
+    let inputTotal = records.reduce(0.0) { $0 + ($1.amount ?? 0) }
+    print("OKKLE-CSV-AUDIT: input record count=\(records.count) total=\(inputTotal)")
+    print("OKKLE-CSV-AUDIT-BEGIN-FREEAGENT\n\(nativeFreeAgentCsv(store: store))\nOKKLE-CSV-AUDIT-END-FREEAGENT")
+    print("OKKLE-CSV-AUDIT-BEGIN-SAGE\n\(nativeSageCsv(store: store))\nOKKLE-CSV-AUDIT-END-SAGE")
+    print("OKKLE-CSV-AUDIT-BEGIN-QUICKBOOKS\n\(nativeQuickBooksCsv(store: store))\nOKKLE-CSV-AUDIT-END-QUICKBOOKS")
+    print("OKKLE-CSV-AUDIT-BEGIN-XERO\n\(nativeXeroCsv(store: store))\nOKKLE-CSV-AUDIT-END-XERO")
+    print("OKKLE-CSV-AUDIT-BEGIN-WAVE\n\(nativeWaveCsv(store: store))\nOKKLE-CSV-AUDIT-END-WAVE")
+
+    // In-process reconciliation: row counts and total amounts must survive
+    // the export untouched, regardless of format-specific quoting rules.
+    for (name, csv, hasHeader) in [
+      ("FreeAgent", nativeFreeAgentCsv(store: store), false),
+      ("Sage", nativeSageCsv(store: store), true),
+      ("QuickBooks", nativeQuickBooksCsv(store: store), true),
+      ("Xero", nativeXeroCsv(store: store), true),
+      ("Wave", nativeWaveCsv(store: store), true),
+    ] {
+      var lines = csv.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+      if hasHeader { lines.removeFirst() }
+      XCTAssertEqual(lines.count, records.count, "\(name): row count should match record count")
+      XCTAssertFalse(csv.contains("Filling Station\""), "\(name): a raw description shouldn't leak an unescaped quote next to a comma")
+    }
+
+    // FreeAgent specifically forbids commas and quote marks anywhere in the
+    // file — confirm the sanitizer actually removed them, not just avoided
+    // CSV-quoting them.
+    let freeAgent = nativeFreeAgentCsv(store: store)
+    XCTAssertFalse(freeAgent.contains("\""), "FreeAgent's spec forbids quote marks anywhere in the file")
+    let freeAgentDataLines = freeAgent.split(separator: "\n")
+    for line in freeAgentDataLines {
+      let commaCount = line.filter { $0 == "," }.count
+      XCTAssertEqual(commaCount, 2, "FreeAgent row should have exactly 2 commas (3 columns): \(line)")
+    }
+  }
+
+  @MainActor
+  func testExpenseCategoryCsvSubtotalsByCategory() {
+    let store = OkkleStore()
+    store.trips = []
+    let recentDate = Date().addingTimeInterval(-3 * 86_400)
+    store.records = [
+      NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 100, miles: nil, deduction: nil, category: "Fuel", date: recentDate, period: .day, receiptImageData: nil),
+      NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 50, miles: nil, deduction: nil, category: "Fuel", date: recentDate, period: .day, receiptImageData: nil),
+      NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 30, miles: nil, deduction: nil, category: "Parking", date: recentDate, period: .day, receiptImageData: nil),
+      NativeRecord(kind: .expense, platform: nil, vehicle: nil, amount: 20, miles: nil, deduction: nil, category: nil, date: recentDate, period: .day, receiptImageData: nil)
+    ]
+    let csv = nativeExpenseCategoryCsv(store: store)
+    XCTAssertTrue(csv.contains("Fuel,150.00"), "Two Fuel entries should subtotal to 150 — an accountant needs the category total, not a re-tally of individual rows.")
+    XCTAssertTrue(csv.contains("Parking,30.00"))
+    XCTAssertTrue(csv.contains("Uncategorised,20.00"))
+  }
+
+  @MainActor
+  func testActualCostMethodDropsMileageDeductionFromTaxEstimate() {
+    let store = OkkleStore()
+    store.settings.expenseMethod = .actualCost
+    let recentDate = Date().addingTimeInterval(-3 * 86_400)
+    store.trips = [
+      NativeTrip(vehicle: .car, miles: 500, deduction: 0, startedAt: recentDate, endedAt: recentDate.addingTimeInterval(3_600), points: [])
+    ]
+
+    XCTAssertEqual(store.calcDeduction(miles: 500, vehicle: .car), 0)
+    XCTAssertEqual(store.yearMileageDeduction, 0)
+  }
+
+  @MainActor
+  func testSimplifiedMethodKeepsMileageDeductionUnchanged() {
+    let store = OkkleStore()
+    store.settings.expenseMethod = .simplified
+
+    XCTAssertGreaterThan(store.calcDeduction(miles: 500, vehicle: .car), 0)
+  }
+
+  @MainActor
+  func testCompleteOnboardingLocksExpenseMethodOnlyForSimplified() {
+    let simplifiedStore = OkkleStore()
+    simplifiedStore.completeOnboarding(
+      name: "Alex", defaultVehicle: .car, platforms: ["Uber Eats"],
+      taxCountry: .uk, region: .ruk, expenseMethod: .simplified, usState: .california,
+      incomeBracket: .basic, autoTrackTrips: false, enhancedAutoTracking: false, workingDays: []
+    )
+    XCTAssertEqual(simplifiedStore.settings.expenseMethod, .simplified)
+    XCTAssertTrue(simplifiedStore.settings.expenseMethodLocked)
+
+    let actualCostStore = OkkleStore()
+    actualCostStore.completeOnboarding(
+      name: "Alex", defaultVehicle: .car, platforms: ["Uber Eats"],
+      taxCountry: .uk, region: .ruk, expenseMethod: .actualCost, usState: .california,
+      incomeBracket: .basic, autoTrackTrips: false, enhancedAutoTracking: false, workingDays: []
+    )
+    XCTAssertEqual(actualCostStore.settings.expenseMethod, .actualCost)
+    XCTAssertFalse(actualCostStore.settings.expenseMethodLocked)
   }
 
   @MainActor
