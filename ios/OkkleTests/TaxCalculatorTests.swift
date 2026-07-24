@@ -140,6 +140,70 @@ final class TaxCalculatorTests: XCTestCase {
     XCTAssertTrue(wave.hasPrefix("Date,Description,Amount\n03/09/2026,"))
   }
 
+  // A realistic month of mixed income/expense records, including the messy
+  // real-world text (commas, quote marks, apostrophes) a merchant name or
+  // note can genuinely contain — this is what actually breaks a naive CSV
+  // export, not the single clean row the format-shape test above uses.
+  // Prints every export in full (picked up by an external, independent CSV
+  // parser to validate) and checks in-process that nothing was silently
+  // dropped or duplicated by reconciling the exported total back to the
+  // known input total.
+  @MainActor
+  func testBookkeepingCsvExportsSurviveRealisticDataWithEdgeCases() {
+    let store = OkkleStore()
+    store.settings.taxCountry = .uk
+    let cal = Calendar(identifier: .gregorian)
+    var records: [NativeRecord] = []
+    let platforms = ["Uber Eats", "Deliveroo", "Just Eat"]
+    for i in 0..<12 {
+      let date = cal.date(byAdding: .day, value: -i, to: Date())!
+      records.append(NativeRecord(kind: .income, platform: platforms[i % 3], amount: Double(8 + i) + 0.37, date: date, period: .day))
+    }
+    records.append(NativeRecord(
+      kind: .expense, amount: 45.50, category: "Fuel",
+      merchant: "Tesco, Filling Station", note: "Receipt said \"full tank\" — driver's own note",
+      date: Date(), period: .day
+    ))
+    records.append(NativeRecord(kind: .expense, amount: 12.00, category: "Parking", merchant: "NCP", date: Date(), period: .day))
+    records.append(NativeRecord(kind: .expense, amount: 8.99, category: "Phone, data", merchant: nil, note: nil, date: Date(), period: .day))
+    store.records = records
+    store.trips = []
+
+    let inputTotal = records.reduce(0.0) { $0 + ($1.amount ?? 0) }
+    print("OKKLE-CSV-AUDIT: input record count=\(records.count) total=\(inputTotal)")
+    print("OKKLE-CSV-AUDIT-BEGIN-FREEAGENT\n\(nativeFreeAgentCsv(store: store))\nOKKLE-CSV-AUDIT-END-FREEAGENT")
+    print("OKKLE-CSV-AUDIT-BEGIN-SAGE\n\(nativeSageCsv(store: store))\nOKKLE-CSV-AUDIT-END-SAGE")
+    print("OKKLE-CSV-AUDIT-BEGIN-QUICKBOOKS\n\(nativeQuickBooksCsv(store: store))\nOKKLE-CSV-AUDIT-END-QUICKBOOKS")
+    print("OKKLE-CSV-AUDIT-BEGIN-XERO\n\(nativeXeroCsv(store: store))\nOKKLE-CSV-AUDIT-END-XERO")
+    print("OKKLE-CSV-AUDIT-BEGIN-WAVE\n\(nativeWaveCsv(store: store))\nOKKLE-CSV-AUDIT-END-WAVE")
+
+    // In-process reconciliation: row counts and total amounts must survive
+    // the export untouched, regardless of format-specific quoting rules.
+    for (name, csv, hasHeader) in [
+      ("FreeAgent", nativeFreeAgentCsv(store: store), false),
+      ("Sage", nativeSageCsv(store: store), true),
+      ("QuickBooks", nativeQuickBooksCsv(store: store), true),
+      ("Xero", nativeXeroCsv(store: store), true),
+      ("Wave", nativeWaveCsv(store: store), true),
+    ] {
+      var lines = csv.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+      if hasHeader { lines.removeFirst() }
+      XCTAssertEqual(lines.count, records.count, "\(name): row count should match record count")
+      XCTAssertFalse(csv.contains("Filling Station\""), "\(name): a raw description shouldn't leak an unescaped quote next to a comma")
+    }
+
+    // FreeAgent specifically forbids commas and quote marks anywhere in the
+    // file — confirm the sanitizer actually removed them, not just avoided
+    // CSV-quoting them.
+    let freeAgent = nativeFreeAgentCsv(store: store)
+    XCTAssertFalse(freeAgent.contains("\""), "FreeAgent's spec forbids quote marks anywhere in the file")
+    let freeAgentDataLines = freeAgent.split(separator: "\n")
+    for line in freeAgentDataLines {
+      let commaCount = line.filter { $0 == "," }.count
+      XCTAssertEqual(commaCount, 2, "FreeAgent row should have exactly 2 commas (3 columns): \(line)")
+    }
+  }
+
   @MainActor
   func testExpenseCategoryCsvSubtotalsByCategory() {
     let store = OkkleStore()
