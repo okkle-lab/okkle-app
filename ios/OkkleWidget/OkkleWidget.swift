@@ -102,19 +102,31 @@ private func okkleLiveActivityElapsed(_ seconds: TimeInterval) -> String {
 }
 
 private struct OkkleTripActivityButtons: View {
+  let isDriving: Bool
+
   var body: some View {
     if #available(iOS 17.0, *) {
       HStack(spacing: 8) {
-        Button(intent: OkkleStillDrivingLiveActivityIntent()) {
-          Text("Still driving")
-            .font(.system(size: 15, weight: .bold))
-            .frame(maxWidth: .infinity)
+        if isDriving {
+          Button(intent: OkklePauseTrackingLiveActivityIntent()) {
+            Label("Pause", systemImage: "pause.fill")
+              .font(.system(size: 15, weight: .bold))
+              .frame(maxWidth: .infinity)
+          }
+          .tint(.white.opacity(0.16))
+          .foregroundStyle(.white)
+        } else {
+          Button(intent: OkkleResumeTrackingLiveActivityIntent()) {
+            Label("Resume", systemImage: "play.fill")
+              .font(.system(size: 15, weight: .bold))
+              .frame(maxWidth: .infinity)
+          }
+          .tint(.white.opacity(0.16))
+          .foregroundStyle(.white)
         }
-        .tint(.white.opacity(0.16))
-        .foregroundStyle(.white)
 
         Button(intent: OkkleStopTrackingLiveActivityIntent()) {
-          Text("Done driving")
+          Label("End", systemImage: "stop.fill")
             .font(.system(size: 15, weight: .bold))
             .frame(maxWidth: .infinity)
         }
@@ -130,7 +142,18 @@ private struct OkkleTripActivityButtons: View {
 }
 
 private struct OkkleTripActivityLockScreenView: View {
+  let attributes: OkkleTripActivityAttributes
   let state: OkkleTripActivityAttributes.ContentState
+
+  private var status: String {
+    if state.isDriving {
+      return attributes.isAutomatic ? "Automatically tracking" : "Tracking trip"
+    }
+    if state.isPausedByUser == true {
+      return attributes.isAutomatic ? "Automatic trip paused" : "Trip paused"
+    }
+    return "Checking if trip ended"
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -140,9 +163,20 @@ private struct OkkleTripActivityLockScreenView: View {
         Text("Okkle")
           .font(.system(size: 14, weight: .heavy, design: .rounded))
         Spacer()
-        Text(state.isDriving ? "Tracking trip" : "Finalizing trip")
+        Text(status)
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(.secondary)
+      }
+
+      if attributes.isAutomatic {
+        Label(
+          "Automatic tracking enabled · \(attributes.automaticStartReason ?? "Driving detected")",
+          systemImage: "sparkles"
+        )
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(Color(red: 0.33, green: 0.88, blue: 0.68))
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
       }
 
       HStack {
@@ -163,7 +197,7 @@ private struct OkkleTripActivityLockScreenView: View {
         }
       }
 
-      OkkleTripActivityButtons()
+      OkkleTripActivityButtons(isDriving: state.isDriving)
     }
     .padding(16)
   }
@@ -173,7 +207,7 @@ private struct OkkleTripActivityLockScreenView: View {
 struct OkkleTripLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: OkkleTripActivityAttributes.self) { context in
-      OkkleTripActivityLockScreenView(state: context.state)
+      OkkleTripActivityLockScreenView(attributes: context.attributes, state: context.state)
         .activityBackgroundTint(Color(red: 0.02, green: 0.20, blue: 0.16))
         .activitySystemActionForegroundColor(.white)
     } dynamicIsland: { context in
@@ -191,13 +225,24 @@ struct OkkleTripLiveActivity: Widget {
           VStack(alignment: .trailing, spacing: 1) {
             Text(okkleLiveActivityElapsed(context.state.elapsed))
               .font(.system(size: 18, weight: .heavy, design: .rounded))
-            Text(context.state.isDriving ? "Tracking" : "Finalizing")
+            Text(context.state.isDriving ? "Tracking" : (context.state.isPausedByUser == true ? "Paused" : "Checking"))
               .font(.system(size: 11, weight: .medium))
               .foregroundStyle(.secondary)
           }
         }
         DynamicIslandExpandedRegion(.bottom) {
-          OkkleTripActivityButtons()
+          VStack(spacing: 8) {
+            if context.attributes.isAutomatic {
+              Label(
+                "Automatic · \(context.attributes.automaticStartReason ?? "Driving detected")",
+                systemImage: "sparkles"
+              )
+              .font(.system(size: 11, weight: .semibold))
+              .foregroundStyle(Color(red: 0.33, green: 0.88, blue: 0.68))
+              .lineLimit(1)
+            }
+            OkkleTripActivityButtons(isDriving: context.state.isDriving)
+          }
         }
       } compactLeading: {
         Image(systemName: "location.north.fill")
@@ -207,8 +252,8 @@ struct OkkleTripLiveActivity: Widget {
       } minimal: {
         Image(systemName: "location.north.fill")
       }
-      // Just opens the app — ending the trip is what the "Done driving"
-      // button is for, a stray tap on the compact/minimal presentation
+      // Just opens the app — ending the trip is what the "End" button is
+      // for; a stray tap on the compact/minimal presentation
       // shouldn't end tracking by accident.
       .widgetURL(URL(string: "\(NativeTripWidgetStore.urlScheme)://")!)
       .keylineTint(Color(red: 0.00, green: 0.66, blue: 0.49))
