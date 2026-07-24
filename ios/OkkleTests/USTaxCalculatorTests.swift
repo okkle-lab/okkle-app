@@ -124,7 +124,38 @@ final class USTaxCalculatorTests: XCTestCase {
   func testUSStateMatchingFromGeocodedPlacemark() {
     XCTAssertEqual(NativeUSState.matching(administrativeArea: "California"), .california)
     XCTAssertEqual(NativeUSState.matching(administrativeArea: "new york"), .newYork)
+    XCTAssertEqual(NativeUSState.matching(administrativeArea: "CA"), .california)
+    XCTAssertEqual(NativeUSState.matching(administrativeArea: " ny "), .newYork)
     XCTAssertEqual(NativeUSState.matching(administrativeArea: "Ohio"), .otherState)
     XCTAssertEqual(NativeUSState.matching(administrativeArea: nil), .otherState)
+  }
+
+  func testOnboardingLocationDetectionSelectsCountryAndLocalTaxArea() {
+    let us = nativeOnboardingDetectedTaxLocation(
+      isoCountryCode: "US",
+      countryName: "United States",
+      administrativeArea: "CA",
+      subAdministrativeArea: "Santa Clara County"
+    )
+    XCTAssertEqual(us?.country, .us)
+    XCTAssertEqual(us?.usState, .california)
+    XCTAssertNil(us?.region)
+
+    let scotland = nativeOnboardingDetectedTaxLocation(
+      isoCountryCode: "GB",
+      countryName: "United Kingdom",
+      administrativeArea: "Scotland",
+      subAdministrativeArea: "Glasgow City"
+    )
+    XCTAssertEqual(scotland?.country, .uk)
+    XCTAssertEqual(scotland?.region, .scotland)
+    XCTAssertNil(scotland?.usState)
+
+    XCTAssertNil(nativeOnboardingDetectedTaxLocation(
+      isoCountryCode: "CA",
+      countryName: "Canada",
+      administrativeArea: "Ontario",
+      subAdministrativeArea: nil
+    ))
   }
 }
