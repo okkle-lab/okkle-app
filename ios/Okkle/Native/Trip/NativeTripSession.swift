@@ -120,15 +120,18 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     manager.activityType = .automotiveNavigation
     manager.pausesLocationUpdatesAutomatically = false
     restorePersistedTrip()
-    // The Live Activity's "Done driving"/"Still driving" buttons run
+    // The Live Activity's Pause/Resume/End buttons run
     // in-process (LiveActivityIntent) but can't reference this singleton
     // directly — see OkkleTripLiveActivityIntents.swift for why — so they
     // signal over NotificationCenter instead.
     NotificationCenter.default.addObserver(forName: .nativeLiveActivityStopTrackingRequested, object: nil, queue: .main) { [weak self] _ in
       Task { @MainActor in self?.handleLiveActivityStopTrackingRequest() }
     }
-    NotificationCenter.default.addObserver(forName: .nativeLiveActivityStillDrivingRequested, object: nil, queue: .main) { [weak self] _ in
-      Task { @MainActor in self?.handleLiveActivityStillDrivingRequest() }
+    NotificationCenter.default.addObserver(forName: .nativeLiveActivityPauseTrackingRequested, object: nil, queue: .main) { [weak self] _ in
+      Task { @MainActor in self?.handleLiveActivityPauseTrackingRequest() }
+    }
+    NotificationCenter.default.addObserver(forName: .nativeLiveActivityResumeTrackingRequested, object: nil, queue: .main) { [weak self] _ in
+      Task { @MainActor in self?.handleLiveActivityResumeTrackingRequest() }
     }
   }
 
@@ -142,7 +145,13 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   }
 
   @MainActor
-  private func handleLiveActivityStillDrivingRequest() {
+  private func handleLiveActivityPauseTrackingRequest() {
+    guard phase == .live else { return }
+    pause()
+  }
+
+  @MainActor
+  private func handleLiveActivityResumeTrackingRequest() {
     guard phase == .paused else { return }
     resume()
   }
@@ -230,7 +239,14 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     if let startedAt {
       NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
     }
-    NativeTripLiveActivityController.update(miles: miles, elapsed: elapsed, isDriving: false, vehicleLabel: vehicle.label, force: true)
+    NativeTripLiveActivityController.update(
+      miles: miles,
+      elapsed: elapsed,
+      isDriving: false,
+      isPausedByUser: true,
+      vehicleLabel: vehicle.label,
+      force: true
+    )
     manager.stopUpdatingLocation()
     setBackgroundTrackingEnabled(false)
     stopTimer()
@@ -581,7 +597,8 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
         vehicleLabel: vehicle.label,
         miles: miles,
         elapsed: elapsed,
-        isDriving: false
+        isDriving: false,
+        isPausedByUser: true
       )
     case .summary:
       NativeTripWidgetStore.markTripEnded()

@@ -655,6 +655,7 @@ private struct NativeOverpassCountResponse: Decodable {
 /// that decides its colour.
 final class NativeZoneCircle: MKCircle {
   var weight: Double = 0.5
+  var rendersAsGlow = false
 }
 
 /// A cheap, cached "does this look like a food-delivery area at all" prior,

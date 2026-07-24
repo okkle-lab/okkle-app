@@ -73,8 +73,7 @@ struct NativeRecordsView: View {
       title: "Data",
       collapsedTitle: "Data",
       subtitle: "Log trip mileage, income and expenses - all export-ready.",
-      onClose: onClose,
-      fillsViewport: mode == .history
+      onClose: onClose
     ) {
       if mode == .tax {
         NativeTaxSummaryView()
@@ -125,7 +124,7 @@ struct NativeRecordsView: View {
       NativeAddRecordPanel(
         title: { logTitle(for: $0) },
         subtitle: { logSubtitle(for: $0) },
-        onViewRecords: {
+        onFinished: {
           showsAddRecordPanel = false
         }
       )
@@ -133,6 +132,9 @@ struct NativeRecordsView: View {
       .presentationDetents(addRecordPanelDetents)
       .presentationDragIndicator(.visible)
       .nativeIPadPagePresentation()
+    }
+    .onAppear {
+      NativeTripAddressResolver.backfillMissingAddresses(store: store)
     }
   }
 
@@ -369,11 +371,6 @@ struct NativeRecordsView: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .top)
-    // Extra clearance below the last row so it doesn't sit visually cropped
-    // under the floating "Add record" button — that button is a second,
-    // taller safe-area inset on top of NativeScreen's generic bottom
-    // padding, which alone wasn't enough on this screen.
-    .padding(.bottom, 90)
   }
 
   private var historyFilterBar: some View {
@@ -582,7 +579,7 @@ private struct NativeAddRecordPanel: View {
   @State private var logKind: NativeLogKind?
   let title: (NativeLogKind) -> String
   let subtitle: (NativeLogKind) -> String
-  let onViewRecords: () -> Void
+  let onFinished: () -> Void
 
   private let options: [NativeLogKind] = [.income, .expense, .mileage]
 
@@ -643,10 +640,9 @@ private struct NativeAddRecordPanel: View {
           subtitle: subtitle(kind),
           onClose: {
             logKind = nil
-          },
-          onViewRecords: {
-            logKind = nil
-            onViewRecords()
+            DispatchQueue.main.async {
+              onFinished()
+            }
           }
         )
         .environmentObject(store)
@@ -772,7 +768,10 @@ private struct NativeTripSwipeRow<Content: View>: View {
         .onTapGesture {
           if isOpen { close() }
         }
-        .highPriorityGesture(
+        // Recognize horizontal classification swipes alongside the parent
+        // ScrollView. A high-priority drag consumed vertical gestures even
+        // when this handler ignored them, making the Data list feel stuck.
+        .simultaneousGesture(
           DragGesture(minimumDistance: 14)
             .onChanged { value in
               guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
@@ -952,7 +951,7 @@ struct NativeHistoryRow: View {
 
   private var detail: String? {
     switch item {
-    case .trip(let trip): return gbp(trip.deduction, whole: true)
+    case .trip(let trip): return nativeMoney(trip.deduction, currencyCode: trip.displayCurrencyCode, whole: true)
     case .record(let record):
       if let deduction = record.deduction { return gbp(deduction, whole: true) }
       return record.period.label
@@ -1206,10 +1205,12 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
   }
 }
 
-enum NativeTaxExportGroup: CaseIterable {
+enum NativeTaxExportGroup: String, CaseIterable, Identifiable {
   case mileage
   case accountant
   case rawData
+
+  var id: String { rawValue }
 
   var title: String {
     switch self {

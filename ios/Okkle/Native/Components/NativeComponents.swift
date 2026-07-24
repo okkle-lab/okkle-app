@@ -290,6 +290,7 @@ struct NativeAiCard<Content: View>: View {
   var banner: String? = nil
   var bannerTrailing: String? = nil
   let content: Content
+  @Environment(\.colorScheme) private var colorScheme
 
   init(banner: String? = nil, bannerTrailing: String? = nil, @ViewBuilder content: () -> Content) {
     self.banner = banner
@@ -297,22 +298,61 @@ struct NativeAiCard<Content: View>: View {
     self.content = content()
   }
 
-  // Insights uses the same semantic grouped surface as native iOS lists. It
-  // stays flat, adapts to light and dark mode, and avoids decorative material
-  // or shadows competing with dense charts and recommendations.
+  // A native solid panel with an extremely restrained AI tint and perimeter
+  // glow. The page itself stays the same white/black surface as every other
+  // tab; the effect belongs to the card instead of washing over the screen.
   var body: some View {
     cardBody
       .padding(.horizontal, 20)
       .padding(.vertical, 18)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        Color(uiColor: .secondarySystemGroupedBackground),
-        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-      )
-      .overlay {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-          .stroke(Color(uiColor: .separator).opacity(0.16), lineWidth: 0.5)
+      .background {
+        cardShape
+          .fill(OkkleColor.card)
+          .overlay {
+            cardShape
+              .fill(aiSurfaceGradient)
+              .opacity(surfaceTintOpacity)
+          }
       }
+      .background {
+        cardShape
+          .stroke(aiGlowGradient, lineWidth: 3)
+          .blur(radius: 9)
+          .opacity(glowOpacity)
+      }
+      .shadow(color: .black.opacity(colorScheme == .dark ? 0.28 : 0.045), radius: 10, y: 5)
+  }
+
+  private var cardShape: RoundedRectangle {
+    RoundedRectangle(cornerRadius: 14, style: .continuous)
+  }
+
+  private var surfaceTintOpacity: Double { colorScheme == .dark ? 0.055 : 0.025 }
+  private var glowOpacity: Double { colorScheme == .dark ? 0.24 : 0.14 }
+
+  private var aiSurfaceGradient: LinearGradient {
+    LinearGradient(
+      colors: [
+        Color(red: 1.00, green: 0.22, blue: 0.72),
+        Color.clear,
+        Color(red: 0.35, green: 0.43, blue: 1.00)
+      ],
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+  }
+
+  private var aiGlowGradient: LinearGradient {
+    LinearGradient(
+      colors: [
+        Color(red: 1.00, green: 0.30, blue: 0.74),
+        Color(red: 0.58, green: 0.35, blue: 1.00),
+        Color(red: 0.30, green: 0.42, blue: 1.00)
+      ],
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
   }
 
   @ViewBuilder private var cardBody: some View {

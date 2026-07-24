@@ -98,11 +98,16 @@ final class NativeICloudSyncEngine {
   private var pendingLocalSnapshot: NativeSnapshot?
   private var pendingRetry: DispatchWorkItem?
   private var pendingRetryID: UUID?
+  private var downloadRetryAttempts = 0
+  private let maxDownloadRetryAttempts = 12
 
   private init() {}
 
   func refresh(store: OkkleStore, mergeCloudData: Bool = false) {
     guard store.settings.iCloudSyncEnabled else {
+      pendingLocalSnapshot = nil
+      pendingRefresh = false
+      cancelRetry()
       store.setICloudSyncState(.disabled)
       return
     }
@@ -156,6 +161,15 @@ final class NativeICloudSyncEngine {
       }
       finishOperation(store: store)
     }
+  }
+
+  /// A user-initiated retry starts a fresh bounded download window. Automatic
+  /// refreshes deliberately do not reset the counter, otherwise the app's
+  /// one-minute timer would turn a failed iCloud placeholder back into an
+  /// endless "Syncing..." loop.
+  func retry(store: OkkleStore) {
+    cancelRetry()
+    refresh(store: store)
   }
 
   func remoteSnapshotSummary() async -> NativeICloudRemoteSnapshotCheck {
@@ -257,9 +271,11 @@ final class NativeICloudSyncEngine {
       throw NativeICloudSyncError.unavailable
     }
     guard fileManager.fileExists(atPath: url.path) else { return nil }
-    if try requestDownloadIfNeeded(at: url) {
-      throw NativeICloudSyncError.remoteDownloadPending
-    }
+    // `ubiquitousItemDownloadingStatus` can remain `.notDownloaded` for an
+    // iPad app running on Apple silicon even after Finder has materialized the
+    // bytes. Ask iCloud for the item, but still attempt the coordinated read;
+    // a real placeholder will fail safely into the bounded retry path below.
+    try requestDownloadIfNeeded(at: url)
     let data = try readSnapshotData(at: url)
     guard !data.isEmpty else { return nil }
     let envelope = try JSONDecoder().decode(NativeICloudSnapshotEnvelope.self, from: data)
@@ -287,6 +303,7 @@ final class NativeICloudSyncEngine {
       return try coordinatedReadData(at: url)
     } catch {
       if Self.isMissingICloudData(error) {
+        try? fileManager.startDownloadingUbiquitousItem(at: url)
         throw NativeICloudSyncError.remoteDownloadPending
       }
       throw error
@@ -339,15 +356,28 @@ final class NativeICloudSyncEngine {
     }
   }
 
-  private func requestDownloadIfNeeded(at url: URL) throws -> Bool {
+  private func requestDownloadIfNeeded(at url: URL) throws {
     let keys: Set<URLResourceKey> = [
       .isUbiquitousItemKey,
-      .ubiquitousItemDownloadingStatusKey
+      .ubiquitousItemDownloadingStatusKey,
+      .ubiquitousItemDownloadingErrorKey
     ]
-    let values = try? url.resourceValues(forKeys: keys)
-    guard values?.isUbiquitousItem == true else { return false }
+    let values: URLResourceValues
+    do {
+      values = try url.resourceValues(forKeys: keys)
+    } catch {
+      if Self.isMissingICloudData(error) {
+        try? fileManager.startDownloadingUbiquitousItem(at: url)
+        throw NativeICloudSyncError.remoteDownloadPending
+      }
+      throw error
+    }
+    guard values.isUbiquitousItem == true else { return }
+    if let downloadError = values.ubiquitousItemDownloadingError {
+      throw downloadError
+    }
 
-    guard values?.ubiquitousItemDownloadingStatus == .notDownloaded else { return false }
+    guard values.ubiquitousItemDownloadingStatus == .notDownloaded else { return }
 
     do {
       try fileManager.startDownloadingUbiquitousItem(at: url)
@@ -357,7 +387,6 @@ final class NativeICloudSyncEngine {
       }
       throw error
     }
-    return true
   }
 
   private func coordinatedReadData(at url: URL) throws -> Data {
@@ -444,6 +473,12 @@ final class NativeICloudSyncEngine {
 
   private func scheduleRetry(store: OkkleStore) {
     pendingRetry?.cancel()
+    guard downloadRetryAttempts < maxDownloadRetryAttempts else {
+      cancelRetry(resetDownloadAttempts: false)
+      store.setICloudSyncState(.failed(downloadTimeoutMessage))
+      return
+    }
+    downloadRetryAttempts += 1
     let retryID = UUID()
     pendingRetryID = retryID
     let work = DispatchWorkItem { [weak store] in
@@ -459,10 +494,20 @@ final class NativeICloudSyncEngine {
     DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
   }
 
-  private func cancelRetry() {
+  private func cancelRetry(resetDownloadAttempts: Bool = true) {
     pendingRetry?.cancel()
     pendingRetry = nil
     pendingRetryID = nil
+    if resetDownloadAttempts {
+      downloadRetryAttempts = 0
+    }
+  }
+
+  private var downloadTimeoutMessage: String {
+    if ProcessInfo.processInfo.isiOSAppOnMac {
+      return "iCloud Drive did not finish downloading Okkle data. Check iCloud Drive in Mac System Settings, then try again."
+    }
+    return "iCloud Drive did not finish downloading Okkle data. Check your connection and iCloud Drive, then try again."
   }
 
   private var deviceID: String {

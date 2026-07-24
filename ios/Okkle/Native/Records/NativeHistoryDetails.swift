@@ -50,7 +50,12 @@ struct NativeTripDetailSheet: View {
 
             HStack(spacing: 12) {
               NativeTripFlatMetric(title: "Miles", value: miles(trip.miles), symbol: "road.lanes")
-              NativeTripFlatMetric(title: "Deduction", value: gbp(trip.deduction, whole: true), symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"), color: .green)
+              NativeTripFlatMetric(
+                title: "Deduction",
+                value: nativeMoney(currentTrip.deduction, currencyCode: currentTrip.displayCurrencyCode, whole: true),
+                symbol: nativeCurrencySymbolName("sterlingsign.circle.fill", currencyCode: currentTrip.displayCurrencyCode),
+                color: .green
+              )
             }
 
             NativeGlassCard {
@@ -1572,7 +1577,7 @@ struct NativeTripEditSheet: View {
           HStack {
             Text("Deduction")
             Spacer()
-            Text(gbp(previewDeduction, whole: true))
+            Text(nativeMoney(previewDeduction, currencyCode: trip.displayCurrencyCode, whole: true))
               .fontWeight(.bold)
           }
           Text("Removing route segments updates the saved route, mileage and mileage deduction.")

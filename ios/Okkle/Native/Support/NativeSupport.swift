@@ -40,36 +40,73 @@ enum OkkleColor {
   })
 }
 
-/// The currency the money formatter renders in — "GBP" or "USD". OkkleStore
-/// sets this from the driver's tax country so £/$ follow the jurisdiction. A
-/// global (rather than threading currency through every `gbp(...)` call site)
-/// is fine here: the app shows one driver's single currency at a time, and
-/// currency changes ride the same @Published settings update that re-renders
-/// the views that call this.
+/// The default currency used by records, aggregate totals, and tax reports.
+/// OkkleStore sets it from the driver's tax country; GPS-recorded trips pass
+/// their own route currency explicitly instead.
 var nativeActiveCurrencyCode = "GBP"
 
-private func nativeCurrencyFormatter(whole: Bool) -> NumberFormatter {
+private func nativeCurrencyFormatter(whole: Bool, currencyCode: String) -> NumberFormatter {
   let formatter = NumberFormatter()
   formatter.numberStyle = .currency
-  formatter.currencyCode = nativeActiveCurrencyCode
   // Anchor the locale to the currency so the symbol is the clean "$"/"£"
   // rather than "US$" that a mismatched locale can produce.
-  formatter.locale = Locale(identifier: nativeActiveCurrencyCode == "USD" ? "en_US" : "en_GB")
+  switch currencyCode {
+  case "USD": formatter.locale = Locale(identifier: "en_US")
+  case "GBP": formatter.locale = Locale(identifier: "en_GB")
+  default:
+    formatter.locale = Locale.current
+  }
+  formatter.currencyCode = currencyCode
   formatter.maximumFractionDigits = whole ? 0 : 2
   formatter.minimumFractionDigits = whole ? 0 : 2
   return formatter
 }
 
 func gbp(_ value: Double, whole: Bool = false) -> String {
-  nativeCurrencyFormatter(whole: whole).string(from: NSNumber(value: value))
-    ?? "\(nativeActiveCurrencyCode) \(String(format: "%.2f", value))"
+  nativeMoney(value, currencyCode: nativeActiveCurrencyCode, whole: whole)
 }
 
-/// SF Symbol name for the active currency's coin/circle glyph — the icon
-/// counterpart to `gbp(...)`, so money-themed rows don't show a literal £
-/// symbol for a US/USD driver.
-func nativeCurrencySymbolName(_ base: String) -> String {
-  nativeActiveCurrencyCode == "USD" ? base.replacingOccurrences(of: "sterlingsign", with: "dollarsign") : base
+/// Format a trip-local amount without changing the app-wide currency used by
+/// tax reports, records, and profile totals.
+func nativeMoney(_ value: Double, currencyCode: String, whole: Bool = false) -> String {
+  nativeCurrencyFormatter(whole: whole, currencyCode: currencyCode).string(from: NSNumber(value: value))
+    ?? "\(currencyCode) \(String(format: "%.2f", value))"
+}
+
+/// SF Symbol name for either the active or explicitly supplied currency.
+func nativeCurrencySymbolName(_ base: String, currencyCode: String = nativeActiveCurrencyCode) -> String {
+  switch currencyCode {
+  case "GBP": return base
+  case "USD": return base.replacingOccurrences(of: "sterlingsign", with: "dollarsign")
+  case "EUR": return base.replacingOccurrences(of: "sterlingsign", with: "eurosign")
+  case "JPY", "CNY": return base.replacingOccurrences(of: "sterlingsign", with: "yensign")
+  default: return "banknote.fill"
+  }
+}
+
+/// Immediate, offline country inference for Okkle's two supported markets.
+/// Apple reverse geocoding later persists the exact ISO-country currency for
+/// every other market; this fast path prevents a newly completed US route
+/// flashing GBP (or a UK route USD) while that lookup is still running.
+func nativeTripCurrencyCode(for points: [RoutePoint]) -> String? {
+  guard !points.isEmpty else { return nil }
+  let sampleIndexes = Set([0, points.count / 2, points.count - 1])
+  let inferred = sampleIndexes.compactMap { index -> String? in
+    let point = points[index]
+    let latitude = point.latitude
+    let longitude = point.longitude
+
+    let isUnitedKingdom = (49.7...61.1).contains(latitude) && (-8.8...2.1).contains(longitude)
+    if isUnitedKingdom { return "GBP" }
+
+    let isContinentalUS = (24.0...50.0).contains(latitude) && (-125.0 ... -66.0).contains(longitude)
+    let isAlaska = (51.0...72.0).contains(latitude) && (-180.0 ... -129.0).contains(longitude)
+    let isHawaii = (18.0...23.0).contains(latitude) && (-161.0 ... -154.0).contains(longitude)
+    let isPuertoRico = (17.5...18.7).contains(latitude) && (-67.5 ... -65.0).contains(longitude)
+    return isContinentalUS || isAlaska || isHawaii || isPuertoRico ? "USD" : nil
+  }
+  guard !inferred.isEmpty else { return nil }
+  return Dictionary(grouping: inferred, by: { $0 }).max { $0.value.count < $1.value.count }?.key
 }
 
 func miles(_ value: Double) -> String {

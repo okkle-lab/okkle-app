@@ -192,9 +192,6 @@ struct OkkleNativeRootView: View {
         subtitle: "Add mileage from a previous journey.",
         onClose: {
           selectedTab = .trip
-        },
-        onViewRecords: {
-          selectedTab = .records
         }
       )
       .environmentObject(store)
@@ -210,10 +207,6 @@ struct OkkleNativeRootView: View {
         subtitle: "Add income, expenses, or mileage.",
         onClose: {
           showAddRecord = false
-        },
-        onViewRecords: {
-          showAddRecord = false
-          selectedTab = .records
         }
       )
       .environmentObject(store)
@@ -447,6 +440,23 @@ let nativeAllKnownPlatforms: [String] = [
   "Uber Eats", "Deliveroo", "Just Eat", "Stuart", "Amazon Flex",
   "DoorDash", "Grubhub", "Instacart",
 ]
+
+/// Move a driver's selected apps to another market without touching any old
+/// trip or income records. Shared apps and genuinely custom apps survive;
+/// known apps that only operate in the old list are removed. If that leaves
+/// nothing selected, use the new market's first common app as a safe default.
+func nativePlatformsAfterCountryChange(_ current: [String], to country: NativeTaxCountry) -> [String] {
+  let market = nativeOnboardingPlatforms(for: country).filter { $0 != "Other" }
+  let retainedMarketApps = market.filter { candidate in
+    current.contains { $0.caseInsensitiveCompare(candidate) == .orderedSame }
+  }
+  let customApps = current.filter { platform in
+    platform.caseInsensitiveCompare("Other") != .orderedSame &&
+      !nativeAllKnownPlatforms.contains { $0.caseInsensitiveCompare(platform) == .orderedSame }
+  }
+  let migrated = uniqueStrings(retainedMarketApps + customApps)
+  return migrated.isEmpty ? Array(market.prefix(1)) : migrated
+}
 
 func nativePlatformSymbol(_ platform: String) -> String {
   switch platform {

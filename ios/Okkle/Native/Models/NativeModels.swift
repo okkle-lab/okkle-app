@@ -450,6 +450,11 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var startedAt: Date
   var endedAt: Date
   var points: [RoutePoint]
+  // The currency of the country where this GPS route was recorded. It is
+  // intentionally independent of `settings.taxCountry`: trip screens should
+  // reflect where the driving happened, while Reports retain the driver's tax
+  // jurisdiction. Nil on old/manual trips and resolved from route GPS.
+  var currencyCode: String? = nil
   // Reverse-geocoded lazily after the trip is saved (see
   // NativeTripAddressResolver) so the mileage log can show a real from/to
   // journey rather than just an aggregate distance. Nil until resolved, or
@@ -474,6 +479,10 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   // Stop analysis is owned by the trip so edits, deletion, backup and iCloud
   // sync all operate on one coherent aggregate. Nil decodes older snapshots.
   var analysis: NativeTripAnalysis? = nil
+
+  var displayCurrencyCode: String {
+    currencyCode ?? nativeTripCurrencyCode(for: points) ?? nativeActiveCurrencyCode
+  }
 }
 
 enum NativeTripCategory: String, CaseIterable, Identifiable, Codable {

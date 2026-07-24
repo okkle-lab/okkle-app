@@ -412,6 +412,72 @@ final class TaxCalculatorTests: XCTestCase {
   }
 }
 
+final class NativeReceiptParserTests: XCTestCase {
+  private var calendar: Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    return calendar
+  }
+
+  private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+    calendar.date(from: DateComponents(year: year, month: month, day: day))!
+  }
+
+  func testReadsUKReceiptAmountAndDate() {
+    let result = nativeParseReceipt(
+      lines: ["Shell", "Date 21/07/2026 09:37", "TOTAL £42.75"],
+      dateOrder: .dayMonthYear,
+      referenceDate: date(2026, 7, 24),
+      calendar: calendar
+    )
+
+    XCTAssertEqual(result.amount ?? 0, 42.75, accuracy: 0.001)
+    XCTAssertEqual(result.date, date(2026, 7, 21))
+  }
+
+  func testReadsUSEarningsPayoutWithThousandsSeparator() {
+    let result = nativeParseReceipt(
+      lines: ["Uber Eats", "Payout date 07/21/2026", "Paid $1,234.56"],
+      dateOrder: .monthDayYear,
+      referenceDate: date(2026, 7, 24),
+      calendar: calendar
+    )
+
+    XCTAssertEqual(result.amount ?? 0, 1_234.56, accuracy: 0.001)
+    XCTAssertEqual(result.date, date(2026, 7, 21))
+  }
+
+  func testAmbiguousNumericDateUsesDriverRegion() {
+    let lines = ["Transaction date 03/04/2026", "Total £12.50"]
+    let uk = nativeParseReceipt(
+      lines: lines,
+      dateOrder: .dayMonthYear,
+      referenceDate: date(2026, 7, 24),
+      calendar: calendar
+    )
+    let us = nativeParseReceipt(
+      lines: lines,
+      dateOrder: .monthDayYear,
+      referenceDate: date(2026, 7, 24),
+      calendar: calendar
+    )
+
+    XCTAssertEqual(uk.date, date(2026, 4, 3))
+    XCTAssertEqual(us.date, date(2026, 3, 4))
+  }
+
+  func testPrefersTransactionDateAndRejectsExpiryDate() {
+    let result = nativeParseReceipt(
+      lines: ["Card expiry date 08/29/2028", "Transaction date Jul 20, 2026", "Amount $18.20"],
+      dateOrder: .monthDayYear,
+      referenceDate: date(2026, 7, 24),
+      calendar: calendar
+    )
+
+    XCTAssertEqual(result.date, date(2026, 7, 20))
+  }
+}
+
 
 @MainActor
 final class NativeInsightsSimulationTests: XCTestCase {
@@ -1752,6 +1818,29 @@ final class NativeICloudSyncMergeTests: XCTestCase {
 
     XCTAssertEqual(merged.settings.platforms, ["Uber Eats"])
     XCTAssertEqual(merged.settingsUpdatedAt, Date(timeIntervalSince1970: 6_060))
+  }
+
+  func testCountryChangeKeepsSharedAndCustomPlatformsOnly() {
+    let migrated = nativePlatformsAfterCountryChange(
+      ["Deliveroo", "Uber Eats", "Amazon Flex", "Local Courier"],
+      to: .us
+    )
+
+    XCTAssertEqual(migrated, ["Uber Eats", "Amazon Flex", "Local Courier"])
+  }
+
+  func testCountryChangeUsesNewMarketDefaultWhenNothingCarriesAcross() {
+    XCTAssertEqual(nativePlatformsAfterCountryChange(["Deliveroo", "Just Eat"], to: .us), ["DoorDash"])
+    XCTAssertEqual(nativePlatformsAfterCountryChange(["DoorDash", "Grubhub"], to: .uk), ["Uber Eats"])
+  }
+
+  func testTripCurrencyUsesGPSMarketInsteadOfTaxProfile() {
+    let sanFrancisco = [RoutePoint(latitude: 37.7749, longitude: -122.4194)]
+    let london = [RoutePoint(latitude: 51.5072, longitude: -0.1276)]
+
+    XCTAssertEqual(nativeTripCurrencyCode(for: sanFrancisco), "USD")
+    XCTAssertEqual(nativeTripCurrencyCode(for: london), "GBP")
+    XCTAssertNil(nativeTripCurrencyCode(for: []))
   }
 
   func testSnapshotWithoutSyncMetadataStillDecodes() throws {
