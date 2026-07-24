@@ -11,10 +11,11 @@ import Foundation
 /// driver's self-employment profit, stacked on top of any W-2 wages
 /// (`otherIncome`) — so the driver sees what their gig work adds to their bill.
 ///
-/// IMPORTANT: every rate table below is for the **2025 tax year, single filing
-/// status**, and must be reviewed against official IRS / state sources before
-/// each release. These are estimates to keep the driver organised, not tax
-/// advice, and Okkle never files a return.
+/// IMPORTANT: every rate table below is for the **2026 tax year, single filing
+/// status** (verified against IRS Rev. Proc. 2025-32 and current state
+/// guidance as of July 2026), and must be reviewed against official IRS /
+/// state sources before each release. These are estimates to keep the driver
+/// organised, not tax advice, and Okkle never files a return.
 enum USTaxCalculator {
   // The US federal tax year is the calendar year.
   static func taxYearInterval(containing date: Date, calendar: Calendar = .current) -> DateInterval {
@@ -26,8 +27,10 @@ enum USTaxCalculator {
 
   /// IRS standard mileage rate for business use — a single rate per mile with
   /// no UK-style 10,000-mile second tier, but it does change by date:
-  /// 2025 = 70¢; 2026 = 72.5¢ from 1 Jan, then 76¢ from 1 Jul (a mid-year fuel
-  /// revision, Notice 2026-10). Verify each year / whenever the IRS revises it.
+  /// 2025 = 70¢; 2026 = 72.5¢ from 1 Jan, then 76¢ from 1 Jul (a rare mid-year
+  /// revision, announced by the IRS on 13 Jul 2026 due to high fuel prices —
+  /// the first mid-year change since 2022). Verify each year / whenever the
+  /// IRS revises it.
   static func standardMileageRate(on date: Date, calendar: Calendar = .current) -> Double {
     let comps = calendar.dateComponents([.year, .month], from: date)
     let year = comps.year ?? 2026
@@ -100,32 +103,34 @@ enum USTaxCalculator {
 
   // MARK: - Federal
 
-  /// 2025 standard deduction, single filer — $15,750 after the One Big
-  /// Beautiful Bill raised it from the $15,000 TCJA projection. Verify annually.
-  static let standardDeduction = 15_750.0
+  /// 2026 standard deduction, single filer — $16,100 (inflation-adjusted from
+  /// 2025's $15,750 per IRS Rev. Proc. 2025-32). Verify annually.
+  static let standardDeduction = 16_100.0
 
-  /// 2025 federal self-employment tax: 12.4% Social Security up to the wage
-  /// base, 2.9% Medicare on everything, plus the 0.9% Additional Medicare on
-  /// net earnings over $200,000 (single) — all on 92.35% of net profit.
+  /// 2026 federal self-employment tax: 12.4% Social Security up to the wage
+  /// base ($184,500 for 2026, up from $176,100 in 2025), 2.9% Medicare on
+  /// everything, plus the 0.9% Additional Medicare on net earnings over
+  /// $200,000 (single) — all on 92.35% of net profit.
   static func selfEmploymentTax(netProfit: Double) -> Double {
     let netEarnings = max(0, netProfit) * 0.9235
     guard netEarnings > 0 else { return 0 }
-    let socialSecurityWageBase = 176_100.0
+    let socialSecurityWageBase = 184_500.0
     let socialSecurity = min(netEarnings, socialSecurityWageBase) * 0.124
     let medicare = netEarnings * 0.029
     let additionalMedicare = max(0, netEarnings - 200_000) * 0.009
     return socialSecurity + medicare + additionalMedicare
   }
 
-  /// 2025 federal income tax, single filer, applied to taxable income.
+  /// 2026 federal income tax, single filer, applied to taxable income
+  /// (IRS Rev. Proc. 2025-32).
   static func federalIncomeTax(taxable: Double) -> Double {
     let bands: [(upTo: Double, rate: Double)] = [
-      (11_925, 0.10),
-      (48_475, 0.12),
-      (103_350, 0.22),
-      (197_300, 0.24),
-      (250_525, 0.32),
-      (626_350, 0.35),
+      (12_400, 0.10),
+      (50_400, 0.12),
+      (105_700, 0.22),
+      (201_775, 0.24),
+      (256_225, 0.32),
+      (640_600, 0.35),
       (.infinity, 0.37),
     ]
     return progressiveTax(on: taxable, bands: bands)
@@ -140,16 +145,21 @@ enum USTaxCalculator {
 
     switch state {
     case .california:
-      // 2025 single brackets (approximate — verify annually).
+      // Latest FTB-published single brackets (2025 tax year — the FTB
+      // indexes these to CA inflation and doesn't publish 2026's final
+      // dollar thresholds until late 2026; expect a low-single-digit rise
+      // once it does). Verify annually.
       return progressiveTax(on: income, bands: [
-        (10_756, 0.01), (25_499, 0.02), (40_245, 0.04), (55_866, 0.06),
-        (70_606, 0.08), (360_659, 0.093), (432_787, 0.103), (721_314, 0.113),
+        (11_079, 0.01), (26_264, 0.02), (41_452, 0.04), (57_542, 0.06),
+        (72_724, 0.08), (371_479, 0.093), (445_771, 0.103), (742_953, 0.113),
         (.infinity, 0.123),
       ])
     case .newYork:
+      // 2026: the FY2026 budget cut the bottom five bracket rates by 0.1pt;
+      // thresholds unchanged from 2025.
       return progressiveTax(on: income, bands: [
-        (8_500, 0.04), (11_700, 0.045), (13_900, 0.0525), (80_650, 0.055),
-        (215_400, 0.06), (1_077_550, 0.0685), (5_000_000, 0.0965),
+        (8_500, 0.039), (11_700, 0.044), (13_900, 0.0515), (80_650, 0.054),
+        (215_400, 0.059), (1_077_550, 0.0685), (5_000_000, 0.0965),
         (25_000_000, 0.103), (.infinity, 0.109),
       ])
     case .illinois:
@@ -157,7 +167,7 @@ enum USTaxCalculator {
     case .pennsylvania:
       return income * 0.0307   // flat
     case .georgia:
-      return income * 0.0519   // 2025 flat rate (phasing down to 4.99%)
+      return income * 0.0499   // 2026 flat rate (HB 463 accelerated the phase-down from 5.19% in 2025)
     case .otherState:
       return income * max(0, min(otherStateRate, 0.15))
     default:

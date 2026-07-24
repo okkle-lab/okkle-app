@@ -102,12 +102,13 @@ final class TaxCalculatorTests: XCTestCase {
   }
 
   // Each bookkeeping export must match that software's own documented CSV
-  // import spec — verified against FreeAgent, QuickBooks Online, Xero and
-  // Wave's own support articles, since a wrong header/date-format/column
+  // import spec — verified against FreeAgent, Sage, QuickBooks Online, Xero
+  // and Wave's own support articles, since a wrong header/date-format/column
   // choice means the file silently fails (or misparses) on import.
   @MainActor
   func testBookkeepingCsvExportsMatchEachSoftwaresDocumentedFormat() {
     let store = OkkleStore()
+    store.settings.taxCountry = .uk
     let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: 2026, month: 3, day: 9))!
     store.trips = []
     store.records = [
@@ -119,18 +120,24 @@ final class TaxCalculatorTests: XCTestCase {
     XCTAssertFalse(freeAgent.contains("Date,Amount,Description"), "FreeAgent's spec forbids a header row")
     XCTAssertTrue(freeAgent.hasPrefix("09/03/2026,100.00,"))
 
+    // Sage Business Cloud Accounting: header row, Date/Description/Amount
+    // order, dd/mm/yyyy (Sage's own UK default).
+    let sage = nativeSageCsv(store: store)
+    XCTAssertTrue(sage.hasPrefix("Date,Description,Amount\n09/03/2026,"))
+
     // QuickBooks Online: header row, Date/Description/Amount order, dd/mm/yyyy.
     let quickBooks = nativeQuickBooksCsv(store: store)
     XCTAssertTrue(quickBooks.hasPrefix("Date,Description,Amount\n09/03/2026,"))
 
-    // Xero: header row, Date/Amount/Description order, unambiguous ISO date.
+    // Xero: header row, Date/Amount/Description order, date matching the
+    // org's own region setting — dd/mm/yyyy for a UK driver.
     let xero = nativeXeroCsv(store: store)
-    XCTAssertTrue(xero.hasPrefix("Date,Amount,Description\n2026-03-09,100.00,"))
+    XCTAssertTrue(xero.hasPrefix("Date,Amount,Description\n09/03/2026,100.00,"))
 
-    // Wave: header row, Date/Description/Amount order, year-first date
-    // (Wave's own troubleshooting page confirms MM/DD/YYYY is NOT recognized).
+    // Wave: header row, Date/Description/Amount order, US-style MM/DD/YYYY
+    // (Wave's own support article documents this as the minimum required format).
     let wave = nativeWaveCsv(store: store)
-    XCTAssertTrue(wave.hasPrefix("Date,Description,Amount\n2026-03-09,"))
+    XCTAssertTrue(wave.hasPrefix("Date,Description,Amount\n03/09/2026,"))
   }
 
   @MainActor

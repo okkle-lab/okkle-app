@@ -1119,6 +1119,7 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
   case selfAssessment
   case mileage
   case freeAgent
+  case sage
   case quickBooks
   case xero
   case wave
@@ -1127,10 +1128,11 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
   var id: String { rawValue }
 
   /// The raw-data bookkeeping-software exports, filtered to what's actually
-  /// relevant for the driver's market — FreeAgent is a UK-only product, so
-  /// there's no point offering it to a US driver.
+  /// relevant for the driver's market — FreeAgent and Sage Business Cloud
+  /// Accounting are both overwhelmingly UK/self-employed-market products, so
+  /// there's no point offering either to a US driver.
   static func available(for country: NativeTaxCountry) -> [NativeExportDocument] {
-    allCases.filter { $0 != .freeAgent || country == .uk }
+    allCases.filter { ($0 != .freeAgent && $0 != .sage) || country == .uk }
   }
 
   func title(for country: NativeTaxCountry) -> String {
@@ -1139,6 +1141,7 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     case .selfAssessment: return country == .uk ? "Self Assessment summary" : "Schedule C summary"
     case .mileage: return "Mileage"
     case .freeAgent: return "FreeAgent CSV"
+    case .sage: return "Sage CSV"
     case .quickBooks: return "QuickBooks CSV"
     case .xero: return "Xero CSV"
     case .wave: return "Wave CSV"
@@ -1152,6 +1155,7 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     case .selfAssessment: return "Turnover, profit and tax due"
     case .mileage: return country == .uk ? "Rate-band report or full CSV log" : "Mileage report or full CSV log"
     case .freeAgent: return "Ready for FreeAgent's bank statement import"
+    case .sage: return "Ready for Sage Business Cloud Accounting's bank import"
     case .quickBooks: return "Ready for QuickBooks Online's transaction import"
     case .xero: return "Ready for Xero's bank statement import"
     case .wave: return "Ready for Wave's statement import"
@@ -1164,7 +1168,7 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     case .accountantPack: return "doc.richtext.fill"
     case .selfAssessment: return "doc.text.fill"
     case .mileage: return "map.fill"
-    case .freeAgent, .quickBooks, .xero, .wave: return "arrow.up.doc.fill"
+    case .freeAgent, .sage, .quickBooks, .xero, .wave: return "arrow.up.doc.fill"
     case .allData: return "externaldrive.fill"
     }
   }
@@ -1173,14 +1177,14 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     switch self {
     case .accountantPack, .selfAssessment: return .accountant
     case .mileage: return .mileage
-    case .freeAgent, .quickBooks, .xero, .wave, .allData: return .rawData
+    case .freeAgent, .sage, .quickBooks, .xero, .wave, .allData: return .rawData
     }
   }
 
   var formats: [NativeExportFormat] {
     switch self {
     case .accountantPack, .selfAssessment, .mileage: return [.pdf, .csv]
-    case .freeAgent, .quickBooks, .xero, .wave, .allData: return [.csv]
+    case .freeAgent, .sage, .quickBooks, .xero, .wave, .allData: return [.csv]
     }
   }
 
@@ -1193,6 +1197,7 @@ enum NativeExportDocument: String, CaseIterable, Identifiable {
     case (.mileage, .pdf): return .mileageReportPdf
     case (.mileage, .csv): return .mileageLogCsv
     case (.freeAgent, _): return .freeAgent
+    case (.sage, _): return .sage
     case (.quickBooks, _): return .quickBooks
     case (.xero, _): return .xero
     case (.wave, _): return .wave
@@ -1223,6 +1228,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
   case mileageReportPdf
   case mileageLogCsv
   case freeAgent
+  case sage
   case quickBooks
   case xero
   case wave
@@ -1233,7 +1239,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
   var format: NativeExportFormat {
     switch self {
     case .accountantPackPdf, .selfAssessmentPdf, .mileageReportPdf: return .pdf
-    case .accountantPackCsv, .selfAssessmentCsv, .mileageLogCsv, .freeAgent, .quickBooks, .xero, .wave, .allData: return .csv
+    case .accountantPackCsv, .selfAssessmentCsv, .mileageLogCsv, .freeAgent, .sage, .quickBooks, .xero, .wave, .allData: return .csv
     }
   }
 
@@ -1244,6 +1250,7 @@ enum NativeTaxExportKind: String, CaseIterable, Identifiable {
     case .mileageReportPdf: return "Mileage-Report"
     case .mileageLogCsv: return country == .uk ? "HMRC-Mileage-Log" : "IRS-Mileage-Log"
     case .freeAgent: return "FreeAgent-Import"
+    case .sage: return "Sage-Import"
     case .quickBooks: return "QuickBooks-Import"
     case .xero: return "Xero-Import"
     case .wave: return "Wave-Import"

@@ -141,6 +141,8 @@ private func nativeMakeExportFile(_ kind: NativeTaxExportKind, store: OkkleStore
       try nativeMileageCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     case .freeAgent:
       try nativeFreeAgentCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
+    case .sage:
+      try nativeSageCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     case .quickBooks:
       try nativeQuickBooksCsv(store: store).write(to: url, atomically: true, encoding: .utf8)
     case .xero:
@@ -289,18 +291,47 @@ private func nativeBookkeepingTransactions(store: OkkleStore) -> [NativeBookkeep
 /// FreeAgent's own CSV spec (support.freeagent.com "Format a CSV file to
 /// upload a bank statement"): exactly Date, Amount, Description in that
 /// order, dd/mm/yyyy always (not locale-dependent), a single signed Amount
-/// column, and — unlike most importers — NO header row at all.
+/// column, and — unlike most importers — NO header row at all. FreeAgent's
+/// spec also explicitly forbids commas and quote marks anywhere in the file
+/// (there's no quote-escaping convention it recognises), so descriptions are
+/// sanitised here rather than CSV-quoted the normal way.
 @MainActor
 func nativeFreeAgentCsv(store: OkkleStore) -> String {
   nativeBookkeepingTransactions(store: store)
     .map { tx in
       [
-        nativeCsvField(nativeUkDateStamp(tx.date)),
-        nativeCsvField(nativeDecimal(tx.amount)),
-        nativeCsvField(tx.description)
+        nativeUkDateStamp(tx.date),
+        nativeDecimal(tx.amount),
+        nativeFreeAgentSafeText(tx.description)
       ].joined(separator: ",")
     }
     .joined(separator: "\n")
+}
+
+/// FreeAgent has no comma/quote-escaping convention, so those characters are
+/// stripped (rather than quoted) to keep the column count intact.
+private func nativeFreeAgentSafeText(_ value: String) -> String {
+  value
+    .replacingOccurrences(of: ",", with: ";")
+    .replacingOccurrences(of: "\"", with: "'")
+    .replacingOccurrences(of: "\n", with: " ")
+}
+
+/// Sage Business Cloud Accounting's CSV bank-statement import (Sage
+/// Knowledgebase "Formatting CSV bank statements"): a required header row of
+/// Date, Description, Amount, a single signed Amount column (negative =
+/// payment/expense, positive = receipt/income — same convention already used
+/// for the transactions below), and Sage's own UK default of dd/mm/yyyy.
+@MainActor
+func nativeSageCsv(store: OkkleStore) -> String {
+  let rows = nativeBookkeepingTransactions(store: store).map { tx in
+    [
+      nativeCsvField(nativeUkDateStamp(tx.date)),
+      nativeCsvField(tx.description),
+      nativeCsvField(nativeDecimal(tx.amount))
+    ].joined(separator: ",")
+  }
+  return (["Date,Description,Amount"] + rows).joined(separator: "\n")
 }
 
 /// QuickBooks Online's 3-column CSV import (Date, Description, Amount) —
@@ -319,16 +350,18 @@ func nativeQuickBooksCsv(store: OkkleStore) -> String {
   return (["Date,Description,Amount"] + rows).joined(separator: "\n")
 }
 
-/// Xero's CSV bank statement import (central.xero.com) only requires Date
-/// and Amount as a single signed column — Description is optional but
-/// worth including. Xero accepts several date formats and confirms
-/// ambiguous ones at import time, so an unambiguous ISO date sidesteps that
-/// prompt entirely.
+/// Xero's CSV bank statement import (central.xero.com "Import a bank
+/// statement in CSV format") requires the date format to match the Xero
+/// organisation's own region setting — dd/mm/yyyy for a UK org, mm/dd/yyyy
+/// for a US one — not a fixed ISO stamp, which risks Xero's ambiguous-date
+/// prompt or a misread date. Amount is a single signed column; Description
+/// is optional but worth including.
 @MainActor
 func nativeXeroCsv(store: OkkleStore) -> String {
+  let country = store.settings.taxCountry
   let rows = nativeBookkeepingTransactions(store: store).map { tx in
     [
-      nativeCsvField(nativeDateStamp(tx.date)),
+      nativeCsvField(nativePeriodDateStamp(tx.date, country: country)),
       nativeCsvField(nativeDecimal(tx.amount)),
       nativeCsvField(tx.description)
     ].joined(separator: ",")
@@ -336,15 +369,14 @@ func nativeXeroCsv(store: OkkleStore) -> String {
   return (["Date,Amount,Description"] + rows).joined(separator: "\n")
 }
 
-/// Wave's statement import (support.waveapps.com) maps columns manually
-/// after upload, but its own troubleshooting page confirms the date parser
-/// only reliably recognises year-first formats (YYYY/MM/DD or YYYY-MM-DD) —
-/// not the MM/DD/YYYY often assumed for a US-market product.
+/// Wave's statement import (support.waveapps.com "Upload a bank or credit
+/// card statement in .csv format") documents its minimum required columns as
+/// Date (MM/DD/YYYY), Description, Amount — US-style, not year-first.
 @MainActor
 func nativeWaveCsv(store: OkkleStore) -> String {
   let rows = nativeBookkeepingTransactions(store: store).map { tx in
     [
-      nativeCsvField(nativeDateStamp(tx.date)),
+      nativeCsvField(nativeUsDateStamp(tx.date)),
       nativeCsvField(tx.description),
       nativeCsvField(nativeDecimal(tx.amount))
     ].joined(separator: ",")

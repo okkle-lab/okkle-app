@@ -10,11 +10,11 @@ final class USTaxCalculatorTests: XCTestCase {
     // SE tax = 30,000 * 0.9235 * 0.153 = 4,238.87
     XCTAssertEqual(p.class4, 4_238.87, accuracy: 1.0)
     XCTAssertEqual(p.stateTax, 0, accuracy: 0.01)
-    // Federal income tax on the business (10% band after $15,750 standard
+    // Federal income tax on the business (10% band after $16,100 standard
     // deduction and the QBI deduction).
-    XCTAssertEqual(p.incomeTax, 970.45, accuracy: 1.5)
+    XCTAssertEqual(p.incomeTax, 942.45, accuracy: 1.5)
     // Total = federal + SE + state
-    XCTAssertEqual(p.totalDue, 5_209.31, accuracy: 2.0)
+    XCTAssertEqual(p.totalDue, 5_181.32, accuracy: 2.0)
     // Quarterly 1040-ES set-aside = total / 4
     XCTAssertEqual(p.paymentOnAccount, p.totalDue / 4, accuracy: 0.01)
     XCTAssertFalse(p.usesTradingAllowance)
@@ -42,10 +42,10 @@ final class USTaxCalculatorTests: XCTestCase {
   }
 
   func testCaliforniaBrackets() {
-    // CA progressive brackets on $30k profit: 1% to 10,756, 2% to 25,499,
-    // 4% above => 107.56 + 294.86 + 180.04 = 582.46
+    // CA progressive brackets on $30k profit: 1% to 11,079, 2% to 26,264,
+    // 4% above => 110.79 + 303.70 + 149.44 = 563.93
     let ca = USTaxCalculator.estimate(turnover: 40_000, expenses: 10_000, state: .california, otherStateRate: 0)
-    XCTAssertEqual(ca.stateTax, 582.46, accuracy: 2.0)
+    XCTAssertEqual(ca.stateTax, 563.93, accuracy: 2.0)
   }
 
   func testManualStateRateForUnmodelledState() {
@@ -59,7 +59,7 @@ final class USTaxCalculatorTests: XCTestCase {
     // (profit - standard deduction) * rate would give.
     let p = USTaxCalculator.estimate(turnover: 40_000, expenses: 10_000, state: .texas, otherStateRate: 0)
     XCTAssertGreaterThan(p.qbiDeduction, 0)
-    XCTAssertEqual(p.standardDeduction, 15_750, accuracy: 0.01)
+    XCTAssertEqual(p.standardDeduction, 16_100, accuracy: 0.01)
   }
 
   func testUSTaxYearIsCalendarYear() {

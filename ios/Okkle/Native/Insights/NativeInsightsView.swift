@@ -793,7 +793,7 @@ struct NativeTopPlatformsList: View {
             .font(.system(size: 13, weight: .heavy))
             .foregroundStyle(.white)
             .frame(width: 24, height: 24)
-            .background(nativeAIAccentGradient, in: Circle())
+            .background(OkkleColor.brand, in: Circle())
           NativePlatformIcon(platform: entry.platform)
             .frame(width: 30, height: 30)
             .clipShape(Circle())
