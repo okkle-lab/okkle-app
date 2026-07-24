@@ -3,10 +3,11 @@ import Foundation
 
 extension Notification.Name {
   static let nativeLiveActivityStopTrackingRequested = Notification.Name("uk.okkle.native.liveActivity.stopTracking")
-  static let nativeLiveActivityStillDrivingRequested = Notification.Name("uk.okkle.native.liveActivity.stillDriving")
+  static let nativeLiveActivityPauseTrackingRequested = Notification.Name("uk.okkle.native.liveActivity.pauseTracking")
+  static let nativeLiveActivityResumeTrackingRequested = Notification.Name("uk.okkle.native.liveActivity.resumeTracking")
 }
 
-/// The "Done driving" / "Still driving" buttons on the trip Live Activity.
+/// The Pause/Resume + End buttons on the trip Live Activity.
 /// Conforming to LiveActivityIntent (not plain AppIntent) makes these run
 /// in the app's process without launching its UI — matching the
 /// Everlance-style buttons this was modelled on.
@@ -22,7 +23,7 @@ extension Notification.Name {
 /// this struct the OS happened to invoke.
 @available(iOS 17.0, *)
 struct OkkleStopTrackingLiveActivityIntent: LiveActivityIntent {
-  static var title: LocalizedStringResource = "Done driving"
+  static var title: LocalizedStringResource = "End trip"
   static var description = IntentDescription("Stop tracking this trip.")
 
   func perform() async throws -> some IntentResult {
@@ -32,12 +33,23 @@ struct OkkleStopTrackingLiveActivityIntent: LiveActivityIntent {
 }
 
 @available(iOS 17.0, *)
-struct OkkleStillDrivingLiveActivityIntent: LiveActivityIntent {
-  static var title: LocalizedStringResource = "Still driving"
-  static var description = IntentDescription("Keep tracking this trip.")
+struct OkklePauseTrackingLiveActivityIntent: LiveActivityIntent {
+  static var title: LocalizedStringResource = "Pause trip"
+  static var description = IntentDescription("Pause tracking this trip.")
 
   func perform() async throws -> some IntentResult {
-    NotificationCenter.default.post(name: .nativeLiveActivityStillDrivingRequested, object: nil)
+    NotificationCenter.default.post(name: .nativeLiveActivityPauseTrackingRequested, object: nil)
+    return .result()
+  }
+}
+
+@available(iOS 17.0, *)
+struct OkkleResumeTrackingLiveActivityIntent: LiveActivityIntent {
+  static var title: LocalizedStringResource = "Resume trip"
+  static var description = IntentDescription("Resume tracking this trip.")
+
+  func perform() async throws -> some IntentResult {
+    NotificationCenter.default.post(name: .nativeLiveActivityResumeTrackingRequested, object: nil)
     return .result()
   }
 }
