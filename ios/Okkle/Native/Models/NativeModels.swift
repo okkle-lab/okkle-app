@@ -332,6 +332,22 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var startAddress: String? = nil
   var endAddress: String? = nil
   var feedback: NativeTripFeedback? = nil
+  // Almost every trip logged here is a delivery, so business is the sane
+  // default — the driver only ever has to act to flag the exception (an
+  // errand auto-tracking picked up), not to classify every single trip.
+  // Personal trips are kept, not deleted, and excluded from mileage/tax
+  // totals and Insights instead — a complete log with excluded personal
+  // miles is stronger evidence for an audit than one with entries quietly
+  // removed, and it lets the total reconcile against the car's real mileage.
+  var category: NativeTripCategory = .business
+}
+
+enum NativeTripCategory: String, CaseIterable, Identifiable, Codable {
+  case business
+  case personal
+
+  var id: String { rawValue }
+  var label: String { rawValue.capitalized }
 }
 
 enum NativeTripFeedback: String, CaseIterable, Identifiable, Codable {

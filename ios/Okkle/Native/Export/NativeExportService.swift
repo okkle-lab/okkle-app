@@ -249,7 +249,7 @@ func nativeAllDataCsv(store: OkkleStore) -> String {
       nativeCsvField(nativeDecimal(trip.miles)),
       nativeCsvField(nativeDecimal(trip.deduction)),
       nativeCsvField(""),
-      nativeCsvField(""),
+      nativeCsvField(trip.category.label),
       nativeCsvField(""),
       nativeCsvField("")
     ].joined(separator: ",")

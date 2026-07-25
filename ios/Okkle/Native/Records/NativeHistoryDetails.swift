@@ -34,6 +34,7 @@ struct NativeTripDetailSheet: View {
   @State private var showingFullScreenRouteMap = false
   @State private var selectedFeedback: NativeTripFeedback?
   @State private var showsFeedbackPrompt = false
+  @AppStorage("uk.okkle.native.hasSeenStopPersonalSwipeHint") private var hasSeenStopSwipeHint = false
 
   init(trip: NativeTrip, store: OkkleStore, onEdit: @escaping () -> Void, onDelete: @escaping () -> Void) {
     self.trip = trip
@@ -146,15 +147,24 @@ struct NativeTripDetailSheet: View {
             )
           }
 
+          if numberedStops.count > 1 && !hasSeenStopSwipeHint {
+            stopSwipeHintBanner
+          }
+
           ForEach(numberedStops) { stop in
-            Button {
-              withAnimation(.easeInOut(duration: 0.18)) {
-                selectedRouteStopID = stop.id
+            NativeVisitSwipeRow(
+              isPersonal: stop.visit.isPersonal,
+              onSetPersonal: { markStopPersonal(stop.visit, isPersonal: $0) }
+            ) {
+              Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                  selectedRouteStopID = stop.id
+                }
+              } label: {
+                routeStopLocationRow(stop, isSelected: selectedRouteStopID == stop.id)
               }
-            } label: {
-              routeStopLocationRow(stop, isSelected: selectedRouteStopID == stop.id)
+              .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
           }
 
           if let endPoint {
@@ -207,7 +217,8 @@ struct NativeTripDetailSheet: View {
         title: "\(stop.number). \(stopTitle(for: stop.visit))",
         subtitle: stopSubtitle(for: stop.visit),
         kind: routeStopKind(for: stop.visit),
-        glyphText: "\(stop.number)"
+        glyphText: "\(stop.number)",
+        isPersonal: stop.visit.isPersonal
       )
     }
   }
@@ -272,18 +283,55 @@ struct NativeTripDetailSheet: View {
     }
   }
 
+  private var stopSwipeHintBanner: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "hand.draw.fill")
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(OkkleColor.brand)
+      Text("Swipe a stop to mark it personal")
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(OkkleColor.ink)
+      Spacer(minLength: 8)
+      Button {
+        withAnimation(.easeInOut(duration: 0.2)) { hasSeenStopSwipeHint = true }
+      } label: {
+        Image(systemName: "xmark.circle.fill")
+          .font(.system(size: 16))
+          .foregroundStyle(OkkleColor.muted)
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .background(OkkleColor.brand.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .transition(.opacity.combined(with: .move(edge: .top)))
+  }
+
+  private func markStopPersonal(_ visit: NativeVisit, isPersonal: Bool) {
+    autoTrack.setVisitPersonal(visit, isPersonal: isPersonal)
+    withAnimation(.easeInOut(duration: 0.2)) { hasSeenStopSwipeHint = true }
+  }
+
   private func routeStopLocationRow(_ stop: NativeTripDetailStop, isSelected: Bool) -> some View {
     HStack(alignment: .center, spacing: 12) {
       Text("\(stop.number)")
         .font(.system(size: 12, weight: .heavy, design: .rounded))
         .foregroundStyle(.white)
         .frame(width: 34, height: 34)
-        .background(stopTint(for: stop.visit), in: Circle())
+        .background(stop.visit.isPersonal ? Color.gray : stopTint(for: stop.visit), in: Circle())
       VStack(alignment: .leading, spacing: 2) {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(stopTitle(for: stop.visit))
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(OkkleColor.ink)
+          if stop.visit.isPersonal {
+            Text("Personal")
+              .font(.system(size: 11, weight: .bold))
+              .foregroundStyle(.white)
+              .padding(.horizontal, 7)
+              .padding(.vertical, 2)
+              .background(Color.gray, in: Capsule())
+          }
           Spacer(minLength: 8)
           Text(stopTimeLabel(for: stop.visit))
             .font(.system(size: 12, weight: .bold))
@@ -299,6 +347,7 @@ struct NativeTripDetailSheet: View {
     }
     .padding(.vertical, 6)
     .padding(.horizontal, 8)
+    .opacity(stop.visit.isPersonal ? 0.6 : 1)
     .background(
       isSelected ? stopTint(for: stop.visit).opacity(0.10) : Color.clear,
       in: RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -781,6 +830,120 @@ private struct NativeTripDetailStop: Identifiable {
   let visit: NativeVisit
 
   var id: UUID { visit.id }
+}
+
+/// Swipe a single stop within a multi-stop trip to flag it personal or
+/// business — two fixed edges, not one dynamic toggle: swiping right
+/// (leading edge) always reveals Business, swiping left (trailing edge)
+/// always reveals Personal, matching the Data tab's whole-trip row. Full
+/// swipe on either side commits immediately since this is reversible.
+private struct NativeVisitSwipeRow<Content: View>: View {
+  let isPersonal: Bool
+  let onSetPersonal: (Bool) -> Void
+  @ViewBuilder var content: () -> Content
+
+  @State private var dragOffset: CGFloat = 0
+  @State private var isOpen = false
+
+  private let revealWidth: CGFloat = 92
+  private let fullSwipeCommitDistance: CGFloat = 150
+  // Matches routeStopLocationRow's own selected-state highlight radius
+  // (14pt) so the row's resting and selected shapes agree — 20 read as
+  // too round, a plain rectangle (0) as the chopped-off look this
+  // replaced.
+  private let cornerRadius: CGFloat = 14
+
+  var body: some View {
+    ZStack {
+      HStack(spacing: 0) {
+        if dragOffset > 0 {
+          swipeButton(label: "Business", symbol: "briefcase.fill", tint: OkkleColor.brand) { commit(setPersonal: false) }
+            .frame(width: max(dragOffset, revealWidth), alignment: .leading)
+          Spacer(minLength: 0)
+        } else if dragOffset < 0 {
+          Spacer(minLength: 0)
+          swipeButton(label: "Personal", symbol: "person.fill", tint: .gray) { commit(setPersonal: true) }
+            .frame(width: max(-dragOffset, revealWidth), alignment: .trailing)
+        }
+      }
+
+      content()
+        .background(Color(.systemBackground))
+        .offset(x: dragOffset)
+        .contentShape(Rectangle())
+        .onTapGesture {
+          if isOpen { close() }
+        }
+        .highPriorityGesture(
+          DragGesture(minimumDistance: 14)
+            .onChanged { value in
+              guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
+              let base: CGFloat = isOpen ? (dragOffset >= 0 ? revealWidth : -revealWidth) : 0
+              let proposed = base + value.translation.width
+              dragOffset = max(-fullSwipeCommitDistance - 30, min(fullSwipeCommitDistance + 30, proposed))
+            }
+            .onEnded { value in
+              handleDragEnd(value.translation.width)
+            }
+        )
+    }
+    // Rounds both the content and the reveal buttons underneath it as one
+    // shape — .clipped() alone only clips to the rectangular bounds, which
+    // is why these panels read as square before this.
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+  }
+
+  private func swipeButton(label: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      VStack(spacing: 4) {
+        Image(systemName: symbol)
+          .font(.system(size: 16, weight: .bold))
+        Text(label)
+          .font(.system(size: 11, weight: .bold))
+      }
+      .foregroundStyle(.white)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    .buttonStyle(.plain)
+    .background(tint)
+  }
+
+  private func handleDragEnd(_ translation: CGFloat) {
+    if translation <= -fullSwipeCommitDistance {
+      commit(setPersonal: true)
+      return
+    }
+    if translation >= fullSwipeCommitDistance {
+      commit(setPersonal: false)
+      return
+    }
+    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+      if dragOffset > revealWidth / 2 {
+        dragOffset = revealWidth
+        isOpen = true
+      } else if dragOffset < -revealWidth / 2 {
+        dragOffset = -revealWidth
+        isOpen = true
+      } else {
+        dragOffset = 0
+        isOpen = false
+      }
+    }
+  }
+
+  private func commit(setPersonal: Bool) {
+    let generator = UIImpactFeedbackGenerator(style: .medium)
+    generator.impactOccurred()
+    onSetPersonal(setPersonal)
+    close()
+  }
+
+  private func close() {
+    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+      dragOffset = 0
+      isOpen = false
+    }
+  }
 }
 
 private struct NativeTripRouteFullScreenMap: View {
@@ -1422,7 +1585,8 @@ struct NativeTripEditSheet: View {
         title: "\(stop.number). \(editStopTitle(for: stop.visit))",
         subtitle: editStopSubtitle(for: stop.visit),
         kind: editRouteStopKind(for: stop.visit),
-        glyphText: "\(stop.number)"
+        glyphText: "\(stop.number)",
+        isPersonal: stop.visit.isPersonal
       )
     }
   }
@@ -1669,6 +1833,7 @@ struct NativeRouteMapStop: Identifiable {
   let subtitle: String?
   let kind: Kind
   let glyphText: String?
+  var isPersonal: Bool = false
 }
 
 private extension MKCoordinateRegion {
@@ -1783,7 +1948,8 @@ struct NativeRouteMapView: UIViewRepresentable {
           subtitle: stop.subtitle,
           kind: NativeRouteMapAnnotation.Kind(stop.kind),
           glyphText: stop.glyphText,
-          stopID: stop.id
+          stopID: stop.id,
+          isPersonal: stop.isPersonal
         ))
       }
 
@@ -1835,7 +2001,10 @@ struct NativeRouteMapView: UIViewRepresentable {
   private func dataSignature(coordinates: [CLLocationCoordinate2D]) -> String {
     let first = coordinates.first.map { "\($0.latitude),\($0.longitude)" } ?? "none"
     let last = coordinates.last.map { "\($0.latitude),\($0.longitude)" } ?? "none"
-    let stopIDs = stops.map(\.id.uuidString).joined(separator: ",")
+    // Includes isPersonal so swiping a stop's category while this same map
+    // is on screen rebuilds the pin colour immediately, instead of only
+    // picking it up the next time the screen appears.
+    let stopIDs = stops.map { "\($0.id.uuidString):\($0.isPersonal)" }.joined(separator: ",")
     let breakIndices = points.enumerated().compactMap { $0.element.breakBefore ? String($0.offset) : nil }.joined(separator: ",")
     return "\(coordinates.count)|\(first)|\(last)|\(breakIndices)|\(showsEndMarker)|\(stopIDs)"
   }
@@ -1967,28 +2136,29 @@ private final class NativeRouteMapAnnotation: NSObject, MKAnnotation {
   let kind: Kind
   let glyphText: String?
   let stopID: UUID?
+  let isPersonal: Bool
 
-  init(coordinate: CLLocationCoordinate2D, title: String?, subtitle: String?, kind: Kind, glyphText: String?, stopID: UUID?) {
+  init(coordinate: CLLocationCoordinate2D, title: String?, subtitle: String?, kind: Kind, glyphText: String?, stopID: UUID?, isPersonal: Bool = false) {
     self.coordinate = coordinate
     self.title = title
     self.subtitle = subtitle
     self.kind = kind
     self.glyphText = glyphText
     self.stopID = stopID
+    self.isPersonal = isPersonal
   }
 
+  // Same business/personal convention as the stop list and the Data tab's
+  // trip rows (orange for business, gray for personal) — a stop is either
+  // one or the other, so pickup/dropoff no longer gets its own colour here.
   var markerTintColor: UIColor {
     switch kind {
     case .start:
       return UIColor(red: 0.03, green: 0.58, blue: 0.49, alpha: 1)
     case .end:
       return UIColor.systemRed
-    case .pickup:
-      return UIColor.systemIndigo
-    case .dropoff:
-      return UIColor.systemOrange
-    case .other:
-      return UIColor.systemGray
+    case .pickup, .dropoff, .other:
+      return isPersonal ? .systemGray : UIColor(red: 0.86, green: 0.50, blue: 0.08, alpha: 1)
     }
   }
 

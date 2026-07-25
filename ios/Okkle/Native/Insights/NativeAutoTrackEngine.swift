@@ -31,6 +31,13 @@ struct NativeVisit: Codable, Identifiable, Equatable {
   // dropped. That is a stronger signal than motion alone because the driver
   // probably left the car rather than waiting at lights.
   var vehicleDisconnectConfirmed: Bool? = nil
+  // Flagged by the driver from the trip-detail screen — a personal errand
+  // mid-shift, not a delivery. Kept in the log (see NativeTrip.category for
+  // the same "don't delete" reasoning) but excluded from NativeShiftInsights
+  // entirely, same as an excluded place. Doesn't touch the trip's own
+  // mileage/deduction — those stay a whole-trip figure from the real GPS
+  // route, not attributed per leg.
+  var isPersonal: Bool = false
 
   enum Kind: String, Codable, CaseIterable { case pickup, dropoff, other }
 
@@ -530,7 +537,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       }
       print("OKKLE-SIM: found \(shops.count) real food venues around Wimbledon")
 
-      @MainActor func driveRoute(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) async -> TimeInterval {
+      @MainActor func driveRoute(from origin: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D, startingAt clockStart: Date) async -> TimeInterval {
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
@@ -551,19 +558,45 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         // Sample down to ~8 breadcrumbs along the real road path, not a
         // straight line through buildings.
         let step = max(1, routeCoordinates.count / 8)
+        var sampled: [CLLocationCoordinate2D] = [origin]
         var i = 0
         while i < routeCoordinates.count {
-          let loc = CLLocation(
-            coordinate: routeCoordinates[i], altitude: 0, horizontalAccuracy: 8, verticalAccuracy: -1,
-            course: 0, speed: 10, timestamp: Date()
-          )
-          self.handleShiftLocationUpdates([loc])
+          sampled.append(routeCoordinates[i])
           i += step
         }
-        let final = CLLocation(
-          coordinate: destination, altitude: 0, horizontalAccuracy: 8, verticalAccuracy: -1, timestamp: Date()
-        )
-        self.handleShiftLocationUpdates([final])
+        sampled.append(destination)
+
+        var cumulative: [CLLocationDistance] = [0]
+        for idx in 1..<sampled.count {
+          let a = CLLocation(latitude: sampled[idx - 1].latitude, longitude: sampled[idx - 1].longitude)
+          let b = CLLocation(latitude: sampled[idx].latitude, longitude: sampled[idx].longitude)
+          cumulative.append(cumulative[idx - 1] + b.distance(from: a))
+        }
+        let totalDistance = max(cumulative.last ?? 1, 1)
+
+        // Feeds shiftPoints/shiftMiles directly instead of going through
+        // handleShiftLocationUpdates -> appendShiftRoutePoint, whose
+        // plausibility check (implied speed between consecutive *stored*
+        // timestamps) and 30-second-recency guard both assume a real GPS
+        // ping arriving every few seconds. A backdated, instantly-delivered
+        // simulation breadcrumb can satisfy at most one of those without
+        // genuinely waiting tens of seconds per leg in real time — this is
+        // what silently dropped nearly every route point in an earlier run
+        // (trips ended up with only 2-3 points and no visible line on the
+        // map). Mirrors the same distance-delta accumulation those guards
+        // would have done, just without re-deriving it from a live feed.
+        for idx in 1..<sampled.count {
+          let coordinate = sampled[idx]
+          let deltaMeters = cumulative[idx] - cumulative[idx - 1]
+          let deltaMiles = deltaMeters / 1_609.344
+          if deltaMiles > 0.002 && deltaMiles < 1 { self.shiftMiles += deltaMiles }
+          let fraction = cumulative[idx] / totalDistance
+          self.shiftPoints.append(RoutePoint(
+            latitude: coordinate.latitude, longitude: coordinate.longitude,
+            timestamp: clockStart.addingTimeInterval(travelTime * fraction)
+          ))
+        }
+        self.shiftLastLocation = CLLocation(latitude: destination.latitude, longitude: destination.longitude)
         return travelTime
       }
 
@@ -590,11 +623,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         try? await Task.sleep(nanoseconds: 1_200_000_000)
       }
 
-      // A realistic 6-day working week (Saturday off), spanning 7 calendar
-      // days so it can actually reach Medium confidence (needs daySpan>=7,
-      // activeDays>=3) without also reaching High (needs daySpan>=14,
-      // activeDays>=8) — exactly "a week worth of data," not two.
-      let daysAgo = [7, 6, 5, 3, 2, 1, 0]
+      // Two realistic working weeks (one rest day each), spanning 14
+      // calendar days so it can actually reach High confidence (needs
+      // daySpan>=14, activeDays>=8, deliveries>=20) rather than stopping at
+      // Medium — lets a full Insights build (zones, best window etc.) be
+      // inspected instead of just the "still building" gate.
+      let daysAgo = [14, 13, 12, 11, 10, 9, 7, 6, 5, 4, 3, 2, 0]
       var totalDeliveries = 0
 
       for (dayIndex, dOffset) in daysAgo.enumerated() {
@@ -612,7 +646,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         for cycle in 1...cycleCount {
           let shop = shops[(dayIndex * 7 + cycle) % shops.count]
 
-          let driveToShop = await driveRoute(from: previous, to: shop.coordinate)
+          let driveToShop = await driveRoute(from: previous, to: shop.coordinate, startingAt: clock)
           clock = clock.addingTimeInterval(driveToShop)
           let pickupDwell = TimeInterval.random(in: 260...420)
           await simulateStop(at: shop.coordinate, arrival: clock, dwell: pickupDwell)
@@ -625,7 +659,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
           let distanceKm = 0.4 + Double((dayIndex + cycle) % 5) * 0.35
           let dropoff = nativeOffsetCoordinate(shop.coordinate, distanceKm: distanceKm, bearingDeg: bearing)
 
-          let driveToDropoff = await driveRoute(from: shop.coordinate, to: dropoff)
+          let driveToDropoff = await driveRoute(from: shop.coordinate, to: dropoff, startingAt: clock)
           clock = clock.addingTimeInterval(driveToDropoff)
           let dropoffDwell = TimeInterval.random(in: 250...340)
           await simulateStop(at: dropoff, arrival: clock, dwell: dropoffDwell)
@@ -638,7 +672,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
           previous = dropoff
         }
 
-        _ = await driveRoute(from: previous, to: home)
+        _ = await driveRoute(from: previous, to: home, startingAt: clock)
         print("OKKLE-SIM: day -\(dOffset) ending shift, visits so far=\(self.visits.count) miles=\(self.shiftMiles)")
         self.endCurrentShift()
 
@@ -649,6 +683,22 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         // both realistic instead of "started a week ago, ended just now."
         if let store = self.store, let idx = store.trips.firstIndex(where: { $0.id == self.lastAutoShiftID }) {
           store.trips[idx].endedAt = clock
+        }
+
+        // A realistic day's earnings/expenses too, so Reports has real
+        // income/expense data to reconcile against, not just mileage.
+        if let store = self.store {
+          let dayIncome = Double(cycleCount) * Double.random(in: 8.5...11.5)
+          store.addRecord(NativeRecord(
+            kind: .income, platform: ["Uber Eats", "Deliveroo", "Just Eat"][dayIndex % 3],
+            amount: (dayIncome * 100).rounded() / 100, date: clock, period: .day
+          ))
+          if dayIndex % 3 == 0 {
+            store.addRecord(NativeRecord(
+              kind: .expense, amount: Double.random(in: 18...32).rounded(), category: "Fuel",
+              date: clock, period: .day
+            ))
+          }
         }
         self.save()
         self.store?.save()
@@ -2119,7 +2169,19 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
 
       Task { @MainActor in
         guard let index = self.visits.firstIndex(where: { $0.id == id }) else { return }
-        if let place = nearestPickupPlace {
+
+        // Real courier work alternates pickup -> dropoff -> pickup -> dropoff;
+        // if the visit immediately before this one in the same shift was a
+        // pickup, this one is the matching dropoff almost by definition —
+        // a stronger signal than nearby-POI proximity, which kept
+        // misclassifying genuine dropoffs as pickups in dense city centres
+        // where almost any stop sits near an unrelated restaurant or café.
+        let previousVisit = self.shiftStartedAt.flatMap { shiftStart in
+          self.visits[..<index].last { $0.arrival >= shiftStart }
+        }
+        if previousVisit?.kind == .pickup {
+          self.visits[index].kind = .dropoff
+        } else if let place = nearestPickupPlace {
           self.visits[index].kind = .pickup
           self.visits[index].placeName = place.name
         } else if self.visits[index].dwell < calibration.dropoffMaxDwellThreshold {
@@ -2335,6 +2397,22 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// Removes a stop the driver flagged as wrong in the shift-review screen.
   func discardVisit(_ id: UUID) {
     visits.removeAll { $0.id == id }
+    save()
+  }
+
+  /// Flags one stop within a trip as personal (or reverts it) from the
+  /// trip-detail screen. `stop` may be a real recorded visit already in
+  /// `visits`, or a GPS-detected-but-never-persisted stop (NativeRouteStop-
+  /// Detector can surface those without ever adding them here) — either
+  /// way it needs to end up as a real, persisted visit so the flag sticks.
+  func setVisitPersonal(_ stop: NativeVisit, isPersonal: Bool) {
+    if let index = visits.firstIndex(where: { $0.id == stop.id }) {
+      visits[index].isPersonal = isPersonal
+    } else {
+      var promoted = stop
+      promoted.isPersonal = isPersonal
+      visits.append(promoted)
+    }
     save()
   }
 }

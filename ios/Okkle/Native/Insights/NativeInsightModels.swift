@@ -584,7 +584,7 @@ struct NativeShiftInsights {
       return notWorkCoordinates.contains { point.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) <= exclusionRadiusMeters }
     }
 
-    let sorted = visits.sorted { $0.arrival < $1.arrival }.filter { !isExcluded($0.coordinate) }
+    let sorted = visits.sorted { $0.arrival < $1.arrival }.filter { !isExcluded($0.coordinate) && !$0.isPersonal }
     guard sorted.count > 1 else { return .empty }
 
     let roadFactor = 1.3

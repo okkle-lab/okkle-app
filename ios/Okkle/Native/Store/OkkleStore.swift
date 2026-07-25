@@ -364,6 +364,11 @@ final class OkkleStore: ObservableObject {
     trips[index] = updated
   }
 
+  func setTripCategory(_ trip: NativeTrip, to category: NativeTripCategory) {
+    guard let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
+    trips[index].category = category
+  }
+
   func updateRecord(_ record: NativeRecord) {
     guard let index = records.firstIndex(where: { $0.id == record.id }) else { return }
     var updated = record
@@ -432,8 +437,15 @@ final class OkkleStore: ObservableObject {
     records.filter { recordOverlapsTaxYear($0) }
   }
 
+  // Personal trips are kept for the audit trail (see NativeTrip.category)
+  // but never count toward mileage deductions, Insights, or work stats —
+  // this is the single filter every one of those reads through.
+  var businessTrips: [NativeTrip] {
+    trips.filter { $0.category == .business }
+  }
+
   var yearTrips: [NativeTrip] {
-    trips.filter { taxYear.contains($0.startedAt) }
+    businessTrips.filter { taxYear.contains($0.startedAt) }
   }
 
   var yearMiles: Double {
@@ -511,8 +523,25 @@ final class OkkleStore: ObservableObject {
     yearRecords.reduce(0) { $0 + expenseForTaxYear($1) } + yearMileageDeduction
   }
 
+  // A flat mileageDeduction * marginalRate used to overstate this whenever
+  // the trading allowance (or a tapered personal allowance, or the Class 4
+  // NIC threshold) already absorbs some or all of that deduction's effect —
+  // e.g. a driver whose total expenses including mileage are still under
+  // the £1,000 trading allowance owes the same £0 whether or not mileage
+  // was ever logged, so there's nothing to have "saved." Comparing the real
+  // total due with and without the mileage deduction, through the same
+  // TaxCalculator.estimate() the actual bill is computed from, is the only
+  // way to get a figure that can't show a saving larger than the bill.
   var taxSaved: Double {
-    yearMileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
+    let withMileage = taxPosition
+    let withoutMileage = TaxCalculator.estimate(
+      turnover: yearIncome,
+      expenses: max(0, yearExpenses - yearMileageDeduction),
+      region: settings.region,
+      incomeBracket: settings.incomeBracket,
+      otherIncome: settings.otherIncome
+    )
+    return max(0, withoutMileage.totalDue - withMileage.totalDue)
   }
 
   func mileageTaxSavings(for interval: DateInterval?) -> NativeMileageTaxSavings {
@@ -545,10 +574,22 @@ final class OkkleStore: ObservableObject {
       }
     }
 
+    // Same counterfactual as taxSaved above, scoped to just this slice's
+    // contribution to the whole tax year's deduction, so a period view
+    // (week/month) can't show a saving the year's actual bill wouldn't
+    // support either.
+    let withMileage = taxPosition
+    let withoutSlice = TaxCalculator.estimate(
+      turnover: yearIncome,
+      expenses: max(0, yearExpenses - mileageDeduction),
+      region: settings.region,
+      incomeBracket: settings.incomeBracket,
+      otherIncome: settings.otherIncome
+    )
     return NativeMileageTaxSavings(
       miles: miles,
       mileageDeduction: mileageDeduction,
-      taxSaved: mileageDeduction * settings.incomeBracket.marginalRate(region: settings.region)
+      taxSaved: max(0, withoutSlice.totalDue - withMileage.totalDue)
     )
   }
 
@@ -780,7 +821,7 @@ final class OkkleStore: ObservableObject {
   }
 
   private var allMileageEntries: [TaxYearMileageEntry] {
-    let tripEntries = trips.compactMap { trip -> TaxYearMileageEntry? in
+    let tripEntries = businessTrips.compactMap { trip -> TaxYearMileageEntry? in
       let miles = max(0, trip.miles)
       guard miles > 0 else { return nil }
       return TaxYearMileageEntry(date: trip.startedAt, miles: miles, vehicle: trip.vehicle)

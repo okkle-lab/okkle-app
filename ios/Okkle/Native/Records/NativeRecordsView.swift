@@ -9,6 +9,7 @@ struct NativeRecordsView: View {
   // checking what's recent, not everything you've ever logged; All time is
   // one tap away via the month picker below.
   @State private var selectedMonth: Date? = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date()))
+  @State private var tripCategoryFilter: NativeTripCategoryFilter = .all
   @State private var itemPendingDeletion: NativeHistoryItem?
   @State private var selectedHistoryItem: NativeHistoryItem?
   @State private var tripPendingEdit: NativeTrip?
@@ -41,6 +42,23 @@ struct NativeRecordsView: View {
         return "Income"
       case .expense:
         return "Expense"
+      }
+    }
+  }
+
+  // Only ever narrows trips — income/expense records have no business/
+  // personal concept, so they're unaffected regardless of this selection.
+  enum NativeTripCategoryFilter: String, CaseIterable, Identifiable {
+    case all
+    case business
+    case personal
+
+    var id: String { rawValue }
+    var label: String {
+      switch self {
+      case .all: return "All"
+      case .business: return "Business"
+      case .personal: return "Personal"
       }
     }
   }
@@ -119,7 +137,84 @@ struct NativeRecordsView: View {
   }
 
   private var recordsOverview: some View {
-    historyContent
+    VStack(spacing: 14) {
+      recordsSummaryCard
+      historyContent
+    }
+  }
+
+  // Same scope as the list below it (month + trip-category filters) so the
+  // headline figures always describe exactly what's currently on screen.
+  private var monthScopedHistory: [NativeHistoryItem] {
+    store.history.filter { item in
+      guard let selectedMonth else { return true }
+      return Calendar.current.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
+    }
+  }
+
+  // Personal trips never count toward the headline miles figure — unless
+  // the driver has explicitly filtered down to Personal while looking at
+  // Trips, in which case that's exactly the figure they're asking to see.
+  // Same gating as filteredHistory: the trip-type control only has a
+  // visible effect while filter == .journeys.
+  private var summaryMilesCategory: NativeTripCategory {
+    filter == .journeys && tripCategoryFilter == .personal ? .personal : .business
+  }
+
+  private var summaryMiles: Double {
+    monthScopedHistory.reduce(0) { partial, item in
+      guard case .trip(let trip) = item, trip.category == summaryMilesCategory else { return partial }
+      return partial + max(0, trip.miles)
+    }
+  }
+
+  private var summaryIncome: Double {
+    monthScopedHistory.reduce(0) { partial, item in
+      guard case .record(let record) = item, record.kind == .income else { return partial }
+      return partial + max(0, record.amount ?? 0)
+    }
+  }
+
+  private var summaryExpense: Double {
+    monthScopedHistory.reduce(0) { partial, item in
+      guard case .record(let record) = item, record.kind == .expense else { return partial }
+      return partial + max(0, record.amount ?? 0)
+    }
+  }
+
+  private var recordsSummaryCard: some View {
+    NativeGlassCard(cornerRadius: 28, contentPadding: 18) {
+      VStack(alignment: .leading, spacing: 16) {
+        Label(monthButtonLabel, systemImage: "calendar")
+          .font(.system(size: 13, weight: .bold))
+          .foregroundStyle(OkkleColor.muted)
+
+        HStack(alignment: .top, spacing: 0) {
+          summaryStat(title: "\(summaryMilesCategory == .personal ? "Personal" : "Business") miles", value: miles(summaryMiles))
+          Divider().frame(height: 46)
+          summaryStat(title: "Income", value: gbp(summaryIncome, whole: true), color: .green)
+          Divider().frame(height: 46)
+          summaryStat(title: "Expenses", value: gbp(summaryExpense, whole: true), color: OkkleColor.amber)
+        }
+      }
+    }
+  }
+
+  private func summaryStat(title: String, value: String, color: Color = OkkleColor.ink) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(title)
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+      Text(value)
+        .font(.system(size: 19, weight: .heavy, design: .rounded))
+        .foregroundStyle(color)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 6)
   }
 
   private var addRecordButton: some View {
@@ -178,11 +273,67 @@ struct NativeRecordsView: View {
     }
   }
 
+  // A filter combination narrowing everything to zero results (e.g. "Trips"
+  // + "Personal" when no whole trip has been marked personal — only a stop
+  // within one has, a different, more granular thing) used to fall through
+  // to the generic "log something" empty state, which reads as "the app
+  // lost my data" rather than "this filter matched nothing." Distinguishing
+  // the two, with a one-tap way back to "All", was reported as confusing.
+  @ViewBuilder
+  private var emptyStateView: some View {
+    if store.history.isEmpty {
+      NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Mileage, earnings and expenses appear here after you save them.")
+    } else {
+      NativeGlassCard {
+        VStack(spacing: 12) {
+          Image(systemName: "line.3.horizontal.decrease.circle")
+            .font(.system(size: 30, weight: .bold))
+            .foregroundStyle(OkkleColor.brand)
+            .frame(width: 68, height: 68)
+            .background(OkkleColor.mint, in: Circle())
+          Text("No matches for this filter")
+            .font(.system(size: 20, weight: .bold))
+            .foregroundStyle(OkkleColor.ink)
+          Text(noMatchesMessage)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(OkkleColor.muted)
+            .multilineTextAlignment(.center)
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+              filter = .all
+              selectedMonth = nil
+              tripCategoryFilter = .all
+            }
+          } label: {
+            Text("Clear filters")
+              .font(.system(size: 15, weight: .bold))
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(OkkleColor.brand)
+          .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+      }
+    }
+  }
+
+  private var noMatchesMessage: String {
+    let monthSuffix = selectedMonth != nil ? " in \(monthButtonLabel)" : ""
+    if filter == .journeys, tripCategoryFilter != .all {
+      return "No \(tripCategoryFilter.label.lowercased()) trips\(monthSuffix)."
+    }
+    if filter != .all {
+      return "No \(filter.label.lowercased()) logged\(monthSuffix)."
+    }
+    return "Nothing logged\(monthSuffix)."
+  }
+
   private var historyContent: some View {
     LazyVStack(spacing: 14, pinnedViews: [.sectionHeaders]) {
       Section {
         if filteredHistory.isEmpty {
-          NativeEmptyState(symbol: "archivebox", title: "Nothing here yet", message: "Mileage, earnings and expenses appear here after you save them.")
+          emptyStateView
             .padding(.top, 20)
         } else {
           NativeGlassCard {
@@ -190,7 +341,17 @@ struct NativeRecordsView: View {
               ForEach(filteredHistory) { item in
                 NativeSelectableHistoryRow(
                   item: item,
-                  onSelect: { selectFromAllHistory(item) }
+                  onSelect: { selectFromAllHistory(item) },
+                  onSetTripCategory: { category in
+                    if let trip = item.trip {
+                      store.setTripCategory(trip, to: category)
+                    }
+                  },
+                  onDeleteTrip: {
+                    if let trip = item.trip {
+                      requestDelete(.trip(trip))
+                    }
+                  }
                 )
                 if item.id != filteredHistory.last?.id {
                   Divider().padding(.leading, 52)
@@ -204,6 +365,11 @@ struct NativeRecordsView: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .top)
+    // Extra clearance below the last row so it doesn't sit visually cropped
+    // under the floating "Add record" button — that button is a second,
+    // taller safe-area inset on top of NativeScreen's generic bottom
+    // padding, which alone wasn't enough on this screen.
+    .padding(.bottom, 90)
   }
 
   private var historyFilterBar: some View {
@@ -214,40 +380,60 @@ struct NativeRecordsView: View {
       .pickerStyle(.segmented)
 
       Menu {
-        Button {
-          selectedMonth = nil
-        } label: {
-          if selectedMonth == nil {
-            Label("All time", systemImage: "checkmark")
-          } else {
-            Text("All time")
+        Section("Month") {
+          Button {
+            selectedMonth = nil
+          } label: {
+            if selectedMonth == nil {
+              Label("All time", systemImage: "checkmark")
+            } else {
+              Text("All time")
+            }
+          }
+
+          ForEach(availableMonths, id: \.self) { month in
+            Button {
+              selectedMonth = month
+            } label: {
+              if selectedMonth == month {
+                Label(monthLabel(for: month), systemImage: "checkmark")
+              } else {
+                Text(monthLabel(for: month))
+              }
+            }
           }
         }
 
-        ForEach(availableMonths, id: \.self) { month in
-          Button {
-            selectedMonth = month
-          } label: {
-            if selectedMonth == month {
-              Label(monthLabel(for: month), systemImage: "checkmark")
-            } else {
-              Text(monthLabel(for: month))
+        // Business/personal only makes sense while looking at trips —
+        // income and expense records have no such concept.
+        if filter == .journeys {
+          Section("Trip type") {
+            ForEach(NativeTripCategoryFilter.allCases) { option in
+              Button {
+                tripCategoryFilter = option
+              } label: {
+                if tripCategoryFilter == option {
+                  Label(option.label, systemImage: "checkmark")
+                } else {
+                  Text(option.label)
+                }
+              }
             }
           }
         }
       } label: {
-        Label(monthButtonLabel, systemImage: "line.3.horizontal.decrease")
+        Label(filterButtonLabel, systemImage: "line.3.horizontal.decrease")
           .labelStyle(.iconOnly)
           .font(.system(size: 15, weight: .semibold))
           .foregroundStyle(OkkleColor.brand)
           .padding(10)
-          .background(OkkleColor.brand.opacity(selectedMonth != nil ? 0.22 : 0.14), in: Circle())
+          .background(OkkleColor.brand.opacity(isFilterActive ? 0.22 : 0.14), in: Circle())
           .overlay {
             Circle()
-              .stroke(OkkleColor.brand.opacity(selectedMonth != nil ? 0.38 : 0), lineWidth: 1)
+              .stroke(OkkleColor.brand.opacity(isFilterActive ? 0.38 : 0), lineWidth: 1)
           }
       }
-      .accessibilityLabel(selectedMonth != nil ? "Showing \(monthButtonLabel)" : "Showing all time")
+      .accessibilityLabel(filterButtonLabel)
     }
     .padding(.vertical, 8)
     .padding(.horizontal, 8)
@@ -280,6 +466,13 @@ struct NativeRecordsView: View {
         if case .record(let record) = item { typeOk = record.kind == .expense } else { typeOk = false }
       }
       guard typeOk else { return false }
+      // Trip type only ever has a visible control while looking at Trips
+      // (see historyFilterBar) — it must not silently keep narrowing "All"
+      // (or Income/Expense) after switching away from Trips with it set.
+      if filter == .journeys, tripCategoryFilter != .all, case .trip(let trip) = item {
+        let wantsBusiness = tripCategoryFilter == .business
+        guard (trip.category == .business) == wantsBusiness else { return false }
+      }
       guard let selectedMonth else { return true }
       return Calendar.current.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
     }
@@ -299,6 +492,15 @@ struct NativeRecordsView: View {
 
   private var monthButtonLabel: String {
     selectedMonth.map(monthLabel) ?? "All time"
+  }
+
+  private var isFilterActive: Bool {
+    selectedMonth != nil || (filter == .journeys && tripCategoryFilter != .all)
+  }
+
+  private var filterButtonLabel: String {
+    guard filter == .journeys, tripCategoryFilter != .all else { return monthButtonLabel }
+    return "\(monthButtonLabel), \(tripCategoryFilter.label)"
   }
 
   private func delete(_ item: NativeHistoryItem) {
@@ -487,8 +689,23 @@ private struct NativeAddRecordPanel: View {
 struct NativeSelectableHistoryRow: View {
   let item: NativeHistoryItem
   let onSelect: () -> Void
+  var onSetTripCategory: ((NativeTripCategory) -> Void)? = nil
+  var onDeleteTrip: (() -> Void)? = nil
 
   var body: some View {
+    if let trip = item.trip {
+      NativeTripSwipeRow(
+        trip: trip,
+        onSetCategory: { onSetTripCategory?($0) }
+      ) {
+        row
+      }
+    } else {
+      row
+    }
+  }
+
+  private var row: some View {
     Button(action: onSelect) {
       NativeHistoryRow(item: item)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -497,6 +714,125 @@ struct NativeSelectableHistoryRow: View {
     .buttonStyle(.plain)
     .accessibilityAddTraits(.isButton)
     .accessibilityHint("Opens details.")
+    .contextMenu {
+      if item.trip != nil, let onDeleteTrip {
+        Button(role: .destructive, action: onDeleteTrip) {
+          Label("Delete", systemImage: "trash")
+        }
+      }
+    }
+  }
+}
+
+/// Swipe a trip to reclassify it — two fixed edges, not one dynamic toggle:
+/// swiping right (leading edge) always reveals Business, swiping left
+/// (trailing edge) always reveals Personal. Full swipe on either side
+/// commits immediately since this is reversible. Delete moved to a
+/// long-press context menu on the row (see NativeSelectableHistoryRow) so
+/// the swipe gesture means the same thing everywhere it appears — this
+/// exact same left/right convention repeats on individual stop rows inside
+/// a trip's detail screen (NativeVisitSwipeRow). Built by hand rather than
+/// SwiftUI's native `.swipeActions` because this list lives in a
+/// `LazyVStack` inside `NativeScreen`'s outer ScrollView, not a `List` —
+/// `.swipeActions` only works on List rows.
+private struct NativeTripSwipeRow<Content: View>: View {
+  let trip: NativeTrip
+  let onSetCategory: (NativeTripCategory) -> Void
+  @ViewBuilder var content: () -> Content
+
+  @State private var dragOffset: CGFloat = 0
+  @State private var isOpen = false
+
+  private let revealWidth: CGFloat = 92
+  private let fullSwipeCommitDistance: CGFloat = 150
+
+  var body: some View {
+    ZStack {
+      HStack(spacing: 0) {
+        if dragOffset > 0 {
+          swipeButton(label: "Business", symbol: "briefcase.fill", tint: OkkleColor.brand) { commit(.business) }
+            .frame(width: max(dragOffset, revealWidth), alignment: .leading)
+          Spacer(minLength: 0)
+        } else if dragOffset < 0 {
+          Spacer(minLength: 0)
+          swipeButton(label: "Personal", symbol: "person.fill", tint: .gray) { commit(.personal) }
+            .frame(width: max(-dragOffset, revealWidth), alignment: .trailing)
+        }
+      }
+
+      content()
+        .background(.regularMaterial)
+        .offset(x: dragOffset)
+        .contentShape(Rectangle())
+        .onTapGesture {
+          if isOpen { close() }
+        }
+        .highPriorityGesture(
+          DragGesture(minimumDistance: 14)
+            .onChanged { value in
+              guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
+              let base: CGFloat = isOpen ? (dragOffset >= 0 ? revealWidth : -revealWidth) : 0
+              let proposed = base + value.translation.width
+              dragOffset = max(-fullSwipeCommitDistance - 30, min(fullSwipeCommitDistance + 30, proposed))
+            }
+            .onEnded { value in
+              handleDragEnd(value.translation.width)
+            }
+        )
+    }
+    .clipped()
+  }
+
+  private func swipeButton(label: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      VStack(spacing: 4) {
+        Image(systemName: symbol)
+          .font(.system(size: 16, weight: .bold))
+        Text(label)
+          .font(.system(size: 11, weight: .bold))
+      }
+      .foregroundStyle(.white)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    .buttonStyle(.plain)
+    .background(tint)
+  }
+
+  private func handleDragEnd(_ translation: CGFloat) {
+    if translation <= -fullSwipeCommitDistance {
+      commit(.personal)
+      return
+    }
+    if translation >= fullSwipeCommitDistance {
+      commit(.business)
+      return
+    }
+    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+      if dragOffset > revealWidth / 2 {
+        dragOffset = revealWidth
+        isOpen = true
+      } else if dragOffset < -revealWidth / 2 {
+        dragOffset = -revealWidth
+        isOpen = true
+      } else {
+        dragOffset = 0
+        isOpen = false
+      }
+    }
+  }
+
+  private func commit(_ category: NativeTripCategory) {
+    let generator = UIImpactFeedbackGenerator(style: .medium)
+    generator.impactOccurred()
+    onSetCategory(category)
+    close()
+  }
+
+  private func close() {
+    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+      dragOffset = 0
+      isOpen = false
+    }
   }
 }
 
@@ -544,7 +880,10 @@ struct NativeHistoryRow: View {
 
   private var tint: Color {
     switch item {
-    case .trip: return OkkleColor.blue
+    // Matches the same convention used for individual stops inside a trip's
+    // detail screen (routeStopLocationRow/stopTint) — orange for business,
+    // gray for personal — instead of a fixed blue regardless of category.
+    case .trip(let trip): return trip.category == .personal ? .gray : OkkleColor.amber
     case .record(let record):
       switch record.kind {
       case .income: return .green

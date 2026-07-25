@@ -1175,7 +1175,7 @@ struct NativeMonthlyInsightPanel: View {
       }
 
       // Card 3 — where you earn, over the last 30 days.
-      nativeHotspotMapCard(trips: store.trips, zones: shift.zones)
+      nativeHotspotMapCard(trips: store.businessTrips, zones: shift.zones)
     }
   }
 }
@@ -1300,7 +1300,7 @@ struct NativeYearlyInsightPanel: View {
       }
 
       // Card 4 — where you earn, across the year.
-      nativeHotspotMapCard(trips: store.trips, zones: shift.zones)
+      nativeHotspotMapCard(trips: store.businessTrips, zones: shift.zones)
     }
   }
 
@@ -1355,7 +1355,7 @@ struct NativeInsightsView: View {
   // inputs changes rather than on every body evaluation.
   @State private var cachedShift: NativeShiftInsights?
   private var insightVisits: [NativeVisit] {
-    NativeShiftInsights.enrichedVisits(visits: autoTrack.visits, trips: store.trips)
+    NativeShiftInsights.enrichedVisits(visits: autoTrack.visits, trips: store.businessTrips)
   }
 
   private var shift: NativeShiftInsights {
@@ -1379,7 +1379,7 @@ struct NativeInsightsView: View {
         NativeShiftPatternsCard(
           shift: shift,
           visits: insightVisits,
-          trips: store.trips,
+          trips: store.businessTrips,
           autoTrackTrips: Binding(
             get: { store.settings.autoTrackTrips },
             set: { value in
