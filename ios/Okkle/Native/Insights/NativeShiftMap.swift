@@ -107,7 +107,7 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
     }
 
     let ranked = nativeRankedAreas(zones, near: locator.coordinate, namer: areaNamer, limit: pinLimit)
-    if presentation == .history {
+    if pinLimit > 0 {
       // Numbered pins that line up with the "Where to go" list — pin 2 is list
       // row 2, the same named place — so the ranking reads as one idea.
       for area in ranked {
@@ -244,6 +244,9 @@ final class NativeZoneGlowRenderer: MKCircleRenderer {
 struct NativeRecommendationHeatMap: View {
   let trips: [NativeTrip]
   let zones: [NativeZonePoint]
+  /// The best time window to be out, shown as a floating readout on the map
+  /// itself — one glance covers both "where" and "when" together.
+  var timeLabel: String? = nil
   @State private var showDetail = false
 
   var body: some View {
@@ -253,7 +256,7 @@ struct NativeRecommendationHeatMap: View {
           trips: trips,
           zones: zones,
           interactive: false,
-          pinLimit: 0,
+          pinLimit: 3,
           presentation: .recommendation
         )
         .frame(height: 180)
@@ -268,6 +271,21 @@ struct NativeRecommendationHeatMap: View {
         .padding(.vertical, 6)
         .background(.thinMaterial, in: Capsule())
         .padding(10)
+        if let timeLabel {
+          VStack {
+            HStack {
+              Text(timeLabel)
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+              Spacer()
+            }
+            Spacer()
+          }
+          .padding(10)
+        }
       }
       .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
@@ -323,6 +341,8 @@ struct NativeTopAreasList: View {
   /// Show a thin bar of how much of your work each area carries — turns a plain
   /// rank into a sense of *how dominant* the top patch really is.
   var showShareBar: Bool = false
+  /// Show how far each area is from you right now, alongside its busy time.
+  var showDistance: Bool = false
   @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @ObservedObject private var locator = NativeOneShotLocator.shared
   @State private var directionsTarget: NativeRankedArea?
@@ -348,7 +368,7 @@ struct NativeTopAreasList: View {
                 Text(area.name)
                   .font(.system(size: 16, weight: .semibold))
                   .foregroundStyle(OkkleColor.ink)
-                Text(area.time.map { "Busy \($0)" } ?? "One of your patches")
+                Text(subtitle(for: area))
                   .font(.system(size: 13, weight: .medium))
                   .foregroundStyle(OkkleColor.muted)
                 if showShareBar {
@@ -404,6 +424,12 @@ struct NativeTopAreasList: View {
         .padding(.vertical, 4)
     }
   }
+
+  private func subtitle(for area: NativeRankedArea) -> String {
+    let busy = area.time.map { "Busy \($0)" } ?? "One of your patches"
+    guard showDistance, let coordinate = locator.coordinate else { return busy }
+    return "\(busy) · \(nativeZoneDistanceLabel(from: coordinate, to: area.coordinate))"
+  }
 }
 
 enum NativeMapsApp {
@@ -443,7 +469,7 @@ struct NativeShiftMapDetailView: View {
           .ignoresSafeArea(edges: .bottom)
         VStack(spacing: 16) {
           Text(presentation == .recommendation
-               ? "Brighter glows mark the areas that best combine your past trip patterns with nearby shopping and food activity."
+               ? "Numbered pins are ranked 1–5. Brighter glows mark the areas that best combine your past trip patterns with nearby shopping and food activity."
                : "Numbered pins are your busiest areas near you, ranked 1–5. Warmer patches are where you pick up and drop off most.")
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(OkkleColor.muted)

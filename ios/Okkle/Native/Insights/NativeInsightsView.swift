@@ -424,30 +424,26 @@ struct NativeShiftPatternsCard: View {
 struct NativeDailyInsightPanel: View {
   let shift: NativeShiftInsights
   let trips: [NativeTrip]
-  @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @ObservedObject private var locator = NativeOneShotLocator.shared
 
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
-      if let plan = shift.todayPlan {
+      if let plan = shift.todayPlan, let peak = plan.peakWindow {
         NativeAiCard {
           VStack(alignment: .leading, spacing: 14) {
-            insightHeader("Time", systemImage: "clock.fill")
-            Text(timeSummary(for: plan))
-              .font(.system(size: 16, weight: .semibold))
-              .foregroundStyle(OkkleColor.ink)
-              .fixedSize(horizontal: false, vertical: true)
+            insightHeader("Where to go", systemImage: "map.fill")
+            NativeRecommendationHeatMap(trips: trips, zones: shift.zones, timeLabel: peak.label)
+            NativeTopAreasList(zones: shift.zones, limit: 3, showShareBar: true, showDistance: true)
           }
         }
-
+      } else if shift.todayPlan != nil {
         NativeAiCard {
           VStack(alignment: .leading, spacing: 14) {
-            insightHeader("Place", systemImage: "map.fill")
-            Text(placeSummary)
+            insightHeader("Where to go", systemImage: "map.fill")
+            Text("Okkle needs a few more tracked shifts before it can recommend a reliable time and place.")
               .font(.system(size: 16, weight: .semibold))
               .foregroundStyle(OkkleColor.ink)
               .fixedSize(horizontal: false, vertical: true)
-            NativeRecommendationHeatMap(trips: trips, zones: shift.zones)
           }
         }
       }
@@ -471,35 +467,6 @@ struct NativeDailyInsightPanel: View {
         .font(.title3.bold())
         .foregroundStyle(.primary)
     }
-  }
-
-  private func timeSummary(for plan: NativeDayPlan) -> String {
-    guard let peak = plan.peakWindow else {
-      return "Okkle needs a few more tracked shifts before it can recommend a reliable time."
-    }
-    let day = Calendar.current.weekdaySymbols[plan.weekday]
-    guard plan.isToday else {
-      return "Based on your past shifts, \(day) from \(peak.label) is usually your strongest time to head out."
-    }
-
-    let hour = Calendar.current.component(.hour, from: Date())
-    if let current = plan.driveWindows.first(where: { $0.startHour <= hour && hour <= $0.endHour }) {
-      return "Based on your past shifts, now through \(nativeHourLabel(current.endHour + 1)) is usually a strong time to be out."
-    }
-    if let next = plan.driveWindows.first(where: { $0.startHour > hour }) {
-      return "Based on your past shifts, \(next.label) is usually your strongest time to head out today."
-    }
-    return "Based on your past shifts, \(peak.label) is usually strongest, so today's best window has passed."
-  }
-
-  private var placeSummary: String {
-    guard let zone = nativeTopZones(shift.zones, near: locator.coordinate, limit: 1).first else {
-      return "Okkle needs a few more mapped trips before it can recommend a reliable place."
-    }
-    if let name = areaNamer.name(for: zone.coordinate) {
-      return "Based on your past trips and nearby Apple Maps shopping areas, \(name) is the strongest place to try."
-    }
-    return "The brightest area on the map is your strongest place to try based on past trips and nearby shopping areas."
   }
 }
 

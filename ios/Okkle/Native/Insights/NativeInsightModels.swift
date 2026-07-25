@@ -136,6 +136,14 @@ func nativeTopZones(_ zones: [NativeZonePoint], near origin: CLLocationCoordinat
   return Array(candidates.sorted { $0.weight > $1.weight }.prefix(limit))
 }
 
+/// Straight-line distance from the driver's current position to a zone,
+/// formatted the same way as every other mileage figure in the app.
+func nativeZoneDistanceLabel(from origin: CLLocationCoordinate2D, to zone: CLLocationCoordinate2D) -> String {
+  let meters = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+    .distance(from: CLLocation(latitude: zone.latitude, longitude: zone.longitude))
+  return miles(meters / 1609.34)
+}
+
 /// One named, ranked area — the shared source of truth so the "where to go"
 /// list and the map pins carry the *same* number for the *same* place.
 struct NativeRankedArea: Identifiable {
