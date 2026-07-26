@@ -136,6 +136,18 @@ enum NativeAutoShiftPhase: String, Equatable {
   case paused
 }
 
+enum NativeAutoStationarySource: String, Codable, Equatable {
+  case motion
+  case vehicleDisconnect
+  case gpsDwell
+}
+
+enum NativeGPSStationaryObservation: Equatable {
+  case waiting
+  case confirmed
+  case moved
+}
+
 enum NativeAutoTrackLocationStrategy: Equatable {
   case significantChangeOnly
   case continuousWithRelaunchWake
@@ -188,6 +200,30 @@ enum NativeAutoTrackPolicy {
   /// stationary-wait phase; otherwise a flaky audio route can split a drive.
   static func shouldArmVehicleDisconnectEnd(during phase: NativeAutoShiftPhase) -> Bool {
     phase == .stationaryPending
+  }
+
+  /// A known vehicle disconnect is strong enough to begin a provisional stop
+  /// while the trip is still marked as driving. Continued GPS movement or a
+  /// reconnect cancels it before the existing disconnect dwell can end the trip.
+  static func shouldBeginStationaryWaitForVehicleDisconnect(during phase: NativeAutoShiftPhase) -> Bool {
+    phase == .driving
+  }
+
+  /// Core Motion can leave an old automotive state active after the vehicle
+  /// parks. Stop evidence from GPS or a live vehicle disconnect must therefore
+  /// be cleared by real displacement or reconnection, not that stale callback.
+  static func shouldResumeStationaryWaitFromDrivingSignal(
+    source: NativeAutoStationarySource?,
+    vehicleConnected: Bool
+  ) -> Bool {
+    switch source {
+    case .gpsDwell:
+      return false
+    case .vehicleDisconnect:
+      return vehicleConnected
+    case .motion, nil:
+      return true
+    }
   }
 
   static func shouldProcessStationarySignal(
@@ -316,6 +352,21 @@ enum NativeAutoTrackPolicy {
 
   static func armedTripInitialLocations(bufferedLocations: [CLLocation]) -> [CLLocation] {
     bufferedLocations.sorted { $0.timestamp < $1.timestamp }
+  }
+
+  /// Infer a stop when Core Motion never leaves `automotive`. The anchor is
+  /// deliberately stable so several small GPS-jitter fixes count as one dwell.
+  static func gpsStationaryObservation(
+    anchor: CLLocation,
+    current: CLLocation,
+    minimumDwell: TimeInterval,
+    maximumRadius: CLLocationDistance
+  ) -> NativeGPSStationaryObservation {
+    guard current.timestamp > anchor.timestamp else { return .waiting }
+    let accuracyRadius = max(45, anchor.horizontalAccuracy + current.horizontalAccuracy)
+    let allowedRadius = min(maximumRadius, accuracyRadius)
+    guard current.distance(from: anchor) <= allowedRadius else { return .moved }
+    return current.timestamp.timeIntervalSince(anchor.timestamp) >= minimumDwell ? .confirmed : .waiting
   }
 }
 
