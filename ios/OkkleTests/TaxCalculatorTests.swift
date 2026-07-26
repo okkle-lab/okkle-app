@@ -1505,6 +1505,99 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     XCTAssertTrue(NativeAutoTrackPolicy.shouldArmVehicleDisconnectEnd(during: .stationaryPending))
   }
 
+  func testVehicleDisconnectBeginsAProvisionalStopWhileDriving() {
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldBeginStationaryWaitForVehicleDisconnect(during: .idle))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldBeginStationaryWaitForVehicleDisconnect(during: .driving))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldBeginStationaryWaitForVehicleDisconnect(during: .stationaryPending))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldBeginStationaryWaitForVehicleDisconnect(during: .paused))
+  }
+
+  func testSustainedLowGPSDisplacementConfirmsAStopWithoutCoreMotion() {
+    let now = Date()
+    let anchor = location(
+      latitude: 37.3230,
+      longitude: -122.0322,
+      accuracy: 8,
+      timestamp: now
+    )
+    let jitterBeforeDwell = location(
+      latitude: 37.3231,
+      longitude: -122.0322,
+      accuracy: 8,
+      timestamp: now.addingTimeInterval(90)
+    )
+    let jitterAfterDwell = location(
+      latitude: 37.3232,
+      longitude: -122.0322,
+      accuracy: 8,
+      timestamp: now.addingTimeInterval(150)
+    )
+
+    XCTAssertEqual(
+      NativeAutoTrackPolicy.gpsStationaryObservation(
+        anchor: anchor,
+        current: jitterBeforeDwell,
+        minimumDwell: 120,
+        maximumRadius: 90
+      ),
+      .waiting
+    )
+    XCTAssertEqual(
+      NativeAutoTrackPolicy.gpsStationaryObservation(
+        anchor: anchor,
+        current: jitterAfterDwell,
+        minimumDwell: 120,
+        maximumRadius: 90
+      ),
+      .confirmed
+    )
+  }
+
+  func testSignificantGPSDisplacementResetsTheStopCandidate() {
+    let now = Date()
+    let anchor = location(
+      latitude: 37.3230,
+      longitude: -122.0322,
+      accuracy: 8,
+      timestamp: now
+    )
+    let moved = location(
+      latitude: 37.3242,
+      longitude: -122.0322,
+      accuracy: 8,
+      timestamp: now.addingTimeInterval(150)
+    )
+
+    XCTAssertEqual(
+      NativeAutoTrackPolicy.gpsStationaryObservation(
+        anchor: anchor,
+        current: moved,
+        minimumDwell: 120,
+        maximumRadius: 90
+      ),
+      .moved
+    )
+  }
+
+  func testStaleAutomotiveMotionCannotEraseGPSOrDisconnectStopEvidence() {
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldResumeStationaryWaitFromDrivingSignal(
+      source: .gpsDwell,
+      vehicleConnected: true
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldResumeStationaryWaitFromDrivingSignal(
+      source: .vehicleDisconnect,
+      vehicleConnected: false
+    ))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldResumeStationaryWaitFromDrivingSignal(
+      source: .vehicleDisconnect,
+      vehicleConnected: true
+    ))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldResumeStationaryWaitFromDrivingSignal(
+      source: .motion,
+      vehicleConnected: false
+    ))
+  }
+
   func testStationarySignalsAreIgnoredWhenTheyCannotChangeTrackingState() {
     XCTAssertFalse(NativeAutoTrackPolicy.shouldProcessStationarySignal(
       during: .idle,
