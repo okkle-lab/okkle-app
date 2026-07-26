@@ -74,6 +74,18 @@ private enum NativeAutoTrackMotionState: Equatable {
   case other
 }
 
+enum NativeAutoStationarySource: String, Codable, Equatable {
+  case motion
+  case vehicleDisconnect
+  case gpsDwell
+}
+
+enum NativeGPSStationaryObservation: Equatable {
+  case waiting
+  case confirmed
+  case moved
+}
+
 /// Pure policy decisions used by the live engine and covered independently in
 /// tests. Automatic tracking is deliberately all-or-nothing: without Always
 /// access iOS cannot relaunch Okkle for a significant-location event, so
@@ -104,6 +116,28 @@ enum NativeAutoTrackPolicy {
   /// stationary-wait phase; otherwise a flaky audio route can split a drive.
   static func shouldArmVehicleDisconnectEnd(during phase: NativeAutoShiftPhase) -> Bool {
     phase == .stationaryPending
+  }
+
+  /// A known vehicle disconnect is strong enough to begin a provisional stop
+  /// while a trip is still marked as driving. The dwell timer and continuing
+  /// GPS stream decide whether it is a real stop, so a short audio hiccup does
+  /// not immediately split the trip.
+  static func shouldBeginStationaryWaitForVehicleDisconnect(during phase: NativeAutoShiftPhase) -> Bool {
+    phase == .driving
+  }
+
+  static func shouldResumeStationaryWaitFromDrivingSignal(
+    source: NativeAutoStationarySource?,
+    vehicleConnected: Bool
+  ) -> Bool {
+    switch source {
+    case .gpsDwell:
+      return false
+    case .vehicleDisconnect:
+      return vehicleConnected
+    case .motion, nil:
+      return true
+    }
   }
 
   /// Stationary motion is actionable only when it can move the state machine:
@@ -178,6 +212,23 @@ enum NativeAutoTrackPolicy {
   static func armedTripInitialLocations(bufferedLocations: [CLLocation]) -> [CLLocation] {
     bufferedLocations.sorted { $0.timestamp < $1.timestamp }
   }
+
+  /// Core Motion occasionally keeps reporting `automotive`, or sends no state
+  /// change at all, after the car parks. Confirm stationary GPS independently
+  /// from cumulative displacement so several small jitter fixes still count as
+  /// one dwell rather than repeatedly resetting the stop clock.
+  static func gpsStationaryObservation(
+    anchor: CLLocation,
+    current: CLLocation,
+    minimumDwell: TimeInterval,
+    maximumRadius: CLLocationDistance
+  ) -> NativeGPSStationaryObservation {
+    guard current.timestamp > anchor.timestamp else { return .waiting }
+    let accuracyRadius = max(45, anchor.horizontalAccuracy + current.horizontalAccuracy)
+    let allowedRadius = min(maximumRadius, accuracyRadius)
+    guard current.distance(from: anchor) <= allowedRadius else { return .moved }
+    return current.timestamp.timeIntervalSince(anchor.timestamp) >= minimumDwell ? .confirmed : .waiting
+  }
 }
 
 struct NativeAutoTrackDiagnosticEvent: Codable, Identifiable, Equatable {
@@ -198,6 +249,7 @@ final class NativeAutoTrackDiagnostics: ObservableObject {
   private var lastPersistedAtByKind: [String: Date] = [:]
 
   private init() {
+#if DEBUG
     if let data = UserDefaults.standard.data(forKey: storageKey),
        let decoded = try? JSONDecoder().decode([NativeAutoTrackDiagnosticEvent].self, from: data) {
       events = Self.retainedEvents(decoded, now: Date())
@@ -206,6 +258,11 @@ final class NativeAutoTrackDiagnostics: ObservableObject {
       }
       save()
     }
+#else
+    // Diagnostics are a development aid. Production builds neither retain
+    // new events nor keep events left behind by a development installation.
+    UserDefaults.standard.removeObject(forKey: storageKey)
+#endif
   }
 
   func record(
@@ -215,6 +272,7 @@ final class NativeAutoTrackDiagnostics: ObservableObject {
     deduplicateWithin: TimeInterval = 0,
     at timestamp: Date = Date()
   ) {
+#if DEBUG
     var replacedRecentEvent = false
     if deduplicateWithin > 0,
        let index = events.firstIndex(where: {
@@ -235,6 +293,7 @@ final class NativeAutoTrackDiagnostics: ObservableObject {
       lastPersistedAtByKind[kind] = timestamp
       save()
     }
+#endif
   }
 
   func clear() {
@@ -304,6 +363,11 @@ private struct NativeAutoShiftSnapshot: Codable {
   var stationarySince: Date?
   var stationaryLat: Double?
   var stationaryLon: Double?
+  var stationarySourceRaw: String?
+  var gpsStationaryAnchorLat: Double?
+  var gpsStationaryAnchorLon: Double?
+  var gpsStationaryAnchorTimestamp: Date?
+  var gpsStationaryAnchorAccuracy: Double?
   var deadlines: NativeAutoTrackDeadlines?
 }
 
@@ -337,6 +401,15 @@ enum NativeVehicleConnectionMonitor {
     )
     routeChangeOverride = connected
     return connected
+  }
+
+  static func routeChangeRemovedKnownVehicle(_ notification: Notification) -> Bool {
+    let previousPorts = (notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey]
+      as? AVAudioSessionRouteDescription)?.outputs.map(\.portType) ?? []
+    let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)
+      .flatMap { AVAudioSession.RouteChangeReason(rawValue: $0.uintValue) }
+    return reason == .oldDeviceUnavailable &&
+      previousPorts.contains(where: NativeAutoTrackPolicy.isVehicleAudioPort)
   }
 
   /// Reconcile missed notifications when the app becomes active. A live Car
@@ -415,6 +488,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private let routePointDistance: CLLocationDistance = 10
   private let drivingDistanceFilter: CLLocationDistance = 10
   private let stationaryResumeDistance: CLLocationDistance = 150
+  private let gpsStationaryConfirmationSeconds: TimeInterval = 2 * 60
+  private let gpsStationaryRadius: CLLocationDistance = 90
   private let idleWakeDistance: CLLocationDistance = 450
   private let minimumConfidentStopDwell: TimeInterval = 90
   private let minimumConnectedVehicleStopDwell: TimeInterval = 4 * 60
@@ -454,6 +529,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private var stationaryTimer: Timer?
   private var stationarySince: Date?
   private var stationaryCoordinate: CLLocationCoordinate2D?
+  private var stationarySource: NativeAutoStationarySource?
+  private var gpsStationaryAnchor: CLLocation?
   private var deadlines = NativeAutoTrackDeadlines()
 
   override init() {
@@ -484,9 +561,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     NotificationCenter.default.addObserver(forName: .nativeManualTripPhaseDidChange, object: nil, queue: .main) { [weak self] _ in
       Task { @MainActor in self?.handleManualTripPhaseChanged() }
     }
+#if DEBUG
     runRealisticWeekSimulationIfRequested()
+#endif
   }
 
+#if DEBUG
   /// TEMPORARY verification-only hook — drives the real beginShift/
   /// handleShiftLocationUpdates/handleStationarySignal/handleDrivingSignal
   /// pipeline through a realistic week: several working days, several
@@ -661,6 +741,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       }
     }
   }
+#endif
 
   /// The Live Activity's Resume button — confirms whatever
   /// stationary/dwell window is pending is a false alarm and continues the
@@ -1035,6 +1116,13 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         : []
       beginShift(trigger: trigger, initialLocations: initialLocations)
     case .stationaryPending:
+      // A GPS-confirmed dwell is stronger evidence than a stale automotive
+      // activity callback. Wait for real displacement before resuming or the
+      // exact Cupertino failure can immediately erase the detected stop.
+      guard NativeAutoTrackPolicy.shouldResumeStationaryWaitFromDrivingSignal(
+        source: stationarySource,
+        vehicleConnected: NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
+      ) else { return }
       NativeAutoTrackDiagnostics.shared.record(
         kind: "shift.resumed",
         title: "Automatic trip resumed",
@@ -1047,10 +1135,24 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleStationarySignal() {
+    beginStationaryWait(
+      source: .motion,
+      since: Date(),
+      coordinate: shiftLastLocation?.coordinate
+    )
+  }
+
+  private func beginStationaryWait(
+    source: NativeAutoStationarySource,
+    since: Date,
+    coordinate: CLLocationCoordinate2D?
+  ) {
     guard shiftPhase == .driving else { return }
     shiftPhase = .stationaryPending
-    stationarySince = Date()
-    stationaryCoordinate = shiftLastLocation?.coordinate
+    stationarySince = since
+    stationaryCoordinate = coordinate
+    stationarySource = source
+    gpsStationaryAnchor = nil
     configureLocationForStationaryWaiting()
     if let shiftLastLocation { trackHomeArrival(at: shiftLastLocation) }
     armVehicleDisconnectDwellIfNeeded()
@@ -1059,7 +1161,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     NativeAutoTrackDiagnostics.shared.record(
       kind: "shift.stationary",
       title: "Automatic trip waiting",
-      detail: "Stationary timeout is armed."
+      detail: "Stationary timeout is armed. Source: \(source.rawValue)."
     )
     NativeTripLiveActivityController.update(
       miles: shiftMiles,
@@ -1132,6 +1234,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftStartNotified = false
     shiftLastLocation = nil
     shiftLastRoutePointLocation = nil
+    stationarySource = nil
+    gpsStationaryAnchor = nil
     shiftSawVehicleConnection = enhancedAutoTrackingEnabled && NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
     shiftArmedForHomeArrival = false
     deadlines = NativeAutoTrackDeadlines()
@@ -1184,6 +1288,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     deadlines.stationary = nil
     stationarySince = nil
     stationaryCoordinate = nil
+    stationarySource = nil
+    gpsStationaryAnchor = nil
     cancelHomeDwellTimer()
     cancelVehicleDisconnectDwellTimer()
     shiftPhase = .paused
@@ -1211,6 +1317,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   func resumeCurrentShift() {
     guard shiftPhase == .paused else { return }
     shiftPhase = .driving
+    gpsStationaryAnchor = shiftLastLocation
     ensureActiveLocationRecording(reason: "Manual resume")
     publishLiveShift()
     persistShiftSnapshot()
@@ -1230,14 +1337,16 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// Driving resumed before the stationary timer expired — the stop that was
   /// being timed becomes a logged pick-up/drop-off, and the same shift (same
   /// trip, same accumulated mileage) keeps going.
-  private func resumeShift() {
-    finalizePendingStop()
+  private func resumeShift(departure: Date = Date()) {
+    finalizePendingStop(departure: departure)
     stationaryTimer?.invalidate()
     stationaryTimer = nil
     deadlines.stationary = nil
     cancelHomeDwellTimer()
     cancelVehicleDisconnectDwellTimer()
     shiftPhase = .driving
+    stationarySource = nil
+    gpsStationaryAnchor = shiftLastLocation
     ensureActiveLocationRecording(reason: "Driving resumed")
     persistShiftSnapshot()
     NativeTripLiveActivityController.update(miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()), isDriving: true, vehicleLabel: liveShiftVehicle.label, force: true)
@@ -1272,6 +1381,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     cancelVehicleDisconnectDwellTimer()
     stationarySince = nil
     stationaryCoordinate = nil
+    stationarySource = nil
+    gpsStationaryAnchor = nil
     publishLiveShift()
     clearShiftSnapshot()
     NativeTripLiveActivityController.end()
@@ -1327,16 +1438,34 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleVehicleConnectionChanged(_ notification: Notification? = nil) {
+    if let notification,
+       NativeVehicleConnectionMonitor.routeChangeRemovedKnownVehicle(notification),
+       shiftPhase != .idle {
+      // The removal payload itself proves this trip had a vehicle route, even
+      // if iOS suspended Okkle before it observed the matching connect event.
+      shiftSawVehicleConnection = true
+    }
     let connected = notification.map(NativeVehicleConnectionMonitor.handleRouteChange)
       ?? NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle
+    applyVehicleConnectionState(connected)
+  }
+
+  private func reconcileVehicleConnectionFromCurrentRoute() {
+    applyVehicleConnectionState(NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle)
+  }
+
+  private func applyVehicleConnectionState(_ connected: Bool) {
     let connectionStateChanged = lastObservedVehicleConnection != connected
     lastObservedVehicleConnection = connected
-    guard connectionStateChanged else { return }
-    NativeAutoTrackDiagnostics.shared.record(
-      kind: "vehicle.signal.\(connected ? "connected" : "disconnected")",
-      title: connected ? "Vehicle signal connected" : "Vehicle signal disconnected",
-      detail: connected ? "The system Car Audio route is available." : "No Car Audio route is available."
-    )
+    let missedActiveDisconnect = !connected && shiftSawVehicleConnection && shiftPhase == .driving
+    guard connectionStateChanged || missedActiveDisconnect else { return }
+    if connectionStateChanged {
+      NativeAutoTrackDiagnostics.shared.record(
+        kind: "vehicle.signal.\(connected ? "connected" : "disconnected")",
+        title: connected ? "Vehicle signal connected" : "Vehicle signal disconnected",
+        detail: connected ? "The system Car Audio route is available." : "No Car Audio route is available."
+      )
+    }
     guard enhancedAutoTrackingEnabled else {
       if shiftPhase == .idle {
         disarmVehicleStartDetection(reason: "Enhanced tracking is off")
@@ -1357,6 +1486,14 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         disarmVehicleStartDetection(reason: "Vehicle signal disconnected")
         configureLocationForIdleWakeIfNeeded()
       } else {
+        if shiftSawVehicleConnection,
+           NativeAutoTrackPolicy.shouldBeginStationaryWaitForVehicleDisconnect(during: shiftPhase) {
+          beginStationaryWait(
+            source: .vehicleDisconnect,
+            since: Date(),
+            coordinate: shiftLastLocation?.coordinate
+          )
+        }
         armVehicleDisconnectDwellIfNeeded()
       }
     }
@@ -1559,7 +1696,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       }
       acceptedFixCount += 1
       if shiftPhase == .stationaryPending, shouldResumeFromStationaryLocation(location) {
-        resumeShift()
+        resumeShift(departure: location.timestamp)
+      }
+      if shiftPhase == .driving {
+        trackGPSStationarity(at: location)
       }
       if let shiftLastLocation {
         let delta = location.distance(from: shiftLastLocation) / 1_609.344
@@ -1567,10 +1707,15 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       }
       shiftLastLocation = location
       appendShiftRoutePoint(for: location)
-      if shiftPhase == .stationaryPending { stationaryCoordinate = location.coordinate }
       trackHomeArrival(at: location)
       armVehicleDisconnectDwellIfNeeded()
     }
+    // AVAudioSession route-change callbacks are not guaranteed while the app
+    // is suspended. Reconcile the live route on every GPS wake so a missed
+    // CarPlay/Car Audio disconnect still starts its dwell promptly. Keep an
+    // explicit old-device-unavailable result authoritative while the system's
+    // current-route snapshot catches up.
+    reconcileVehicleConnectionFromCurrentRoute()
     NativeAutoTrackDiagnostics.shared.record(
       kind: "gps.sampling",
       title: "GPS sampling update",
@@ -1591,6 +1736,37 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       miles: shiftMiles, elapsed: Date().timeIntervalSince(shiftStartedAt ?? Date()),
       isDriving: shiftPhase == .driving, vehicleLabel: liveShiftVehicle.label
     )
+  }
+
+  private func trackGPSStationarity(at location: CLLocation) {
+    guard shiftPhase == .driving else { return }
+    guard let anchor = gpsStationaryAnchor else {
+      gpsStationaryAnchor = location
+      return
+    }
+
+    switch NativeAutoTrackPolicy.gpsStationaryObservation(
+      anchor: anchor,
+      current: location,
+      minimumDwell: gpsStationaryConfirmationSeconds,
+      maximumRadius: gpsStationaryRadius
+    ) {
+    case .waiting:
+      break
+    case .moved:
+      gpsStationaryAnchor = location
+    case .confirmed:
+      NativeAutoTrackDiagnostics.shared.record(
+        kind: "gps.stationary-dwell",
+        title: "Stationary GPS dwell detected",
+        detail: "The vehicle stayed within \(Int(gpsStationaryRadius)) m for at least \(Int(gpsStationaryConfirmationSeconds)) seconds."
+      )
+      beginStationaryWait(
+        source: .gpsDwell,
+        since: anchor.timestamp,
+        coordinate: anchor.coordinate
+      )
+    }
   }
 
   private func shouldUseIdleWakeLocation(_ location: CLLocation) -> Bool {
@@ -2182,6 +2358,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       stationarySince: stationarySince,
       stationaryLat: stationaryCoordinate?.latitude,
       stationaryLon: stationaryCoordinate?.longitude,
+      stationarySourceRaw: stationarySource?.rawValue,
+      gpsStationaryAnchorLat: gpsStationaryAnchor?.coordinate.latitude,
+      gpsStationaryAnchorLon: gpsStationaryAnchor?.coordinate.longitude,
+      gpsStationaryAnchorTimestamp: gpsStationaryAnchor?.timestamp,
+      gpsStationaryAnchorAccuracy: gpsStationaryAnchor?.horizontalAccuracy,
       deadlines: deadlines
     )
     let url = Self.shiftSnapshotFileURL
@@ -2266,6 +2447,23 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationarySince = snapshot.stationarySince
     if let lat = snapshot.stationaryLat, let lon = snapshot.stationaryLon {
       stationaryCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+    stationarySource = snapshot.stationarySourceRaw.flatMap(NativeAutoStationarySource.init(rawValue:))
+    if phase == .stationaryPending, stationarySource == nil {
+      stationarySource = .motion
+    }
+    if let lat = snapshot.gpsStationaryAnchorLat,
+       let lon = snapshot.gpsStationaryAnchorLon,
+       let timestamp = snapshot.gpsStationaryAnchorTimestamp {
+      gpsStationaryAnchor = CLLocation(
+        coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+        altitude: 0,
+        horizontalAccuracy: snapshot.gpsStationaryAnchorAccuracy ?? 10,
+        verticalAccuracy: -1,
+        timestamp: timestamp
+      )
+    } else if phase == .driving {
+      gpsStationaryAnchor = shiftLastLocation
     }
     deadlines = snapshot.deadlines ?? NativeAutoTrackDeadlines()
     if phase == .stationaryPending, deadlines.stationary == nil {
