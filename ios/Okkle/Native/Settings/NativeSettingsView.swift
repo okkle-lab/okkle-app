@@ -388,6 +388,7 @@ struct NativeAutoTrackSettingsView: View {
         NativeExcludedPlacesSection()
       }
 
+#if DEBUG
       Section {
         NavigationLink {
           NativeAutoTrackDiagnosticsView()
@@ -397,6 +398,7 @@ struct NativeAutoTrackSettingsView: View {
       } header: {
         Text("Diagnostics")
       }
+#endif
     }
     .navigationTitle("Automatic tracking")
     .navigationBarTitleDisplayMode(.inline)
@@ -404,6 +406,7 @@ struct NativeAutoTrackSettingsView: View {
   }
 }
 
+#if DEBUG
 private struct NativeAutoTrackDiagnosticsView: View {
   @ObservedObject private var diagnostics = NativeAutoTrackDiagnostics.shared
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
@@ -523,6 +526,7 @@ private struct NativeAutoTrackDiagnosticsView: View {
     return .secondary
   }
 }
+#endif
 
 // MARK: Insights
 
