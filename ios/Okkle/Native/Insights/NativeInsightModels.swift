@@ -136,6 +136,14 @@ func nativeTopZones(_ zones: [NativeZonePoint], near origin: CLLocationCoordinat
   return Array(candidates.sorted { $0.weight > $1.weight }.prefix(limit))
 }
 
+/// Straight-line distance from the driver's current position to a zone,
+/// formatted the same way as every other mileage figure in the app.
+func nativeZoneDistanceLabel(from origin: CLLocationCoordinate2D, to zone: CLLocationCoordinate2D) -> String {
+  let meters = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+    .distance(from: CLLocation(latitude: zone.latitude, longitude: zone.longitude))
+  return miles(meters / 1609.34)
+}
+
 /// One named, ranked area — the shared source of truth so the "where to go"
 /// list and the map pins carry the *same* number for the *same* place.
 struct NativeRankedArea: Identifiable {
@@ -464,6 +472,7 @@ struct NativeShiftInsights {
   let windows: [NativeShiftWindow]
   let quietWindow: NativeShiftWindow?
   let zones: [NativeZonePoint]
+  let zonesByWeekday: [Int: [NativeZonePoint]]   // 0 = Sunday … 6 = Saturday, same ranking scoped to just that weekday's activity
   let weekdayStats: [NativeWeekdayStat]
   let weekdayDetails: [NativeWeekdayDetail]   // active days, busiest first
   let todayPlan: NativeDayPlan?
@@ -562,7 +571,7 @@ struct NativeShiftInsights {
 
   static let empty = NativeShiftInsights(
     deliveries: 0, activeHours: 0, paidMiles: 0, deadMiles: 0,
-    bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [],
+    bestWindow: nil, perHour: nil, windows: [], quietWindow: nil, zones: [], zonesByWeekday: [:],
     weekdayStats: [], weekdayDetails: [], todayPlan: nil, lastShift: nil,
     activeDays: 0, daySpan: 0, peakHitRate: nil, weekdayReliability: [:],
     hourCounts: Array(repeating: 0, count: 24)
@@ -833,26 +842,35 @@ struct NativeShiftInsights {
     //    any real evidence and fades out as real deliveries accumulate — the
     //    same "trust real evidence once there's enough of it" bar already
     //    used for NativeExploreCandidate.isValidated (3 real visits)
-    var cells: [String: (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double, estimatedCost: Double)] = [:]
+    typealias NativeInsightCell = (coordinate: CLLocationCoordinate2D, rawCount: Int, decayedCount: Double, hours: [Int: Int], approachMeters: Double, paidMeters: Double, estimatedCost: Double)
     let cellSize = 0.006
     let recencyHalfLifeDays = 60.0
     let now = input.generatedAt
-    for hit in deliveryHits where hit.isLocationTrustworthy {
-      let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
-      var cell = cells[key] ?? (hit.coordinate, 0, 0, [:], 0, 0, 0)
-      let ageDays = max(0, now.timeIntervalSince(hit.date) / 86_400)
-      let decay = pow(0.5, ageDays / recencyHalfLifeDays)
-      cell.rawCount += 1
-      cell.decayedCount += decay
-      cell.hours[hit.hour, default: 0] += 1
-      cell.approachMeters += hit.approachMeters
-      cell.paidMeters += hit.paidLegMeters
-      // This hit's own actual vehicle cost — not a flat zone-wide rate — so a
-      // day ridden on a bike doesn't get charged a car's running cost.
-      let hitMiles = (hit.approachMeters + hit.paidLegMeters) / 1609.34 * roadFactor
-      cell.estimatedCost += hitMiles * hit.vehicleCostPerMile
-      cells[key] = cell
+    // Clusters a set of delivery hits into ~500m cells — factored out so the
+    // exact same clustering can also run on just one weekday's hits below,
+    // for a genuinely day-specific "where to go" (zonesByWeekday) instead of
+    // always the whole period's zones.
+    func cellsMap(for hits: [NativeDeliveryHit]) -> [String: NativeInsightCell] {
+      var cells: [String: NativeInsightCell] = [:]
+      for hit in hits where hit.isLocationTrustworthy {
+        let key = "\(Int((hit.coordinate.latitude / cellSize).rounded())),\(Int((hit.coordinate.longitude / cellSize).rounded()))"
+        var cell = cells[key] ?? (hit.coordinate, 0, 0, [:], 0, 0, 0)
+        let ageDays = max(0, now.timeIntervalSince(hit.date) / 86_400)
+        let decay = pow(0.5, ageDays / recencyHalfLifeDays)
+        cell.rawCount += 1
+        cell.decayedCount += decay
+        cell.hours[hit.hour, default: 0] += 1
+        cell.approachMeters += hit.approachMeters
+        cell.paidMeters += hit.paidLegMeters
+        // This hit's own actual vehicle cost — not a flat zone-wide rate — so a
+        // day ridden on a bike doesn't get charged a car's running cost.
+        let hitMiles = (hit.approachMeters + hit.paidLegMeters) / 1609.34 * roadFactor
+        cell.estimatedCost += hitMiles * hit.vehicleCostPerMile
+        cells[key] = cell
+      }
+      return cells
     }
+    let cells = cellsMap(for: deliveryHits)
     // Attribute each logged income record across the zone(s) actually worked
     // during its *own* period — the finest grain available, since income
     // isn't logged per delivery. A record's period isn't always a single
@@ -1009,41 +1027,59 @@ struct NativeShiftInsights {
       if combinedZoneHitRate < 0.5 { return 0.75 }
       return 1.0
     }()
-    let zones = cells.map { key, cell -> NativeZonePoint in
-      let peak = cell.hours.max { $0.value < $1.value }?.key
-      let popularity = cell.decayedCount / maxDecayedCount
-      let totalCellMeters = cell.approachMeters + cell.paidMeters
-      let deadMilePct = totalCellMeters > 0 ? Int((cell.approachMeters / totalCellMeters * 100).rounded()) : nil
-      // No approach-leg data for this cell yet → stay neutral rather than
-      // silently reward or punish it in the blend below.
-      let efficiency = deadMilePct.map { 1 - Double($0) / 100 } ?? 0.5
-      // "Was the roaming worth it" is best answered by what a zone actually
-      // nets (income minus an estimated cost for the miles it took), not
-      // just how many miles it cost — so real attributed net value is the
-      // primary value signal once there's enough of it, falling back to the
-      // dead-mile-based efficiency guess while there isn't.
-      let incomeResult = netValuePerDelivery(for: key, cell: cell)
-      let valueSignal: Double
-      if let incomeResult {
-        let normalizedNetValue = netValueRange > 0 ? (incomeResult.value - minNetValue) / netValueRange : 0.5
-        valueSignal = incomeResult.confidence * normalizedNetValue + (1 - incomeResult.confidence) * efficiency
-      } else {
-        valueSignal = efficiency
+    // Turns a cell map into ranked zone points — factored out so it can run
+    // both on the full period's cells (below) and on a single weekday's
+    // cells (zonesByWeekday), while still scoring against the *period-wide*
+    // income/feedback/confidence signals computed above. Those stay
+    // period-wide deliberately: matching a multi-day "logged this week"
+    // income record only against one weekday's hits would attribute that
+    // whole week's income to a single day, wildly overstating it.
+    func zonesFrom(cells: [String: NativeInsightCell]) -> [NativeZonePoint] {
+      cells.map { key, cell -> NativeZonePoint in
+        let peak = cell.hours.max { $0.value < $1.value }?.key
+        let popularity = cell.decayedCount / maxDecayedCount
+        let totalCellMeters = cell.approachMeters + cell.paidMeters
+        let deadMilePct = totalCellMeters > 0 ? Int((cell.approachMeters / totalCellMeters * 100).rounded()) : nil
+        // No approach-leg data for this cell yet → stay neutral rather than
+        // silently reward or punish it in the blend below.
+        let efficiency = deadMilePct.map { 1 - Double($0) / 100 } ?? 0.5
+        // "Was the roaming worth it" is best answered by what a zone actually
+        // nets (income minus an estimated cost for the miles it took), not
+        // just how many miles it cost — so real attributed net value is the
+        // primary value signal once there's enough of it, falling back to the
+        // dead-mile-based efficiency guess while there isn't.
+        let incomeResult = netValuePerDelivery(for: key, cell: cell)
+        let valueSignal: Double
+        if let incomeResult {
+          let normalizedNetValue = netValueRange > 0 ? (incomeResult.value - minNetValue) / netValueRange : 0.5
+          valueSignal = incomeResult.confidence * normalizedNetValue + (1 - incomeResult.confidence) * efficiency
+        } else {
+          valueSignal = efficiency
+        }
+        let feedback = feedbackByCell[key]
+        let feedbackConfidence = min(0.35, Double(feedback?.total ?? 0) / 8.0)
+        let feedbackAdjustedValue = feedback?.ratio.map { ratio in
+          valueSignal * (1 - feedbackConfidence) + ratio * feedbackConfidence
+        } ?? valueSignal
+        let realSignal = popularity * 0.55 + feedbackAdjustedValue * 0.45
+        // Fall back to the real signal itself while the async POI lookup is
+        // still resolving, so a zone isn't held back just because the prior
+        // hasn't loaded yet.
+        let poiPrior = input.poiPriorScore(for: cell.coordinate) ?? realSignal
+        let confidence = Double(cell.rawCount) / (Double(cell.rawCount) + zoneConfidenceK)
+        let weight = (confidence * realSignal + (1 - confidence) * poiPrior) * zoneConfidenceFactor
+        return NativeZonePoint(coordinate: cell.coordinate, weight: weight, count: cell.rawCount, peakHour: peak, deadMilePct: deadMilePct)
       }
-      let feedback = feedbackByCell[key]
-      let feedbackConfidence = min(0.35, Double(feedback?.total ?? 0) / 8.0)
-      let feedbackAdjustedValue = feedback?.ratio.map { ratio in
-        valueSignal * (1 - feedbackConfidence) + ratio * feedbackConfidence
-      } ?? valueSignal
-      let realSignal = popularity * 0.55 + feedbackAdjustedValue * 0.45
-      // Fall back to the real signal itself while the async POI lookup is
-      // still resolving, so a zone isn't held back just because the prior
-      // hasn't loaded yet.
-      let poiPrior = input.poiPriorScore(for: cell.coordinate) ?? realSignal
-      let confidence = Double(cell.rawCount) / (Double(cell.rawCount) + zoneConfidenceK)
-      let weight = (confidence * realSignal + (1 - confidence) * poiPrior) * zoneConfidenceFactor
-      return NativeZonePoint(coordinate: cell.coordinate, weight: weight, count: cell.rawCount, peakHour: peak, deadMilePct: deadMilePct)
     }
+    let zones = zonesFrom(cells: cells)
+    // Same ranking, scoped to each weekday's own cells — so "where to go"
+    // can genuinely differ between, say, a Tuesday and a Saturday, instead
+    // of always showing the same whole-period top areas regardless of day.
+    let zonesByWeekday: [Int: [NativeZonePoint]] = Dictionary(
+      uniqueKeysWithValues: (0...6).map { wd in
+        (wd, zonesFrom(cells: cellsMap(for: deliveryHits.filter { $0.weekday == wd })))
+      }
+    )
 
     // £/hr over the last 14 days: logged income ÷ active hours in the window.
     let windowStart = input.generatedAt.addingTimeInterval(-14 * 86_400)
@@ -1157,6 +1193,7 @@ struct NativeShiftInsights {
       windows: Array(ranked.prefix(5)),
       quietWindow: quietWindow,
       zones: zones,
+      zonesByWeekday: zonesByWeekday,
       weekdayStats: weekdayStats,
       weekdayDetails: weekdayDetails,
       todayPlan: todayPlan,
