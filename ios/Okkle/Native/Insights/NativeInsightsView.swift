@@ -429,11 +429,17 @@ struct NativeDailyInsightPanel: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
       if let plan = shift.todayPlan, let peak = plan.peakWindow {
+        // Prefer today's own weekday zones — falls back to the whole
+        // period's when today's slice is too sparse to say anything, so a
+        // quiet weekday doesn't lose the recommendation entirely.
+        let placeZones = shift.zonesByWeekday[plan.weekday]?.isEmpty == false
+          ? shift.zonesByWeekday[plan.weekday]!
+          : shift.zones
         NativeAiCard {
           VStack(alignment: .leading, spacing: 14) {
             insightHeader("Where to go", systemImage: "map.fill")
-            NativeRecommendationHeatMap(trips: trips, zones: shift.zones, timeLabel: peak.label)
-            NativeTopAreasList(zones: shift.zones, limit: 3, showShareBar: true, showDistance: true)
+            NativeRecommendationHeatMap(trips: trips, zones: placeZones, timeLabel: peak.label)
+            NativeTopAreasList(zones: placeZones, limit: 3, showShareBar: true, showDistance: true)
           }
         }
       } else if shift.todayPlan != nil {
@@ -602,6 +608,8 @@ func nativeTopPlatformsCard(current: [NativeRecord], previous: [NativeRecord], p
 struct NativeWeeklyInsightPanel: View {
   let shift: NativeShiftInsights
   @EnvironmentObject private var store: OkkleStore
+  @State private var selectedWeekday: Int?
+  private var todayWeekday: Int { Calendar.current.component(.weekday, from: Date()) - 1 }
 
   private var currentWeekRecords: [NativeRecord] {
     let start = Date().addingTimeInterval(-7 * 86_400)
@@ -614,15 +622,33 @@ struct NativeWeeklyInsightPanel: View {
     return store.records.filter { $0.date >= start && $0.date < end }
   }
 
-  /// Compact, mostly-numeric chips for the whole week — a day-by-day toggle
-  /// isn't worth the complexity here since the underlying zone ranking is a
-  /// single whole-week computation, not split per weekday, so a day picker
-  /// couldn't actually change *where* to go, only imply that it could.
-  private var weekMetricChips: [(icon: String, text: String)] {
+  private var orderedWeekdayStats: [NativeWeekdayStat] {
+    [1, 2, 3, 4, 5, 6, 0].compactMap { wd in shift.weekdayStats.first { $0.weekday == wd } }
+  }
+
+  /// Which day the card reflects: your tap, else today (if you worked it),
+  /// else your busiest day.
+  private var activeWeekday: Int {
+    if let selectedWeekday { return selectedWeekday }
+    if (shift.weekdayStats.first { $0.weekday == todayWeekday }?.count ?? 0) > 0 { return todayWeekday }
+    return shift.weekdayDetails.first?.weekday ?? todayWeekday
+  }
+
+  /// That weekday's own zone ranking — falls back to the whole week's when
+  /// the day's own slice is too sparse to say anything, so a quiet weekday
+  /// doesn't lose the recommendation entirely.
+  private var activeZones: [NativeZonePoint] {
+    shift.zonesByWeekday[activeWeekday]?.isEmpty == false ? shift.zonesByWeekday[activeWeekday]! : shift.zones
+  }
+
+  /// Compact, mostly-numeric chips for the selected day.
+  private var dayMetricChips: [(icon: String, text: String)] {
     var chips: [(String, String)] = []
     if let band = shift.perHourBand { chips.append(("clock", "\(band)/hr")) }
-    chips.append(("shippingbox", "~\(shift.deliveries) deliveries"))
-    chips.append(("fuelpump", "\(shift.deadMilePct)% unpaid"))
+    if let detail = shift.weekdayDetails.first(where: { $0.weekday == activeWeekday }) {
+      chips.append(("shippingbox", "~\(detail.count) deliveries"))
+      if let pct = detail.deadMilePct { chips.append(("fuelpump", "\(pct)% unpaid")) }
+    }
     return chips
   }
 
@@ -639,34 +665,68 @@ struct NativeWeeklyInsightPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
-      // Card 1 — one map for the week's top areas, same cockpit language as
-      // Today. No day picker: the zone ranking underneath is a single
-      // whole-week computation, not split per weekday, so a day toggle here
-      // couldn't actually change *where* to go — only the floating time
-      // badge would move, which isn't worth the extra control.
+      // Card 1 — a day-pill row above one map, same cockpit language as
+      // Today. Each pill's own zone ranking is genuinely computed from just
+      // that weekday's activity (zonesByWeekday), so tapping a day actually
+      // changes *where* to go, not just the time badge.
       NativeAiCard {
         VStack(alignment: .leading, spacing: 16) {
-          section("Where to go") {
-            NativeRecommendationHeatMap(trips: [], zones: shift.zones, timeLabel: shift.bestWindow)
-            NativeTopAreasList(zones: shift.zones, limit: 3, showShareBar: true, showDistance: true)
-
-            if !weekMetricChips.isEmpty {
-              HStack(spacing: 8) {
-                ForEach(Array(weekMetricChips.enumerated()), id: \.offset) { _, chip in
-                  HStack(spacing: 5) {
-                    Image(systemName: chip.icon)
-                      .font(.system(size: 12, weight: .semibold))
-                      .foregroundStyle(OkkleColor.muted)
-                    Text(chip.text)
-                      .font(.system(size: 12, weight: .semibold))
-                      .foregroundStyle(OkkleColor.muted)
+          section("Where to go", subtitle: "Tap a day to see its best window.") {
+            let maxCount = max(1, shift.weekdayStats.map(\.count).max() ?? 1)
+            HStack(spacing: 6) {
+              ForEach(orderedWeekdayStats) { stat in
+                let selected = stat.weekday == activeWeekday
+                Text(stat.symbol)
+                  .font(.system(size: 13, weight: selected ? .heavy : .semibold))
+                  .foregroundStyle(selected ? .white : (stat.count == 0 ? OkkleColor.muted : OkkleColor.ink))
+                  .frame(maxWidth: .infinity)
+                  .padding(.vertical, 9)
+                  .background(
+                    selected
+                      ? AnyShapeStyle(OkkleColor.brand)
+                      : AnyShapeStyle(stat.count == 0
+                                      ? OkkleColor.muted.opacity(0.12)
+                                      : OkkleColor.brand.opacity(0.15 + 0.35 * (Double(stat.count) / Double(maxCount)))),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                  )
+                  .contentShape(Rectangle())
+                  .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.15)) { selectedWeekday = stat.weekday }
                   }
-                  .padding(.horizontal, 10)
-                  .padding(.vertical, 6)
-                  .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-                }
-                Spacer(minLength: 0)
+                  .accessibilityElement(children: .ignore)
+                  .accessibilityLabel("\(Calendar.current.weekdaySymbols[stat.weekday]), \(stat.count) deliveries")
+                  .accessibilityAddTraits(.isButton)
+                  .accessibilityAddTraits(selected ? .isSelected : [])
+                  .accessibilityAction {
+                    selectedWeekday = stat.weekday
+                  }
               }
+            }
+          }
+
+          NativeRecommendationHeatMap(
+            trips: [],
+            zones: activeZones,
+            timeLabel: shift.weekdayDetails.first { $0.weekday == activeWeekday }?.band.timeRange
+          )
+          NativeTopAreasList(zones: activeZones, limit: 3, showShareBar: true, showDistance: true)
+
+          if !dayMetricChips.isEmpty {
+            HStack(spacing: 8) {
+              ForEach(Array(dayMetricChips.enumerated()), id: \.offset) { _, chip in
+                HStack(spacing: 5) {
+                  Image(systemName: chip.icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                  Text(chip.text)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+              }
+              Spacer(minLength: 0)
             }
           }
 
