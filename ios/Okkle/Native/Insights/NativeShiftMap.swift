@@ -385,7 +385,7 @@ struct NativeTopAreasList: View {
                     Text("\(Int((area.weight * 100).rounded()))%")
                       .font(.system(size: 11, weight: .bold))
                       .foregroundStyle(OkkleColor.muted)
-                      .frame(width: 32, alignment: .trailing)
+                      .frame(width: 38, alignment: .trailing)
                   }
                   .padding(.top, 1)
                 }

@@ -478,6 +478,7 @@ struct NativeTopPlatformEarning: Identifiable {
   let platform: String
   let amount: Double
   let deltaPct: Int?   // vs the same platform's earnings last period; nil if no comparable prior data
+  let share: Double   // 0...1 of this period's total earnings across every platform, not just the ones shown
 }
 
 /// Ranks platforms by real, logged income in `current`, comparing each to its
@@ -495,6 +496,7 @@ func nativeTopPlatformEarnings(current: [NativeRecord], previous: [NativeRecord]
   let currentTotals = totals(current)
   guard currentTotals.count >= 2 else { return [] }
   let previousTotals = totals(previous)
+  let grandTotal = currentTotals.values.reduce(0, +)
   return currentTotals
     .sorted { $0.value > $1.value }
     .prefix(limit)
@@ -505,7 +507,8 @@ func nativeTopPlatformEarnings(current: [NativeRecord], previous: [NativeRecord]
         let delta = Int(((entry.value - prevAmount) / prevAmount * 100).rounded())
         if delta != 0 { deltaPct = delta }
       }
-      return NativeTopPlatformEarning(rank: index + 1, platform: entry.key, amount: entry.value, deltaPct: deltaPct)
+      let share = grandTotal > 0 ? entry.value / grandTotal : 0
+      return NativeTopPlatformEarning(rank: index + 1, platform: entry.key, amount: entry.value, deltaPct: deltaPct, share: share)
     }
 }
 
@@ -545,6 +548,23 @@ struct NativeTopPlatformsList: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(OkkleColor.muted)
             }
+            // Share of this period's total earnings — turns "which platform
+            // actually matters" into a shape you see instantly, same pattern
+            // as the top-areas list's share bar.
+            HStack(spacing: 8) {
+              GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                  Capsule().fill(OkkleColor.muted.opacity(0.12)).frame(height: 4)
+                  Capsule().fill(OkkleColor.brand).frame(width: max(6, geo.size.width * entry.share), height: 4)
+                }
+              }
+              .frame(height: 4)
+              Text("\(Int((entry.share * 100).rounded()))%")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(OkkleColor.muted)
+                .frame(width: 38, alignment: .trailing)
+            }
+            .padding(.top, 3)
           }
           Spacer(minLength: 8)
           Text(gbp(entry.amount, whole: true))
@@ -582,7 +602,6 @@ func nativeTopPlatformsCard(current: [NativeRecord], previous: [NativeRecord], p
 struct NativeWeeklyInsightPanel: View {
   let shift: NativeShiftInsights
   @EnvironmentObject private var store: OkkleStore
-  @ObservedObject private var areaNamer = NativeAreaNamer.shared
   @State private var selectedWeekday: Int?
   private var todayWeekday: Int { Calendar.current.component(.weekday, from: Date()) - 1 }
 
@@ -609,99 +628,17 @@ struct NativeWeeklyInsightPanel: View {
     return shift.weekdayDetails.first?.weekday ?? todayWeekday
   }
 
-  /// A calm reflection on one day: how big it was, when it peaked, where.
-  private var dayBreakdown: some View {
-    let wd = activeWeekday
-    let name = Calendar.current.weekdaySymbols[wd]
-    let stat = shift.weekdayStats.first { $0.weekday == wd }
-    let detail = shift.weekdayDetails.first { $0.weekday == wd }
-    let area = detail?.coordinate.flatMap { areaNamer.name(for: $0) }
-
-    let reliability = shift.weekdayReliability[wd]
-
-    return VStack(alignment: .leading, spacing: 16) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(name)
-          .font(.system(size: 18, weight: .bold))
-          .foregroundStyle(OkkleColor.ink)
-        if let reliability {
-          Text(reliability == .reliable ? "Reliable" : "Hit or miss")
-            .font(.system(size: 10, weight: .heavy)).tracking(0.3)
-            .foregroundStyle(reliability == .reliable ? AnyShapeStyle(nativeAIAccentGradient) : AnyShapeStyle(OkkleColor.amber))
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .background((reliability == .reliable ? OkkleColor.brand : OkkleColor.amber).opacity(0.14), in: Capsule())
-        }
-        Spacer()
-        if let stat, stat.count > 0 {
-          Text("\(stat.sharePct)% of your week")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(OkkleColor.muted)
-        }
-      }
-      if let detail {
-        breakdownRow("clock.fill", "Best window", detail.band.timeRange)
-        if let area {
-          breakdownRow("mappin.circle.fill", "Busiest area", area)
-        }
-        breakdownRow("shippingbox.fill", "Deliveries", "about \(detail.count)")
-        if let pct = detail.deadMilePct {
-          breakdownRow("fuelpump.fill", "Unpaid miles", "\(pct)%")
-        }
-      } else {
-        Text("You don't usually work \(name)s — nothing tracked yet.")
-          .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
-          .fixedSize(horizontal: false, vertical: true)
-      }
+  /// Compact, mostly-numeric chips for the selected day — replaces the old
+  /// icon-label-value stat rows now that the map/leaderboard below carry the
+  /// "where" and the pill row carries the "when".
+  private var dayMetricChips: [(icon: String, text: String)] {
+    var chips: [(String, String)] = []
+    if let band = shift.perHourBand { chips.append(("clock", "\(band)/hr")) }
+    if let detail = shift.weekdayDetails.first(where: { $0.weekday == activeWeekday }) {
+      chips.append(("shippingbox", "~\(detail.count) deliveries"))
+      if let pct = detail.deadMilePct { chips.append(("fuelpump", "\(pct)% unpaid")) }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  private func breakdownRow(_ symbol: String, _ label: String, _ value: String) -> some View {
-    HStack(spacing: 10) {
-      Image(systemName: symbol)
-        .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(nativeAIAccentGradient)
-        .frame(width: 20)
-      Text(label)
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(OkkleColor.muted)
-      Spacer(minLength: 8)
-      Text(value)
-        .font(.system(size: 15, weight: .semibold))
-        .foregroundStyle(OkkleColor.ink)
-    }
-  }
-
-  /// The busiest patch and when it peaks — so the advice can name a real place
-  /// and time instead of a generic "wait nearer a pick-up zone".
-  private var topSpot: (area: String, time: String)? {
-    guard let zone = nativeTopZones(shift.zones, near: nil, limit: 1).first,
-          let area = areaNamer.name(for: zone.coordinate),
-          let time = zone.timeLabel else { return nil }
-    return (area, time)
-  }
-
-  /// One specific, actionable line — grounded in the driver's own busiest area
-  /// and time — that replaces the vague generic warning where we can.
-  private var specificAdvice: (symbol: String, color: AnyShapeStyle, text: String)? {
-    if shift.confidence == .low {
-      guard let spot = topSpot else { return nil }
-      return ("sparkles", AnyShapeStyle(nativeAIAccentGradient),
-              "Early pattern: \(spot.area) around \(spot.time) is showing up most often so far. Treat it as a place to test while Okkle keeps learning.")
-    }
-    if shift.deadMilePct >= 25, let spot = topSpot {
-      return ("exclamationmark.triangle.fill", AnyShapeStyle(OkkleColor.amber),
-              "You cover a lot of empty miles between orders. Sit tight around \(spot.area) at \(spot.time) — that's where most of your pickups start.")
-    }
-    if let spot = topSpot {
-      return ("mappin.and.ellipse", AnyShapeStyle(nativeAIAccentGradient),
-              "Your strongest patch is \(spot.area) at \(spot.time) — base yourself there and let the orders come to you.")
-    }
-    if let warning = shift.warning {
-      return ("exclamationmark.triangle.fill", AnyShapeStyle(OkkleColor.amber), warning)
-    }
-    return nil
+    return chips
   }
 
   /// Surfaces the self-correcting confidence loop — whether "your peak" has
@@ -717,63 +654,69 @@ struct NativeWeeklyInsightPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
-      // Card 1 — a suggestion, clearly set apart as advice (not a stat) — the
-      // one thing to act on, so it leads rather than trailing behind stats.
-      if let advice = specificAdvice {
-        NativeAiCard {
-          section("Suggestion") {
-            insightLine(symbol: advice.symbol, color: advice.color, text: advice.text)
-          }
-        }
-      }
-
-      // Card 2 — a reflection on how your week actually went.
+      // Card 1 — one persistent map for the week's top areas, with a day-pill
+      // row above it that swaps the floating time badge and the metric chips
+      // below. Folds the old separate Suggestion / busiest-days-stats /
+      // top-areas cards into one, same cockpit language as Today.
       NativeAiCard {
-        VStack(alignment: .leading, spacing: 22) {
-          section("Busiest days", subtitle: "Deliveries you made on each day.") {
+        VStack(alignment: .leading, spacing: 16) {
+          section("Where to go", subtitle: "Tap a day to see its best window.") {
             let maxCount = max(1, shift.weekdayStats.map(\.count).max() ?? 1)
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(spacing: 6) {
               ForEach(orderedWeekdayStats) { stat in
                 let selected = stat.weekday == activeWeekday
-                VStack(spacing: 6) {
-                  Capsule()
-                    // One brand colour, deepening with how busy the day is —
-                    // your best day reads as your strongest green, not an alarm
-                    // red (which the heat ramp used to give the busiest bar).
-                    .fill(stat.count == 0
-                          ? OkkleColor.muted.opacity(0.18)
-                          : OkkleColor.brand.opacity(0.4 + 0.6 * (Double(stat.count) / Double(maxCount))))
-                    .frame(width: 12, height: max(5, CGFloat(stat.count) / CGFloat(maxCount) * 60))
-                  Text(stat.symbol)
-                    .font(.system(size: 12, weight: selected ? .heavy : .semibold))
-                    .foregroundStyle(selected ? OkkleColor.ink : OkkleColor.muted)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(selected ? Color(uiColor: .tertiarySystemFill) : .clear,
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .contentShape(Rectangle())
-                .onTapGesture {
-                  withAnimation(.easeInOut(duration: 0.15)) { selectedWeekday = stat.weekday }
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(Calendar.current.weekdaySymbols[stat.weekday]), \(stat.count) deliveries")
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-                .accessibilityAction {
-                  selectedWeekday = stat.weekday
-                }
+                Text(stat.symbol)
+                  .font(.system(size: 13, weight: selected ? .heavy : .semibold))
+                  .foregroundStyle(selected ? .white : (stat.count == 0 ? OkkleColor.muted : OkkleColor.ink))
+                  .frame(maxWidth: .infinity)
+                  .padding(.vertical, 9)
+                  .background(
+                    selected
+                      ? AnyShapeStyle(OkkleColor.brand)
+                      : AnyShapeStyle(stat.count == 0
+                                      ? OkkleColor.muted.opacity(0.12)
+                                      : OkkleColor.brand.opacity(0.15 + 0.35 * (Double(stat.count) / Double(maxCount)))),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                  )
+                  .contentShape(Rectangle())
+                  .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.15)) { selectedWeekday = stat.weekday }
+                  }
+                  .accessibilityElement(children: .ignore)
+                  .accessibilityLabel("\(Calendar.current.weekdaySymbols[stat.weekday]), \(stat.count) deliveries")
+                  .accessibilityAddTraits(.isButton)
+                  .accessibilityAddTraits(selected ? .isSelected : [])
+                  .accessibilityAction {
+                    selectedWeekday = stat.weekday
+                  }
               }
             }
-            .frame(height: 100, alignment: .bottom)
           }
 
-          Divider()
-          dayBreakdown
+          NativeRecommendationHeatMap(
+            trips: [],
+            zones: shift.zones,
+            timeLabel: shift.weekdayDetails.first { $0.weekday == activeWeekday }?.band.timeRange
+          )
+          NativeTopAreasList(zones: shift.zones, limit: 4, showShareBar: true, showDistance: true)
 
-          if shift.perHourBand != nil {
-            Divider()
-            statsStrip
+          if !dayMetricChips.isEmpty {
+            HStack(spacing: 8) {
+              ForEach(Array(dayMetricChips.enumerated()), id: \.offset) { _, chip in
+                HStack(spacing: 5) {
+                  Image(systemName: chip.icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                  Text(chip.text)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(OkkleColor.muted)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+              }
+              Spacer(minLength: 0)
+            }
           }
 
           // Surfaces the self-correcting confidence loop — only appears once
@@ -785,14 +728,7 @@ struct NativeWeeklyInsightPanel: View {
         }
       }
 
-      // Card 3 — your top areas, with how much of your work each one carries.
-      NativeAiCard {
-        section("Your top areas", subtitle: "Bar shows how busy each area is compared to your #1 spot.") {
-          NativeTopAreasList(zones: shift.zones, limit: 4, showShareBar: true)
-        }
-      }
-
-      // Card 4 — real, logged platform ranking, underneath top areas. Only
+      // Card 2 — real, logged platform ranking, underneath the map. Only
       // worth showing once there's an actual mix — a single platform isn't
       // a "ranking".
       nativeTopPlatformsCard(current: currentWeekRecords, previous: previousWeekRecords, previousPeriodLabel: "last week")
@@ -814,27 +750,6 @@ struct NativeWeeklyInsightPanel: View {
       }
       content()
     }
-  }
-
-  // Est. rate only, when the passive signal is solid — unpaid miles now shows
-  // per-day in the breakdown above instead of as a whole-week aggregate here.
-  private var statsStrip: some View {
-    HStack(spacing: 0) {
-      if let band = shift.perHourBand {
-        stat("Est. rate", "\(band)/hr")
-      }
-    }
-    .padding(.vertical, 4)
-  }
-
-  private func stat(_ title: String, _ value: String) -> some View {
-    VStack(alignment: .leading, spacing: 3) {
-      nativeStatValue(value, size: .secondary)
-      Text(title)
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(OkkleColor.muted)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private func insightLine(symbol: String, color: AnyShapeStyle, text: String) -> some View {
