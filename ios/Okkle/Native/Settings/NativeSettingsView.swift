@@ -316,6 +316,30 @@ struct NativeTaxSettingsView: View {
 struct NativeAutoTrackSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
+  // iOS shows its own "upgrade to Always" system prompt at most once — after
+  // that, requestAlwaysAuthorization() is a silent no-op with no dialog at
+  // all. CLAuthorizationStatus can't tell "never asked" apart from "asked
+  // and declined", so this is the only way to know we've already used up
+  // that one shot and must send the driver to Settings instead of quietly
+  // re-requesting forever.
+  @AppStorage("uk.okkle.native.didRequestAlwaysUpgrade") private var didRequestAlwaysUpgrade = false
+
+  private var mustUseLocationSettings: Bool {
+    autoTrack.locationAuthorizationStatus == .denied
+      || autoTrack.locationAuthorizationStatus == .restricted
+      || (autoTrack.locationAuthorizationStatus == .authorizedWhenInUse && didRequestAlwaysUpgrade)
+  }
+
+  private func requestAlwaysAccess() {
+    if mustUseLocationSettings {
+      if let url = URL(string: UIApplication.openSettingsURLString) {
+        UIApplication.shared.open(url)
+      }
+    } else {
+      didRequestAlwaysUpgrade = true
+      autoTrack.requestAlwaysLocationAuthorization()
+    }
+  }
 
   var body: some View {
     Form {
@@ -327,7 +351,7 @@ struct NativeAutoTrackSettingsView: View {
             if enabled {
               store.settings.enhancedAutoTracking = true
               if autoTrack.locationAuthorizationStatus != .authorizedAlways {
-                autoTrack.requestAlwaysLocationAuthorization()
+                requestAlwaysAccess()
               }
             }
           }
@@ -346,16 +370,8 @@ struct NativeAutoTrackSettingsView: View {
       if store.settings.autoTrackTrips, autoTrack.locationAuthorizationStatus != .authorizedAlways {
         Section {
           Label("Automatic tracking is waiting for Always location access.", systemImage: "location.slash.fill")
-          Button(autoTrack.locationAuthorizationStatus == .denied || autoTrack.locationAuthorizationStatus == .restricted
-                 ? "Open Location Settings"
-                 : "Allow Background Tracking") {
-            if autoTrack.locationAuthorizationStatus == .denied || autoTrack.locationAuthorizationStatus == .restricted {
-              if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
-              }
-            } else {
-              autoTrack.requestAlwaysLocationAuthorization()
-            }
+          Button(mustUseLocationSettings ? "Open Location Settings" : "Allow Background Tracking") {
+            requestAlwaysAccess()
           }
         } footer: {
           Text("Okkle does not partially run automatic tracking with While Using access because iOS cannot reliably wake a closed app for a new trip.")
