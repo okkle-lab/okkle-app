@@ -1401,7 +1401,7 @@ struct NativeInsightsView: View {
             .transition(.nativeInsightSetupCard)
         }
 
-        if !store.settings.loggingReminder {
+        if !store.settings.autoTrackTrips && !store.settings.loggingReminder {
           NativeAiCard(banner: "REMINDERS") {
             VStack(alignment: .leading, spacing: 16) {
               Text("Keep your records fresh")

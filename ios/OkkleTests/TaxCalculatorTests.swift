@@ -490,6 +490,21 @@ final class NativeInsightsSimulationTests: XCTestCase {
 
 @MainActor
 final class NativeNotificationReminderTests: XCTestCase {
+  func testAutomaticTrackingSuppressesLoggingReminderScheduling() {
+    var settings = NativeSettings()
+    settings.hasCompletedOnboarding = true
+    settings.loggingReminder = true
+    settings.autoTrackTrips = false
+
+    XCTAssertTrue(NativeLoggingReminder.shouldSchedule(settings: settings))
+
+    settings.autoTrackTrips = true
+    XCTAssertFalse(NativeLoggingReminder.shouldSchedule(settings: settings))
+
+    settings.autoTrackTrips = false
+    XCTAssertTrue(NativeLoggingReminder.shouldSchedule(settings: settings))
+  }
+
   func testManualRecordTodayCountsAsLoggedForReminderSuppression() {
     let store = OkkleStore()
     store.records = [record(date: Date())]
@@ -674,6 +689,68 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
       previousPorts: [],
       routeChangeReason: .newDeviceAvailable
     ))
+  }
+
+  func testAutomaticTrackingUsesSeparateMotorizedAndBicycleThresholds() {
+    let car = NativeVehicle.car.automaticTrackingThresholds
+    let bicycle = NativeVehicle.bike.automaticTrackingThresholds
+
+    XCTAssertEqual(NativeVehicle.car.automaticTrackingProfile, .motorized)
+    XCTAssertEqual(NativeVehicle.van.automaticTrackingProfile, .motorized)
+    XCTAssertEqual(NativeVehicle.motorbike.automaticTrackingProfile, .motorized)
+    XCTAssertEqual(NativeVehicle.bike.automaticTrackingProfile, .bicycle)
+
+    // Preserve the existing car behavior while making slower bicycle starts
+    // and shorter bicycle resumptions possible.
+    XCTAssertEqual(car.startSpeedMetersPerSecond, 6)
+    XCTAssertEqual(car.stationaryResumeDistanceMeters, 150)
+    XCTAssertEqual(car.gpsStationaryConfirmationSeconds, 120)
+    XCTAssertEqual(car.gpsStationaryRadiusMeters, 90)
+    XCTAssertEqual(bicycle.startSpeedMetersPerSecond, 2.5)
+    XCTAssertEqual(bicycle.stationaryResumeDistanceMeters, 60)
+    XCTAssertEqual(bicycle.gpsStationaryConfirmationSeconds, 180)
+    XCTAssertEqual(bicycle.gpsStationaryRadiusMeters, 45)
+  }
+
+  func testCoreMotionDrivingSignalMatchesTheSelectedVehicleProfile() {
+    XCTAssertTrue(NativeAutoTrackPolicy.isDrivingMotion(
+      automotive: true,
+      cycling: false,
+      vehicle: .car
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.isDrivingMotion(
+      automotive: false,
+      cycling: true,
+      vehicle: .car
+    ))
+    XCTAssertTrue(NativeAutoTrackPolicy.isDrivingMotion(
+      automotive: false,
+      cycling: true,
+      vehicle: .bike
+    ))
+    XCTAssertFalse(NativeAutoTrackPolicy.isDrivingMotion(
+      automotive: true,
+      cycling: false,
+      vehicle: .bike
+    ))
+  }
+
+  func testStationaryTimeoutCalibrationLearnsSeparatelyForCarsAndBicycles() throws {
+    var calibration = NativeAutoTrackCalibration()
+    calibration.nudgeStationaryTimeout(toward: 10 * 60, for: .bike)
+
+    XCTAssertEqual(calibration.stationaryTimeout(for: .car), 20 * 60)
+    XCTAssertEqual(calibration.stationaryTimeout(for: .van), 20 * 60)
+    XCTAssertEqual(calibration.stationaryTimeout(for: .bike), 18 * 60)
+
+    calibration.nudgeStationaryTimeout(toward: 30 * 60, for: .car)
+    XCTAssertEqual(calibration.stationaryTimeout(for: .car), 22 * 60)
+    XCTAssertEqual(calibration.stationaryTimeout(for: .bike), 18 * 60)
+
+    let legacy = Data(#"{"stationaryTimeoutSeconds":1500}"#.utf8)
+    let restored = try JSONDecoder().decode(NativeAutoTrackCalibration.self, from: legacy)
+    XCTAssertEqual(restored.stationaryTimeout(for: .car), 1500)
+    XCTAssertEqual(restored.stationaryTimeout(for: .bike), 20 * 60)
   }
 
   func testMileageAndRouteShareTheSamePlausibilityFilter() {
@@ -909,6 +986,23 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     XCTAssertTrue(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: origin, current: movingByDisplacement))
     XCTAssertTrue(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: slowOrigin, current: slowMovement))
     XCTAssertFalse(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(origin: inaccurateOrigin, current: inaccurateDrift))
+
+    let bicycleMovement = location(
+      latitude: 51.50027,
+      longitude: -0.1200,
+      accuracy: 5,
+      timestamp: now
+    )
+    XCTAssertFalse(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(
+      origin: origin,
+      current: bicycleMovement,
+      minimumDisplacement: NativeVehicle.car.automaticTrackingThresholds.vehicleStartDisplacementMeters
+    ))
+    XCTAssertTrue(NativeAutoTrackPolicy.shouldStartArmedVehicleTrip(
+      origin: origin,
+      current: bicycleMovement,
+      minimumDisplacement: NativeVehicle.bike.automaticTrackingThresholds.vehicleStartDisplacementMeters
+    ))
 
     let initialLocations = NativeAutoTrackPolicy.armedTripInitialLocations(
       bufferedLocations: [movingByDisplacement, parked, origin]
