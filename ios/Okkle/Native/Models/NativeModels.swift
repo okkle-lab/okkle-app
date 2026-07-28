@@ -39,6 +39,61 @@ enum NativeVehicle: String, CaseIterable, Identifiable, Codable {
   }
 }
 
+enum NativeAutoTrackingProfile: String, Equatable {
+  case motorized
+  case bicycle
+}
+
+/// Vehicle-sensitive thresholds used by automatic tracking. Cars retain the
+/// existing production values; bicycles need lower movement thresholds to
+/// start reliably, but a tighter/longer stationary check so traffic lights do
+/// not look like delivery stops.
+struct NativeAutoTrackingThresholds: Equatable {
+  var startSpeedMetersPerSecond: CLLocationSpeed
+  var idleWakeDistanceMeters: CLLocationDistance
+  var continuousLocationDistanceMeters: CLLocationDistance
+  var stationaryResumeDistanceMeters: CLLocationDistance
+  var gpsStationaryConfirmationSeconds: TimeInterval
+  var gpsStationaryRadiusMeters: CLLocationDistance
+  var vehicleStartDisplacementMeters: CLLocationDistance
+  var minimumRecordedStopDwellSeconds: TimeInterval
+  var minimumUnconnectedStopDwellSeconds: TimeInterval
+
+  static let motorized = NativeAutoTrackingThresholds(
+    startSpeedMetersPerSecond: 6,
+    idleWakeDistanceMeters: 450,
+    continuousLocationDistanceMeters: 10,
+    stationaryResumeDistanceMeters: 150,
+    gpsStationaryConfirmationSeconds: 2 * 60,
+    gpsStationaryRadiusMeters: 90,
+    vehicleStartDisplacementMeters: 35,
+    minimumRecordedStopDwellSeconds: 90,
+    minimumUnconnectedStopDwellSeconds: 4 * 60
+  )
+
+  static let bicycle = NativeAutoTrackingThresholds(
+    startSpeedMetersPerSecond: 2.5,
+    idleWakeDistanceMeters: 150,
+    continuousLocationDistanceMeters: 5,
+    stationaryResumeDistanceMeters: 60,
+    gpsStationaryConfirmationSeconds: 3 * 60,
+    gpsStationaryRadiusMeters: 45,
+    vehicleStartDisplacementMeters: 25,
+    minimumRecordedStopDwellSeconds: 90,
+    minimumUnconnectedStopDwellSeconds: 3 * 60
+  )
+}
+
+extension NativeVehicle {
+  var automaticTrackingProfile: NativeAutoTrackingProfile {
+    self == .bike ? .bicycle : .motorized
+  }
+
+  var automaticTrackingThresholds: NativeAutoTrackingThresholds {
+    automaticTrackingProfile == .bicycle ? .bicycle : .motorized
+  }
+}
+
 enum NativeRegion: String, CaseIterable, Identifiable, Codable {
   case ruk
   case scotland
@@ -649,13 +704,15 @@ struct NativeExcludedPlace: Codable, Identifiable, Equatable {
 struct NativeAutoTrackCalibration: Codable, Equatable {
   /// How long stationary before a shift is considered over.
   var stationaryTimeoutSeconds: TimeInterval = 20 * 60
+  /// Stored independently so bicycle corrections do not retune car tracking.
+  var bicycleStationaryTimeoutSeconds: TimeInterval = 20 * 60
   /// Provisional pickup guess: dwell at or above this reads as a pick-up.
   var pickupDwellThreshold: TimeInterval = 150
   /// Below this dwell, with no nearby food venue, MapKit confirms drop-off.
-  /// Must stay comfortably above NativeAutoTrackEngine's
-  /// minimumConnectedVehicleStopDwell (4 min) — that's the floor a stop has
-  /// to clear before it's recorded at all when there's no vehicle-Bluetooth
-  /// signal, so if this ceiling were at or below that floor, every such
+  /// Must stay comfortably above the motorized profile's four-minute floor —
+  /// that's the dwell a stop has to clear before it's recorded at all when
+  /// there's no vehicle-Bluetooth signal, so if this ceiling were at or below
+  /// that floor, every such
   /// stop would already dwell past it and this branch could never fire,
   /// leaving every non-Bluetooth stop permanently misclassified as a
   /// pick-up. Verified via a real-day simulation that hit exactly that.
@@ -665,6 +722,7 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
 
   private enum CodingKeys: String, CodingKey {
     case stationaryTimeoutSeconds
+    case bicycleStationaryTimeoutSeconds
     case pickupDwellThreshold
     case dropoffMaxDwellThreshold
     case foodPoiRadiusMeters
@@ -675,6 +733,7 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     stationaryTimeoutSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .stationaryTimeoutSeconds) ?? 20 * 60
+    bicycleStationaryTimeoutSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .bicycleStationaryTimeoutSeconds) ?? 20 * 60
     pickupDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .pickupDwellThreshold) ?? 150
     dropoffMaxDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .dropoffMaxDwellThreshold) ?? 600
     foodPoiRadiusMeters = try container.decodeIfPresent(Double.self, forKey: .foodPoiRadiusMeters) ?? 45
@@ -683,9 +742,20 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
   /// Nudge, don't overwrite — one outlier correction shouldn't swing the
   /// threshold wildly. 80% old / 20% new per correction, clamped to a
   /// sane range so a single bad data point can't break detection.
-  mutating func nudgeStationaryTimeout(toward suggested: TimeInterval) {
-    let blended = stationaryTimeoutSeconds * 0.8 + suggested * 0.2
-    stationaryTimeoutSeconds = min(max(blended, 8 * 60), 60 * 60)
+  func stationaryTimeout(for vehicle: NativeVehicle) -> TimeInterval {
+    vehicle.automaticTrackingProfile == .bicycle
+      ? bicycleStationaryTimeoutSeconds
+      : stationaryTimeoutSeconds
+  }
+
+  mutating func nudgeStationaryTimeout(toward suggested: TimeInterval, for vehicle: NativeVehicle) {
+    let current = stationaryTimeout(for: vehicle)
+    let blended = min(max(current * 0.8 + suggested * 0.2, 8 * 60), 60 * 60)
+    if vehicle.automaticTrackingProfile == .bicycle {
+      bicycleStationaryTimeoutSeconds = blended
+    } else {
+      stationaryTimeoutSeconds = blended
+    }
   }
 }
 

@@ -700,11 +700,16 @@ struct NativeInsightsSettingsView: View {
         .opacity(store.settings.insightsEnabled && store.settings.autoTrackTrips ? 1 : 0.48)
 
         Toggle("Logging reminder", isOn: Binding(
-          get: { store.settings.loggingReminder },
-          set: { store.settings.loggingReminder = $0 }
+          get: { !store.settings.autoTrackTrips && store.settings.loggingReminder },
+          set: { enabled in
+            guard !store.settings.autoTrackTrips else { return }
+            store.settings.loggingReminder = enabled
+          }
         ))
+        .disabled(store.settings.autoTrackTrips)
+        .opacity(store.settings.autoTrackTrips ? 0.48 : 1)
 
-        if store.settings.loggingReminder {
+        if store.settings.loggingReminder && !store.settings.autoTrackTrips {
           Picker("Frequency", selection: Binding(
             get: { store.settings.logFrequency },
             set: { store.settings.logFrequency = $0 }
@@ -734,7 +739,7 @@ struct NativeInsightsSettingsView: View {
         Text(!store.settings.insightsEnabled
              ? "Turn on Insights to use pre-shift heads-up suggestions."
              : store.settings.autoTrackTrips
-             ? "Pre-shift heads-up uses your trip patterns to suggest when and roughly where to head. Logging and tax reminders keep the data behind Insights fresh."
+             ? "Pre-shift heads-up uses your trip patterns to suggest when and roughly where to head. Logging reminders are paused while automatic trip tracking is on."
              : "Turn on automatic trip tracking to use pre-shift heads-up suggestions.")
       }
 
@@ -1002,11 +1007,16 @@ struct NativeRemindersSettingsView: View {
     Form {
       Section {
         Toggle("Logging reminder", isOn: Binding(
-          get: { store.settings.loggingReminder },
-          set: { store.settings.loggingReminder = $0 }
+          get: { !store.settings.autoTrackTrips && store.settings.loggingReminder },
+          set: { enabled in
+            guard !store.settings.autoTrackTrips else { return }
+            store.settings.loggingReminder = enabled
+          }
         ))
+        .disabled(store.settings.autoTrackTrips)
+        .opacity(store.settings.autoTrackTrips ? 0.48 : 1)
 
-        if store.settings.loggingReminder {
+        if store.settings.loggingReminder && !store.settings.autoTrackTrips {
           Picker("Frequency", selection: Binding(
             get: { store.settings.logFrequency },
             set: { store.settings.logFrequency = $0 }
@@ -1028,7 +1038,9 @@ struct NativeRemindersSettingsView: View {
       } header: {
         Text("Logging")
       } footer: {
-        Text("A gentle nudge to log your miles and pay so nothing slips through the week.")
+        Text(store.settings.autoTrackTrips
+             ? "Logging reminders are paused while automatic trip tracking is on."
+             : "A gentle nudge to log your miles and pay so nothing slips through the week.")
       }
 
       Section {
@@ -1359,7 +1371,7 @@ struct NativeAboutSettingsView: View {
         HStack {
           Text("Version")
           Spacer()
-          Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.1")
+          Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.2")
             .foregroundStyle(.secondary)
         }
       }

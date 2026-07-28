@@ -233,6 +233,19 @@ enum NativeAutoTrackPolicy {
     phase == .driving || (phase == .idle && vehicleStartArmed)
   }
 
+  static func isDrivingMotion(
+    automotive: Bool,
+    cycling: Bool,
+    vehicle: NativeVehicle
+  ) -> Bool {
+    switch vehicle.automaticTrackingProfile {
+    case .motorized:
+      return automotive
+    case .bicycle:
+      return cycling
+    }
+  }
+
   static func capability(
     settings: NativeSettings,
     authorizationStatus: CLAuthorizationStatus,
@@ -341,12 +354,16 @@ enum NativeAutoTrackPolicy {
     nativeShouldAcceptTripLocation(location, since: previous)
   }
 
-  static func shouldStartArmedVehicleTrip(origin: CLLocation?, current: CLLocation) -> Bool {
+  static func shouldStartArmedVehicleTrip(
+    origin: CLLocation?,
+    current: CLLocation,
+    minimumDisplacement: CLLocationDistance = NativeAutoTrackingThresholds.motorized.vehicleStartDisplacementMeters
+  ) -> Bool {
     guard nativeShouldAcceptTripLocation(current, since: nil) else { return false }
     guard let origin else { return false }
     guard current.timestamp > origin.timestamp else { return false }
     let distance = current.distance(from: origin)
-    let accuracyAdjustedDistance = max(35, origin.horizontalAccuracy + current.horizontalAccuracy)
+    let accuracyAdjustedDistance = max(minimumDisplacement, origin.horizontalAccuracy + current.horizontalAccuracy)
     return distance >= accuracyAdjustedDistance
   }
 
@@ -399,15 +416,19 @@ enum NativeTrackingConfidenceEvaluator {
   private static let stopThreshold = 0.70
   private static let resumeThreshold = 0.45
 
-  static func startDecision(_ evidence: NativeTripStartEvidence) -> NativeTrackingConfidenceDecision {
+  static func startDecision(
+    _ evidence: NativeTripStartEvidence,
+    vehicle: NativeVehicle = .car
+  ) -> NativeTrackingConfidenceDecision {
+    let thresholds = vehicle.automaticTrackingThresholds
     var score = 0.0
     if evidence.automotiveMotion { score += 0.70 }
     if let speed = evidence.speedMetersPerSecond {
-      if speed >= 6 { score += 0.75 }
-      else if speed >= 3 { score += 0.50 }
-      else if speed >= 1.5 { score += 0.20 }
+      if speed >= thresholds.startSpeedMetersPerSecond { score += 0.75 }
+      else if speed >= thresholds.startSpeedMetersPerSecond * 0.5 { score += 0.50 }
+      else if speed >= thresholds.startSpeedMetersPerSecond * 0.25 { score += 0.20 }
     }
-    if evidence.displacementMeters >= 35 { score += 0.45 }
+    if evidence.displacementMeters >= thresholds.vehicleStartDisplacementMeters { score += 0.45 }
     if evidence.vehicleConnected { score += 0.25 }
     if evidence.headingIsConsistent { score += 0.10 }
     score = min(score, 1)
@@ -428,8 +449,11 @@ enum NativeTrackingConfidenceEvaluator {
     return NativeTrackingConfidenceDecision(score: score, shouldTransition: score >= stopThreshold)
   }
 
-  static func shouldResumeDriving(_ evidence: NativeTripStartEvidence) -> Bool {
-    startDecision(evidence).score >= resumeThreshold
+  static func shouldResumeDriving(
+    _ evidence: NativeTripStartEvidence,
+    vehicle: NativeVehicle = .car
+  ) -> Bool {
+    startDecision(evidence, vehicle: vehicle).score >= resumeThreshold
   }
 }
 

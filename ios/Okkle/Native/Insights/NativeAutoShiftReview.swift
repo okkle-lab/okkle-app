@@ -304,8 +304,12 @@ struct NativeAutoShiftReviewView: View {
     // A few seconds' difference from opening the DatePicker isn't a real
     // correction — only treat a deliberate change as calibration signal.
     guard abs(delta) > 60 else { return }
-    let suggestedTimeout = store.settings.autoTrackCalibration.stationaryTimeoutSeconds + delta
-    store.settings.autoTrackCalibration.nudgeStationaryTimeout(toward: suggestedTimeout)
+    let currentTimeout = store.settings.autoTrackCalibration.stationaryTimeout(for: trip.vehicle)
+    let suggestedTimeout = currentTimeout + delta
+    store.settings.autoTrackCalibration.nudgeStationaryTimeout(
+      toward: suggestedTimeout,
+      for: trip.vehicle
+    )
     trip.endedAt = adjustedEnd
     store.updateTrip(trip)
   }
