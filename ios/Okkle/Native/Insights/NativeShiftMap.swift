@@ -55,6 +55,11 @@ final class NativeRankAnnotation: MKPointAnnotation {
 enum NativeShiftMapPresentation {
   case history
   case recommendation
+  /// The wider-window (Monthly/Yearly) read: same soft glow blobs as
+  /// `recommendation` — no route squiggles, no bordered circles — but
+  /// shows every learned zone rather than just the handful nearest you
+  /// right now, since a month/year overview isn't a "go now" prompt.
+  case hotspot
 }
 
 struct NativeShiftMapRepresentable: UIViewRepresentable {
@@ -99,10 +104,10 @@ struct NativeShiftMapRepresentable: UIViewRepresentable {
       ? nativeTopZones(zones, near: locator.coordinate, limit: 5)
       : zones
     for zone in displayedZones {
-      let radius: CLLocationDistance = presentation == .recommendation ? 480 : 220
+      let radius: CLLocationDistance = presentation == .history ? 220 : 480
       let circle = NativeZoneCircle(center: zone.coordinate, radius: radius)
       circle.weight = zone.weight
-      circle.rendersAsGlow = presentation == .recommendation
+      circle.rendersAsGlow = presentation != .history
       mapView.addOverlay(circle)
     }
 
@@ -307,7 +312,7 @@ struct NativeZoneMiniMap: View {
   var body: some View {
     Button { showDetail = true } label: {
       ZStack(alignment: .bottomTrailing) {
-        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: false, pinLimit: 3)
+        NativeShiftMapRepresentable(trips: trips, zones: zones, interactive: false, pinLimit: 3, presentation: .hotspot)
           .frame(height: 150)
           .allowsHitTesting(false)
         // Little affordance so it clearly opens something bigger.
@@ -326,7 +331,7 @@ struct NativeZoneMiniMap: View {
     }
     .buttonStyle(.plain)
     .sheet(isPresented: $showDetail) {
-      NativeShiftMapDetailView(trips: trips, zones: zones)
+      NativeShiftMapDetailView(trips: trips, zones: zones, presentation: .hotspot)
     }
   }
 }
@@ -470,14 +475,12 @@ struct NativeShiftMapDetailView: View {
         VStack(spacing: 16) {
           Text(presentation == .recommendation
                ? "Numbered pins are ranked 1–5. Brighter glows mark the areas that best combine your past trip patterns with nearby shopping and food activity."
-               : "Numbered pins are your busiest areas near you, ranked 1–5. Warmer patches are where you pick up and drop off most.")
+               : "Numbered pins are your busiest areas, ranked 1–5. Warmer glows are where you pick up and drop off most.")
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-          if presentation == .history {
-            NativeHeatLegend()
-          }
+          NativeHeatLegend()
         }
         .padding(20)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
