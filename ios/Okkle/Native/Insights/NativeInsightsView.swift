@@ -863,6 +863,31 @@ private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint])
   }
 }
 
+/// A quiet, non-interactive read of which weekdays carried the period. This
+/// mirrors This week's day-pill visual so the wider windows read as one
+/// consistent language — but unlike This week's pills, there's nothing to
+/// tap: a day inside a finished month or year isn't something to act on,
+/// only to notice.
+private func nativeWeekdayShareRow(_ stats: [NativeWeekdayStat]) -> some View {
+  let ordered = [1, 2, 3, 4, 5, 6, 0].compactMap { wd in stats.first { $0.weekday == wd } }
+  let maxCount = max(1, stats.map(\.count).max() ?? 1)
+  return HStack(spacing: 6) {
+    ForEach(ordered) { stat in
+      Text(stat.symbol)
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(stat.count == 0 ? OkkleColor.muted : OkkleColor.ink)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(
+          stat.count == 0
+            ? OkkleColor.muted.opacity(0.12)
+            : OkkleColor.brand.opacity(0.15 + 0.35 * (Double(stat.count) / Double(maxCount))),
+          in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+    }
+  }
+}
+
 /// £/hr as an honest range (matching NativeShiftInsights.perHourBand), for the
 /// wider windows where the built-in 14-day figure doesn't apply.
 private func nativePerHourBand(income: Double, activeHours: Double) -> String? {
@@ -883,7 +908,6 @@ private func nativePerHourBand(income: Double, activeHours: Double) -> String? {
 struct NativeMonthlyInsightPanel: View {
   let shift: NativeShiftInsights
   @EnvironmentObject private var store: OkkleStore
-  @ObservedObject private var areaNamer = NativeAreaNamer.shared
 
   private let day: TimeInterval = 86_400
 
@@ -925,15 +949,6 @@ struct NativeMonthlyInsightPanel: View {
       : ("arrow.down.right", AnyShapeStyle(OkkleColor.amber), "\(pct)% less than the 30 days before")
   }
 
-  private var bestDayLine: String? {
-    guard let detail = shift.weekdayDetails.first else { return nil }
-    let name = Calendar.current.weekdaySymbols[detail.weekday]
-    if let coordinate = detail.coordinate, let area = areaNamer.name(for: coordinate) {
-      return "\(name)s are your strongest day, busiest around \(area)."
-    }
-    return "\(name)s are your strongest day."
-  }
-
   var body: some View {
     VStack(alignment: .leading, spacing: 24) {
       // Card 1 — the money: earned this month, its trend, efficiency, pattern.
@@ -955,16 +970,11 @@ struct NativeMonthlyInsightPanel: View {
               nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
             }
           }
-          if let line = bestDayLine {
-            HStack(alignment: .top, spacing: 8) {
-              Image(systemName: "calendar")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(nativeAIAccentGradient)
-              Text(line)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(OkkleColor.muted)
-                .fixedSize(horizontal: false, vertical: true)
-              Spacer(minLength: 0)
+          if !shift.weekdayStats.isEmpty {
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+              nativeInsightKicker("Busiest days")
+              nativeWeekdayShareRow(shift.weekdayStats)
             }
           }
         }
@@ -1081,12 +1091,7 @@ struct NativeYearlyInsightPanel: View {
       if stats.contains(where: { $0.income > 0 }) {
         NativeAiCard {
           VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-              nativeInsightKicker("Busiest months")
-              Text("Earnings each month — tap a bar for the detail.")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(OkkleColor.muted.opacity(0.8))
-            }
+            nativeInsightKicker("Busiest months")
             let maxTotal = max(1, stats.map(\.income).max() ?? 1)
             let active = activeIndex(stats)
             HStack(alignment: .bottom, spacing: 5) {
