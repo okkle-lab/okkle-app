@@ -735,6 +735,210 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     ))
   }
 
+  func testTrustedWalkingAndRunningExcludeMileageForEveryVehicle() {
+    let walkingCar = NativeTripMileagePolicy.motionState(
+      automotive: false,
+      cycling: false,
+      walking: true,
+      running: false,
+      stationary: false,
+      hasTrustedConfidence: true,
+      vehicle: .car
+    )
+    let runningBike = NativeTripMileagePolicy.motionState(
+      automotive: false,
+      cycling: false,
+      walking: false,
+      running: true,
+      stationary: false,
+      hasTrustedConfidence: true,
+      vehicle: .bike
+    )
+
+    XCTAssertEqual(walkingCar, .pedestrian)
+    XCTAssertEqual(runningBike, .pedestrian)
+    XCTAssertTrue(NativeTripMileagePolicy.excludesMileage(walkingCar))
+    XCTAssertTrue(NativeTripMileagePolicy.excludesMileage(runningBike))
+  }
+
+  func testLowConfidenceWalkingDoesNotSuppressRealTravel() {
+    let uncertain = NativeTripMileagePolicy.motionState(
+      automotive: false,
+      cycling: false,
+      walking: true,
+      running: false,
+      stationary: false,
+      hasTrustedConfidence: false,
+      vehicle: .car
+    )
+
+    XCTAssertEqual(uncertain, .unknown)
+    XCTAssertFalse(NativeTripMileagePolicy.excludesMileage(uncertain))
+  }
+
+  func testVehicleMotionTakesPriorityAndUsesTheSelectedProfile() {
+    let car = NativeTripMileagePolicy.motionState(
+      automotive: true,
+      cycling: false,
+      walking: true,
+      running: false,
+      stationary: false,
+      hasTrustedConfidence: true,
+      vehicle: .car
+    )
+    let bicycle = NativeTripMileagePolicy.motionState(
+      automotive: false,
+      cycling: true,
+      walking: true,
+      running: false,
+      stationary: false,
+      hasTrustedConfidence: true,
+      vehicle: .bike
+    )
+
+    XCTAssertEqual(car, .automotive)
+    XCTAssertEqual(bicycle, .cycling)
+    XCTAssertTrue(NativeTripMileagePolicy.confirmsVehicleTravel(car, vehicle: .car))
+    XCTAssertTrue(NativeTripMileagePolicy.confirmsVehicleTravel(bicycle, vehicle: .bike))
+    XCTAssertFalse(NativeTripMileagePolicy.confirmsVehicleTravel(bicycle, vehicle: .car))
+  }
+
+  func testGPSCanRecoverFromWalkingAtVehicleSpecificSpeeds() {
+    let now = Date()
+    let slow = location(latitude: 51.5, longitude: -0.12, accuracy: 8, timestamp: now, speed: 3)
+    let fast = location(latitude: 51.5, longitude: -0.12, accuracy: 8, timestamp: now, speed: 7)
+
+    XCTAssertFalse(NativeTripMileagePolicy.locationConfirmsVehicleTravel(slow, vehicle: .car))
+    XCTAssertTrue(NativeTripMileagePolicy.locationConfirmsVehicleTravel(fast, vehicle: .car))
+    XCTAssertTrue(NativeTripMileagePolicy.locationConfirmsVehicleTravel(slow, vehicle: .bike))
+  }
+
+  func testPedestrianHistoryProducesIntervalsEndingAtTheNextMotionState() {
+    let start = Date(timeIntervalSince1970: 1_000)
+    let activities: [(startDate: Date, state: NativeTripMotionState)] = [
+      (start, .automotive),
+      (start.addingTimeInterval(60), .pedestrian),
+      (start.addingTimeInterval(180), .stationary),
+      (start.addingTimeInterval(240), .pedestrian),
+    ]
+
+    XCTAssertEqual(
+      NativeTripMileagePolicy.pedestrianIntervals(
+        in: activities,
+        through: start.addingTimeInterval(300)
+      ),
+      [
+        DateInterval(start: start.addingTimeInterval(60), end: start.addingTimeInterval(180)),
+        DateInterval(start: start.addingTimeInterval(240), end: start.addingTimeInterval(300)),
+      ]
+    )
+  }
+
+  func testRetroactiveWalkingCorrectionOnlyRemovesOverlappingMileage() {
+    let start = Date(timeIntervalSince1970: 2_000)
+    let segments = [
+      NativeTripMileageSegment(
+        startedAt: start,
+        endedAt: start.addingTimeInterval(30),
+        miles: 0.2
+      ),
+      NativeTripMileageSegment(
+        startedAt: start.addingTimeInterval(30),
+        endedAt: start.addingTimeInterval(60),
+        miles: 0.3
+      ),
+      NativeTripMileageSegment(
+        startedAt: start.addingTimeInterval(60),
+        endedAt: start.addingTimeInterval(90),
+        miles: 0.4
+      ),
+    ]
+
+    let walking = DateInterval(
+      start: start.addingTimeInterval(30),
+      end: start.addingTimeInterval(65)
+    )
+    XCTAssertEqual(
+      NativeTripMileagePolicy.mileageToRemove(from: segments, overlapping: walking),
+      0.7,
+      accuracy: 0.000_001
+    )
+  }
+
+  func testMileageReconciliationLedgerOnlyKeepsTheRecentWindow() {
+    let now = Date(timeIntervalSince1970: 10_000)
+    let old = NativeTripMileageSegment(
+      startedAt: now.addingTimeInterval(-700),
+      endedAt: now.addingTimeInterval(-601),
+      miles: 1
+    )
+    let boundary = NativeTripMileageSegment(
+      startedAt: now.addingTimeInterval(-650),
+      endedAt: now.addingTimeInterval(-600),
+      miles: 0.5
+    )
+    let recent = NativeTripMileageSegment(
+      startedAt: now.addingTimeInterval(-60),
+      endedAt: now,
+      miles: 0.2
+    )
+
+    XCTAssertEqual(
+      NativeTripMileagePolicy.retainedRecentSegments([old, boundary, recent], now: now),
+      [boundary, recent]
+    )
+  }
+
+  func testPedestrianCorrectionRetainsExactRawTrackingForRollback() throws {
+    let start = Date(timeIntervalSince1970: 20_000)
+    let before = RoutePoint(
+      latitude: 37.3300,
+      longitude: -122.0300,
+      timestamp: start
+    )
+    let removed = RoutePoint(
+      latitude: 37.3305,
+      longitude: -122.0300,
+      timestamp: start.addingTimeInterval(30)
+    )
+    let originalAfter = RoutePoint(
+      latitude: 37.3310,
+      longitude: -122.0300,
+      timestamp: start.addingTimeInterval(60)
+    )
+    var correctedAfter = originalAfter
+    correctedAfter.breakBefore = true
+    let correction = NativeTripMileageCorrection(
+      intervalStart: start.addingTimeInterval(20),
+      intervalEnd: start.addingTimeInterval(45),
+      removedMileageSegments: [NativeTripMileageSegment(
+        startedAt: start,
+        endedAt: start.addingTimeInterval(30),
+        miles: 0.2
+      )],
+      removedRoutePoints: [removed],
+      boundaryPointBeforeCorrection: originalAfter
+    )
+    let trip = NativeTrip(
+      vehicle: .car,
+      miles: 0.3,
+      deduction: 0.2,
+      startedAt: start,
+      endedAt: start.addingTimeInterval(60),
+      points: [before, correctedAfter],
+      mileageCorrections: [correction]
+    )
+
+    let restored = try JSONDecoder().decode(
+      NativeTrip.self,
+      from: JSONEncoder().encode(trip)
+    )
+
+    XCTAssertEqual(restored.recoverableTrackedMiles, 0.5, accuracy: 0.000_001)
+    XCTAssertEqual(restored.recoverableTrackedPoints, [before, removed, originalAfter])
+    XCTAssertEqual(restored.mileageCorrections, [correction])
+  }
+
   func testStationaryTimeoutCalibrationLearnsSeparatelyForCarsAndBicycles() throws {
     var calibration = NativeAutoTrackCalibration()
     calibration.nudgeStationaryTimeout(toward: 10 * 60, for: .bike)
