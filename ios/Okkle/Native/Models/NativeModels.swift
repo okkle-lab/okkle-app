@@ -94,6 +94,122 @@ extension NativeVehicle {
   }
 }
 
+/// Core Motion's activity labels are advisory rather than a perfect state
+/// machine. Keep the small amount of policy that decides whether mileage is
+/// eligible independent from either tracking engine so manual and automatic
+/// trips behave identically.
+enum NativeTripMotionState: Equatable {
+  case automotive
+  case cycling
+  case pedestrian
+  case stationary
+  case unknown
+}
+
+struct NativeTripMileageSegment: Codable, Equatable {
+  var startedAt: Date
+  var endedAt: Date
+  var miles: Double
+
+  func overlaps(_ interval: DateInterval) -> Bool {
+    endedAt > interval.start && startedAt < interval.end
+  }
+}
+
+/// An additive audit record for a pedestrian correction. The corrected trip
+/// remains the user-facing result, while the exact mileage segments and GPS
+/// vertices removed from it stay available for rollback or support recovery.
+/// This never rewrites previously saved trips.
+struct NativeTripMileageCorrection: Codable, Equatable {
+  var intervalStart: Date
+  var intervalEnd: Date
+  var removedMileageSegments: [NativeTripMileageSegment]
+  var removedRoutePoints: [RoutePoint]
+  var boundaryPointBeforeCorrection: RoutePoint? = nil
+
+  var removedMiles: Double {
+    removedMileageSegments.reduce(0) { $0 + $1.miles }
+  }
+}
+
+enum NativeTripMileagePolicy {
+  static let reconciliationWindow: TimeInterval = 10 * 60
+
+  static func motionState(
+    automotive: Bool,
+    cycling: Bool,
+    walking: Bool,
+    running: Bool,
+    stationary: Bool,
+    hasTrustedConfidence: Bool,
+    vehicle: NativeVehicle
+  ) -> NativeTripMotionState {
+    guard hasTrustedConfidence else { return .unknown }
+
+    switch vehicle.automaticTrackingProfile {
+    case .motorized where automotive:
+      return .automotive
+    case .bicycle where cycling:
+      return .cycling
+    default:
+      break
+    }
+
+    if walking || running { return .pedestrian }
+    if stationary { return .stationary }
+    return .unknown
+  }
+
+  static func confirmsVehicleTravel(_ state: NativeTripMotionState, vehicle: NativeVehicle) -> Bool {
+    switch (vehicle.automaticTrackingProfile, state) {
+    case (.motorized, .automotive), (.bicycle, .cycling):
+      return true
+    default:
+      return false
+    }
+  }
+
+  static func excludesMileage(_ state: NativeTripMotionState) -> Bool {
+    state == .pedestrian
+  }
+
+  /// A trusted GPS speed lets recording recover promptly if Core Motion is
+  /// late to switch from walking to driving/cycling. It is only a recovery
+  /// path after pedestrian motion has already paused mileage, never a reason
+  /// to begin suppressing or starting a trip on its own.
+  static func locationConfirmsVehicleTravel(_ location: CLLocation, vehicle: NativeVehicle) -> Bool {
+    location.speed >= vehicle.automaticTrackingThresholds.startSpeedMetersPerSecond
+  }
+
+  static func pedestrianIntervals(
+    in activities: [(startDate: Date, state: NativeTripMotionState)],
+    through endDate: Date
+  ) -> [DateInterval] {
+    let sorted = activities.sorted { $0.startDate < $1.startDate }
+    return sorted.enumerated().compactMap { index, activity in
+      guard activity.state == .pedestrian else { return nil }
+      let intervalEnd = index + 1 < sorted.count ? min(sorted[index + 1].startDate, endDate) : endDate
+      guard intervalEnd > activity.startDate else { return nil }
+      return DateInterval(start: activity.startDate, end: intervalEnd)
+    }
+  }
+
+  static func mileageToRemove(
+    from segments: [NativeTripMileageSegment],
+    overlapping interval: DateInterval
+  ) -> Double {
+    segments.lazy.filter { $0.overlaps(interval) }.reduce(0) { $0 + $1.miles }
+  }
+
+  static func retainedRecentSegments(
+    _ segments: [NativeTripMileageSegment],
+    now: Date
+  ) -> [NativeTripMileageSegment] {
+    let cutoff = now.addingTimeInterval(-reconciliationWindow)
+    return segments.filter { $0.endedAt >= cutoff }
+  }
+}
+
 enum NativeRegion: String, CaseIterable, Identifiable, Codable {
   case ruk
   case scotland
@@ -548,6 +664,9 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var startAddress: String? = nil
   var endAddress: String? = nil
   var feedback: NativeTripFeedback? = nil
+  // Raw samples removed by walking correction remain attached to the trip so
+  // support can recover the pre-correction route without rewriting old data.
+  var mileageCorrections: [NativeTripMileageCorrection]? = nil
   // Almost every trip logged here is a delivery, so business is the sane
   // default — the driver only ever has to act to flag the exception (an
   // errand auto-tracking picked up), not to classify every single trip.
@@ -568,6 +687,30 @@ struct NativeTrip: Identifiable, Codable, Equatable {
 
   var displayCurrencyCode: String {
     currencyCode ?? nativeTripCurrencyCode(for: points) ?? nativeActiveCurrencyCode
+  }
+
+  var recoverableTrackedMiles: Double {
+    miles + (mileageCorrections ?? []).reduce(0) { $0 + $1.removedMiles }
+  }
+
+  var recoverableTrackedPoints: [RoutePoint] {
+    var recoveredByID = Dictionary(uniqueKeysWithValues: points.map { ($0.id, $0) })
+    for correction in (mileageCorrections ?? []).reversed() {
+      for point in correction.removedRoutePoints {
+        recoveredByID[point.id] = point
+      }
+      if let boundary = correction.boundaryPointBeforeCorrection {
+        recoveredByID[boundary.id] = boundary
+      }
+    }
+    return recoveredByID.values.sorted {
+      switch ($0.timestamp, $1.timestamp) {
+      case let (left?, right?): return left < right
+      case (.some, .none): return true
+      case (.none, .some): return false
+      case (.none, .none): return $0.id.uuidString < $1.id.uuidString
+      }
+    }
   }
 }
 
@@ -591,6 +734,7 @@ extension NativeTrip {
     case startAddress
     case endAddress
     case feedback
+    case mileageCorrections
     case category
     case manualStopCount
     case analysis
@@ -612,6 +756,7 @@ extension NativeTrip {
     startAddress = try container.decodeIfPresent(String.self, forKey: .startAddress)
     endAddress = try container.decodeIfPresent(String.self, forKey: .endAddress)
     feedback = try container.decodeIfPresent(NativeTripFeedback.self, forKey: .feedback)
+    mileageCorrections = try container.decodeIfPresent([NativeTripMileageCorrection].self, forKey: .mileageCorrections)
     category = try container.decodeIfPresent(NativeTripCategory.self, forKey: .category) ?? .business
     manualStopCount = try container.decodeIfPresent(Int.self, forKey: .manualStopCount)
     analysis = try container.decodeIfPresent(NativeTripAnalysis.self, forKey: .analysis)
@@ -633,6 +778,7 @@ extension NativeTrip {
     try container.encodeIfPresent(startAddress, forKey: .startAddress)
     try container.encodeIfPresent(endAddress, forKey: .endAddress)
     try container.encodeIfPresent(feedback, forKey: .feedback)
+    try container.encodeIfPresent(mileageCorrections, forKey: .mileageCorrections)
     try container.encode(category, forKey: .category)
     try container.encodeIfPresent(manualStopCount, forKey: .manualStopCount)
     try container.encodeIfPresent(analysis, forKey: .analysis)

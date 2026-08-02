@@ -148,9 +148,9 @@ struct NativeTripView: View {
     .onChange(of: shouldShowTrackingMap) { active in
       updateTrackingTimer(active: active)
     }
-    // The live trip map owns the screen while recording or reviewing the end
-    // state; bring the tab bar back on the normal start screen.
-    .toolbar(shouldShowTrackingMap ? .hidden : .visible, for: .tabBar)
+    // Tracking continues in the session object, so keep normal app navigation
+    // available while this view is showing the live map.
+    .toolbar(.visible, for: .tabBar)
   }
 
   private func updateTrackingTimer(active: Bool) {
@@ -499,7 +499,6 @@ struct NativeTripView: View {
         .padding(.leading, 18 + sidebarInset)
         .padding(.trailing, 18)
         .padding(.top, proxy.safeAreaInsets.top + 12)
-        .allowsHitTesting(false)
 
         trackingPanel(bottomInset: proxy.safeAreaInsets.bottom, leadingInset: sidebarInset)
           .background(GeometryReader { panelProxy in
@@ -520,6 +519,16 @@ struct NativeTripView: View {
       Spacer()
       Text(trackingVehicle.label)
         .font(.system(size: 13, weight: .semibold))
+      Button {
+        selectedTab = .insights
+      } label: {
+        Image(systemName: "chevron.down")
+          .font(.system(size: 13, weight: .bold))
+          .frame(width: 28, height: 28)
+          .background(Color.primary.opacity(0.08), in: Circle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Minimize tracking")
     }
     .foregroundStyle(trackingPrimaryText)
     .padding(.horizontal, 14)
