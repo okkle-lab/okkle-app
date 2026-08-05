@@ -3,14 +3,10 @@ import Foundation
 
 // MARK: - Weekly/monthly logging reminder (local notification)
 
-/// Nudges the driver to log the one thing automatic tracking can't do for
-/// them — earnings and expenses. Mileage is handled by NativeAutoTrackEngine
-/// when automatic tracking is on, so this reminder's copy and cadence adapt:
-/// with automatic tracking on it's always weekly and only about pay/expenses;
-/// with it off it respects the driver's own weekly/monthly choice and covers
-/// miles too. Either way it skips today if a shift already got logged today,
-/// so a driver never gets "don't forget to log" the same day something was
-/// already logged automatically.
+/// Nudges drivers who log trips manually. Automatic tracking owns mileage
+/// capture when enabled, so it suppresses this reminder entirely. The saved
+/// reminder preference is retained and becomes active again if automatic
+/// tracking is later turned off.
 @MainActor
 enum NativeLoggingReminder {
   private static let identifier = "uk.okkle.native.loggingreminder"
@@ -19,16 +15,19 @@ enum NativeLoggingReminder {
   static func refresh(store: OkkleStore) {
     let center = UNUserNotificationCenter.current()
     center.removePendingNotificationRequests(withIdentifiers: [identifier])
+    let canSchedule = shouldSchedule(settings: store.settings)
+    if !canSchedule {
+      center.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
 
     // Requests notification permission below if none of this has run
     // before — that ask needs to wait for onboarding's own explanation
     // screen, not fire the moment a fresh install's default settings
     // happen to already satisfy every other guard here.
-    guard store.settings.hasCompletedOnboarding, store.settings.loggingReminder else { return }
+    guard canSchedule else { return }
 
     let calendar = Calendar.current
-    let autoTracking = store.settings.autoTrackTrips
-    let monthly = !autoTracking && store.settings.logFrequency == .monthly
+    let monthly = store.settings.logFrequency == .monthly
 
     guard var fireDate = nextOccurrence(reminderDay: store.settings.reminderDay, monthly: monthly, after: Date(), calendar: calendar) else { return }
 
@@ -42,27 +41,28 @@ enum NativeLoggingReminder {
 
     guard fireDate > Date().addingTimeInterval(120) else { return }
 
-    let title: String
-    let body: String
-    if autoTracking {
-      title = "Log this week's earnings"
-      body = "Miles are already logged automatically — pop in this week's earnings and expenses for accurate totals."
-    } else {
-      title = "Weekly logging reminder"
-      body = "Log this week's miles and pay so nothing slips through."
-    }
-
     let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
     let requestIdentifier = identifier
     center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-      guard granted else { return }
-      let content = UNMutableNotificationContent()
-      content.title = title
-      content.body = body
-      content.sound = .default
-      let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-      center.add(UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: trigger))
+      Task { @MainActor in
+        // Permission prompts can outlive the settings state that initiated
+        // them. Recheck here so enabling automatic tracking while the prompt
+        // is open cannot re-add a reminder after refresh cancelled it.
+        guard granted, shouldSchedule(settings: store.settings) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Weekly logging reminder"
+        content.body = "Log this week's miles and pay so nothing slips through."
+        content.sound = .default
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        try? await center.add(UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: trigger))
+      }
     }
+  }
+
+  static func shouldSchedule(settings: NativeSettings) -> Bool {
+    settings.hasCompletedOnboarding &&
+      settings.loggingReminder &&
+      !settings.autoTrackTrips
   }
 
   /// Whether a shift or manual entry already exists today, or one is currently

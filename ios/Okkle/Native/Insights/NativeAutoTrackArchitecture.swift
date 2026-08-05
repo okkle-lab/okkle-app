@@ -233,6 +233,19 @@ enum NativeAutoTrackPolicy {
     phase == .driving || (phase == .idle && vehicleStartArmed)
   }
 
+  static func isDrivingMotion(
+    automotive: Bool,
+    cycling: Bool,
+    vehicle: NativeVehicle
+  ) -> Bool {
+    switch vehicle.automaticTrackingProfile {
+    case .motorized:
+      return automotive
+    case .bicycle:
+      return cycling
+    }
+  }
+
   static func capability(
     settings: NativeSettings,
     authorizationStatus: CLAuthorizationStatus,
@@ -341,12 +354,16 @@ enum NativeAutoTrackPolicy {
     nativeShouldAcceptTripLocation(location, since: previous)
   }
 
-  static func shouldStartArmedVehicleTrip(origin: CLLocation?, current: CLLocation) -> Bool {
+  static func shouldStartArmedVehicleTrip(
+    origin: CLLocation?,
+    current: CLLocation,
+    minimumDisplacement: CLLocationDistance = NativeAutoTrackingThresholds.motorized.vehicleStartDisplacementMeters
+  ) -> Bool {
     guard nativeShouldAcceptTripLocation(current, since: nil) else { return false }
     guard let origin else { return false }
     guard current.timestamp > origin.timestamp else { return false }
     let distance = current.distance(from: origin)
-    let accuracyAdjustedDistance = max(35, origin.horizontalAccuracy + current.horizontalAccuracy)
+    let accuracyAdjustedDistance = max(minimumDisplacement, origin.horizontalAccuracy + current.horizontalAccuracy)
     return distance >= accuracyAdjustedDistance
   }
 
@@ -399,15 +416,19 @@ enum NativeTrackingConfidenceEvaluator {
   private static let stopThreshold = 0.70
   private static let resumeThreshold = 0.45
 
-  static func startDecision(_ evidence: NativeTripStartEvidence) -> NativeTrackingConfidenceDecision {
+  static func startDecision(
+    _ evidence: NativeTripStartEvidence,
+    vehicle: NativeVehicle = .car
+  ) -> NativeTrackingConfidenceDecision {
+    let thresholds = vehicle.automaticTrackingThresholds
     var score = 0.0
     if evidence.automotiveMotion { score += 0.70 }
     if let speed = evidence.speedMetersPerSecond {
-      if speed >= 6 { score += 0.75 }
-      else if speed >= 3 { score += 0.50 }
-      else if speed >= 1.5 { score += 0.20 }
+      if speed >= thresholds.startSpeedMetersPerSecond { score += 0.75 }
+      else if speed >= thresholds.startSpeedMetersPerSecond * 0.5 { score += 0.50 }
+      else if speed >= thresholds.startSpeedMetersPerSecond * 0.25 { score += 0.20 }
     }
-    if evidence.displacementMeters >= 35 { score += 0.45 }
+    if evidence.displacementMeters >= thresholds.vehicleStartDisplacementMeters { score += 0.45 }
     if evidence.vehicleConnected { score += 0.25 }
     if evidence.headingIsConsistent { score += 0.10 }
     score = min(score, 1)
@@ -428,8 +449,11 @@ enum NativeTrackingConfidenceEvaluator {
     return NativeTrackingConfidenceDecision(score: score, shouldTransition: score >= stopThreshold)
   }
 
-  static func shouldResumeDriving(_ evidence: NativeTripStartEvidence) -> Bool {
-    startDecision(evidence).score >= resumeThreshold
+  static func shouldResumeDriving(
+    _ evidence: NativeTripStartEvidence,
+    vehicle: NativeVehicle = .car
+  ) -> Bool {
+    startDecision(evidence, vehicle: vehicle).score >= resumeThreshold
   }
 }
 
@@ -516,7 +540,13 @@ struct NativeTripRecordingSnapshot {
   var points: [RoutePoint]
   var miles: Double
   var lastLocation: CLLocation?
+  var lastMileageLocation: CLLocation?
   var lastRoutePointLocation: CLLocation?
+  var routeBreakPending: Bool
+  var pedestrianMileageExcluded: Bool
+  var pedestrianExclusionStartedAt: Date?
+  var recentMileageSegments: [NativeTripMileageSegment]
+  var mileageCorrections: [NativeTripMileageCorrection]
 }
 
 struct NativeTripRecordingUpdate {
@@ -545,7 +575,13 @@ final class NativeTripRecorder {
         points: [],
         miles: 0,
         lastLocation: nil,
-        lastRoutePointLocation: nil
+        lastMileageLocation: nil,
+        lastRoutePointLocation: nil,
+        routeBreakPending: false,
+        pedestrianMileageExcluded: false,
+        pedestrianExclusionStartedAt: nil,
+        recentMileageSegments: [],
+        mileageCorrections: []
       )
       return true
     }
@@ -558,7 +594,13 @@ final class NativeTripRecorder {
     points: [RoutePoint],
     miles: Double,
     lastLocation: CLLocation?,
-    lastRoutePointLocation: CLLocation?
+    lastMileageLocation: CLLocation? = nil,
+    lastRoutePointLocation: CLLocation?,
+    routeBreakPending: Bool = false,
+    pedestrianMileageExcluded: Bool = false,
+    pedestrianExclusionStartedAt: Date? = nil,
+    recentMileageSegments: [NativeTripMileageSegment] = [],
+    mileageCorrections: [NativeTripMileageCorrection] = []
   ) -> Bool {
     withLock {
       guard state == nil || state?.owner == owner else { return false }
@@ -568,7 +610,13 @@ final class NativeTripRecorder {
         points: points,
         miles: miles,
         lastLocation: lastLocation,
-        lastRoutePointLocation: lastRoutePointLocation
+        lastMileageLocation: pedestrianMileageExcluded ? nil : (lastMileageLocation ?? lastLocation),
+        lastRoutePointLocation: lastRoutePointLocation,
+        routeBreakPending: routeBreakPending,
+        pedestrianMileageExcluded: pedestrianMileageExcluded,
+        pedestrianExclusionStartedAt: pedestrianExclusionStartedAt,
+        recentMileageSegments: recentMileageSegments,
+        mileageCorrections: mileageCorrections
       )
       return true
     }
@@ -578,7 +626,8 @@ final class NativeTripRecorder {
     _ locations: [CLLocation],
     owner: NativeTripRecorderOwner,
     now: Date = Date(),
-    vehicleConnectionActive: Bool? = nil
+    vehicleConnectionActive: Bool? = nil,
+    vehicle: NativeVehicle = .car
   ) -> NativeTripRecordingUpdate? {
     withLock {
       guard var state, state.owner == owner else { return nil }
@@ -593,16 +642,38 @@ final class NativeTripRecorder {
           earliestTimestamp: state.startedAt
         ) == nil else { continue }
 
-        if let previous = state.lastLocation {
-          let delta = (nativeTripMovementDistance(from: previous, to: location) ?? 0) / 1_609.344
-          if delta > 0.002, delta < 1 { state.miles += delta }
-        }
         state.lastLocation = location
-        appendRoutePoint(
-          location,
-          vehicleConnectionActive: vehicleConnectionActive,
-          force: false,
-          state: &state
+        if state.pedestrianMileageExcluded,
+           NativeTripMileagePolicy.locationConfirmsVehicleTravel(location, vehicle: vehicle) {
+          resumeMileage(state: &state)
+        }
+        if !state.pedestrianMileageExcluded, let previous = state.lastMileageLocation {
+          let delta = (nativeTripMovementDistance(from: previous, to: location) ?? 0) / 1_609.344
+          if delta > 0.002, delta < 1 {
+            state.miles += delta
+            state.recentMileageSegments.append(NativeTripMileageSegment(
+              startedAt: previous.timestamp,
+              endedAt: location.timestamp,
+              miles: delta
+            ))
+          }
+        }
+        if !state.pedestrianMileageExcluded {
+          state.lastMileageLocation = location
+          if appendRoutePoint(
+            location,
+            vehicleConnectionActive: vehicleConnectionActive,
+            force: state.routeBreakPending,
+            forceBreakBefore: state.routeBreakPending,
+            routePointDistance: vehicle.automaticTrackingThresholds.continuousLocationDistanceMeters,
+            state: &state
+          ) {
+            state.routeBreakPending = false
+          }
+        }
+        state.recentMileageSegments = NativeTripMileagePolicy.retainedRecentSegments(
+          state.recentMileageSegments,
+          now: location.timestamp
         )
         accepted.append(location)
       }
@@ -614,8 +685,15 @@ final class NativeTripRecorder {
   func forceEndpoint(owner: NativeTripRecorderOwner) -> NativeTripRecordingSnapshot? {
     withLock {
       guard var state, state.owner == owner else { return nil }
-      if let last = state.lastLocation {
-        appendRoutePoint(last, vehicleConnectionActive: nil, force: true, state: &state)
+      if !state.pedestrianMileageExcluded, let last = state.lastMileageLocation {
+        _ = appendRoutePoint(
+          last,
+          vehicleConnectionActive: nil,
+          force: true,
+          forceBreakBefore: state.routeBreakPending,
+          routePointDistance: routePointDistance,
+          state: &state
+        )
       }
       self.state = state
       return state
@@ -624,6 +702,77 @@ final class NativeTripRecorder {
 
   func snapshot(owner: NativeTripRecorderOwner) -> NativeTripRecordingSnapshot? {
     withLock { state?.owner == owner ? state : nil }
+  }
+
+  func beginPedestrianMileageExclusion(
+    owner: NativeTripRecorderOwner,
+    since activityStartDate: Date,
+    now: Date = Date()
+  ) -> NativeTripRecordingSnapshot? {
+    withLock {
+      guard var state, state.owner == owner else { return nil }
+      let intervalStart = max(
+        state.startedAt,
+        activityStartDate,
+        now.addingTimeInterval(-NativeTripMileagePolicy.reconciliationWindow)
+      )
+      if intervalStart < now {
+        rollbackMileage(in: DateInterval(start: intervalStart, end: now), state: &state)
+      }
+      state.pedestrianMileageExcluded = true
+      state.pedestrianExclusionStartedAt = state.pedestrianExclusionStartedAt
+        .map { min($0, intervalStart) } ?? intervalStart
+      state.lastMileageLocation = nil
+      state.routeBreakPending = !state.points.isEmpty
+      self.state = state
+      return state
+    }
+  }
+
+  func resumeMileage(owner: NativeTripRecorderOwner) -> NativeTripRecordingSnapshot? {
+    withLock {
+      guard var state, state.owner == owner else { return nil }
+      resumeMileage(state: &state)
+      self.state = state
+      return state
+    }
+  }
+
+  func prepareForLocationRestart(owner: NativeTripRecorderOwner) -> NativeTripRecordingSnapshot? {
+    resumeMileage(owner: owner)
+  }
+
+  func rollbackMileage(
+    owner: NativeTripRecorderOwner,
+    in interval: DateInterval
+  ) -> NativeTripRecordingSnapshot? {
+    withLock {
+      guard var state, state.owner == owner else { return nil }
+      rollbackMileage(in: interval, state: &state)
+      self.state = state
+      return state
+    }
+  }
+
+  func setPedestrianMileageExclusion(
+    owner: NativeTripRecorderOwner,
+    isExcluded: Bool,
+    startedAt: Date?
+  ) -> NativeTripRecordingSnapshot? {
+    withLock {
+      guard var state, state.owner == owner else { return nil }
+      if state.pedestrianMileageExcluded != isExcluded {
+        state.pedestrianMileageExcluded = isExcluded
+        state.pedestrianExclusionStartedAt = isExcluded ? startedAt : nil
+        state.lastMileageLocation = nil
+        state.routeBreakPending = !state.points.isEmpty
+      } else if isExcluded, let startedAt {
+        state.pedestrianExclusionStartedAt = state.pedestrianExclusionStartedAt
+          .map { min($0, startedAt) } ?? startedAt
+      }
+      self.state = state
+      return state
+    }
   }
 
   func release(owner: NativeTripRecorderOwner) {
@@ -637,18 +786,86 @@ final class NativeTripRecorder {
     _ location: CLLocation,
     vehicleConnectionActive: Bool?,
     force: Bool,
+    forceBreakBefore: Bool = false,
+    routePointDistance: CLLocationDistance,
     state: inout NativeTripRecordingSnapshot
-  ) {
-    guard nativeIsPlausibleRoutePoint(location, since: state.lastRoutePointLocation) else { return }
+  ) -> Bool {
+    guard nativeIsPlausibleRoutePoint(location, since: state.lastRoutePointLocation) else { return false }
+    // Keep 2.2's solid-route behavior for ordinary GPS sampling gaps. A break
+    // is inserted only where walking correction deliberately removed points.
+    let breakBefore = !state.points.isEmpty && forceBreakBefore
     if let previous = state.lastRoutePointLocation {
       let distance = location.distance(from: previous)
-      guard force ? distance > 1 : distance >= routePointDistance else { return }
+      guard force ? distance > 1 : distance >= routePointDistance else { return false }
     }
     state.points.append(RoutePoint(
       location: location,
-      vehicleConnectionActive: vehicleConnectionActive
+      vehicleConnectionActive: vehicleConnectionActive,
+      breakBefore: breakBefore
     ))
     state.lastRoutePointLocation = location
+    return true
+  }
+
+  private func resumeMileage(state: inout NativeTripRecordingSnapshot) {
+    state.pedestrianMileageExcluded = false
+    state.pedestrianExclusionStartedAt = nil
+    state.lastMileageLocation = nil
+    state.routeBreakPending = !state.points.isEmpty
+  }
+
+  private func rollbackMileage(
+    in interval: DateInterval,
+    state: inout NativeTripRecordingSnapshot
+  ) {
+    let removedSegments = state.recentMileageSegments.filter { $0.overlaps(interval) }
+    let removedPoints = state.points.filter { point in
+      guard let timestamp = point.timestamp else { return false }
+      return timestamp >= interval.start && timestamp < interval.end
+    }
+    let boundaryPointBeforeCorrection = state.points.first {
+      ($0.timestamp ?? .distantPast) >= interval.end
+    }
+    if !removedSegments.isEmpty || !removedPoints.isEmpty {
+      state.mileageCorrections.append(NativeTripMileageCorrection(
+        intervalStart: interval.start,
+        intervalEnd: interval.end,
+        removedMileageSegments: removedSegments,
+        removedRoutePoints: removedPoints,
+        boundaryPointBeforeCorrection: boundaryPointBeforeCorrection
+      ))
+    }
+    state.miles = max(0, state.miles - removedSegments.reduce(0) { $0 + $1.miles })
+    state.recentMileageSegments.removeAll { $0.overlaps(interval) }
+    state.points.removeAll { point in
+      guard let timestamp = point.timestamp else { return false }
+      return timestamp >= interval.start && timestamp < interval.end
+    }
+    if let nextIndex = state.points.firstIndex(where: { ($0.timestamp ?? .distantPast) >= interval.end }) {
+      state.points[nextIndex].breakBefore = nextIndex > state.points.startIndex
+      state.routeBreakPending = false
+    } else {
+      state.routeBreakPending = !state.points.isEmpty
+    }
+    state.lastRoutePointLocation = location(from: state.points.last)
+    if let lastMileageLocation = state.lastMileageLocation,
+       lastMileageLocation.timestamp >= interval.start,
+       lastMileageLocation.timestamp < interval.end {
+      state.lastMileageLocation = nil
+    }
+  }
+
+  private func location(from point: RoutePoint?) -> CLLocation? {
+    guard let point else { return nil }
+    return CLLocation(
+      coordinate: point.coordinate,
+      altitude: 0,
+      horizontalAccuracy: point.horizontalAccuracy ?? 10,
+      verticalAccuracy: -1,
+      course: point.course ?? -1,
+      speed: point.speed ?? -1,
+      timestamp: point.timestamp ?? .distantPast
+    )
   }
 
   private func withLock<T>(_ body: () -> T) -> T {

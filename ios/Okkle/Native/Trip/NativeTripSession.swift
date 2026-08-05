@@ -1,4 +1,5 @@
 import CoreLocation
+import CoreMotion
 import Combine
 import Foundation
 import UIKit
@@ -49,7 +50,13 @@ private struct NativeManualTripSnapshot: Codable {
   var startedAt: Date
   var reviewEndedAt: Date?
   var lastLocation: RoutePoint?
+  var lastMileageLocation: RoutePoint?
   var lastRoutePointLocation: RoutePoint?
+  var routeBreakPending: Bool?
+  var pedestrianMileageExcluded: Bool?
+  var pedestrianExclusionStartedAt: Date?
+  var recentMileageSegments: [NativeTripMileageSegment]?
+  var mileageCorrections: [NativeTripMileageCorrection]?
   var stationaryAnchorLocation: RoutePoint?
   var stationarySince: Date?
   var promptedForCurrentStationaryPeriod: Bool
@@ -90,8 +97,16 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   private let manager = CLLocationManager()
   private let recorder = NativeTripRecorder.shared
+  private let motionManager = CMMotionActivityManager()
   private var lastLocation: CLLocation?
+  private var lastMileageLocation: CLLocation?
   private var lastRoutePointLocation: CLLocation?
+  private var routeBreakPending = false
+  private var pedestrianMileageExcluded = false
+  private var pedestrianExclusionStartedAt: Date?
+  private var recentMileageSegments: [NativeTripMileageSegment] = []
+  private var mileageCorrections: [NativeTripMileageCorrection] = []
+  private var motionMonitoring = false
   private var stationaryAnchorLocation: CLLocation?
   private var stationarySince: Date?
   private var promptedForCurrentStationaryPeriod = false
@@ -210,7 +225,13 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     elapsed = 0
     points = []
     lastLocation = nil
+    lastMileageLocation = nil
     lastRoutePointLocation = nil
+    routeBreakPending = false
+    pedestrianMileageExcluded = false
+    pedestrianExclusionStartedAt = nil
+    recentMileageSegments = []
+    mileageCorrections = []
     stationaryAnchorLocation = nil
     stationarySince = nil
     promptedForCurrentStationaryPeriod = false
@@ -227,6 +248,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     NativeTripWidgetStore.markTripStarted(startedAt: startedAt ?? Date())
     NativeTripLiveActivityController.start(source: "manual", vehicleLabel: vehicle.label, miles: 0, elapsed: 0, isDriving: true)
     setBackgroundTrackingEnabled(true)
+    startMotionMonitoring()
     manager.startUpdatingLocation()
     startTimer()
     waitingForAuthorization = false
@@ -248,6 +270,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       force: true
     )
     manager.stopUpdatingLocation()
+    stopMotionMonitoring()
     setBackgroundTrackingEnabled(false)
     stopTimer()
     persistState()
@@ -264,7 +287,9 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
     }
     NativeTripLiveActivityController.update(miles: miles, elapsed: elapsed, isDriving: true, vehicleLabel: vehicle.label, force: true)
+    prepareMileageForLocationRestart()
     setBackgroundTrackingEnabled(true)
+    startMotionMonitoring()
     manager.startUpdatingLocation()
     startTimer()
     persistState()
@@ -282,7 +307,9 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       NativeTripWidgetStore.markTripStarted(startedAt: startedAt)
     }
     NativeTripLiveActivityController.start(source: "manual", vehicleLabel: vehicle.label, miles: miles, elapsed: elapsed, isDriving: true)
+    prepareMileageForLocationRestart()
     setBackgroundTrackingEnabled(true)
+    startMotionMonitoring()
     manager.startUpdatingLocation()
     startTimer()
     persistState()
@@ -292,6 +319,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
   func end(store: OkkleStore) -> NativeTrip? {
     guard startedAt != nil else { return nil }
     manager.stopUpdatingLocation()
+    stopMotionMonitoring()
     setBackgroundTrackingEnabled(false)
     stopTimer()
     phase = .summary
@@ -316,7 +344,8 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       deduction: store.calcDeduction(miles: miles, vehicle: vehicle, date: startedAt),
       startedAt: startedAt,
       endedAt: reviewEndedAt ?? points.last?.timestamp ?? Date(),
-      points: points
+      points: points,
+      mileageCorrections: mileageCorrections.isEmpty ? nil : mileageCorrections
     )
     trip.analysis = NativeTripAnalysisProjector.build(for: trip, source: .manual)
     return trip
@@ -324,6 +353,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   func discard() {
     manager.stopUpdatingLocation()
+    stopMotionMonitoring()
     setBackgroundTrackingEnabled(false)
     stopTimer()
     waitingForAuthorization = false
@@ -331,7 +361,13 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     elapsed = 0
     points = []
     lastLocation = nil
+    lastMileageLocation = nil
     lastRoutePointLocation = nil
+    routeBreakPending = false
+    pedestrianMileageExcluded = false
+    pedestrianExclusionStartedAt = nil
+    recentMileageSegments = []
+    mileageCorrections = []
     stationaryAnchorLocation = nil
     stationarySince = nil
     promptedForCurrentStationaryPeriod = false
@@ -367,7 +403,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     guard phase == .live else { return }
-    guard let update = recorder.ingest(locations, owner: .manual) else { return }
+    guard let update = recorder.ingest(locations, owner: .manual, vehicle: vehicle) else { return }
     applyRecordingSnapshot(update.snapshot)
     for location in update.acceptedLocations {
       updateStationaryState(with: location)
@@ -418,6 +454,130 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     manager.activityType = vehicle == .bike ? .fitness : .automotiveNavigation
   }
 
+  private func startMotionMonitoring() {
+    guard CMMotionActivityManager.isActivityAvailable(), !motionMonitoring else { return }
+    motionMonitoring = true
+    motionManager.startActivityUpdates(to: .main) { [weak self] activity in
+      guard let self, let activity else { return }
+      self.handleMotionActivity(activity)
+    }
+    reconcileRecentMotionHistory()
+  }
+
+  private func stopMotionMonitoring() {
+    guard motionMonitoring else { return }
+    motionManager.stopActivityUpdates()
+    motionMonitoring = false
+  }
+
+  private func handleMotionActivity(_ activity: CMMotionActivity) {
+    guard phase == .live else { return }
+    let state = motionState(for: activity)
+
+    if NativeTripMileagePolicy.excludesMileage(state) {
+      beginPedestrianMileageExclusion(since: activity.startDate)
+    } else if NativeTripMileagePolicy.confirmsVehicleTravel(state, vehicle: vehicle) {
+      resumeMileageAfterPedestrianTravel()
+    }
+  }
+
+  private func motionState(for activity: CMMotionActivity) -> NativeTripMotionState {
+    NativeTripMileagePolicy.motionState(
+      automotive: activity.automotive,
+      cycling: activity.cycling,
+      walking: activity.walking,
+      running: activity.running,
+      stationary: activity.stationary,
+      hasTrustedConfidence: activity.confidence != .low,
+      vehicle: vehicle
+    )
+  }
+
+  private func reconcileRecentMotionHistory() {
+    guard let startedAt else { return }
+    let end = Date()
+    let start = max(startedAt, end.addingTimeInterval(-NativeTripMileagePolicy.reconciliationWindow))
+    guard start < end else { return }
+    motionManager.queryActivityStarting(from: start, to: end, to: .main) { [weak self] activities, _ in
+      guard let self, self.phase == .live, let activities, !activities.isEmpty else { return }
+      self.applyHistoricalMotionActivities(activities, through: end)
+    }
+  }
+
+  private func applyHistoricalMotionActivities(_ activities: [CMMotionActivity], through endDate: Date) {
+    let classified = activities.map { (startDate: $0.startDate, state: motionState(for: $0)) }
+    let reconciliationStart = max(
+      startedAt ?? endDate,
+      endDate.addingTimeInterval(-NativeTripMileagePolicy.reconciliationWindow)
+    )
+    for interval in NativeTripMileagePolicy.pedestrianIntervals(in: classified, through: endDate) {
+      let clampedStart = max(interval.start, reconciliationStart)
+      if clampedStart < interval.end,
+         let snapshot = recorder.rollbackMileage(
+           owner: .manual,
+           in: DateInterval(start: clampedStart, end: interval.end)
+         ) {
+        applyRecordingSnapshot(snapshot)
+      }
+    }
+
+    var shouldExclude = pedestrianMileageExcluded
+    var latestPedestrianStart = pedestrianExclusionStartedAt
+    for activity in classified.sorted(by: { $0.startDate < $1.startDate }) {
+      if NativeTripMileagePolicy.excludesMileage(activity.state) {
+        shouldExclude = true
+        latestPedestrianStart = activity.startDate
+      } else if NativeTripMileagePolicy.confirmsVehicleTravel(activity.state, vehicle: vehicle) {
+        shouldExclude = false
+        latestPedestrianStart = nil
+      }
+    }
+
+    if let snapshot = recorder.setPedestrianMileageExclusion(
+      owner: .manual,
+      isExcluded: shouldExclude,
+      startedAt: latestPedestrianStart
+    ) {
+      applyRecordingSnapshot(snapshot)
+    }
+    updateLiveActivityAfterMileageCorrection()
+    persistState()
+  }
+
+  private func beginPedestrianMileageExclusion(since activityStartDate: Date) {
+    guard let snapshot = recorder.beginPedestrianMileageExclusion(
+      owner: .manual,
+      since: activityStartDate
+    ) else { return }
+    applyRecordingSnapshot(snapshot)
+    updateLiveActivityAfterMileageCorrection()
+    persistState()
+  }
+
+  private func resumeMileageAfterPedestrianTravel() {
+    guard pedestrianMileageExcluded else { return }
+    guard let snapshot = recorder.resumeMileage(owner: .manual) else { return }
+    applyRecordingSnapshot(snapshot)
+    updateLiveActivityAfterMileageCorrection()
+    persistState()
+  }
+
+  private func prepareMileageForLocationRestart() {
+    if let snapshot = recorder.prepareForLocationRestart(owner: .manual) {
+      applyRecordingSnapshot(snapshot)
+    }
+  }
+
+  private func updateLiveActivityAfterMileageCorrection() {
+    NativeTripLiveActivityController.update(
+      miles: miles,
+      elapsed: elapsed,
+      isDriving: !pedestrianMileageExcluded,
+      vehicleLabel: vehicle.label,
+      force: true
+    )
+  }
+
   private func setBackgroundTrackingEnabled(_ enabled: Bool) {
     guard supportsBackgroundLocation else { return }
     manager.allowsBackgroundLocationUpdates = enabled
@@ -433,7 +593,13 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     miles = snapshot.miles
     points = snapshot.points
     lastLocation = snapshot.lastLocation
+    lastMileageLocation = snapshot.lastMileageLocation
     lastRoutePointLocation = snapshot.lastRoutePointLocation
+    routeBreakPending = snapshot.routeBreakPending
+    pedestrianMileageExcluded = snapshot.pedestrianMileageExcluded
+    pedestrianExclusionStartedAt = snapshot.pedestrianExclusionStartedAt
+    recentMileageSegments = snapshot.recentMileageSegments
+    mileageCorrections = snapshot.mileageCorrections
   }
 
   private func ensureRecorderOwnership() -> Bool {
@@ -445,7 +611,13 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       points: points,
       miles: miles,
       lastLocation: lastLocation,
-      lastRoutePointLocation: lastRoutePointLocation
+      lastMileageLocation: lastMileageLocation,
+      lastRoutePointLocation: lastRoutePointLocation,
+      routeBreakPending: routeBreakPending,
+      pedestrianMileageExcluded: pedestrianMileageExcluded,
+      pedestrianExclusionStartedAt: pedestrianExclusionStartedAt,
+      recentMileageSegments: recentMileageSegments,
+      mileageCorrections: mileageCorrections
     )
   }
 
@@ -552,15 +724,31 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
     startedAt = snapshot.startedAt
     reviewEndedAt = snapshot.reviewEndedAt
     lastLocation = location(from: snapshot.lastLocation)
+    lastMileageLocation = location(from: snapshot.lastMileageLocation) ?? lastLocation
     lastRoutePointLocation = location(from: snapshot.lastRoutePointLocation)
       ?? location(from: snapshot.points.last)
+    routeBreakPending = snapshot.routeBreakPending ?? false
+    pedestrianMileageExcluded = snapshot.pedestrianMileageExcluded ?? false
+    pedestrianExclusionStartedAt = snapshot.pedestrianExclusionStartedAt
+    recentMileageSegments = snapshot.recentMileageSegments ?? []
+    mileageCorrections = snapshot.mileageCorrections ?? []
+    if pedestrianMileageExcluded {
+      lastMileageLocation = nil
+      routeBreakPending = !points.isEmpty
+    }
     let recorderRestored = recorder.restore(
       owner: .manual,
       startedAt: snapshot.startedAt,
       points: snapshot.points,
       miles: snapshot.miles,
       lastLocation: lastLocation,
-      lastRoutePointLocation: lastRoutePointLocation
+      lastMileageLocation: lastMileageLocation,
+      lastRoutePointLocation: lastRoutePointLocation,
+      routeBreakPending: routeBreakPending,
+      pedestrianMileageExcluded: pedestrianMileageExcluded,
+      pedestrianExclusionStartedAt: pedestrianExclusionStartedAt,
+      recentMileageSegments: recentMileageSegments,
+      mileageCorrections: mileageCorrections
     )
     stationaryAnchorLocation = location(from: snapshot.stationaryAnchorLocation)
     stationarySince = snapshot.stationarySince
@@ -583,6 +771,7 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
         isDriving: true
       )
       setBackgroundTrackingEnabled(true)
+      startMotionMonitoring()
       manager.startUpdatingLocation()
       startTimer()
     case .paused:
@@ -619,7 +808,13 @@ final class NativeTripSession: NSObject, ObservableObject, CLLocationManagerDele
       startedAt: startedAt,
       reviewEndedAt: reviewEndedAt,
       lastLocation: lastLocation.map { RoutePoint(location: $0) },
+      lastMileageLocation: lastMileageLocation.map { RoutePoint(location: $0) },
       lastRoutePointLocation: lastRoutePointLocation.map { RoutePoint(location: $0) },
+      routeBreakPending: routeBreakPending,
+      pedestrianMileageExcluded: pedestrianMileageExcluded,
+      pedestrianExclusionStartedAt: pedestrianExclusionStartedAt,
+      recentMileageSegments: recentMileageSegments,
+      mileageCorrections: mileageCorrections,
       stationaryAnchorLocation: stationaryAnchorLocation.map { RoutePoint(location: $0) },
       stationarySince: stationarySince,
       promptedForCurrentStationaryPeriod: promptedForCurrentStationaryPeriod,

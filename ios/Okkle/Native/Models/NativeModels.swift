@@ -39,6 +39,177 @@ enum NativeVehicle: String, CaseIterable, Identifiable, Codable {
   }
 }
 
+enum NativeAutoTrackingProfile: String, Equatable {
+  case motorized
+  case bicycle
+}
+
+/// Vehicle-sensitive thresholds used by automatic tracking. Cars retain the
+/// existing production values; bicycles need lower movement thresholds to
+/// start reliably, but a tighter/longer stationary check so traffic lights do
+/// not look like delivery stops.
+struct NativeAutoTrackingThresholds: Equatable {
+  var startSpeedMetersPerSecond: CLLocationSpeed
+  var idleWakeDistanceMeters: CLLocationDistance
+  var continuousLocationDistanceMeters: CLLocationDistance
+  var stationaryResumeDistanceMeters: CLLocationDistance
+  var gpsStationaryConfirmationSeconds: TimeInterval
+  var gpsStationaryRadiusMeters: CLLocationDistance
+  var vehicleStartDisplacementMeters: CLLocationDistance
+  var minimumRecordedStopDwellSeconds: TimeInterval
+  var minimumUnconnectedStopDwellSeconds: TimeInterval
+
+  static let motorized = NativeAutoTrackingThresholds(
+    startSpeedMetersPerSecond: 6,
+    idleWakeDistanceMeters: 450,
+    continuousLocationDistanceMeters: 10,
+    stationaryResumeDistanceMeters: 150,
+    gpsStationaryConfirmationSeconds: 2 * 60,
+    gpsStationaryRadiusMeters: 90,
+    vehicleStartDisplacementMeters: 35,
+    minimumRecordedStopDwellSeconds: 90,
+    minimumUnconnectedStopDwellSeconds: 4 * 60
+  )
+
+  static let bicycle = NativeAutoTrackingThresholds(
+    startSpeedMetersPerSecond: 2.5,
+    idleWakeDistanceMeters: 150,
+    continuousLocationDistanceMeters: 5,
+    stationaryResumeDistanceMeters: 60,
+    gpsStationaryConfirmationSeconds: 3 * 60,
+    gpsStationaryRadiusMeters: 45,
+    vehicleStartDisplacementMeters: 25,
+    minimumRecordedStopDwellSeconds: 90,
+    minimumUnconnectedStopDwellSeconds: 3 * 60
+  )
+}
+
+extension NativeVehicle {
+  var automaticTrackingProfile: NativeAutoTrackingProfile {
+    self == .bike ? .bicycle : .motorized
+  }
+
+  var automaticTrackingThresholds: NativeAutoTrackingThresholds {
+    automaticTrackingProfile == .bicycle ? .bicycle : .motorized
+  }
+}
+
+/// Core Motion's activity labels are advisory rather than a perfect state
+/// machine. Keep the small amount of policy that decides whether mileage is
+/// eligible independent from either tracking engine so manual and automatic
+/// trips behave identically.
+enum NativeTripMotionState: Equatable {
+  case automotive
+  case cycling
+  case pedestrian
+  case stationary
+  case unknown
+}
+
+struct NativeTripMileageSegment: Codable, Equatable {
+  var startedAt: Date
+  var endedAt: Date
+  var miles: Double
+
+  func overlaps(_ interval: DateInterval) -> Bool {
+    endedAt > interval.start && startedAt < interval.end
+  }
+}
+
+/// An additive audit record for a pedestrian correction. The corrected trip
+/// remains the user-facing result, while the exact mileage segments and GPS
+/// vertices removed from it stay available for rollback or support recovery.
+/// This never rewrites previously saved trips.
+struct NativeTripMileageCorrection: Codable, Equatable {
+  var intervalStart: Date
+  var intervalEnd: Date
+  var removedMileageSegments: [NativeTripMileageSegment]
+  var removedRoutePoints: [RoutePoint]
+  var boundaryPointBeforeCorrection: RoutePoint? = nil
+
+  var removedMiles: Double {
+    removedMileageSegments.reduce(0) { $0 + $1.miles }
+  }
+}
+
+enum NativeTripMileagePolicy {
+  static let reconciliationWindow: TimeInterval = 10 * 60
+
+  static func motionState(
+    automotive: Bool,
+    cycling: Bool,
+    walking: Bool,
+    running: Bool,
+    stationary: Bool,
+    hasTrustedConfidence: Bool,
+    vehicle: NativeVehicle
+  ) -> NativeTripMotionState {
+    guard hasTrustedConfidence else { return .unknown }
+
+    switch vehicle.automaticTrackingProfile {
+    case .motorized where automotive:
+      return .automotive
+    case .bicycle where cycling:
+      return .cycling
+    default:
+      break
+    }
+
+    if walking || running { return .pedestrian }
+    if stationary { return .stationary }
+    return .unknown
+  }
+
+  static func confirmsVehicleTravel(_ state: NativeTripMotionState, vehicle: NativeVehicle) -> Bool {
+    switch (vehicle.automaticTrackingProfile, state) {
+    case (.motorized, .automotive), (.bicycle, .cycling):
+      return true
+    default:
+      return false
+    }
+  }
+
+  static func excludesMileage(_ state: NativeTripMotionState) -> Bool {
+    state == .pedestrian
+  }
+
+  /// A trusted GPS speed lets recording recover promptly if Core Motion is
+  /// late to switch from walking to driving/cycling. It is only a recovery
+  /// path after pedestrian motion has already paused mileage, never a reason
+  /// to begin suppressing or starting a trip on its own.
+  static func locationConfirmsVehicleTravel(_ location: CLLocation, vehicle: NativeVehicle) -> Bool {
+    location.speed >= vehicle.automaticTrackingThresholds.startSpeedMetersPerSecond
+  }
+
+  static func pedestrianIntervals(
+    in activities: [(startDate: Date, state: NativeTripMotionState)],
+    through endDate: Date
+  ) -> [DateInterval] {
+    let sorted = activities.sorted { $0.startDate < $1.startDate }
+    return sorted.enumerated().compactMap { index, activity in
+      guard activity.state == .pedestrian else { return nil }
+      let intervalEnd = index + 1 < sorted.count ? min(sorted[index + 1].startDate, endDate) : endDate
+      guard intervalEnd > activity.startDate else { return nil }
+      return DateInterval(start: activity.startDate, end: intervalEnd)
+    }
+  }
+
+  static func mileageToRemove(
+    from segments: [NativeTripMileageSegment],
+    overlapping interval: DateInterval
+  ) -> Double {
+    segments.lazy.filter { $0.overlaps(interval) }.reduce(0) { $0 + $1.miles }
+  }
+
+  static func retainedRecentSegments(
+    _ segments: [NativeTripMileageSegment],
+    now: Date
+  ) -> [NativeTripMileageSegment] {
+    let cutoff = now.addingTimeInterval(-reconciliationWindow)
+    return segments.filter { $0.endedAt >= cutoff }
+  }
+}
+
 enum NativeRegion: String, CaseIterable, Identifiable, Codable {
   case ruk
   case scotland
@@ -493,6 +664,9 @@ struct NativeTrip: Identifiable, Codable, Equatable {
   var startAddress: String? = nil
   var endAddress: String? = nil
   var feedback: NativeTripFeedback? = nil
+  // Raw samples removed by walking correction remain attached to the trip so
+  // support can recover the pre-correction route without rewriting old data.
+  var mileageCorrections: [NativeTripMileageCorrection]? = nil
   // Almost every trip logged here is a delivery, so business is the sane
   // default — the driver only ever has to act to flag the exception (an
   // errand auto-tracking picked up), not to classify every single trip.
@@ -513,6 +687,30 @@ struct NativeTrip: Identifiable, Codable, Equatable {
 
   var displayCurrencyCode: String {
     currencyCode ?? nativeTripCurrencyCode(for: points) ?? nativeActiveCurrencyCode
+  }
+
+  var recoverableTrackedMiles: Double {
+    miles + (mileageCorrections ?? []).reduce(0) { $0 + $1.removedMiles }
+  }
+
+  var recoverableTrackedPoints: [RoutePoint] {
+    var recoveredByID = Dictionary(uniqueKeysWithValues: points.map { ($0.id, $0) })
+    for correction in (mileageCorrections ?? []).reversed() {
+      for point in correction.removedRoutePoints {
+        recoveredByID[point.id] = point
+      }
+      if let boundary = correction.boundaryPointBeforeCorrection {
+        recoveredByID[boundary.id] = boundary
+      }
+    }
+    return recoveredByID.values.sorted {
+      switch ($0.timestamp, $1.timestamp) {
+      case let (left?, right?): return left < right
+      case (.some, .none): return true
+      case (.none, .some): return false
+      case (.none, .none): return $0.id.uuidString < $1.id.uuidString
+      }
+    }
   }
 }
 
@@ -536,6 +734,7 @@ extension NativeTrip {
     case startAddress
     case endAddress
     case feedback
+    case mileageCorrections
     case category
     case manualStopCount
     case analysis
@@ -557,6 +756,7 @@ extension NativeTrip {
     startAddress = try container.decodeIfPresent(String.self, forKey: .startAddress)
     endAddress = try container.decodeIfPresent(String.self, forKey: .endAddress)
     feedback = try container.decodeIfPresent(NativeTripFeedback.self, forKey: .feedback)
+    mileageCorrections = try container.decodeIfPresent([NativeTripMileageCorrection].self, forKey: .mileageCorrections)
     category = try container.decodeIfPresent(NativeTripCategory.self, forKey: .category) ?? .business
     manualStopCount = try container.decodeIfPresent(Int.self, forKey: .manualStopCount)
     analysis = try container.decodeIfPresent(NativeTripAnalysis.self, forKey: .analysis)
@@ -578,6 +778,7 @@ extension NativeTrip {
     try container.encodeIfPresent(startAddress, forKey: .startAddress)
     try container.encodeIfPresent(endAddress, forKey: .endAddress)
     try container.encodeIfPresent(feedback, forKey: .feedback)
+    try container.encodeIfPresent(mileageCorrections, forKey: .mileageCorrections)
     try container.encode(category, forKey: .category)
     try container.encodeIfPresent(manualStopCount, forKey: .manualStopCount)
     try container.encodeIfPresent(analysis, forKey: .analysis)
@@ -649,13 +850,15 @@ struct NativeExcludedPlace: Codable, Identifiable, Equatable {
 struct NativeAutoTrackCalibration: Codable, Equatable {
   /// How long stationary before a shift is considered over.
   var stationaryTimeoutSeconds: TimeInterval = 20 * 60
+  /// Stored independently so bicycle corrections do not retune car tracking.
+  var bicycleStationaryTimeoutSeconds: TimeInterval = 20 * 60
   /// Provisional pickup guess: dwell at or above this reads as a pick-up.
   var pickupDwellThreshold: TimeInterval = 150
   /// Below this dwell, with no nearby food venue, MapKit confirms drop-off.
-  /// Must stay comfortably above NativeAutoTrackEngine's
-  /// minimumConnectedVehicleStopDwell (4 min) — that's the floor a stop has
-  /// to clear before it's recorded at all when there's no vehicle-Bluetooth
-  /// signal, so if this ceiling were at or below that floor, every such
+  /// Must stay comfortably above the motorized profile's four-minute floor —
+  /// that's the dwell a stop has to clear before it's recorded at all when
+  /// there's no vehicle-Bluetooth signal, so if this ceiling were at or below
+  /// that floor, every such
   /// stop would already dwell past it and this branch could never fire,
   /// leaving every non-Bluetooth stop permanently misclassified as a
   /// pick-up. Verified via a real-day simulation that hit exactly that.
@@ -665,6 +868,7 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
 
   private enum CodingKeys: String, CodingKey {
     case stationaryTimeoutSeconds
+    case bicycleStationaryTimeoutSeconds
     case pickupDwellThreshold
     case dropoffMaxDwellThreshold
     case foodPoiRadiusMeters
@@ -675,6 +879,7 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     stationaryTimeoutSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .stationaryTimeoutSeconds) ?? 20 * 60
+    bicycleStationaryTimeoutSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .bicycleStationaryTimeoutSeconds) ?? 20 * 60
     pickupDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .pickupDwellThreshold) ?? 150
     dropoffMaxDwellThreshold = try container.decodeIfPresent(TimeInterval.self, forKey: .dropoffMaxDwellThreshold) ?? 600
     foodPoiRadiusMeters = try container.decodeIfPresent(Double.self, forKey: .foodPoiRadiusMeters) ?? 45
@@ -683,9 +888,20 @@ struct NativeAutoTrackCalibration: Codable, Equatable {
   /// Nudge, don't overwrite — one outlier correction shouldn't swing the
   /// threshold wildly. 80% old / 20% new per correction, clamped to a
   /// sane range so a single bad data point can't break detection.
-  mutating func nudgeStationaryTimeout(toward suggested: TimeInterval) {
-    let blended = stationaryTimeoutSeconds * 0.8 + suggested * 0.2
-    stationaryTimeoutSeconds = min(max(blended, 8 * 60), 60 * 60)
+  func stationaryTimeout(for vehicle: NativeVehicle) -> TimeInterval {
+    vehicle.automaticTrackingProfile == .bicycle
+      ? bicycleStationaryTimeoutSeconds
+      : stationaryTimeoutSeconds
+  }
+
+  mutating func nudgeStationaryTimeout(toward suggested: TimeInterval, for vehicle: NativeVehicle) {
+    let current = stationaryTimeout(for: vehicle)
+    let blended = min(max(current * 0.8 + suggested * 0.2, 8 * 60), 60 * 60)
+    if vehicle.automaticTrackingProfile == .bicycle {
+      bicycleStationaryTimeoutSeconds = blended
+    } else {
+      stationaryTimeoutSeconds = blended
+    }
   }
 }
 

@@ -48,6 +48,7 @@ struct OkkleNativeRootView: View {
   @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
   @State private var showSettings = false
   @State private var showAddRecord = false
+  @State private var hasPresentedCurrentAutomaticTrip = false
   private let iCloudAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
   var body: some View {
@@ -77,7 +78,6 @@ struct OkkleNativeRootView: View {
       routeAutomaticTripIfNeeded()
       routeManualTripStopPromptIfNeeded()
       routeManualTripAutoCompletedIfNeeded()
-      updateSidebarForTripPresentation()
     }
     .onChange(of: store.settings.hasCompletedOnboarding) { completed in
       if completed {
@@ -132,7 +132,6 @@ struct OkkleNativeRootView: View {
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       routeWidgetTripRequestIfNeeded()
       routeAutomaticStartNotificationIfNeeded()
-      routeAutomaticTripIfNeeded()
       routeManualTripStopPromptIfNeeded()
       routeManualTripAutoCompletedIfNeeded()
       NativeAutoTrackEngine.shared.refresh()
@@ -155,16 +154,13 @@ struct OkkleNativeRootView: View {
     .onChange(of: notificationRouter.pendingManualTripAutoCompleted) { _ in
       routeManualTripAutoCompletedIfNeeded()
     }
-    .onChange(of: autoTrack.shiftPhase) { _ in
-      routeAutomaticTripIfNeeded()
+    .onChange(of: autoTrack.shiftPhase) { phase in
+      if phase == .idle {
+        hasPresentedCurrentAutomaticTrip = false
+      } else if !hasPresentedCurrentAutomaticTrip {
+        routeAutomaticTripIfNeeded()
+      }
       NativePreShiftNotifier.refresh(store: store)
-      updateSidebarForTripPresentation()
-    }
-    .onChange(of: tripSession.phase) { _ in
-      updateSidebarForTripPresentation()
-    }
-    .onChange(of: selectedTab) { _ in
-      updateSidebarForTripPresentation()
     }
   }
 
@@ -232,6 +228,7 @@ struct OkkleNativeRootView: View {
       NativeTripView(selectedTab: $selectedTab)
         .tabItem { Label(NativeTab.trip.label, systemImage: NativeTab.trip.symbol) }
         .tag(NativeTab.trip)
+        .badge(isAnyTripActive ? Text("LIVE") : nil)
       NativeInsightsView()
         .tabItem { Label(NativeTab.insights.label, systemImage: NativeTab.insights.symbol) }
         .tag(NativeTab.insights)
@@ -247,19 +244,15 @@ struct OkkleNativeRootView: View {
 
   @ViewBuilder
   private var iPadSidebarApp: some View {
-    if isTripRecordingPresentation {
-      iPadNavigationSplitView
-        .navigationSplitViewStyle(.prominentDetail)
-    } else {
-      iPadNavigationSplitView
-        .navigationSplitViewStyle(.balanced)
-    }
+    iPadNavigationSplitView
+      .navigationSplitViewStyle(.balanced)
   }
 
   private var iPadNavigationSplitView: some View {
     NavigationSplitView(columnVisibility: $sidebarVisibility) {
       NativeSidebar(
         selectedTab: $selectedTab,
+        isTripActive: isAnyTripActive,
         showAddRecord: { showAddRecord = true },
         showSettings: { showSettings = true }
       )
@@ -276,23 +269,11 @@ struct OkkleNativeRootView: View {
   }
 
   private var sidebarAvoidanceInset: CGFloat {
-    if isTripRecordingPresentation { return 0 }
     return sidebarVisibility == .detailOnly ? 0 : NativeSidebarMetrics.avoidanceInset
   }
 
-  private var isTripRecordingPresentation: Bool {
-    usesSidebarNavigation &&
-      selectedTab == .trip &&
-      (tripSession.phase != .setup || autoTrack.shiftPhase != .idle)
-  }
-
-  private func updateSidebarForTripPresentation() {
-    guard usesSidebarNavigation else { return }
-    if isTripRecordingPresentation {
-      sidebarVisibility = .detailOnly
-    } else {
-      sidebarVisibility = .all
-    }
+  private var isAnyTripActive: Bool {
+    tripSession.phase == .live || tripSession.phase == .paused || autoTrack.shiftPhase != .idle
   }
 
   @ViewBuilder
@@ -319,12 +300,14 @@ struct OkkleNativeRootView: View {
   private func routeAutomaticTripIfNeeded() {
     guard store.settings.hasCompletedOnboarding,
           autoTrack.shiftPhase != .idle else { return }
+    hasPresentedCurrentAutomaticTrip = true
     selectedTab = .trip
   }
 
   private func routeAutomaticStartNotificationIfNeeded() {
     guard store.settings.hasCompletedOnboarding, notificationRouter.pendingAutoShiftStarted else { return }
     notificationRouter.pendingAutoShiftStarted = false
+    hasPresentedCurrentAutomaticTrip = true
     selectedTab = .trip
   }
 
@@ -350,6 +333,7 @@ private enum NativeSidebarMetrics {
 
 private struct NativeSidebar: View {
   @Binding var selectedTab: NativeTab
+  let isTripActive: Bool
   let showAddRecord: () -> Void
   let showSettings: () -> Void
 
@@ -367,6 +351,7 @@ private struct NativeSidebar: View {
               symbol: tab.symbol,
               isSelected: selectedTab == tab
             )
+              .badge(tab == .trip && isTripActive ? Text("LIVE") : nil)
           }
           .buttonStyle(.plain)
           .foregroundStyle(selectedTab == tab ? OkkleColor.brand : Color.primary)
