@@ -348,11 +348,6 @@ struct NativeRecordsView: View {
                 NativeSelectableHistoryRow(
                   item: item,
                   onSelect: { selectFromAllHistory(item) },
-                  onSetTripCategory: { category in
-                    if let trip = item.trip {
-                      store.setTripCategory(trip, to: category)
-                    }
-                  },
                   onDeleteTrip: {
                     if let trip = item.trip {
                       requestDelete(.trip(trip))
@@ -690,23 +685,9 @@ private struct NativeAddRecordPanel: View {
 struct NativeSelectableHistoryRow: View {
   let item: NativeHistoryItem
   let onSelect: () -> Void
-  var onSetTripCategory: ((NativeTripCategory) -> Void)? = nil
   var onDeleteTrip: (() -> Void)? = nil
 
   var body: some View {
-    if let trip = item.trip {
-      NativeTripSwipeRow(
-        trip: trip,
-        onSetCategory: { onSetTripCategory?($0) }
-      ) {
-        row
-      }
-    } else {
-      row
-    }
-  }
-
-  private var row: some View {
     Button(action: onSelect) {
       NativeHistoryRow(item: item)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -721,121 +702,6 @@ struct NativeSelectableHistoryRow: View {
           Label("Delete", systemImage: "trash")
         }
       }
-    }
-  }
-}
-
-/// Swipe a trip to reclassify it — two fixed edges, not one dynamic toggle:
-/// swiping right (leading edge) always reveals Business, swiping left
-/// (trailing edge) always reveals Personal. Full swipe on either side
-/// commits immediately since this is reversible. Delete moved to a
-/// long-press context menu on the row (see NativeSelectableHistoryRow) so
-/// the swipe gesture means the same thing everywhere it appears — this
-/// exact same left/right convention repeats on individual stop rows inside
-/// a trip's detail screen (NativeVisitSwipeRow). Built by hand rather than
-/// SwiftUI's native `.swipeActions` because this list lives in a
-/// `LazyVStack` inside `NativeScreen`'s outer ScrollView, not a `List` —
-/// `.swipeActions` only works on List rows.
-private struct NativeTripSwipeRow<Content: View>: View {
-  let trip: NativeTrip
-  let onSetCategory: (NativeTripCategory) -> Void
-  @ViewBuilder var content: () -> Content
-
-  @State private var dragOffset: CGFloat = 0
-  @State private var isOpen = false
-
-  private let revealWidth: CGFloat = 92
-  private let fullSwipeCommitDistance: CGFloat = 150
-
-  var body: some View {
-    ZStack {
-      HStack(spacing: 0) {
-        if dragOffset > 0 {
-          swipeButton(label: "Business", symbol: "briefcase.fill", tint: OkkleColor.brand) { commit(.business) }
-            .frame(width: max(dragOffset, revealWidth), alignment: .leading)
-          Spacer(minLength: 0)
-        } else if dragOffset < 0 {
-          Spacer(minLength: 0)
-          swipeButton(label: "Personal", symbol: "person.fill", tint: .gray) { commit(.personal) }
-            .frame(width: max(-dragOffset, revealWidth), alignment: .trailing)
-        }
-      }
-
-      content()
-        .background(.regularMaterial)
-        .offset(x: dragOffset)
-        .contentShape(Rectangle())
-        .onTapGesture {
-          if isOpen { close() }
-        }
-        // Recognize horizontal classification swipes alongside the parent
-        // ScrollView. A high-priority drag consumed vertical gestures even
-        // when this handler ignored them, making the Data list feel stuck.
-        .simultaneousGesture(
-          DragGesture(minimumDistance: 14)
-            .onChanged { value in
-              guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
-              let base: CGFloat = isOpen ? (dragOffset >= 0 ? revealWidth : -revealWidth) : 0
-              let proposed = base + value.translation.width
-              dragOffset = max(-fullSwipeCommitDistance - 30, min(fullSwipeCommitDistance + 30, proposed))
-            }
-            .onEnded { value in
-              handleDragEnd(value.translation.width)
-            }
-        )
-    }
-    .clipped()
-  }
-
-  private func swipeButton(label: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      VStack(spacing: 4) {
-        Image(systemName: symbol)
-          .font(.system(size: 16, weight: .bold))
-        Text(label)
-          .font(.system(size: 11, weight: .bold))
-      }
-      .foregroundStyle(.white)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    .buttonStyle(.plain)
-    .background(tint)
-  }
-
-  private func handleDragEnd(_ translation: CGFloat) {
-    if translation <= -fullSwipeCommitDistance {
-      commit(.personal)
-      return
-    }
-    if translation >= fullSwipeCommitDistance {
-      commit(.business)
-      return
-    }
-    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-      if dragOffset > revealWidth / 2 {
-        dragOffset = revealWidth
-        isOpen = true
-      } else if dragOffset < -revealWidth / 2 {
-        dragOffset = -revealWidth
-        isOpen = true
-      } else {
-        dragOffset = 0
-        isOpen = false
-      }
-    }
-  }
-
-  private func commit(_ category: NativeTripCategory) {
-    let generator = UIImpactFeedbackGenerator(style: .medium)
-    generator.impactOccurred()
-    onSetCategory(category)
-    close()
-  }
-
-  private func close() {
-    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-      dragOffset = 0
-      isOpen = false
     }
   }
 }
