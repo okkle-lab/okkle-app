@@ -62,6 +62,8 @@ struct NativeTripDetailSheet: View {
               VStack(alignment: .leading, spacing: 14) {
                 tripDetailRow("Vehicle", value: trip.vehicle.label, symbol: trip.vehicle.symbol)
                 Divider()
+                tripCategoryRow
+                Divider()
                 tripDetailRow("Duration", value: nativeDurationLabel(trip.endedAt.timeIntervalSince(trip.startedAt)), symbol: "timer")
                 Divider()
                 deliveriesRow
@@ -224,6 +226,31 @@ struct NativeTripDetailSheet: View {
 
   private var currentTrip: NativeTrip {
     store.trips.first { $0.id == trip.id } ?? trip
+  }
+
+  private var tripCategoryRow: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Label("Trip type", systemImage: "briefcase.fill")
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(OkkleColor.muted)
+
+      Picker("Trip type", selection: tripCategoryBinding) {
+        ForEach(NativeTripCategory.allCases) { category in
+          Text(category.label).tag(category)
+        }
+      }
+      .pickerStyle(.segmented)
+    }
+  }
+
+  private var tripCategoryBinding: Binding<NativeTripCategory> {
+    Binding(
+      get: { currentTrip.category },
+      set: { category in
+        guard category != currentTrip.category else { return }
+        store.setTripCategory(currentTrip, to: category)
+      }
+    )
   }
 
   private func recordTripFeedback(_ feedback: NativeTripFeedback?) {
@@ -875,8 +902,8 @@ private struct NativeTripDetailStop: Identifiable {
 /// Swipe a single stop within a multi-stop trip to flag it personal or
 /// business — two fixed edges, not one dynamic toggle: swiping right
 /// (leading edge) always reveals Business, swiping left (trailing edge)
-/// always reveals Personal, matching the Data tab's whole-trip row. Full
-/// swipe on either side commits immediately since this is reversible.
+/// always reveals Personal. Full swipe on either side commits immediately
+/// since this is reversible.
 private struct NativeVisitSwipeRow<Content: View>: View {
   let isPersonal: Bool
   let onSetPersonal: (Bool) -> Void
@@ -2202,9 +2229,9 @@ private final class NativeRouteMapAnnotation: NSObject, MKAnnotation {
     self.isPersonal = isPersonal
   }
 
-  // Same business/personal convention as the stop list and the Data tab's
-  // trip rows (orange for business, gray for personal) — a stop is either
-  // one or the other, so pickup/dropoff no longer gets its own colour here.
+  // Same business/personal convention as the stop list (orange for business,
+  // gray for personal) — a stop is either one or the other, so pickup/dropoff
+  // no longer gets its own colour here.
   var markerTintColor: UIColor {
     switch kind {
     case .start:
