@@ -347,19 +347,25 @@ struct NativeRecordsView: View {
   }
 
   private func historyContent(items: [NativeHistoryItem]) -> some View {
+    let firstItemID = items.first?.id
     let lastItemID = items.last?.id
 
-    return LazyVStack(spacing: 14, pinnedViews: [.sectionHeaders]) {
+    return LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
       Section {
         if items.isEmpty {
           emptyStateView
             .padding(.top, 20)
         } else {
-          // Keep rows lazy inside the screen's ScrollView. The previous eager
-          // VStack instantiated every trip (including menus and formatters)
-          // before the user could scroll.
-          LazyVStack(spacing: 0) {
-            ForEach(items) { item in
+          // Each row owns a viewport-sized piece of the same material card.
+          // Keeping these as direct children of the outer LazyVStack means
+          // SwiftUI creates and composites only the rows near the viewport;
+          // one clipped material layer spanning the entire history causes a
+          // very large off-screen render surface and stutters while scrolling.
+          ForEach(items) { item in
+            let isFirst = item.id == firstItemID
+            let isLast = item.id == lastItemID
+
+            VStack(spacing: 0) {
               NativeSelectableHistoryRow(
                 item: item,
                 onSelect: { selectFromAllHistory(item) },
@@ -369,19 +375,23 @@ struct NativeRecordsView: View {
                   }
                 }
               )
-              if item.id != lastItemID {
+              if !isLast {
                 Divider().padding(.leading, 52)
               }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, isFirst ? 20 : 0)
+            .padding(.bottom, isLast ? 20 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+              .regularMaterial,
+              in: NativeHistoryMaterialRowShape(roundsTop: isFirst, roundsBottom: isLast)
+            )
           }
-          .padding(20)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(.regularMaterial)
-          .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-          .shadow(color: .black.opacity(0.07), radius: 22, y: 12)
         }
       } header: {
         historyFilterBar
+          .padding(.bottom, 14)
       }
     }
     .frame(maxWidth: .infinity, alignment: .top)
@@ -585,6 +595,26 @@ struct NativeRecordsView: View {
     case .record(let record):
       return "This \(record.kind.label.lowercased()) entry will be removed from Records and tax totals. This cannot be undone."
     }
+  }
+}
+
+/// Selective corners let adjacent lazy material rows read as one continuous
+/// panel without masking/compositing the full height of the history.
+private struct NativeHistoryMaterialRowShape: Shape {
+  let roundsTop: Bool
+  let roundsBottom: Bool
+
+  func path(in rect: CGRect) -> Path {
+    var corners: UIRectCorner = []
+    if roundsTop { corners.formUnion([.topLeft, .topRight]) }
+    if roundsBottom { corners.formUnion([.bottomLeft, .bottomRight]) }
+    guard !corners.isEmpty else { return Path(rect) }
+
+    return Path(UIBezierPath(
+      roundedRect: rect,
+      byRoundingCorners: corners,
+      cornerRadii: CGSize(width: 26, height: 26)
+    ).cgPath)
   }
 }
 
