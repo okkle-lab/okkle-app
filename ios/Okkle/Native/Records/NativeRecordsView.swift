@@ -143,18 +143,26 @@ struct NativeRecordsView: View {
   }
 
   private var recordsOverview: some View {
-    VStack(spacing: 14) {
-      recordsSummaryCard
-      historyContent
+    // Build each history projection once per render. This view used to call
+    // `filteredHistory` again from every row just to find the last item,
+    // turning a long history into O(n²) filtering work while scrolling.
+    let history = store.history
+    let monthHistory = monthScopedHistory(in: history)
+    let visibleHistory = filteredHistory(in: history)
+
+    return VStack(spacing: 14) {
+      recordsSummaryCard(monthHistory: monthHistory)
+      historyContent(items: visibleHistory)
     }
   }
 
   // Same scope as the list below it (month + trip-category filters) so the
   // headline figures always describe exactly what's currently on screen.
-  private var monthScopedHistory: [NativeHistoryItem] {
-    store.history.filter { item in
+  private func monthScopedHistory(in history: [NativeHistoryItem]) -> [NativeHistoryItem] {
+    let calendar = Calendar.current
+    return history.filter { item in
       guard let selectedMonth else { return true }
-      return Calendar.current.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
+      return calendar.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
     }
   }
 
@@ -167,28 +175,28 @@ struct NativeRecordsView: View {
     filter == .journeys && tripCategoryFilter == .personal ? .personal : .business
   }
 
-  private var summaryMiles: Double {
-    monthScopedHistory.reduce(0) { partial, item in
+  private func summaryMiles(in history: [NativeHistoryItem]) -> Double {
+    history.reduce(0) { partial, item in
       guard case .trip(let trip) = item, trip.category == summaryMilesCategory else { return partial }
       return partial + max(0, trip.miles)
     }
   }
 
-  private var summaryIncome: Double {
-    monthScopedHistory.reduce(0) { partial, item in
+  private func summaryIncome(in history: [NativeHistoryItem]) -> Double {
+    history.reduce(0) { partial, item in
       guard case .record(let record) = item, record.kind == .income else { return partial }
       return partial + max(0, record.amount ?? 0)
     }
   }
 
-  private var summaryExpense: Double {
-    monthScopedHistory.reduce(0) { partial, item in
+  private func summaryExpense(in history: [NativeHistoryItem]) -> Double {
+    history.reduce(0) { partial, item in
       guard case .record(let record) = item, record.kind == .expense else { return partial }
       return partial + max(0, record.amount ?? 0)
     }
   }
 
-  private var recordsSummaryCard: some View {
+  private func recordsSummaryCard(monthHistory: [NativeHistoryItem]) -> some View {
     NativeGlassCard(cornerRadius: 28, contentPadding: 18) {
       VStack(alignment: .leading, spacing: 16) {
         Label(monthButtonLabel, systemImage: "calendar")
@@ -196,11 +204,14 @@ struct NativeRecordsView: View {
           .foregroundStyle(OkkleColor.muted)
 
         HStack(alignment: .top, spacing: 0) {
-          summaryStat(title: "\(summaryMilesCategory == .personal ? "Personal" : "Business") miles", value: miles(summaryMiles))
+          summaryStat(
+            title: "\(summaryMilesCategory == .personal ? "Personal" : "Business") miles",
+            value: miles(summaryMiles(in: monthHistory))
+          )
           Divider().frame(height: 46)
-          summaryStat(title: "Income", value: gbp(summaryIncome, whole: true), color: .green)
+          summaryStat(title: "Income", value: gbp(summaryIncome(in: monthHistory), whole: true), color: .green)
           Divider().frame(height: 46)
-          summaryStat(title: "Expenses", value: gbp(summaryExpense, whole: true), color: OkkleColor.red)
+          summaryStat(title: "Expenses", value: gbp(summaryExpense(in: monthHistory), whole: true), color: OkkleColor.red)
         }
       }
     }
@@ -335,31 +346,40 @@ struct NativeRecordsView: View {
     return "Nothing logged\(monthSuffix)."
   }
 
-  private var historyContent: some View {
-    LazyVStack(spacing: 14, pinnedViews: [.sectionHeaders]) {
+  private func historyContent(items: [NativeHistoryItem]) -> some View {
+    let lastItemID = items.last?.id
+
+    return LazyVStack(spacing: 14, pinnedViews: [.sectionHeaders]) {
       Section {
-        if filteredHistory.isEmpty {
+        if items.isEmpty {
           emptyStateView
             .padding(.top, 20)
         } else {
-          NativeGlassCard {
-            VStack(spacing: 0) {
-              ForEach(filteredHistory) { item in
-                NativeSelectableHistoryRow(
-                  item: item,
-                  onSelect: { selectFromAllHistory(item) },
-                  onDeleteTrip: {
-                    if let trip = item.trip {
-                      requestDelete(.trip(trip))
-                    }
+          // Keep rows lazy inside the screen's ScrollView. The previous eager
+          // VStack instantiated every trip (including menus and formatters)
+          // before the user could scroll, and its full-height material blur
+          // was expensive to composite on every frame.
+          LazyVStack(spacing: 0) {
+            ForEach(items) { item in
+              NativeSelectableHistoryRow(
+                item: item,
+                onSelect: { selectFromAllHistory(item) },
+                onDeleteTrip: {
+                  if let trip = item.trip {
+                    requestDelete(.trip(trip))
                   }
-                )
-                if item.id != filteredHistory.last?.id {
-                  Divider().padding(.leading, 52)
                 }
+              )
+              if item.id != lastItemID {
+                Divider().padding(.leading, 52)
               }
             }
           }
+          .padding(20)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(OkkleColor.card)
+          .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+          .shadow(color: .black.opacity(0.07), radius: 22, y: 12)
         }
       } header: {
         historyFilterBar
@@ -446,8 +466,9 @@ struct NativeRecordsView: View {
     selectedHistoryItem = currentItem(matching: item) ?? item
   }
 
-  private var filteredHistory: [NativeHistoryItem] {
-    store.history.filter { item in
+  private func filteredHistory(in history: [NativeHistoryItem]) -> [NativeHistoryItem] {
+    let calendar = Calendar.current
+    return history.filter { item in
       let typeOk: Bool
       switch filter {
       case .all:
@@ -470,7 +491,7 @@ struct NativeRecordsView: View {
         guard (trip.category == .business) == wantsBusiness else { return false }
       }
       guard let selectedMonth else { return true }
-      return Calendar.current.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
+      return calendar.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
     }
   }
 
