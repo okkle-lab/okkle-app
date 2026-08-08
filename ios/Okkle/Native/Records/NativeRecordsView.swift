@@ -357,8 +357,7 @@ struct NativeRecordsView: View {
         } else {
           // Keep rows lazy inside the screen's ScrollView. The previous eager
           // VStack instantiated every trip (including menus and formatters)
-          // before the user could scroll, and its full-height material blur
-          // was expensive to composite on every frame.
+          // before the user could scroll.
           LazyVStack(spacing: 0) {
             ForEach(items) { item in
               NativeSelectableHistoryRow(
@@ -377,7 +376,7 @@ struct NativeRecordsView: View {
           }
           .padding(20)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(OkkleColor.card)
+          .background(.regularMaterial)
           .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
           .shadow(color: .black.opacity(0.07), radius: 22, y: 12)
         }
