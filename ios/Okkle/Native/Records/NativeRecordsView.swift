@@ -15,7 +15,10 @@ struct NativeRecordsView: View {
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
   @State private var showsAddRecordPanel = false
+  @State private var visibleHistoryLimit = 30
   var onClose: (() -> Void)? = nil
+
+  private static let historyBatchSize = 30
 
   enum RecordsMode: String, CaseIterable, Identifiable {
     case history
@@ -136,6 +139,9 @@ struct NativeRecordsView: View {
     .onAppear {
       NativeTripAddressResolver.backfillMissingAddresses(store: store)
     }
+    .onChange(of: filter) { _ in resetVisibleHistory() }
+    .onChange(of: selectedMonth) { _ in resetVisibleHistory() }
+    .onChange(of: tripCategoryFilter) { _ in resetVisibleHistory() }
   }
 
   private var addRecordPanelDetents: Set<PresentationDetent> {
@@ -148,11 +154,12 @@ struct NativeRecordsView: View {
     // turning a long history into O(n²) filtering work while scrolling.
     let history = store.history
     let monthHistory = monthScopedHistory(in: history)
-    let visibleHistory = filteredHistory(in: history)
+    let matchingHistory = filteredHistory(in: history)
+    let visibleHistory = Array(matchingHistory.prefix(visibleHistoryLimit))
 
     return VStack(spacing: 14) {
       recordsSummaryCard(monthHistory: monthHistory)
-      historyContent(items: visibleHistory)
+      historyContent(items: visibleHistory, totalCount: matchingHistory.count)
     }
   }
 
@@ -346,7 +353,7 @@ struct NativeRecordsView: View {
     return "Nothing logged\(monthSuffix)."
   }
 
-  private func historyContent(items: [NativeHistoryItem]) -> some View {
+  private func historyContent(items: [NativeHistoryItem], totalCount: Int) -> some View {
     let firstItemID = items.first?.id
     let lastItemID = items.last?.id
 
@@ -388,6 +395,22 @@ struct NativeRecordsView: View {
               in: NativeHistoryMaterialRowShape(roundsTop: isFirst, roundsBottom: isLast)
             )
           }
+
+          if items.count < totalCount {
+            Button {
+              visibleHistoryLimit = min(totalCount, visibleHistoryLimit + Self.historyBatchSize)
+            } label: {
+              Label("Show more", systemImage: "chevron.down")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(OkkleColor.brand)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(.regularMaterial, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
+            .accessibilityLabel("Show up to 30 more records")
+          }
         }
       } header: {
         historyFilterBar
@@ -395,6 +418,10 @@ struct NativeRecordsView: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .top)
+  }
+
+  private func resetVisibleHistory() {
+    visibleHistoryLimit = Self.historyBatchSize
   }
 
   private var historyFilterBar: some View {
