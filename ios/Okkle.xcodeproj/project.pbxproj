@@ -23,7 +23,6 @@
 		5AD9A5A2C9E34D75A74B0101 /* NativeMedalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD9A5A1C9E34D75A74B0100 /* NativeMedalsView.swift */; };
 		62702E402A35B783922B886B /* NativeTaxSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A518F044C9990A704AFED4C2 /* NativeTaxSummaryView.swift */; };
 		6474E5759C7C4E63B1CD0202 /* NativeLogMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6474E5749C7C4E63B1CD0201 /* NativeLogMedia.swift */; };
-		67B1F750A2414908A6003337 /* okkle-icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B190E1D6D6B546898FFD440D /* okkle-icon.icon */; };
 		67F49DDECB253F8090246E30 /* NativeLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D16F24230562870410B37EC /* NativeLogView.swift */; };
 		6D939B15DD214840A6C00DAE /* NativePreShiftNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D939B14DD214840A6C00DAD /* NativePreShiftNotifier.swift */; };
 		764745A26CC7406DD271FCFA /* NativeLoggingReminder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8936B37E0604C829E392E1 /* NativeLoggingReminder.swift */; };
@@ -614,7 +613,6 @@
 			files = (
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				67B1F750A2414908A6003337 /* okkle-icon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
