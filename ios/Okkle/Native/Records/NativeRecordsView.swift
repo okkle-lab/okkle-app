@@ -15,7 +15,10 @@ struct NativeRecordsView: View {
   @State private var tripPendingEdit: NativeTrip?
   @State private var recordPendingEdit: NativeRecord?
   @State private var showsAddRecordPanel = false
+  @State private var visibleHistoryLimit = 30
   var onClose: (() -> Void)? = nil
+
+  private static let historyBatchSize = 30
 
   enum RecordsMode: String, CaseIterable, Identifiable {
     case history
@@ -136,6 +139,9 @@ struct NativeRecordsView: View {
     .onAppear {
       NativeTripAddressResolver.backfillMissingAddresses(store: store)
     }
+    .onChange(of: filter) { _ in resetVisibleHistory() }
+    .onChange(of: selectedMonth) { _ in resetVisibleHistory() }
+    .onChange(of: tripCategoryFilter) { _ in resetVisibleHistory() }
   }
 
   private var addRecordPanelDetents: Set<PresentationDetent> {
@@ -143,18 +149,27 @@ struct NativeRecordsView: View {
   }
 
   private var recordsOverview: some View {
-    VStack(spacing: 14) {
-      recordsSummaryCard
-      historyContent
+    // Build each history projection once per render. This view used to call
+    // `filteredHistory` again from every row just to find the last item,
+    // turning a long history into O(n²) filtering work while scrolling.
+    let history = store.history
+    let monthHistory = monthScopedHistory(in: history)
+    let matchingHistory = filteredHistory(in: history)
+    let visibleHistory = Array(matchingHistory.prefix(visibleHistoryLimit))
+
+    return VStack(spacing: 14) {
+      recordsSummaryCard(monthHistory: monthHistory)
+      historyContent(items: visibleHistory, totalCount: matchingHistory.count)
     }
   }
 
   // Same scope as the list below it (month + trip-category filters) so the
   // headline figures always describe exactly what's currently on screen.
-  private var monthScopedHistory: [NativeHistoryItem] {
-    store.history.filter { item in
+  private func monthScopedHistory(in history: [NativeHistoryItem]) -> [NativeHistoryItem] {
+    let calendar = Calendar.current
+    return history.filter { item in
       guard let selectedMonth else { return true }
-      return Calendar.current.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
+      return calendar.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
     }
   }
 
@@ -167,28 +182,28 @@ struct NativeRecordsView: View {
     filter == .journeys && tripCategoryFilter == .personal ? .personal : .business
   }
 
-  private var summaryMiles: Double {
-    monthScopedHistory.reduce(0) { partial, item in
+  private func summaryMiles(in history: [NativeHistoryItem]) -> Double {
+    history.reduce(0) { partial, item in
       guard case .trip(let trip) = item, trip.category == summaryMilesCategory else { return partial }
       return partial + max(0, trip.miles)
     }
   }
 
-  private var summaryIncome: Double {
-    monthScopedHistory.reduce(0) { partial, item in
+  private func summaryIncome(in history: [NativeHistoryItem]) -> Double {
+    history.reduce(0) { partial, item in
       guard case .record(let record) = item, record.kind == .income else { return partial }
       return partial + max(0, record.amount ?? 0)
     }
   }
 
-  private var summaryExpense: Double {
-    monthScopedHistory.reduce(0) { partial, item in
+  private func summaryExpense(in history: [NativeHistoryItem]) -> Double {
+    history.reduce(0) { partial, item in
       guard case .record(let record) = item, record.kind == .expense else { return partial }
       return partial + max(0, record.amount ?? 0)
     }
   }
 
-  private var recordsSummaryCard: some View {
+  private func recordsSummaryCard(monthHistory: [NativeHistoryItem]) -> some View {
     NativeGlassCard(cornerRadius: 28, contentPadding: 18) {
       VStack(alignment: .leading, spacing: 16) {
         Label(monthButtonLabel, systemImage: "calendar")
@@ -196,11 +211,14 @@ struct NativeRecordsView: View {
           .foregroundStyle(OkkleColor.muted)
 
         HStack(alignment: .top, spacing: 0) {
-          summaryStat(title: "\(summaryMilesCategory == .personal ? "Personal" : "Business") miles", value: miles(summaryMiles))
+          summaryStat(
+            title: "\(summaryMilesCategory == .personal ? "Personal" : "Business") miles",
+            value: miles(summaryMiles(in: monthHistory))
+          )
           Divider().frame(height: 46)
-          summaryStat(title: "Income", value: gbp(summaryIncome, whole: true), color: .green)
+          summaryStat(title: "Income", value: gbp(summaryIncome(in: monthHistory), whole: true), color: .green)
           Divider().frame(height: 46)
-          summaryStat(title: "Expenses", value: gbp(summaryExpense, whole: true), color: OkkleColor.red)
+          summaryStat(title: "Expenses", value: gbp(summaryExpense(in: monthHistory), whole: true), color: OkkleColor.red)
         }
       }
     }
@@ -335,37 +353,75 @@ struct NativeRecordsView: View {
     return "Nothing logged\(monthSuffix)."
   }
 
-  private var historyContent: some View {
-    LazyVStack(spacing: 14, pinnedViews: [.sectionHeaders]) {
+  private func historyContent(items: [NativeHistoryItem], totalCount: Int) -> some View {
+    let firstItemID = items.first?.id
+    let lastItemID = items.last?.id
+
+    return LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
       Section {
-        if filteredHistory.isEmpty {
+        if items.isEmpty {
           emptyStateView
             .padding(.top, 20)
         } else {
-          NativeGlassCard {
+          // Each row owns a viewport-sized piece of the same material card.
+          // Keeping these as direct children of the outer LazyVStack means
+          // SwiftUI creates and composites only the rows near the viewport;
+          // one clipped material layer spanning the entire history causes a
+          // very large off-screen render surface and stutters while scrolling.
+          ForEach(items) { item in
+            let isFirst = item.id == firstItemID
+            let isLast = item.id == lastItemID
+
             VStack(spacing: 0) {
-              ForEach(filteredHistory) { item in
-                NativeSelectableHistoryRow(
-                  item: item,
-                  onSelect: { selectFromAllHistory(item) },
-                  onDeleteTrip: {
-                    if let trip = item.trip {
-                      requestDelete(.trip(trip))
-                    }
+              NativeSelectableHistoryRow(
+                item: item,
+                onSelect: { selectFromAllHistory(item) },
+                onDeleteTrip: {
+                  if let trip = item.trip {
+                    requestDelete(.trip(trip))
                   }
-                )
-                if item.id != filteredHistory.last?.id {
-                  Divider().padding(.leading, 52)
                 }
+              )
+              if !isLast {
+                Divider().padding(.leading, 52)
               }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, isFirst ? 20 : 0)
+            .padding(.bottom, isLast ? 20 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+              .regularMaterial,
+              in: NativeHistoryMaterialRowShape(roundsTop: isFirst, roundsBottom: isLast)
+            )
+          }
+
+          if items.count < totalCount {
+            Button {
+              visibleHistoryLimit = min(totalCount, visibleHistoryLimit + Self.historyBatchSize)
+            } label: {
+              Label("Show more", systemImage: "chevron.down")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(OkkleColor.brand)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(.regularMaterial, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
+            .accessibilityLabel("Show up to 30 more records")
           }
         }
       } header: {
         historyFilterBar
+          .padding(.bottom, 14)
       }
     }
     .frame(maxWidth: .infinity, alignment: .top)
+  }
+
+  private func resetVisibleHistory() {
+    visibleHistoryLimit = Self.historyBatchSize
   }
 
   private var historyFilterBar: some View {
@@ -446,8 +502,9 @@ struct NativeRecordsView: View {
     selectedHistoryItem = currentItem(matching: item) ?? item
   }
 
-  private var filteredHistory: [NativeHistoryItem] {
-    store.history.filter { item in
+  private func filteredHistory(in history: [NativeHistoryItem]) -> [NativeHistoryItem] {
+    let calendar = Calendar.current
+    return history.filter { item in
       let typeOk: Bool
       switch filter {
       case .all:
@@ -470,7 +527,7 @@ struct NativeRecordsView: View {
         guard (trip.category == .business) == wantsBusiness else { return false }
       }
       guard let selectedMonth else { return true }
-      return Calendar.current.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
+      return calendar.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
     }
   }
 
@@ -565,6 +622,26 @@ struct NativeRecordsView: View {
     case .record(let record):
       return "This \(record.kind.label.lowercased()) entry will be removed from Records and tax totals. This cannot be undone."
     }
+  }
+}
+
+/// Selective corners let adjacent lazy material rows read as one continuous
+/// panel without masking/compositing the full height of the history.
+private struct NativeHistoryMaterialRowShape: Shape {
+  let roundsTop: Bool
+  let roundsBottom: Bool
+
+  func path(in rect: CGRect) -> Path {
+    var corners: UIRectCorner = []
+    if roundsTop { corners.formUnion([.topLeft, .topRight]) }
+    if roundsBottom { corners.formUnion([.bottomLeft, .bottomRight]) }
+    guard !corners.isEmpty else { return Path(rect) }
+
+    return Path(UIBezierPath(
+      roundedRect: rect,
+      byRoundingCorners: corners,
+      cornerRadii: CGSize(width: 26, height: 26)
+    ).cgPath)
   }
 }
 
