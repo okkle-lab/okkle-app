@@ -314,7 +314,14 @@ struct NativeShiftPatternsCard: View {
     let dayProgress = min(Double(shift.activeDays) / 8.0, 1.0)
     let inclusiveSpan = shift.activeDays > 0 ? shift.daySpan + 1 : 0
     let spanProgress = min(Double(inclusiveSpan) / 14.0, 1.0)
-    return min(deliveryProgress, dayProgress, spanProgress)
+    let rawProgress = min(deliveryProgress, dayProgress, spanProgress)
+    // Raw counts alone can clear every threshold while confidence is still
+    // held back by an uneven week or an unproven peak window (see
+    // NativeShiftInsights.confidence's coefficient-of-variation and
+    // peak-hit-rate checks) — showing a flat 100% in that case contradicts
+    // the "Almost there" copy below, which already knows better.
+    if rawProgress >= 1, shift.confidence != .high { return 0.92 }
+    return rawProgress
   }
 
   private var buildingSubtitle: String {
