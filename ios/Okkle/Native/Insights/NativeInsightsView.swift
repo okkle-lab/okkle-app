@@ -81,9 +81,18 @@ struct NativeShiftPatternsCard: View {
     return period == .today ? shift : .empty
   }
 
+  /// The immediately preceding window of the same length (previous 30 days,
+  /// previous tax year, etc) — used only to show whether an efficiency figure
+  /// like unpaid miles is trending up or down, not for anything displayed on
+  /// its own.
+  private func previousShift(for period: NativeInsightPeriod) -> NativeShiftInsights {
+    scopedPreviousShifts[period] ?? .empty
+  }
+
   // Cache each period's projection so switching the segmented control is
   // immediate and never re-runs build() across the full visit history.
   @State private var scopedShifts: [NativeInsightPeriod: NativeShiftInsights] = [:]
+  @State private var scopedPreviousShifts: [NativeInsightPeriod: NativeShiftInsights] = [:]
 
   /// Keep a single period panel in the vertical screen scroll view. The old
   /// horizontally-paged TabView had to guess and animate its own height while
@@ -96,35 +105,54 @@ struct NativeShiftPatternsCard: View {
     case .week:
       NativeWeeklyInsightPanel(shift: shift(for: .week))
     case .month:
-      NativeMonthlyInsightPanel(shift: shift(for: .month))
+      NativeMonthlyInsightPanel(shift: shift(for: .month), previousShift: previousShift(for: .month))
     case .year:
-      NativeYearlyInsightPanel(shift: shift(for: .year))
+      NativeYearlyInsightPanel(shift: shift(for: .year), previousShift: previousShift(for: .year))
     }
   }
 
   private func rebuildScopedShifts() {
     let now = Date()
     var inputs: [NativeInsightPeriod: NativeInsightInput] = [:]
+    var previousInputs: [NativeInsightPeriod: NativeInsightInput] = [:]
     for period in NativeInsightPeriod.allCases where period != .today {
       let cutoff: Date
+      let previousStart: Date
+      let previousEnd: Date
       if period == .year {
         cutoff = store.taxYear.start
+        let previousYear = store.taxYearInterval(containing: store.taxYear.start.addingTimeInterval(-1))
+        previousStart = previousYear.start
+        previousEnd = previousYear.end
       } else {
-        cutoff = Calendar.current.date(byAdding: .day, value: -(period.lookbackDays ?? 0), to: now) ?? now
+        let days = period.lookbackDays ?? 0
+        cutoff = Calendar.current.date(byAdding: .day, value: -days, to: now) ?? now
+        previousStart = Calendar.current.date(byAdding: .day, value: -(days * 2), to: now) ?? now
+        previousEnd = cutoff
       }
       inputs[period] = NativeInsightInput(
         visits: insightVisits.filter { $0.arrival >= cutoff },
         store: store,
         generatedAt: now
       )
+      previousInputs[period] = NativeInsightInput(
+        visits: insightVisits.filter { $0.arrival >= previousStart && $0.arrival < previousEnd },
+        store: store,
+        generatedAt: now
+      )
     }
     Task {
       var projected: [NativeInsightPeriod: NativeShiftInsights] = [:]
+      var previousProjected: [NativeInsightPeriod: NativeShiftInsights] = [:]
       for (period, input) in inputs {
         projected[period] = await NativeInsightsProjector.shared.project(input).shift
       }
+      for (period, input) in previousInputs {
+        previousProjected[period] = await NativeInsightsProjector.shared.project(input).shift
+      }
       await MainActor.run {
         scopedShifts = projected
+        scopedPreviousShifts = previousProjected
         for zone in projected.values.flatMap(\.zones) {
           _ = NativeZonePOIPrior.shared.priorScore(for: zone.coordinate)
         }
@@ -828,12 +856,22 @@ private func nativeHeadlineStat(kicker: String, value: String, valueColor: AnySh
 /// Always full card width, one per row — never squeezed into a side-by-side
 /// column, which is what let "Est. rate" and "Unpaid miles" render smaller
 /// than the headline figures above them despite requesting the same size.
-private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View {
+private func nativeEfficiencyStat(_ title: String, _ value: String,
+                                   trend: (symbol: String, color: AnyShapeStyle, text: String)? = nil) -> some View {
   VStack(alignment: .leading, spacing: 5) {
     nativeStatValue(value, size: .secondary)
     Text(title)
       .font(.system(size: 12, weight: .medium))
       .foregroundStyle(OkkleColor.muted)
+    if let trend {
+      HStack(spacing: 5) {
+        Image(systemName: trend.symbol).font(.system(size: 11, weight: .bold))
+        Text(trend.text).font(.system(size: 11, weight: .semibold))
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .foregroundStyle(trend.color)
+      .padding(.top, 1)
+    }
   }
   .frame(maxWidth: .infinity, alignment: .leading)
 }
@@ -845,19 +883,10 @@ private func nativeEfficiencyStat(_ title: String, _ value: String) -> some View
 private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint]) -> some View {
   if !zones.isEmpty {
     NativeAiCard {
-      VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 14) {
         nativeInsightKicker("Where you earn")
         NativeZoneMiniMap(trips: trips, zones: zones)
-        Text("Numbered pins match the list below — 1 is your busiest patch. Tap the map to explore full-screen.")
-          .font(.system(size: 12, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
-          .fixedSize(horizontal: false, vertical: true)
-        Divider()
-        Text("Bar shows how busy each area is compared to your #1 spot.")
-          .font(.system(size: 12, weight: .medium))
-          .foregroundStyle(OkkleColor.muted.opacity(0.8))
-          .fixedSize(horizontal: false, vertical: true)
-        NativeTopAreasList(zones: zones, limit: 4, showShareBar: true)
+        NativeTopAreasList(zones: zones, limit: 3, showShareBar: true)
       }
     }
   }
@@ -882,8 +911,9 @@ private func nativePerHourBand(income: Double, activeHours: Double) -> String? {
 
 struct NativeMonthlyInsightPanel: View {
   let shift: NativeShiftInsights
+  /// Previous 30-day window — only used to show the unpaid-miles trend.
+  let previousShift: NativeShiftInsights
   @EnvironmentObject private var store: OkkleStore
-  @ObservedObject private var areaNamer = NativeAreaNamer.shared
 
   private let day: TimeInterval = 86_400
 
@@ -925,13 +955,19 @@ struct NativeMonthlyInsightPanel: View {
       : ("arrow.down.right", AnyShapeStyle(OkkleColor.amber), "\(pct)% less than the 30 days before")
   }
 
-  private var bestDayLine: String? {
-    guard let detail = shift.weekdayDetails.first else { return nil }
-    let name = Calendar.current.weekdaySymbols[detail.weekday]
-    if let coordinate = detail.coordinate, let area = areaNamer.name(for: coordinate) {
-      return "\(name)s are your strongest day, busiest around \(area)."
+  /// Whether unpaid (dead-mile) driving is trending better or worse than the
+  /// 30 days before — without this, "18%" alone doesn't say if that's an
+  /// improvement or a slide, or give any sense that it's a moving number at
+  /// all. Fewer unpaid miles is the improvement direction, opposite of income.
+  private var deadMileTrend: (symbol: String, color: AnyShapeStyle, text: String)? {
+    guard previousShift.hasData else { return nil }
+    let delta = shift.deadMilePct - previousShift.deadMilePct
+    if delta == 0 {
+      return ("equal", AnyShapeStyle(OkkleColor.muted), "Same as the 30 days before")
     }
-    return "\(name)s are your strongest day."
+    return delta < 0
+      ? ("arrow.down.right", AnyShapeStyle(nativeAIAccentGradient), "\(abs(delta)) pts better than the 30 days before")
+      : ("arrow.up.right", AnyShapeStyle(OkkleColor.amber), "\(abs(delta)) pts worse than the 30 days before")
   }
 
   var body: some View {
@@ -952,19 +988,7 @@ struct NativeMonthlyInsightPanel: View {
               if let band = nativePerHourBand(income: incomeThis, activeHours: shift.activeHours) {
                 nativeEfficiencyStat("Est. rate", "\(band)/hr")
               }
-              nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
-            }
-          }
-          if let line = bestDayLine {
-            HStack(alignment: .top, spacing: 8) {
-              Image(systemName: "calendar")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(nativeAIAccentGradient)
-              Text(line)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(OkkleColor.muted)
-                .fixedSize(horizontal: false, vertical: true)
-              Spacer(minLength: 0)
+              nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%", trend: deadMileTrend)
             }
           }
         }
@@ -995,6 +1019,8 @@ struct NativeMonthlyInsightPanel: View {
 
 struct NativeYearlyInsightPanel: View {
   let shift: NativeShiftInsights
+  /// Previous tax year — only used to show earned and unpaid-miles trends.
+  let previousShift: NativeShiftInsights
   @EnvironmentObject private var store: OkkleStore
   @State private var selectedMonth: Int?
 
@@ -1006,6 +1032,35 @@ struct NativeYearlyInsightPanel: View {
   private var previousTaxYearRecords: [NativeRecord] {
     let previousYear = store.taxYearInterval(containing: store.taxYear.start.addingTimeInterval(-1))
     return store.records.filter { previousYear.contains($0.date) }
+  }
+
+  private var previousYearIncome: Double {
+    previousTaxYearRecords.filter { $0.kind == .income }.reduce(0.0) { $0 + ($1.amount ?? 0) }
+  }
+
+  private var yearIncomeTrend: (symbol: String, color: AnyShapeStyle, text: String)? {
+    guard previousYearIncome > 0 else { return nil }
+    let delta = (store.yearIncome - previousYearIncome) / previousYearIncome
+    if abs(delta) < 0.05 {
+      return ("equal", AnyShapeStyle(OkkleColor.muted), "About the same as last tax year")
+    }
+    let pct = Int((abs(delta) * 100).rounded())
+    return delta > 0
+      ? ("arrow.up.right", AnyShapeStyle(nativeAIAccentGradient), "\(pct)% more than last tax year")
+      : ("arrow.down.right", AnyShapeStyle(OkkleColor.amber), "\(pct)% less than last tax year")
+  }
+
+  /// Same direction convention as Monthly's: fewer unpaid miles is the
+  /// improvement, so it gets the opposite colour mapping from income.
+  private var deadMileTrend: (symbol: String, color: AnyShapeStyle, text: String)? {
+    guard previousShift.hasData else { return nil }
+    let delta = shift.deadMilePct - previousShift.deadMilePct
+    if delta == 0 {
+      return ("equal", AnyShapeStyle(OkkleColor.muted), "Same as last tax year")
+    }
+    return delta < 0
+      ? ("arrow.down.right", AnyShapeStyle(nativeAIAccentGradient), "\(abs(delta)) pts better than last tax year")
+      : ("arrow.up.right", AnyShapeStyle(OkkleColor.amber), "\(abs(delta)) pts worse than last tax year")
   }
 
   private struct MonthStat: Identifiable {
@@ -1051,7 +1106,7 @@ struct NativeYearlyInsightPanel: View {
             value: gbp(store.yearIncome, whole: true),
             sub: store.yearIncome == 0
               ? ("square.and.pencil", AnyShapeStyle(OkkleColor.muted), "Log your pay to total your year")
-              : nil
+              : yearIncomeTrend
           )
           if nativePerHourBand(income: store.yearIncome, activeHours: shift.activeHours) != nil || shift.deadMilePct > 0 {
             Divider()
@@ -1059,7 +1114,7 @@ struct NativeYearlyInsightPanel: View {
               if let band = nativePerHourBand(income: store.yearIncome, activeHours: shift.activeHours) {
                 nativeEfficiencyStat("Est. rate", "\(band)/hr")
               }
-              nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%")
+              nativeEfficiencyStat("Unpaid miles", "\(shift.deadMilePct)%", trend: deadMileTrend)
             }
           }
         }
@@ -1081,12 +1136,7 @@ struct NativeYearlyInsightPanel: View {
       if stats.contains(where: { $0.income > 0 }) {
         NativeAiCard {
           VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-              nativeInsightKicker("Busiest months")
-              Text("Earnings each month — tap a bar for the detail.")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(OkkleColor.muted.opacity(0.8))
-            }
+            nativeInsightKicker("Busiest months")
             let maxTotal = max(1, stats.map(\.income).max() ?? 1)
             let active = activeIndex(stats)
             HStack(alignment: .bottom, spacing: 5) {
