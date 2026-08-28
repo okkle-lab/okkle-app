@@ -110,6 +110,7 @@ struct NativeAutoTrackDeadlines: Codable, Equatable {
   var stationary: Date?
   var homeArrival: Date?
   var vehicleDisconnect: Date?
+  var idleGeofenceElevation: Date?
 }
 
 /// Snapshot of an in-progress automatic shift, persisted so a crash, memory-
@@ -299,6 +300,22 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private var vehicleConnectionObservers: [NSObjectProtocol] = []
   private var idleWakeLocation: CLLocation?
   private var idleMotionQueryInFlight = false
+  // Small geofence dropped around the parked location so leaving it wakes us
+  // via dedicated region-monitoring hardware, instead of waiting on the
+  // significant-location-change service (500m-1km granularity) or on Core
+  // Motion's own confidence ramp-up after the phone has been still a while —
+  // both of which can otherwise leave a drive several minutes/km unconfirmed.
+  private var idleDepartureRegion: CLCircularRegion?
+  private let idleDepartureRegionIdentifier = "uk.okkle.native.idle-departure"
+  private let idleDepartureRegionRadius: CLLocationDistance = 150
+  // Once the geofence is exited we run continuous GPS briefly so the normal
+  // speed/Core Motion evidence checks (handleIdleWakeLocationUpdates) can
+  // confirm actual driving fast. If nothing confirms it within this window —
+  // e.g. the driver walked out of the zone on foot — stand back down to
+  // low-power idle wake rather than burning battery indefinitely.
+  private var idleGeofenceElevated = false
+  private var idleGeofenceElevationTimer: Timer?
+  private let idleGeofenceElevationTimeout: TimeInterval = 4 * 60
   private var vehicleArmOrigin: CLLocation?
   private var vehicleArmLastLocation: CLLocation?
   private var vehicleArmLocations: [CLLocation] = []
@@ -972,6 +989,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stopMotionMonitoring()
     if shiftPhase == .idle {
       disarmVehicleStartDetection(reason: "Automatic tracking is inactive")
+      disarmIdleGeofenceElevation(reason: "Automatic tracking is inactive")
+      disarmIdleDepartureRegion()
       stopHighAccuracyLocationUpdates()
       stopSignificantLocationWakeMonitoring()
       endBackgroundLocationSession()
@@ -1004,6 +1023,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       )
     }
     disarmVehicleStartDetection(reason: "Manual trip requested")
+    if idleGeofenceElevated {
+      idleGeofenceElevated = false
+      cancelIdleGeofenceElevationTimeout()
+    }
+    disarmIdleDepartureRegion()
     stopSignificantLocationWakeMonitoring()
     idleWakeLocation = nil
   }
@@ -1080,6 +1104,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         detail: "Core Location resumed the high-accuracy stream.",
         deduplicateWithin: 60
       )
+    }
+  }
+
+  nonisolated func locationManager(_ locationManager: CLLocationManager, didExitRegion region: CLRegion) {
+    Task { @MainActor in
+      self.handleIdleDepartureRegionExit(region)
     }
   }
 
@@ -1337,11 +1367,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// callback the OS may have skipped.
   private func catchUpOverdueTimers() {
     let now = Date()
-    enum DueKind { case stationary, homeArrival, vehicleDisconnect }
+    enum DueKind { case stationary, homeArrival, vehicleDisconnect, idleGeofenceElevation }
     let overdue: [(DueKind, Date)] = [
       deadlines.stationary.map { (.stationary, $0) },
       deadlines.homeArrival.map { (.homeArrival, $0) },
       deadlines.vehicleDisconnect.map { (.vehicleDisconnect, $0) },
+      deadlines.idleGeofenceElevation.map { (.idleGeofenceElevation, $0) },
     ].compactMap { $0 }.filter { $0.1 <= now }
     guard let next = overdue.min(by: { $0.1 < $1.1 }) else { return }
 
@@ -1363,6 +1394,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       confirmHomeArrivalIfStillNearby(endedAt: next.1)
     case .vehicleDisconnect:
       confirmVehicleStillDisconnected(endedAt: next.1)
+    case .idleGeofenceElevation:
+      disarmIdleGeofenceElevation(reason: "No confirmed driving signal within \(Int(idleGeofenceElevationTimeout / 60)) min of leaving the departure zone")
     }
     if shiftPhase != .idle {
       catchUpOverdueTimers()
@@ -1412,6 +1445,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     vehicleArmOrigin = nil
     vehicleArmLastLocation = nil
     vehicleArmLocations = []
+    disarmIdleDepartureRegion()
+    if idleGeofenceElevated {
+      idleGeofenceElevated = false
+      cancelIdleGeofenceElevationTimeout()
+    }
     shiftPoints = []
     shiftMiles = 0
     pendingShiftVisits = []
@@ -1748,6 +1786,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     guard !manualTrackingOwnsLocation else { return }
     guard !vehicleStartArmed else { return }
 
+    disarmIdleDepartureRegion()
+    if idleGeofenceElevated {
+      idleGeofenceElevated = false
+      cancelIdleGeofenceElevationTimeout()
+    }
     vehicleStartArmed = true
     vehicleArmOrigin = nil
     vehicleArmLastLocation = nil
@@ -1798,6 +1841,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     if shiftPhase == .idle {
       if vehicleStartArmed {
         handleArmedVehicleLocationUpdates(locations)
+      } else if idleGeofenceElevated {
+        handleElevatedIdleLocationUpdates(locations)
       } else {
         handleIdleWakeLocationUpdates(locations)
       }
@@ -1821,6 +1866,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       if let idleWakeLocation,
          location.distance(from: idleWakeLocation) < thresholds.idleWakeDistanceMeters { continue }
       idleWakeLocation = location
+      armIdleDepartureRegion(at: location)
 
       if enhancedAutoTrackingEnabled, NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle {
         armVehicleStartDetectionIfNeeded()
@@ -1834,6 +1880,31 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       }
 
       beginShiftIfRecentDrivingActivity(for: settings.defaultVehicle)
+      return
+    }
+  }
+
+  /// Runs while `idleGeofenceElevated` — deliberately skips the
+  /// `idleWakeDistanceMeters` throttle above, which exists to space out rare
+  /// significant-location pings and would otherwise require ~450m of travel
+  /// before even checking speed. Here we're getting frequent high-accuracy
+  /// fixes right after a geofence exit, so every fix's speed is checked
+  /// directly — that's the whole point of elevating in the first place.
+  private func handleElevatedIdleLocationUpdates(_ locations: [CLLocation]) {
+    guard let settings = store?.settings,
+          NativeAutoTrackPolicy.canStartTrip(
+            settings: settings,
+            authorizationStatus: locationAuthorizationStatus,
+            accuracyAuthorization: locationAccuracyAuthorization,
+            date: Date()
+          ) else { return }
+    guard !manualTrackingOwnsLocation else { return }
+    let thresholds = settings.defaultVehicle.automaticTrackingThresholds
+
+    for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) where shouldUseIdleWakeLocation(location) {
+      idleWakeLocation = location
+      guard location.speed >= thresholds.startSpeedMetersPerSecond else { continue }
+      handleDrivingSignal(trigger: "Elevated GPS \(settings.defaultVehicle.label.lowercased()) speed")
       return
     }
   }
@@ -1933,6 +2004,95 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         }
       }
     }
+  }
+
+  // MARK: Departure geofence (fast idle wake, independent of Core Motion)
+
+  private func armIdleDepartureRegion(at location: CLLocation) {
+    guard shiftPhase == .idle, !manualTrackingOwnsLocation, !vehicleStartArmed, !idleGeofenceElevated else { return }
+    guard locationAuthorizationStatus == .authorizedAlways else { return }
+    guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else { return }
+    if let existing = idleDepartureRegion {
+      let existingCenter = CLLocation(latitude: existing.center.latitude, longitude: existing.center.longitude)
+      if location.distance(from: existingCenter) < idleDepartureRegionRadius / 2 { return }
+    }
+    disarmIdleDepartureRegion()
+    let region = CLCircularRegion(
+      center: location.coordinate,
+      radius: idleDepartureRegionRadius,
+      identifier: idleDepartureRegionIdentifier
+    )
+    region.notifyOnEntry = false
+    region.notifyOnExit = true
+    wakeManager.startMonitoring(for: region)
+    idleDepartureRegion = region
+    NativeAutoTrackDiagnostics.shared.record(
+      kind: "idle.geofence-armed",
+      title: "Departure geofence armed",
+      detail: "Radius: \(Int(idleDepartureRegionRadius)) m.",
+      deduplicateWithin: 30
+    )
+  }
+
+  private func disarmIdleDepartureRegion() {
+    guard let region = idleDepartureRegion else { return }
+    wakeManager.stopMonitoring(for: region)
+    idleDepartureRegion = nil
+  }
+
+  private func handleIdleDepartureRegionExit(_ region: CLRegion) {
+    guard region.identifier == idleDepartureRegionIdentifier else { return }
+    wakeManager.stopMonitoring(for: region)
+    if idleDepartureRegion?.identifier == region.identifier { idleDepartureRegion = nil }
+
+    guard let settings = store?.settings,
+          NativeAutoTrackPolicy.canStartTrip(
+            settings: settings,
+            authorizationStatus: locationAuthorizationStatus,
+            accuracyAuthorization: locationAccuracyAuthorization,
+            date: Date()
+          ) else { return }
+    guard shiftPhase == .idle, !manualTrackingOwnsLocation, !vehicleStartArmed, !idleGeofenceElevated else { return }
+
+    idleGeofenceElevated = true
+    configureLocationForDriving()
+    startHighAccuracyLocationUpdates(forceRestart: true)
+    beginBackgroundLocationSession()
+    setBackgroundTrackingEnabled(true)
+    scheduleIdleGeofenceElevationTimeout()
+    NativeAutoTrackDiagnostics.shared.record(
+      kind: "idle.geofence-exit",
+      title: "Departure geofence exited",
+      detail: "Elevated to continuous GPS to confirm driving quickly, instead of waiting on the significant-location wake or Core Motion."
+    )
+  }
+
+  private func scheduleIdleGeofenceElevationTimeout() {
+    idleGeofenceElevationTimer?.invalidate()
+    let deadline = Date().addingTimeInterval(idleGeofenceElevationTimeout)
+    deadlines.idleGeofenceElevation = deadline
+    idleGeofenceElevationTimer = Timer.scheduledTimer(withTimeInterval: idleGeofenceElevationTimeout, repeats: false) { [weak self] _ in
+      Task { @MainActor in self?.catchUpOverdueTimers() }
+    }
+    idleGeofenceElevationTimer?.tolerance = 15
+  }
+
+  private func cancelIdleGeofenceElevationTimeout() {
+    idleGeofenceElevationTimer?.invalidate()
+    idleGeofenceElevationTimer = nil
+    deadlines.idleGeofenceElevation = nil
+  }
+
+  private func disarmIdleGeofenceElevation(reason: String) {
+    guard idleGeofenceElevated else { return }
+    idleGeofenceElevated = false
+    cancelIdleGeofenceElevationTimeout()
+    configureLocationForIdleWakeIfNeeded()
+    NativeAutoTrackDiagnostics.shared.record(
+      kind: "idle.geofence-elevation-timeout",
+      title: "Elevated GPS stood down",
+      detail: reason
+    )
   }
 
   private func handleShiftLocationUpdates(_ locations: [CLLocation]) {
@@ -2191,12 +2351,17 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     endBackgroundLocationSession()
     setBackgroundTrackingEnabled(false)
     startSignificantLocationWakeMonitoring()
+    if let anchor = idleWakeLocation ?? manager.location ?? wakeManager.location {
+      armIdleDepartureRegion(at: anchor)
+    }
   }
 
   private func configureIdleLocationMonitoring() {
     guard shiftPhase == .idle else { return }
     if manualTrackingOwnsLocation {
       disarmVehicleStartDetection(reason: "Manual trip owns location tracking")
+      disarmIdleGeofenceElevation(reason: "Manual trip owns location tracking")
+      disarmIdleDepartureRegion()
       stopHighAccuracyLocationUpdates()
       stopSignificantLocationWakeMonitoring()
       endBackgroundLocationSession()
