@@ -848,15 +848,6 @@ private func nativeHotspotMapCard(trips: [NativeTrip], zones: [NativeZonePoint])
       VStack(alignment: .leading, spacing: 16) {
         nativeInsightKicker("Where you earn")
         NativeZoneMiniMap(trips: trips, zones: zones)
-        Text("Numbered pins match the list below — 1 is your busiest patch. Tap the map to explore full-screen.")
-          .font(.system(size: 12, weight: .medium))
-          .foregroundStyle(OkkleColor.muted)
-          .fixedSize(horizontal: false, vertical: true)
-        Divider()
-        Text("Bar shows how busy each area is compared to your #1 spot.")
-          .font(.system(size: 12, weight: .medium))
-          .foregroundStyle(OkkleColor.muted.opacity(0.8))
-          .fixedSize(horizontal: false, vertical: true)
         NativeTopAreasList(zones: zones, limit: 4, showShareBar: true)
       }
     }
