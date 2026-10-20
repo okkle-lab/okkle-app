@@ -966,6 +966,13 @@ struct NativeSettings: Codable, Equatable {
   // with the driver's default vehicle.
   var siriTripTrackingEnabled = false
   var workingDays: [Int] = Array(0...6)
+  // Optional daily window (minutes after midnight) for automatic tracking.
+  // An end earlier than the start is an overnight window, e.g. 18:00-02:00.
+  var workingHoursEnabled = false
+  var workStartMinute = 8 * 60
+  var workEndMinute = 20 * 60
+  // One-time nudge to set working days/hours when still on the defaults.
+  var hasSeenWorkSchedulePrompt = false
   // A heads-up before your busy window starts, on working days.
   var preShiftAlerts = true
   // Manual trips still ask before ending by default. When enabled, the same
@@ -1008,6 +1015,10 @@ struct NativeSettings: Codable, Equatable {
     case enhancedAutoTracking
     case siriTripTrackingEnabled
     case workingDays
+    case workingHoursEnabled
+    case workStartMinute
+    case workEndMinute
+    case hasSeenWorkSchedulePrompt
     case preShiftAlerts
     case manualTripAutoComplete
     case hasCompletedOnboarding
@@ -1042,6 +1053,10 @@ struct NativeSettings: Codable, Equatable {
     enhancedAutoTracking = try container.decodeIfPresent(Bool.self, forKey: .enhancedAutoTracking) ?? true
     siriTripTrackingEnabled = try container.decodeIfPresent(Bool.self, forKey: .siriTripTrackingEnabled) ?? false
     workingDays = try container.decodeIfPresent([Int].self, forKey: .workingDays) ?? Array(0...6)
+    workingHoursEnabled = try container.decodeIfPresent(Bool.self, forKey: .workingHoursEnabled) ?? false
+    workStartMinute = try container.decodeIfPresent(Int.self, forKey: .workStartMinute) ?? 8 * 60
+    workEndMinute = try container.decodeIfPresent(Int.self, forKey: .workEndMinute) ?? 20 * 60
+    hasSeenWorkSchedulePrompt = try container.decodeIfPresent(Bool.self, forKey: .hasSeenWorkSchedulePrompt) ?? false
     preShiftAlerts = try container.decodeIfPresent(Bool.self, forKey: .preShiftAlerts) ?? true
     manualTripAutoComplete = try container.decodeIfPresent(Bool.self, forKey: .manualTripAutoComplete) ?? false
     hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false

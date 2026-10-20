@@ -274,3 +274,63 @@ final class NativeBicycleTrackingTests: XCTestCase {
     XCTAssertFalse(buffer.confirmsMovement(vehicle: .bike))
   }
 }
+
+final class NativeWorkingHoursTests: XCTestCase {
+  private var calendar: Calendar = {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Europe/London")!
+    return calendar
+  }()
+
+  /// 2026-10-19 is a Monday.
+  private func date(day: Int, hour: Int, minute: Int = 0) -> Date {
+    calendar.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+  }
+
+  private func settings(days: [Int] = Array(0...6), hours: (Int, Int)?) -> NativeSettings {
+    var settings = NativeSettings()
+    settings.workingDays = days
+    if let hours {
+      settings.workingHoursEnabled = true
+      settings.workStartMinute = hours.0 * 60
+      settings.workEndMinute = hours.1 * 60
+    }
+    return settings
+  }
+
+  func testHoursOffFollowsWorkingDaysOnly() {
+    let weekdays = settings(days: [1, 2, 3, 4, 5], hours: nil)
+    XCTAssertTrue(nativeIsWithinWorkingTime(date(day: 19, hour: 3), settings: weekdays, calendar: calendar))
+    XCTAssertFalse(nativeIsWithinWorkingTime(date(day: 18, hour: 12), settings: weekdays, calendar: calendar))
+  }
+
+  func testDaytimeWindow() {
+    let nineToFive = settings(hours: (9, 17))
+    XCTAssertFalse(nativeIsWithinWorkingTime(date(day: 19, hour: 8, minute: 59), settings: nineToFive, calendar: calendar))
+    XCTAssertTrue(nativeIsWithinWorkingTime(date(day: 19, hour: 9), settings: nineToFive, calendar: calendar))
+    XCTAssertTrue(nativeIsWithinWorkingTime(date(day: 19, hour: 16, minute: 59), settings: nineToFive, calendar: calendar))
+    XCTAssertFalse(nativeIsWithinWorkingTime(date(day: 19, hour: 17), settings: nineToFive, calendar: calendar))
+  }
+
+  func testDaytimeWindowStillRespectsWorkingDays() {
+    let weekdaysNineToFive = settings(days: [1, 2, 3, 4, 5], hours: (9, 17))
+    XCTAssertFalse(nativeIsWithinWorkingTime(date(day: 18, hour: 12), settings: weekdaysNineToFive, calendar: calendar))
+  }
+
+  func testOvernightWindowBelongsToTheDayItStarted() {
+    // Friday-only evening shift, 18:00-02:00.
+    let fridayNights = settings(days: [5], hours: (18, 2))
+    XCTAssertTrue(nativeIsWithinWorkingTime(date(day: 23, hour: 22), settings: fridayNights, calendar: calendar))
+    XCTAssertTrue(nativeIsWithinWorkingTime(date(day: 24, hour: 1), settings: fridayNights, calendar: calendar))   // Sat 01:00
+    XCTAssertFalse(nativeIsWithinWorkingTime(date(day: 24, hour: 3), settings: fridayNights, calendar: calendar))
+    XCTAssertFalse(nativeIsWithinWorkingTime(date(day: 23, hour: 1), settings: fridayNights, calendar: calendar))  // Fri 01:00 is Thursday's shift
+    XCTAssertFalse(nativeIsWithinWorkingTime(date(day: 24, hour: 22), settings: fridayNights, calendar: calendar))
+  }
+
+  func testOldSettingsDecodeWithHoursOff() throws {
+    let decoded = try JSONDecoder().decode(NativeSettings.self, from: Data("{}".utf8))
+    XCTAssertFalse(decoded.workingHoursEnabled)
+    XCTAssertEqual(decoded.workStartMinute, 8 * 60)
+    XCTAssertEqual(decoded.workEndMinute, 20 * 60)
+  }
+}

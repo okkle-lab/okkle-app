@@ -129,6 +129,27 @@ func nativeIsWorkingDay(_ date: Date, settings: NativeSettings) -> Bool {
   return settings.workingDays.contains(weekday)
 }
 
+/// Working day plus, when set, the daily working-hours window. An overnight
+/// window (end before start) belongs to the day it started, so 01:00 on
+/// Tuesday counts as Monday's shift.
+func nativeIsWithinWorkingTime(_ date: Date, settings: NativeSettings, calendar: Calendar = .current) -> Bool {
+  guard settings.workingHoursEnabled, settings.workStartMinute != settings.workEndMinute else {
+    return nativeIsWorkingDay(date, settings: settings)
+  }
+  let parts = calendar.dateComponents([.hour, .minute], from: date)
+  let minute = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+  let start = settings.workStartMinute
+  let end = settings.workEndMinute
+  if start < end {
+    return minute >= start && minute < end && nativeIsWorkingDay(date, settings: settings)
+  }
+  if minute >= start { return nativeIsWorkingDay(date, settings: settings) }
+  if minute < end, let previousDay = calendar.date(byAdding: .day, value: -1, to: date) {
+    return nativeIsWorkingDay(previousDay, settings: settings)
+  }
+  return false
+}
+
 enum NativeAutoShiftPhase: String, Equatable {
   case idle
   case driving
@@ -269,7 +290,7 @@ enum NativeAutoTrackPolicy {
     guard settings.autoTrackTrips else { return .disabled }
     guard authorizationStatus == .authorizedAlways else { return .needsAlwaysLocation }
     guard accuracyAuthorization == .fullAccuracy else { return .needsPreciseLocation }
-    guard nativeIsWorkingDay(date, settings: settings) else { return .waitingForWorkingDay }
+    guard nativeIsWithinWorkingTime(date, settings: settings) else { return .waitingForWorkingDay }
     return .ready
   }
 

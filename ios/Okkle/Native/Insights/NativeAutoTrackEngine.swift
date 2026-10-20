@@ -213,43 +213,9 @@ enum NativeVehicleConnectionMonitor {
 @MainActor
 final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
   static let shared = NativeAutoTrackEngine()
-  @Published private(set) var workSessionUntil: Date? = UserDefaults.standard.object(forKey: "okkle.work-session-until") as? Date
   private var preTripBuffer = NativePreTripBuffer()
-  private var shiftStartedDuringWork = false
 
-  var isWorkSessionActive: Bool { (workSessionUntil ?? .distantPast) > Date() }
-
-  private var effectiveTrackingSettings: NativeSettings? {
-    guard var settings = store?.settings else { return nil }
-    if isWorkSessionActive { settings.workingDays = Array(0...6) }
-    return settings
-  }
-
-  func startWork() {
-    guard let store else { return }
-    store.settings.autoTrackTrips = true
-    workSessionUntil = Date().addingTimeInterval(12 * 60 * 60)
-    UserDefaults.standard.set(workSessionUntil, forKey: "okkle.work-session-until")
-    cancelIdleGeofenceElevationTimeout()
-    if shiftPhase != .idle { shiftStartedDuringWork = true; persistShiftSnapshot() }
-    refresh()
-  }
-
-  func endWork() {
-    // Save the active business route before clearing the work-session state.
-    if shiftPhase != .idle { endCurrentShift() }
-    workSessionUntil = nil
-    UserDefaults.standard.removeObject(forKey: "okkle.work-session-until")
-    disarmIdleGeofenceElevation(reason: "Work session ended")
-    refresh()
-  }
-
-  private func expireWorkSessionIfNeeded() {
-    guard let deadline = workSessionUntil, deadline <= Date() else { return }
-    workSessionUntil = nil
-    UserDefaults.standard.removeObject(forKey: "okkle.work-session-until")
-    if shiftPhase == .idle { disarmIdleGeofenceElevation(reason: "Work session expired") }
-  }
+  private var effectiveTrackingSettings: NativeSettings? { store?.settings }
 
   @Published private(set) var visits: [NativeVisit] = []
   @Published private(set) var shiftPhase: NativeAutoShiftPhase = .idle
@@ -407,6 +373,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     configureLocationForDriving()
     motionQueue.name = "uk.okkle.native.auto-track-motion"
     motionQueue.qualityOfService = .utility
+    // Builds 2.2(29-30) had a 12-hour "Start work" session; clear any leftover.
+    UserDefaults.standard.removeObject(forKey: "okkle.work-session-until")
     UIDevice.current.isBatteryMonitoringEnabled = true
     batteryStateObserver = NotificationCenter.default.addObserver(
       forName: UIDevice.batteryStateDidChangeNotification, object: nil, queue: .main
@@ -923,7 +891,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// Keep the low-power wake service alive whenever permissions allow it, then
   /// separately decide whether today's signals may start a trip.
   func refresh() {
-    expireWorkSessionIfNeeded()
     // The app coming to foreground (e.g. the driver opening it) is itself a
     // wake opportunity — catch up on anything a background timer couldn't
     // fire for immediately, rather than waiting for the next location/motion
@@ -1049,8 +1016,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func stopMonitoring() {
-    workSessionUntil = nil
-    UserDefaults.standard.removeObject(forKey: "okkle.work-session-until")
     preTripBuffer.clear()
     stopMotionMonitoring()
     if shiftPhase == .idle {
@@ -1543,7 +1508,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftMiles = 0
     pendingShiftVisits = []
     shiftStartTrigger = trigger
-    shiftStartedDuringWork = isWorkSessionActive
     shiftStartedAt = initialLocations.first?.timestamp ?? Date()
     preTripBuffer.clear()
     guard recorder.begin(owner: .automatic, startedAt: shiftStartedAt ?? Date()) else {
@@ -1932,7 +1896,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleLocationUpdates(_ locations: [CLLocation]) {
-    expireWorkSessionIfNeeded()
     catchUpOverdueTimers()
     if shiftPhase == .idle {
       if vehicleStartArmed {
@@ -2247,7 +2210,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     startHighAccuracyLocationUpdates(forceRestart: true)
     beginBackgroundLocationSession()
     setBackgroundTrackingEnabled(true)
-    if !isWorkSessionActive { scheduleIdleGeofenceElevationTimeout() }
+    scheduleIdleGeofenceElevationTimeout()
     NativeAutoTrackDiagnostics.shared.record(
       kind: "idle.geofence-exit",
       title: "Early GPS capture started",
@@ -2671,10 +2634,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private func configureLocationForIdleWakeIfNeeded() {
     guard shiftPhase == .idle, !vehicleStartArmed else { return }
     guard locationAuthorizationStatus == .authorizedAlways else { return }
-    if isWorkSessionActive, locationAccuracyAuthorization == .fullAccuracy {
-      beginPreTripCapture()
-      return
-    }
     if idleGeofenceElevated { return }
     stopHighAccuracyLocationUpdates()
     endBackgroundLocationSession()
@@ -3001,7 +2960,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     case .needsPreciseLocation:
       return "Precise Location is required to start automatic trips."
     case .waitingForWorkingDay:
-      return "Waiting for a selected working day; low-power location monitoring remains active."
+      return "Outside your working days or hours; low-power location monitoring remains active."
     case .ready:
       return "Automatic tracking is ready."
     }
@@ -3115,7 +3074,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       points: shiftPoints,
       mileageCorrections: shiftMileageCorrections.isEmpty ? nil : shiftMileageCorrections
     )
-    trip.category = shiftStartedDuringWork ? .business : .unreviewed
+    trip.category = .unreviewed
     trip.analysis = NativeTripAnalysisProjector.build(
       for: trip,
       source: .automatic,
@@ -3327,7 +3286,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       pendingVisits: pendingShiftVisits,
       startTrigger: shiftStartTrigger,
       walkingDetectedDuringStop: walkingDetectedDuringStop,
-      startedDuringWork: shiftStartedDuringWork
+      startedDuringWork: nil
     )
     let url = Self.shiftSnapshotFileURL
     let legacyKey = shiftSnapshotKey
@@ -3380,7 +3339,6 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftPoints = snapshot.points
     shiftMiles = snapshot.miles
     shiftStartedAt = snapshot.startedAt
-    shiftStartedDuringWork = snapshot.startedDuringWork ?? false
     liveShiftVehicle = NativeVehicle(rawValue: snapshot.vehicleRaw) ?? .car
     shiftSawVehicleConnection = snapshot.sawVehicleConnection
     shiftArmedForHomeArrival = snapshot.armedForHomeArrival

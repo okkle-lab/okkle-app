@@ -49,7 +49,25 @@ struct OkkleNativeRootView: View {
   @State private var showSettings = false
   @State private var showAddRecord = false
   @State private var hasPresentedCurrentAutomaticTrip = false
+  @State private var showWorkSchedulePrompt = false
+  @State private var showWorkScheduleSetup = false
   private let iCloudAutoSyncTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
+  /// Asks once, after onboarding, when automatic tracking is on but the
+  /// schedule is still the default (every day, no working hours).
+  private func promptForWorkScheduleIfNeeded() {
+    let settings = store.settings
+    guard settings.autoTrackTrips,
+          !settings.hasSeenWorkSchedulePrompt,
+          !settings.workingHoursEnabled,
+          Set(settings.workingDays) == Set(0...6) else { return }
+    store.settings.hasSeenWorkSchedulePrompt = true
+    Task { @MainActor in
+      // Let onboarding dismiss and any permission prompt settle first.
+      try? await Task.sleep(nanoseconds: 1_200_000_000)
+      showWorkSchedulePrompt = true
+    }
+  }
 
   var body: some View {
     Group {
@@ -72,6 +90,7 @@ struct OkkleNativeRootView: View {
         NativeAutoTrackEngine.shared.configure(store: store)
         NativePreShiftNotifier.refresh(store: store)
         NativeLoggingReminder.refresh(store: store)
+        promptForWorkScheduleIfNeeded()
       }
       store.refreshICloudSyncIfNeeded()
       routeWidgetTripRequestIfNeeded()
@@ -84,7 +103,25 @@ struct OkkleNativeRootView: View {
         NativeAutoTrackEngine.shared.configure(store: store)
         NativePreShiftNotifier.refresh(store: store)
         NativeLoggingReminder.refresh(store: store)
+        promptForWorkScheduleIfNeeded()
       }
+    }
+    .alert("Set your working times?", isPresented: $showWorkSchedulePrompt) {
+      Button("Set up") { showWorkScheduleSetup = true }
+      Button("Not now", role: .cancel) {}
+    } message: {
+      Text("Choose the days and hours automatic tracking should run.")
+    }
+    .sheet(isPresented: $showWorkScheduleSetup) {
+      NavigationStack {
+        NativeAutoTrackSettingsView()
+          .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Done") { showWorkScheduleSetup = false }
+            }
+          }
+      }
+      .environmentObject(store)
     }
     .sheet(isPresented: Binding(
       get: { notificationRouter.pendingAutoShiftReviewTripID != nil },
@@ -113,6 +150,13 @@ struct OkkleNativeRootView: View {
     .onChange(of: store.settings.workingDays) { _ in
       NativeAutoTrackEngine.shared.refresh()
       NativePreShiftNotifier.refresh(store: store)
+    }
+    .onChange(of: [
+      store.settings.workingHoursEnabled ? 1 : 0,
+      store.settings.workStartMinute,
+      store.settings.workEndMinute,
+    ]) { _ in
+      NativeAutoTrackEngine.shared.refresh()
     }
     .onChange(of: store.settings.preShiftAlerts) { _ in
       NativePreShiftNotifier.refresh(store: store)

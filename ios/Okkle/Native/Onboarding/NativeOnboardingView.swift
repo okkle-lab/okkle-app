@@ -640,7 +640,7 @@ struct NativeOnboardingView: View {
         NativeOnboardingHeader(
           eyebrow: "Automatic tracking",
           title: "Let Okkle catch trips for you.",
-          subtitle: "Recommended for delivery work. Okkle can start trips from driving movement and keep your mileage records building in the background."
+          subtitle: "Trips are logged on their own while you work."
         )
 
         NativeGlassCard {
@@ -654,14 +654,9 @@ struct NativeOnboardingView: View {
                 }
               }
             )) {
-              VStack(alignment: .leading, spacing: 4) {
-                Text("Automatic trip tracking")
-                  .font(.system(size: 17, weight: .bold))
-                  .foregroundStyle(OkkleColor.ink)
-                Text("Starts tracking when driving is detected on your working days.")
-                  .font(.system(size: 13, weight: .semibold))
-                  .foregroundStyle(OkkleColor.muted)
-              }
+              Text("Automatic trip tracking")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(OkkleColor.ink)
             }
             .tint(OkkleColor.brand)
 
@@ -674,14 +669,9 @@ struct NativeOnboardingView: View {
                 enhancedAutoTracking = enabled
               }
             )) {
-              VStack(alignment: .leading, spacing: 4) {
-                Text("Enhanced automatic tracking")
-                  .font(.system(size: 17, weight: .bold))
-                  .foregroundStyle(autoTrackTrips ? OkkleColor.ink : OkkleColor.muted)
-                Text("Uses the system Car Audio route, including CarPlay audio, to improve accuracy and end trips sooner.")
-                  .font(.system(size: 13, weight: .semibold))
-                  .foregroundStyle(OkkleColor.muted)
-              }
+              Text("Use CarPlay / car audio")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(autoTrackTrips ? OkkleColor.ink : OkkleColor.muted)
             }
             .tint(autoTrackTrips ? OkkleColor.brand : OkkleColor.muted.opacity(0.35))
             .disabled(!autoTrackTrips)
@@ -696,14 +686,6 @@ struct NativeOnboardingView: View {
           }
         }
         .animation(.spring(response: 0.28, dampingFraction: 0.86), value: autoTrackTrips)
-
-        NativeGlassCard {
-          VStack(alignment: .leading, spacing: 14) {
-            NativeOnboardingBullet(symbol: "location.north.line.fill", title: "No need to remember every start")
-            NativeOnboardingBullet(symbol: "car.fill", title: "Car signals help detect real trip endings")
-            NativeOnboardingBullet(symbol: "house.fill", title: "Saved Home locations can end a shift cleanly")
-          }
-        }
       }
 
     case .locationPermission:
@@ -711,14 +693,13 @@ struct NativeOnboardingView: View {
         NativeOnboardingHeader(
           eyebrow: "Location access",
           title: "Turn on location access",
-          subtitle: "Okkle uses this only to detect driving and log trip mileage in the background. Never sold, never shared."
+          subtitle: "Only used to log your trips. Never shared."
         )
 
         NativeGlassCard {
           VStack(alignment: .leading, spacing: 14) {
-            NativeOnboardingBullet(symbol: "1.circle.fill", title: "Tap \"Allow location access\" below")
-            NativeOnboardingBullet(symbol: "2.circle.fill", title: "iOS will ask to confirm - choose \"Allow While Using App\"")
-            NativeOnboardingBullet(symbol: "3.circle.fill", title: "Then allow background tracking so Okkle can catch trips when closed")
+            NativeOnboardingBullet(symbol: "1.circle.fill", title: "Choose \"Allow While Using App\"")
+            NativeOnboardingBullet(symbol: "2.circle.fill", title: "Then \"Change to Always Allow\"")
           }
         }
 
@@ -743,7 +724,7 @@ struct NativeOnboardingView: View {
           HStack(spacing: 10) {
             Image(systemName: "checkmark.circle.fill")
               .foregroundStyle(OkkleColor.brand)
-            Text("Location enabled - Okkle can now catch trips automatically.")
+            Text("Location is on.")
               .font(.system(size: 14, weight: .semibold))
               .foregroundStyle(OkkleColor.ink)
           }
@@ -752,7 +733,7 @@ struct NativeOnboardingView: View {
 
         case .needsAlways:
           VStack(alignment: .leading, spacing: 12) {
-            Text("Background access is still needed before automatic tracking can run reliably.")
+            Text("Allow Always so trips start on their own.")
               .font(.system(size: 14, weight: .semibold))
               .foregroundStyle(OkkleColor.ink)
             Button {
@@ -766,7 +747,7 @@ struct NativeOnboardingView: View {
                 .background(OkkleColor.brand, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
-            Text("Continuing without Always access will leave automatic tracking off. Manual trip recording will still work.")
+            Text("You can do this later in Settings.")
               .font(.system(size: 12, weight: .semibold))
               .foregroundStyle(OkkleColor.muted)
           }
@@ -778,7 +759,7 @@ struct NativeOnboardingView: View {
             HStack(spacing: 10) {
               Image(systemName: "location.slash.fill")
                 .foregroundStyle(OkkleColor.amber)
-              Text("Location is off. Automatic tracking will stay off until Always access is enabled.")
+              Text("Location is off. Turn it on in Settings.")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(OkkleColor.ink)
             }
@@ -845,7 +826,7 @@ struct NativeOnboardingView: View {
         NativeGlassCard {
           VStack(alignment: .leading, spacing: 16) {
             NativeOnboardingBullet(symbol: autoTrackTrips ? "location.north.line.fill" : "location.north.fill",
-                                   title: autoTrackTrips ? "Automatic tracking is ready" : "Start a trip when you set off")
+                                   title: autoTrackTrips ? "Automatic tracking is on" : "Start a trip when you set off")
             NativeOnboardingBullet(symbol: iCloudSyncEnabled ? "icloud.fill" : "internaldrive.fill",
                                    title: iCloudSyncEnabled ? "iCloud sync is ready" : "Records will stay on this device")
             NativeOnboardingBullet(symbol: nativeCurrencySymbolName("sterlingsign.circle.fill"), title: "Log pay when it arrives")
@@ -1130,10 +1111,6 @@ struct NativeOnboardingView: View {
        let skipped = NativeOnboardingStep(rawValue: next.rawValue + 1) {
       next = skipped
     }
-    if step == .locationPermission, !locationRequester.hasAlwaysAuthorization {
-      autoTrackTrips = false
-      enhancedAutoTracking = false
-    }
     // No point asking for location access for a feature the driver just
     // turned off on the step before.
     if next == .locationPermission, !autoTrackTrips,
@@ -1161,7 +1138,6 @@ struct NativeOnboardingView: View {
   private func finish(destination: NativeTab) {
     hideKeyboard()
     selectedTab = destination
-    let automaticTrackingEnabled = autoTrackTrips && locationRequester.hasAlwaysAuthorization
     store.completeOnboarding(
       name: name,
       defaultVehicle: vehicle,
@@ -1171,8 +1147,10 @@ struct NativeOnboardingView: View {
       expenseMethod: expenseMethod,
       usState: usState,
       incomeBracket: incomeBracket,
-      autoTrackTrips: automaticTrackingEnabled,
-      enhancedAutoTracking: automaticTrackingEnabled && enhancedAutoTracking,
+      // Saved as chosen even before Always access is granted; the engine
+      // waits for permission and Settings shows how to allow it.
+      autoTrackTrips: autoTrackTrips,
+      enhancedAutoTracking: autoTrackTrips && enhancedAutoTracking,
       workingDays: workingDays
     )
     if iCloudSyncEnabled {

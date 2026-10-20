@@ -471,9 +471,28 @@ struct NativeAutoTrackSettingsView: View {
             get: { store.settings.workingDays },
             set: { store.settings.workingDays = $0 }
           ))
+          Toggle("Working hours", isOn: Binding(
+            get: { store.settings.workingHoursEnabled },
+            set: { store.settings.workingHoursEnabled = $0 }
+          ))
+          if store.settings.workingHoursEnabled {
+            HStack(spacing: 8) {
+              Text("Hours")
+              Spacer()
+              DatePicker("From", selection: timeBinding(\.workStartMinute), displayedComponents: .hourAndMinute)
+                .labelsHidden()
+              Text("–")
+                .foregroundStyle(.secondary)
+              DatePicker("To", selection: timeBinding(\.workEndMinute), displayedComponents: .hourAndMinute)
+                .labelsHidden()
+            }
+          }
         }
       } footer: {
-        Text("On your working days Okkle detects driving and saves automatic trips as Needs review. Mark them Business or Personal, or delete unwanted trips. Tap Start work on the Trip tab to keep GPS ready for up to 12 hours and save those trips as Business, even outside your usual working days. This uses more battery; tap End work when you finish. Turn automatic tracking off to track trips by hand.")
+        if store.settings.autoTrackTrips, store.settings.workingHoursEnabled,
+           store.settings.workEndMinute < store.settings.workStartMinute {
+          Text("Ends the next morning.")
+        }
       }
 
       if store.settings.autoTrackTrips, autoTrack.locationAuthorizationStatus != .authorizedAlways {
@@ -490,8 +509,6 @@ struct NativeAutoTrackSettingsView: View {
               autoTrack.requestAlwaysLocationAuthorization()
             }
           }
-        } footer: {
-          Text("Okkle does not partially run automatic tracking with While Using access because iOS cannot reliably wake a closed app for a new trip.")
         }
       }
 
@@ -503,19 +520,15 @@ struct NativeAutoTrackSettingsView: View {
           Button("Enable Precise Location") {
             autoTrack.requestPreciseLocationAuthorization()
           }
-        } footer: {
-          Text("Approximate Location cannot capture the roads you travel or produce reliable mileage.")
         }
       }
 
       if store.settings.autoTrackTrips {
         Section {
-          Toggle("Enhanced automatic tracking", isOn: Binding(
+          Toggle("Use CarPlay / car audio", isOn: Binding(
             get: { store.settings.enhancedAutoTracking },
             set: { store.settings.enhancedAutoTracking = $0 }
           ))
-        } footer: {
-          Text("Improves automatic trip accuracy using the system Car Audio route, including CarPlay audio, so headphones and speakers cannot start a trip by mistake.")
         }
       }
 
@@ -526,8 +539,6 @@ struct NativeAutoTrackSettingsView: View {
         ))
       } header: {
         Text("Manual trips")
-      } footer: {
-        Text("When a trip you started by hand has been stationary for a while, Okkle can save it automatically instead of asking you to end it.")
       }
 
       if store.settings.autoTrackTrips {
@@ -547,6 +558,20 @@ struct NativeAutoTrackSettingsView: View {
     .navigationTitle("Automatic tracking")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear { autoTrack.refresh() }
+  }
+
+  /// Bridges a minutes-after-midnight setting to a time-only DatePicker.
+  private func timeBinding(_ keyPath: WritableKeyPath<NativeSettings, Int>) -> Binding<Date> {
+    Binding(
+      get: {
+        Calendar.current.startOfDay(for: Date())
+          .addingTimeInterval(TimeInterval(store.settings[keyPath: keyPath] * 60))
+      },
+      set: { date in
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+        store.settings[keyPath: keyPath] = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+      }
+    )
   }
 }
 
@@ -834,8 +859,6 @@ struct NativeExcludedPlacesSection: View {
       }
     } header: {
       Text("Places to leave out")
-    } footer: {
-      Text("Add home or anywhere you stop often that isn't work — they'll never be suggested as a place to go and earn. Drag the pin if it lands somewhere off.")
     }
     .onAppear { locator.request() }
   }
