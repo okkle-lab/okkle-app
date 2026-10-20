@@ -48,7 +48,7 @@ func nativeTaxDeadlines(for country: NativeTaxCountry, usState: NativeUSState = 
       NativeTaxDeadline(title: "Register for Self Assessment", month: 10, day: 5, note: "Only if this was your first year self-employed.", authority: "HMRC"),
       NativeTaxDeadline(title: "File your return & pay your tax", month: 1, day: 31, note: "Online Self Assessment deadline for the previous tax year.", authority: "HMRC"),
       NativeTaxDeadline(title: "Second payment on account", month: 7, day: 31, note: "Only if HMRC asked you for payments on account.", authority: "HMRC"),
-    ]
+    ] + nativeMakingTaxDigitalDeadlines()
   case .us:
     var deadlines: [NativeTaxDeadline] = [
       NativeTaxDeadline(title: "Q1 federal estimated tax (1040-ES)", month: 4, day: 15, note: "25% of your estimated federal tax for the year.", authority: "IRS"),
@@ -76,6 +76,29 @@ func nativeTaxDeadlines(for country: NativeTaxCountry, usState: NativeUSState = 
       break // No-income-tax states, and states Okkle doesn't yet model by name, get federal dates only.
     }
     return deadlines
+  }
+}
+
+/// Making Tax Digital for Income Tax quarterly updates. Mandatory from
+/// 6 April 2026 for sole traders whose qualifying income (gross turnover) was
+/// over £50,000, over £30,000 from April 2027 and over £20,000 from April 2028.
+/// Each update is a summary sent through MTD-compatible software, not a tax
+/// payment. Deadlines assume the standard 5 April year end. Review annually.
+private func nativeMakingTaxDigitalDeadlines() -> [NativeTaxDeadline] {
+  let note = "Making Tax Digital only: applies if your turnover is over £50,000 (from April 2026) or £30,000 (from April 2027). A summary update, not a tax payment."
+  return [
+    (quarter: "Q1", period: "6 Apr-5 Jul", month: 8, day: 7),
+    (quarter: "Q2", period: "6 Jul-5 Oct", month: 11, day: 7),
+    (quarter: "Q3", period: "6 Oct-5 Jan", month: 2, day: 7),
+    (quarter: "Q4", period: "6 Jan-5 Apr", month: 5, day: 7),
+  ].map { entry in
+    NativeTaxDeadline(
+      title: "MTD quarterly update \(entry.quarter) (\(entry.period))",
+      month: entry.month,
+      day: entry.day,
+      note: note,
+      authority: "HMRC"
+    )
   }
 }
 

@@ -148,7 +148,10 @@ enum NativeTripMileagePolicy {
     switch vehicle.automaticTrackingProfile {
     case .motorized where automotive:
       return .automotive
-    case .bicycle where cycling:
+    // Core Motion often labels e-bikes, and bikes with the phone on a
+    // handlebar mount, as automotive rather than cycling. Either label means
+    // the rider is moving with the vehicle.
+    case .bicycle where cycling || automotive:
       return .cycling
     default:
       break

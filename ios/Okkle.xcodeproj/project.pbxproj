@@ -67,6 +67,7 @@
 		EFB29A0C18DB58B2B7065BD1 /* NativeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F305144FBFF499D0171ED96C /* NativeModels.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F2A841BA113C337F7F3322C0 /* NativeAreaNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD9B5661933A968BD56DDF87 /* NativeAreaNameTests.swift */; };
+		A1D3E5F7092B4C6D8E0F1A2B /* NativeDepartureReconstructionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2E4F6A8103C5D7E9F1A2B3C /* NativeDepartureReconstructionTests.swift */; };
 		F4D8AB70ABF84B06A1C6C4D9 /* NativeMileageReportPdfRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451B572069C14D2C51AE89CD /* NativeMileageReportPdfRenderer.swift */; };
 		F6B402C87A82903782D1CC14 /* NativeInsightModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C87F7A21DED00BFBC7794E /* NativeInsightModels.swift */; };
 		F6BD210B4BDE81D801BAAADC /* NativeOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E4AD8D685F34F5071DFB016 /* NativeOnboardingView.swift */; };
@@ -190,6 +191,7 @@
 		D30FD8D9D709421B8B1BD005 /* NativeAutoTrackArchitecture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAutoTrackArchitecture.swift; sourceTree = "<group>"; };
 		DD6EE03F6A4F4FDC01B37848 /* NativeExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeExportService.swift; sourceTree = "<group>"; };
 		DD9B5661933A968BD56DDF87 /* NativeAreaNameTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeAreaNameTests.swift; sourceTree = "<group>"; };
+		B2E4F6A8103C5D7E9F1A2B3C /* NativeDepartureReconstructionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeDepartureReconstructionTests.swift; sourceTree = "<group>"; };
 		E4B0F0A44F1E471E8C9F5630 /* NativeLegacyBackupImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLegacyBackupImporter.swift; sourceTree = "<group>"; };
 		EAF39469B146AB6A7CF2E14D /* NativeAutoShiftReview.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeAutoShiftReview.swift; sourceTree = "<group>"; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Okkle/AppDelegate.swift; sourceTree = "<group>"; };
@@ -253,6 +255,7 @@
 			children = (
 				304A0809B3D20910AAEAA20C /* TaxCalculatorTests.swift */,
 				DD9B5661933A968BD56DDF87 /* NativeAreaNameTests.swift */,
+				B2E4F6A8103C5D7E9F1A2B3C /* NativeDepartureReconstructionTests.swift */,
 				24C396BDD44AE17BF9B14F13 /* USTaxCalculatorTests.swift */,
 			);
 			path = OkkleTests;
@@ -726,6 +729,7 @@
 			files = (
 				343A8C0342A9A5D0710B2970 /* TaxCalculatorTests.swift in Sources */,
 				F2A841BA113C337F7F3322C0 /* NativeAreaNameTests.swift in Sources */,
+				A1D3E5F7092B4C6D8E0F1A2B /* NativeDepartureReconstructionTests.swift in Sources */,
 				EB9E44A5B757A612A054238A /* USTaxCalculatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -351,7 +351,17 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   // both of which can otherwise leave a drive several minutes/km unconfirmed.
   private var idleDepartureRegion: CLCircularRegion?
   private let idleDepartureRegionIdentifier = "uk.okkle.native.idle-departure"
-  private let idleDepartureRegionRadius: CLLocationDistance = 100
+  // Region exits get markedly less reliable below ~100m without firing any
+  // sooner, so keep a margin above that.
+  private let idleDepartureRegionRadius: CLLocationDistance = 150
+  // Where the car was last parked, from a precise fix (trip end, a precise
+  // idle fix, or a Core Location visit). Used to reconstruct the distance
+  // driven before automatic detection confirms a trip.
+  private var idleDepartureAnchor: CLLocation?
+  private var pendingDepartureAnchor: CLLocation?
+  private var departureReconstructionInFlight = false
+  private var batteryStateObserver: NSObjectProtocol?
+  private var visitMonitoring = false
   // Once the geofence is exited we run continuous GPS briefly so the normal
   // speed/Core Motion evidence checks (handleIdleWakeLocationUpdates) can
   // confirm actual driving fast. If nothing confirms it within this window —
@@ -397,6 +407,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     configureLocationForDriving()
     motionQueue.name = "uk.okkle.native.auto-track-motion"
     motionQueue.qualityOfService = .utility
+    UIDevice.current.isBatteryMonitoringEnabled = true
+    batteryStateObserver = NotificationCenter.default.addObserver(
+      forName: UIDevice.batteryStateDidChangeNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor in self?.handleChargingStateChanged() }
+    }
     loadLegacyVisits()
     // The Live Activity's Pause/Resume/End buttons run
     // in-process (LiveActivityIntent) but can't reference this singleton
@@ -1039,6 +1055,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stopMotionMonitoring()
     if shiftPhase == .idle {
       releaseLocationServiceSession()
+      stopVisitMonitoring()
+      idleDepartureAnchor = nil
       disarmVehicleStartDetection(reason: "Automatic tracking is inactive")
       disarmIdleGeofenceElevation(reason: "Automatic tracking is inactive")
       disarmIdleDepartureRegion()
@@ -1156,6 +1174,16 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         detail: "Core Location resumed the high-accuracy stream.",
         deduplicateWithin: 60
       )
+    }
+  }
+
+  nonisolated func locationManager(_ locationManager: CLLocationManager, didVisit visit: CLVisit) {
+    let coordinate = visit.coordinate
+    let accuracy = visit.horizontalAccuracy
+    let arrival = visit.arrivalDate
+    let departure = visit.departureDate
+    Task { @MainActor in
+      self.handleVisit(coordinate: coordinate, horizontalAccuracy: accuracy, arrival: arrival, departure: departure)
     }
   }
 
@@ -1314,7 +1342,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       speedMetersPerSecond: latest?.speed,
       displacementMeters: displacement,
       vehicleConnected: enhancedAutoTrackingEnabled && NativeVehicleConnectionMonitor.isLikelyConnectedToVehicle,
-      headingIsConsistent: (latest?.course ?? -1) >= 0
+      headingIsConsistent: (latest?.course ?? -1) >= 0,
+      charging: isPhoneCharging
     )
     let evidence = suppliedEvidence ?? inferredEvidence
     if shiftPhase == .stationaryPending {
@@ -1503,6 +1532,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     vehicleArmOrigin = nil
     vehicleArmLastLocation = nil
     vehicleArmLocations = []
+    pendingDepartureAnchor = idleDepartureAnchor
+    idleDepartureAnchor = nil
     disarmIdleDepartureRegion()
     if idleGeofenceElevated {
       idleGeofenceElevated = false
@@ -1687,6 +1718,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     stationaryTimer?.invalidate()
     stationaryTimer = nil
     deadlines = NativeAutoTrackDeadlines()
+    // Where this trip ended is where the car is now parked — the most
+    // precise departure anchor the next trip can have.
+    pendingDepartureAnchor = nil
+    if let parked = shiftLastLocation { updateIdleDepartureAnchor(with: parked) }
     shiftPoints = []
     shiftMiles = 0
     shiftStartedAt = nil
@@ -2072,6 +2107,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private func armIdleDepartureRegion(at location: CLLocation) {
     guard shiftPhase == .idle, !manualTrackingOwnsLocation, !vehicleStartArmed, !idleGeofenceElevated else { return }
     guard locationAuthorizationStatus == .authorizedAlways else { return }
+    updateIdleDepartureAnchor(with: location)
     guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else { return }
     if let existing = idleDepartureRegion {
       let existingCenter = CLLocation(latitude: existing.center.latitude, longitude: existing.center.longitude)
@@ -2095,10 +2131,94 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     )
   }
 
+  /// Precise fixes become the parked anchor. A coarse fix far from the
+  /// current anchor means the phone has gone somewhere unknown, so the old
+  /// anchor can no longer be trusted as the departure point.
+  private func updateIdleDepartureAnchor(with location: CLLocation) {
+    guard location.horizontalAccuracy >= 0 else { return }
+    if location.horizontalAccuracy <= NativeDepartureReconstruction.maximumAnchorAccuracyMeters {
+      idleDepartureAnchor = location
+    } else if let anchor = idleDepartureAnchor,
+              location.distance(from: anchor) > max(1_000, location.horizontalAccuracy) {
+      idleDepartureAnchor = nil
+    }
+  }
+
   private func disarmIdleDepartureRegion() {
     guard let region = idleDepartureRegion else { return }
     wakeManager.stopMonitoring(for: region)
     idleDepartureRegion = nil
+  }
+
+  // MARK: Extra idle wake signals (charging, visits)
+
+  private var isPhoneCharging: Bool {
+    let state = UIDevice.current.batteryState
+    return state == .charging || state == .full
+  }
+
+  /// Plugging the phone in is a strong "just got in the car" habit. iOS only
+  /// delivers this while Okkle is running, so it complements rather than
+  /// replaces the background wake signals.
+  private func handleChargingStateChanged() {
+    guard isPhoneCharging else { return }
+    startEarlyCapture(reason: "Phone started charging")
+  }
+
+  /// Visits are a separate low-power wake that keeps working when region
+  /// monitoring is unreliable. Arrivals refine the parked anchor; departures
+  /// start early GPS capture.
+  private func handleVisit(
+    coordinate: CLLocationCoordinate2D,
+    horizontalAccuracy: CLLocationAccuracy,
+    arrival: Date,
+    departure: Date
+  ) {
+    guard shiftPhase == .idle else { return }
+    let place = CLLocation(
+      coordinate: coordinate,
+      altitude: 0,
+      horizontalAccuracy: horizontalAccuracy,
+      verticalAccuracy: -1,
+      timestamp: arrival == .distantPast ? Date() : arrival
+    )
+    if departure == .distantFuture {
+      armIdleDepartureRegion(at: place)
+      return
+    }
+    guard Date().timeIntervalSince(departure) < 15 * 60 else { return }
+    updateIdleDepartureAnchor(with: place)
+    startEarlyCapture(reason: "Visit departure reported")
+  }
+
+  private func startEarlyCapture(reason: String) {
+    guard let settings = effectiveTrackingSettings,
+          NativeAutoTrackPolicy.canStartTrip(
+            settings: settings,
+            authorizationStatus: locationAuthorizationStatus,
+            accuracyAuthorization: locationAccuracyAuthorization,
+            date: Date()
+          ) else { return }
+    guard shiftPhase == .idle, !manualTrackingOwnsLocation, !vehicleStartArmed, !idleGeofenceElevated else { return }
+    NativeAutoTrackDiagnostics.shared.record(
+      kind: "idle.early-capture-trigger",
+      title: "Early GPS capture trigger",
+      detail: reason,
+      deduplicateWithin: 60
+    )
+    beginPreTripCapture()
+  }
+
+  private func startVisitMonitoring() {
+    guard !visitMonitoring, manager.authorizationStatus == .authorizedAlways else { return }
+    wakeManager.startMonitoringVisits()
+    visitMonitoring = true
+  }
+
+  private func stopVisitMonitoring() {
+    guard visitMonitoring else { return }
+    wakeManager.stopMonitoringVisits()
+    visitMonitoring = false
   }
 
   private func handleIdleDepartureRegionExit(_ region: CLRegion) {
@@ -2194,6 +2314,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       vehicle: liveShiftVehicle
     ) else { return }
     applyRecordingSnapshot(update.snapshot)
+    reconstructDepartureIfNeeded()
     NativeAutoTrackDiagnostics.shared.record(
       kind: "gps.sampling",
       title: "GPS sampling update",
@@ -2311,6 +2432,141 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     }
   }
 
+  // MARK: Departure reconstruction
+
+  /// Once a trip has its first recorded fix, recover the distance driven
+  /// from the parked anchor before detection confirmed the trip. Runs once
+  /// per trip; every guard falls back to recording nothing extra.
+  private func reconstructDepartureIfNeeded() {
+    guard !departureReconstructionInFlight,
+          let anchor = pendingDepartureAnchor,
+          shiftPhase == .driving || shiftPhase == .stationaryPending,
+          !shiftPedestrianMileageExcluded,
+          let firstPoint = shiftPoints.first,
+          let firstTimestamp = firstPoint.timestamp,
+          let tripStartedAt = shiftStartedAt else { return }
+    pendingDepartureAnchor = nil
+    departureReconstructionInFlight = true
+    let vehicle = liveShiftVehicle
+    let firstFix = CLLocation(
+      coordinate: firstPoint.coordinate,
+      altitude: 0,
+      horizontalAccuracy: firstPoint.horizontalAccuracy ?? 10,
+      verticalAccuracy: -1,
+      timestamp: firstTimestamp
+    )
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.departureReconstructionInFlight = false }
+      let motionDeparture = await self.motionDepartureDate(before: firstTimestamp, vehicle: vehicle)
+      guard let departure = NativeDepartureReconstruction.departureDate(
+        anchor: anchor,
+        firstFix: firstFix,
+        motionDeparture: motionDeparture,
+        vehicle: vehicle
+      ) else {
+        NativeAutoTrackDiagnostics.shared.record(
+          kind: "shift.departure-skipped",
+          title: "Trip start not reconstructed",
+          detail: "The parked location was too close, too far, too imprecise, or inconsistent with the first fix (\(Int(anchor.distance(from: firstFix).rounded())) m away)."
+        )
+        return
+      }
+
+      let straightLine = anchor.distance(from: firstFix)
+      let arrival = firstTimestamp.addingTimeInterval(-1)
+      var coordinates = [anchor.coordinate]
+      var meters = straightLine
+      var source = "straight line"
+      if vehicle.automaticTrackingProfile != .bicycle,
+         let route = await self.roadRoute(from: anchor.coordinate, to: firstFix.coordinate),
+         NativeDepartureReconstruction.isPlausibleRoadDistance(route.distance, straightLineMeters: straightLine) {
+        coordinates += Self.coordinates(of: route.polyline).filter {
+          CLLocation(latitude: $0.latitude, longitude: $0.longitude).distance(from: firstFix) > 15
+        }
+        meters = route.distance
+        source = "road route"
+      }
+      let points = Self.timedDeparturePoints(coordinates, departure: departure, arrival: arrival)
+
+      guard self.shiftStartedAt == tripStartedAt,
+            self.shiftPhase == .driving || self.shiftPhase == .stationaryPending,
+            let snapshot = self.recorder.prependDeparture(
+              owner: .automatic,
+              points: points,
+              miles: meters / 1_609.344,
+              startedAt: departure
+            ) else { return }
+      self.applyRecordingSnapshot(snapshot)
+      self.shiftStartedAt = departure
+      self.publishLiveShift()
+      self.updateShiftLiveActivityAfterMileageCorrection()
+      self.persistShiftSnapshot()
+      NativeAutoTrackDiagnostics.shared.record(
+        kind: "shift.departure-reconstructed",
+        title: "Trip start reconstructed",
+        detail: "Added \(String(format: "%.2f", meters / 1_609.344)) mi by \(source); start moved back \(Int(tripStartedAt.timeIntervalSince(departure).rounded())) s. Departure from \(motionDeparture == nil ? "distance estimate" : "Core Motion history")."
+      )
+    }
+  }
+
+  private func motionDepartureDate(before end: Date, vehicle: NativeVehicle) async -> Date? {
+    guard CMMotionActivityManager.isActivityAvailable() else { return nil }
+    let start = end.addingTimeInterval(-NativeDepartureReconstruction.lookbackWindow)
+    let activities: [CMMotionActivity] = await withCheckedContinuation { continuation in
+      motionManager.queryActivityStarting(from: start, to: end, to: motionQueue) { activities, _ in
+        continuation.resume(returning: activities ?? [])
+      }
+    }
+    let samples = activities.map {
+      NativeDepartureMotionSample(
+        startDate: $0.startDate,
+        automotive: NativeAutoTrackPolicy.isDrivingMotion(automotive: $0.automotive, cycling: $0.cycling, vehicle: vehicle),
+        onFoot: ($0.walking || $0.running) && $0.confidence != .low,
+        stationary: $0.stationary
+      )
+    }
+    return NativeDepartureReconstruction.motionDepartureDate(samples: samples, before: end)
+  }
+
+  private func roadRoute(from source: CLLocationCoordinate2D, to destination: CLLocationCoordinate2D) async -> MKRoute? {
+    let request = MKDirections.Request()
+    request.source = MKMapItem(placemark: MKPlacemark(coordinate: source))
+    request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
+    request.transportType = .automobile
+    return try? await MKDirections(request: request).calculate().routes.first
+  }
+
+  private static func coordinates(of polyline: MKPolyline) -> [CLLocationCoordinate2D] {
+    var coordinates = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: polyline.pointCount)
+    polyline.getCoordinates(&coordinates, range: NSRange(location: 0, length: polyline.pointCount))
+    return coordinates
+  }
+
+  /// Spread timestamps along the path in proportion to distance travelled.
+  private static func timedDeparturePoints(
+    _ coordinates: [CLLocationCoordinate2D],
+    departure: Date,
+    arrival: Date
+  ) -> [CLLocation] {
+    let locations = coordinates.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+    var cumulative: [CLLocationDistance] = [0]
+    for index in locations.indices.dropFirst() {
+      cumulative.append(cumulative[index - 1] + locations[index].distance(from: locations[index - 1]))
+    }
+    let total = max(cumulative.last ?? 0, 1)
+    let duration = max(arrival.timeIntervalSince(departure), 0)
+    return zip(coordinates, cumulative).map { coordinate, distance in
+      CLLocation(
+        coordinate: coordinate,
+        altitude: 0,
+        horizontalAccuracy: 20,
+        verticalAccuracy: -1,
+        timestamp: departure.addingTimeInterval(duration * distance / total)
+      )
+    }
+  }
+
   private func applyHistoricalShiftMotionActivities(
     _ activities: [CMMotionActivity],
     vehicle: NativeVehicle,
@@ -2424,6 +2680,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     endBackgroundLocationSession()
     setBackgroundTrackingEnabled(false)
     startSignificantLocationWakeMonitoring()
+    startVisitMonitoring()
     if let anchor = idleWakeLocation ?? manager.location ?? wakeManager.location {
       armIdleDepartureRegion(at: anchor)
     }

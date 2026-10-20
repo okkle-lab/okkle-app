@@ -1513,7 +1513,9 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
       cycling: true,
       vehicle: .bike
     ))
-    XCTAssertFalse(NativeAutoTrackPolicy.isDrivingMotion(
+    // E-bikes and handlebar-mounted phones are often reported as automotive,
+    // so the bicycle profile accepts either label.
+    XCTAssertTrue(NativeAutoTrackPolicy.isDrivingMotion(
       automotive: true,
       cycling: false,
       vehicle: .bike

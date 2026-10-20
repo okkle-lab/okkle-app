@@ -242,7 +242,9 @@ enum NativeAutoTrackPolicy {
     case .motorized:
       return automotive
     case .bicycle:
-      return cycling
+      // See NativeTripMileagePolicy.motionState: e-bikes and handlebar-mounted
+      // phones are frequently reported as automotive.
+      return cycling || automotive
     }
   }
 
@@ -393,6 +395,8 @@ struct NativeTripStartEvidence: Equatable {
   var displacementMeters: Double = 0
   var vehicleConnected = false
   var headingIsConsistent = false
+  /// Phone plugged in — a common in-car habit, used as supporting evidence.
+  var charging = false
 }
 
 /// Recent precise fixes shared by every start path. Confirmation uses a sequence
@@ -442,6 +446,83 @@ struct NativePreTripBuffer {
   }
 }
 
+/// One Core Motion history sample, reduced to what departure reconstruction
+/// needs. Kept free of CMMotionActivity so the policy is unit-testable.
+struct NativeDepartureMotionSample: Equatable {
+  var startDate: Date
+  var automotive: Bool
+  /// Trusted walking/running — the driver was on foot, so any earlier
+  /// driving belongs to a different journey.
+  var onFoot: Bool
+  var stationary: Bool
+}
+
+/// Automatic detection is inherently late: Core Motion needs time to gain
+/// confidence and a geofence exit typically arrives minutes after leaving.
+/// Instead of losing that distance, reconstruct it once the trip is confirmed:
+/// the driver left the parked anchor when the automotive run leading into the
+/// first recorded fix began. Every bound here errs toward under-claiming.
+enum NativeDepartureReconstruction {
+  static let minimumGapMeters: CLLocationDistance = 150
+  static let maximumGapMeters: CLLocationDistance = 15_000
+  static let maximumAnchorAccuracyMeters: CLLocationDistance = 100
+  static let lookbackWindow: TimeInterval = 30 * 60
+  static let longStationaryBreak: TimeInterval = 3 * 60
+  static let fallbackSpeedMetersPerSecond = 8.0
+  static let bicycleFallbackSpeedMetersPerSecond = 4.5
+  static let maximumImpliedSpeedMetersPerSecond = 40.0
+
+  static func fallbackSpeed(for vehicle: NativeVehicle) -> Double {
+    vehicle.automaticTrackingProfile == .bicycle ? bicycleFallbackSpeedMetersPerSecond : fallbackSpeedMetersPerSecond
+  }
+
+  /// Start of the automotive run that leads up to `end`. A trusted on-foot
+  /// sample or a long stationary spell resets it, so earlier drives and the
+  /// walk to the car are never included.
+  static func motionDepartureDate(samples: [NativeDepartureMotionSample], before end: Date) -> Date? {
+    let ordered = samples.filter { $0.startDate < end }.sorted { $0.startDate < $1.startDate }
+    var candidate: Date?
+    for (index, sample) in ordered.enumerated() {
+      let sampleEnd = index + 1 < ordered.count ? ordered[index + 1].startDate : end
+      if sample.automotive {
+        if candidate == nil { candidate = sample.startDate }
+      } else if sample.onFoot {
+        candidate = nil
+      } else if sample.stationary, sampleEnd.timeIntervalSince(sample.startDate) > longStationaryBreak {
+        candidate = nil
+      }
+    }
+    return candidate
+  }
+
+  /// When the driver left `anchor` to reach `firstFix`, or nil when the gap
+  /// can't be reconstructed honestly (poor anchor, too close, too far, or a
+  /// physically impossible timeline).
+  static func departureDate(
+    anchor: CLLocation,
+    firstFix: CLLocation,
+    motionDeparture: Date?,
+    vehicle: NativeVehicle = .car
+  ) -> Date? {
+    guard anchor.horizontalAccuracy >= 0,
+          anchor.horizontalAccuracy <= maximumAnchorAccuracyMeters else { return nil }
+    let gap = anchor.distance(from: firstFix)
+    guard gap >= minimumGapMeters, gap <= maximumGapMeters else { return nil }
+    let earliest = max(anchor.timestamp, firstFix.timestamp.addingTimeInterval(-lookbackWindow))
+    let latest = firstFix.timestamp.addingTimeInterval(-gap / maximumImpliedSpeedMetersPerSecond)
+    guard earliest <= latest else { return nil }
+    let candidate = motionDeparture
+      ?? firstFix.timestamp.addingTimeInterval(-gap / fallbackSpeed(for: vehicle))
+    return min(max(candidate, earliest), latest)
+  }
+
+  /// Accept a road route only when it is a believable path between the two
+  /// points; otherwise fall back to the conservative straight line.
+  static func isPlausibleRoadDistance(_ roadMeters: CLLocationDistance, straightLineMeters: CLLocationDistance) -> Bool {
+    roadMeters >= straightLineMeters * 0.95 && roadMeters <= straightLineMeters * 2.5
+  }
+}
+
 struct NativeTripStopEvidenceSnapshot: Equatable {
   var stationaryDuration: TimeInterval = 0
   var stationaryMotion = false
@@ -478,6 +559,7 @@ enum NativeTrackingConfidenceEvaluator {
     if evidence.displacementMeters >= thresholds.vehicleStartDisplacementMeters { score += 0.45 }
     if evidence.vehicleConnected { score += 0.25 }
     if evidence.headingIsConsistent { score += 0.10 }
+    if evidence.charging { score += 0.20 }
     score = min(score, 1)
     return NativeTrackingConfidenceDecision(score: score, shouldTransition: score >= startThreshold)
   }
@@ -817,6 +899,37 @@ final class NativeTripRecorder {
         state.pedestrianExclusionStartedAt = state.pedestrianExclusionStartedAt
           .map { min($0, startedAt) } ?? startedAt
       }
+      self.state = state
+      return state
+    }
+  }
+
+  /// Prepends a reconstructed departure (parked anchor → first recorded fix)
+  /// that live detection confirmed too late to record. Points must all be
+  /// earlier than the first recorded point; the trip start moves back to
+  /// `startedAt` and the gap's distance is added as one mileage segment.
+  func prependDeparture(
+    owner: NativeTripRecorderOwner,
+    points departurePoints: [CLLocation],
+    miles: Double,
+    startedAt: Date
+  ) -> NativeTripRecordingSnapshot? {
+    withLock {
+      guard var state, state.owner == owner, !state.pedestrianMileageExcluded else { return nil }
+      let firstRecorded = state.points.first?.timestamp ?? state.lastLocation?.timestamp ?? .distantFuture
+      let prefix = departurePoints
+        .filter { $0.timestamp < firstRecorded }
+        .sorted { $0.timestamp < $1.timestamp }
+        .map { RoutePoint(location: $0) }
+      guard !prefix.isEmpty, miles > 0, startedAt < state.startedAt else { return nil }
+      state.points.insert(contentsOf: prefix, at: 0)
+      state.startedAt = startedAt
+      state.miles += miles
+      state.recentMileageSegments.insert(NativeTripMileageSegment(
+        startedAt: startedAt,
+        endedAt: firstRecorded == .distantFuture ? startedAt : firstRecorded,
+        miles: miles
+      ), at: 0)
       self.state = state
       return state
     }
