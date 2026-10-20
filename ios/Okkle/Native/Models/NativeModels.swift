@@ -44,10 +44,9 @@ enum NativeAutoTrackingProfile: String, Equatable {
   case bicycle
 }
 
-/// Vehicle-sensitive thresholds used by automatic tracking. Cars retain the
-/// existing production values; bicycles need lower movement thresholds to
-/// start reliably, but a tighter/longer stationary check so traffic lights do
-/// not look like delivery stops.
+/// Vehicle-sensitive thresholds used by automatic tracking. Motorized trips
+/// can start in slow traffic; stop thresholds remain conservative so traffic
+/// lights do not look like delivery stops.
 struct NativeAutoTrackingThresholds: Equatable {
   var startSpeedMetersPerSecond: CLLocationSpeed
   var idleWakeDistanceMeters: CLLocationDistance
@@ -60,8 +59,8 @@ struct NativeAutoTrackingThresholds: Equatable {
   var minimumUnconnectedStopDwellSeconds: TimeInterval
 
   static let motorized = NativeAutoTrackingThresholds(
-    startSpeedMetersPerSecond: 6,
-    idleWakeDistanceMeters: 450,
+    startSpeedMetersPerSecond: 2.24,
+    idleWakeDistanceMeters: 35,
     continuousLocationDistanceMeters: 10,
     stationaryResumeDistanceMeters: 150,
     gpsStationaryConfirmationSeconds: 2 * 60,
@@ -178,7 +177,10 @@ enum NativeTripMileagePolicy {
   /// path after pedestrian motion has already paused mileage, never a reason
   /// to begin suppressing or starting a trip on its own.
   static func locationConfirmsVehicleTravel(_ location: CLLocation, vehicle: NativeVehicle) -> Bool {
-    location.speed >= vehicle.automaticTrackingThresholds.startSpeedMetersPerSecond
+    // Keep the stronger pedestrian override independent of the more sensitive
+    // candidate-start threshold: running is not sufficient to undo walking.
+    let recoverySpeed: CLLocationSpeed = vehicle == .bike ? 2.5 : 6
+    return location.speed >= recoverySpeed
   }
 
   static func pedestrianIntervals(
@@ -788,9 +790,10 @@ extension NativeTrip {
 enum NativeTripCategory: String, CaseIterable, Identifiable, Codable {
   case business
   case personal
+  case unreviewed
 
   var id: String { rawValue }
-  var label: String { rawValue.capitalized }
+  var label: String { self == .unreviewed ? "Needs review" : rawValue.capitalized }
 }
 
 enum NativeTripFeedback: String, CaseIterable, Identifiable, Codable {

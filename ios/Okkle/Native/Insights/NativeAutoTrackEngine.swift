@@ -151,6 +151,7 @@ private struct NativeAutoShiftSnapshot: Codable {
   var pendingVisits: [NativeVisit]?
   var startTrigger: String?
   var walkingDetectedDuringStop: Bool?
+  var startedDuringWork: Bool?
 }
 
 /// Passive, hands-off shift tracking. On a working day, the moment Core
@@ -212,6 +213,43 @@ enum NativeVehicleConnectionMonitor {
 @MainActor
 final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManagerDelegate {
   static let shared = NativeAutoTrackEngine()
+  @Published private(set) var workSessionUntil: Date? = UserDefaults.standard.object(forKey: "okkle.work-session-until") as? Date
+  private var preTripBuffer = NativePreTripBuffer()
+  private var shiftStartedDuringWork = false
+
+  var isWorkSessionActive: Bool { (workSessionUntil ?? .distantPast) > Date() }
+
+  private var effectiveTrackingSettings: NativeSettings? {
+    guard var settings = store?.settings else { return nil }
+    if isWorkSessionActive { settings.workingDays = Array(0...6) }
+    return settings
+  }
+
+  func startWork() {
+    guard let store else { return }
+    store.settings.autoTrackTrips = true
+    workSessionUntil = Date().addingTimeInterval(12 * 60 * 60)
+    UserDefaults.standard.set(workSessionUntil, forKey: "okkle.work-session-until")
+    cancelIdleGeofenceElevationTimeout()
+    if shiftPhase != .idle { shiftStartedDuringWork = true; persistShiftSnapshot() }
+    refresh()
+  }
+
+  func endWork() {
+    // Save the active business route before clearing the work-session state.
+    if shiftPhase != .idle { endCurrentShift() }
+    workSessionUntil = nil
+    UserDefaults.standard.removeObject(forKey: "okkle.work-session-until")
+    disarmIdleGeofenceElevation(reason: "Work session ended")
+    refresh()
+  }
+
+  private func expireWorkSessionIfNeeded() {
+    guard let deadline = workSessionUntil, deadline <= Date() else { return }
+    workSessionUntil = nil
+    UserDefaults.standard.removeObject(forKey: "okkle.work-session-until")
+    if shiftPhase == .idle { disarmIdleGeofenceElevation(reason: "Work session expired") }
+  }
 
   @Published private(set) var visits: [NativeVisit] = []
   @Published private(set) var shiftPhase: NativeAutoShiftPhase = .idle
@@ -242,6 +280,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     return base.appendingPathComponent("Okkle", isDirectory: true).appendingPathComponent("automatic-trip.json")
   }()
   private var backgroundLocationSession: AnyObject?
+  // iOS 18+ delivers background location events (region exits, significant
+  // changes, visits) only while the app holds a CLServiceSession declaring
+  // what it needs. Taken on every refresh — including Core Location's
+  // background relaunch via configure() — and held while automatic tracking
+  // is allowed to run.
+  private var locationServiceSession: AnyObject?
   private let shiftNotificationIdentifier = "uk.okkle.native.shift-logged"
   private let shiftStartNotificationIdentifier = "uk.okkle.native.shift-started"
   private var shiftStartNotified = false
@@ -307,7 +351,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   // both of which can otherwise leave a drive several minutes/km unconfirmed.
   private var idleDepartureRegion: CLCircularRegion?
   private let idleDepartureRegionIdentifier = "uk.okkle.native.idle-departure"
-  private let idleDepartureRegionRadius: CLLocationDistance = 150
+  private let idleDepartureRegionRadius: CLLocationDistance = 100
   // Once the geofence is exited we run continuous GPS briefly so the normal
   // speed/Core Motion evidence checks (handleIdleWakeLocationUpdates) can
   // confirm actual driving fast. If nothing confirms it within this window —
@@ -863,6 +907,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   /// Keep the low-power wake service alive whenever permissions allow it, then
   /// separately decide whether today's signals may start a trip.
   func refresh() {
+    expireWorkSessionIfNeeded()
     // The app coming to foreground (e.g. the driver opening it) is itself a
     // wake opportunity — catch up on anything a background timer couldn't
     // fire for immediately, rather than waiting for the next location/motion
@@ -870,7 +915,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     catchUpOverdueTimers()
     locationAuthorizationStatus = manager.authorizationStatus
     locationAccuracyAuthorization = manager.accuracyAuthorization
-    guard let settings = store?.settings else {
+    guard let settings = effectiveTrackingSettings else {
       readiness = .disabled
       recordMonitoringDiagnosticIfChanged(
         state: "unavailable.no-store",
@@ -910,6 +955,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         title: "Automatic tracking ready",
         detail: "The active trip remains eligible to continue."
       )
+      holdLocationServiceSession()
       publishLiveShift()
       startMotionMonitoring()
       ensureActiveLocationRecording(reason: "Lifecycle refresh", recordsDiagnostic: false, forceRestart: false)
@@ -930,6 +976,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       stopMonitoring()
       return
     }
+    holdLocationServiceSession()
 
     guard readiness == .ready else {
       let detail = monitoringInactiveDetail(settings: settings)
@@ -986,8 +1033,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func stopMonitoring() {
+    workSessionUntil = nil
+    UserDefaults.standard.removeObject(forKey: "okkle.work-session-until")
+    preTripBuffer.clear()
     stopMotionMonitoring()
     if shiftPhase == .idle {
+      releaseLocationServiceSession()
       disarmVehicleStartDetection(reason: "Automatic tracking is inactive")
       disarmIdleGeofenceElevation(reason: "Automatic tracking is inactive")
       disarmIdleDepartureRegion()
@@ -1009,6 +1060,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   func manualTripStartRequested() {
+    preTripBuffer.clear()
     manualTripStartPending = true
     NativeAutoTrackDiagnostics.shared.record(
       kind: "handoff.manual.requested",
@@ -1146,7 +1198,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleMotionActivity(_ activity: CMMotionActivity) {
-    guard let settings = store?.settings else { return }
+    guard let settings = effectiveTrackingSettings else { return }
     let vehicle = shiftPhase == .idle ? settings.defaultVehicle : liveShiftVehicle
     let motionState = tripMotionState(for: activity, vehicle: vehicle)
     let isTrustedDriving = NativeTripMileagePolicy.confirmsVehicleTravel(motionState, vehicle: vehicle)
@@ -1185,6 +1237,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       handleDrivingSignal(trigger: vehicle.automaticTrackingProfile == .bicycle ? "Core Motion cycling" : "Core Motion automotive")
       catchUpOverdueTimers()
     } else if NativeTripMileagePolicy.excludesMileage(motionState) {
+      if shiftPhase == .idle { preTripBuffer.clear() }
       let motionStateChanged = lastMotionState != .pedestrian
       lastMotionState = .pedestrian
       if shiftPhase == .stationaryPending, !walkingDetectedDuringStop {
@@ -1219,9 +1272,14 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       handleStationarySignal()
     } else {
       lastMotionState = .unknown
+      if shiftPhase == .idle,
+         NativeAutoTrackPolicy.isDrivingMotion(automotive: activity.automotive,
+           cycling: activity.cycling, vehicle: vehicle) {
+        beginPreTripCapture()
+      }
     }
-    // Pedestrian motion only gates mileage; unknown and low-confidence
-    // readings do nothing. None of them ends the delivery shift.
+    // Pedestrian motion gates mileage; low-confidence vehicle motion can
+    // prepare GPS but cannot confirm a trip. None ends the delivery shift.
   }
 
   private func tripMotionState(
@@ -1246,7 +1304,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   ) {
     let initialLocations = suppliedLocations ?? (vehicleStartArmed
       ? NativeAutoTrackPolicy.armedTripInitialLocations(bufferedLocations: vehicleArmLocations)
-      : [])
+      : preTripBuffer.tripStartLocations(vehicle: automaticTrackingVehicle))
     let latest = initialLocations.last ?? shiftLastLocation ?? idleWakeLocation
     let displacement = initialLocations.count > 1
       ? initialLocations.last!.distance(from: initialLocations.first!)
@@ -1454,7 +1512,9 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftMiles = 0
     pendingShiftVisits = []
     shiftStartTrigger = trigger
+    shiftStartedDuringWork = isWorkSessionActive
     shiftStartedAt = initialLocations.first?.timestamp ?? Date()
+    preTripBuffer.clear()
     guard recorder.begin(owner: .automatic, startedAt: shiftStartedAt ?? Date()) else {
       coordinator.restore(phase: .idle)
       shiftPhase = .idle
@@ -1775,7 +1835,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
 
   private func armVehicleStartDetectionIfNeeded() {
     guard shiftPhase == .idle else { return }
-    guard let settings = store?.settings,
+    guard let settings = effectiveTrackingSettings,
           NativeAutoTrackPolicy.canStartTrip(
             settings: settings,
             authorizationStatus: locationAuthorizationStatus,
@@ -1837,6 +1897,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleLocationUpdates(_ locations: [CLLocation]) {
+    expireWorkSessionIfNeeded()
     catchUpOverdueTimers()
     if shiftPhase == .idle {
       if vehicleStartArmed {
@@ -1852,7 +1913,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private func handleIdleWakeLocationUpdates(_ locations: [CLLocation]) {
-    guard let settings = store?.settings,
+    guard let settings = effectiveTrackingSettings,
           NativeAutoTrackPolicy.canStartTrip(
             settings: settings,
             authorizationStatus: locationAuthorizationStatus,
@@ -1862,9 +1923,12 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     guard !manualTrackingOwnsLocation else { return }
     let thresholds = settings.defaultVehicle.automaticTrackingThresholds
 
-    for location in locations where shouldUseIdleWakeLocation(location) {
-      if let idleWakeLocation,
-         location.distance(from: idleWakeLocation) < thresholds.idleWakeDistanceMeters { continue }
+    preTripBuffer.append(locations)
+    for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) where shouldUseIdleWakeLocation(location) {
+      let displaced = idleWakeLocation.map {
+        location.distance(from: $0) >= max(thresholds.idleWakeDistanceMeters,
+          $0.horizontalAccuracy + location.horizontalAccuracy)
+      } ?? false
       idleWakeLocation = location
       armIdleDepartureRegion(at: location)
 
@@ -1874,8 +1938,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
         return
       }
 
-      if location.speed >= thresholds.startSpeedMetersPerSecond {
-        handleDrivingSignal(trigger: "Significant-location \(settings.defaultVehicle.label.lowercased()) speed")
+      if displaced || location.speed >= thresholds.startSpeedMetersPerSecond {
+        beginPreTripCapture()
+      }
+      if preTripBuffer.confirmsMovement(vehicle: settings.defaultVehicle) {
+        handleDrivingSignal(trigger: "Confirmed GPS speed")
         return
       }
 
@@ -1884,14 +1951,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     }
   }
 
-  /// Runs while `idleGeofenceElevated` — deliberately skips the
-  /// `idleWakeDistanceMeters` throttle above, which exists to space out rare
-  /// significant-location pings and would otherwise require ~450m of travel
-  /// before even checking speed. Here we're getting frequent high-accuracy
-  /// fixes right after a geofence exit, so every fix's speed is checked
-  /// directly — that's the whole point of elevating in the first place.
+  /// Precise candidate fixes confirm sustained movement, while preserving
+  /// the departure route for whichever signal ultimately starts the trip.
   private func handleElevatedIdleLocationUpdates(_ locations: [CLLocation]) {
-    guard let settings = store?.settings,
+    guard let settings = effectiveTrackingSettings,
           NativeAutoTrackPolicy.canStartTrip(
             settings: settings,
             authorizationStatus: locationAuthorizationStatus,
@@ -1899,18 +1962,15 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
             date: Date()
           ) else { return }
     guard !manualTrackingOwnsLocation else { return }
-    let thresholds = settings.defaultVehicle.automaticTrackingThresholds
-
-    for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) where shouldUseIdleWakeLocation(location) {
-      idleWakeLocation = location
-      guard location.speed >= thresholds.startSpeedMetersPerSecond else { continue }
-      handleDrivingSignal(trigger: "Elevated GPS \(settings.defaultVehicle.label.lowercased()) speed")
-      return
+    preTripBuffer.append(locations)
+    if let latest = preTripBuffer.locations.last { idleWakeLocation = latest }
+    if preTripBuffer.confirmsMovement(vehicle: settings.defaultVehicle) {
+      handleDrivingSignal(trigger: "Confirmed GPS speed")
     }
   }
 
   private func handleArmedVehicleLocationUpdates(_ locations: [CLLocation]) {
-    guard let settings = store?.settings,
+    guard let settings = effectiveTrackingSettings,
           NativeAutoTrackPolicy.canStartTrip(
             settings: settings,
             authorizationStatus: locationAuthorizationStatus,
@@ -1924,6 +1984,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       return
     }
 
+    preTripBuffer.append(locations)
     for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) {
       if let rejection = nativeTripLocationRejectionReason(location, since: vehicleArmLastLocation) {
         recordRejectedLocation(location, reason: rejection, context: "armed")
@@ -2045,7 +2106,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     wakeManager.stopMonitoring(for: region)
     if idleDepartureRegion?.identifier == region.identifier { idleDepartureRegion = nil }
 
-    guard let settings = store?.settings,
+    guard let settings = effectiveTrackingSettings,
           NativeAutoTrackPolicy.canStartTrip(
             settings: settings,
             authorizationStatus: locationAuthorizationStatus,
@@ -2054,16 +2115,23 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
           ) else { return }
     guard shiftPhase == .idle, !manualTrackingOwnsLocation, !vehicleStartArmed, !idleGeofenceElevated else { return }
 
+    beginPreTripCapture()
+  }
+
+  private func beginPreTripCapture() {
+    guard shiftPhase == .idle, !manualTrackingOwnsLocation, !vehicleStartArmed,
+          !idleGeofenceElevated else { return }
     idleGeofenceElevated = true
+    disarmIdleDepartureRegion()
     configureLocationForDriving()
     startHighAccuracyLocationUpdates(forceRestart: true)
     beginBackgroundLocationSession()
     setBackgroundTrackingEnabled(true)
-    scheduleIdleGeofenceElevationTimeout()
+    if !isWorkSessionActive { scheduleIdleGeofenceElevationTimeout() }
     NativeAutoTrackDiagnostics.shared.record(
       kind: "idle.geofence-exit",
-      title: "Departure geofence exited",
-      detail: "Elevated to continuous GPS to confirm driving quickly, instead of waiting on the significant-location wake or Core Motion."
+      title: "Early GPS capture started",
+      detail: "Buffering precise locations while confirming movement."
     )
   }
 
@@ -2086,6 +2154,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private func disarmIdleGeofenceElevation(reason: String) {
     guard idleGeofenceElevated else { return }
     idleGeofenceElevated = false
+    preTripBuffer.clear()
     cancelIdleGeofenceElevationTimeout()
     configureLocationForIdleWakeIfNeeded()
     NativeAutoTrackDiagnostics.shared.record(
@@ -2152,9 +2221,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     reconcileVehicleConnectionFromCurrentRoute()
     // Tell the driver recording has started — but only once the shift shows
     // real recorded distance, not on the raw driving signal. A bus ride or a
-    // motion blip can open a shift that's discarded as near-zero noise; every
-    // "started" notification here is one that will end in a logged trip.
-    if !shiftStartNotified, shiftMiles >= 0.2 {
+    // motion blip can open a shift that's discarded as near-zero noise.
+    if !shiftStartNotified, shiftMiles >= 0.05 {
       shiftStartNotified = true
       sendShiftStartedNotification()
     }
@@ -2347,6 +2415,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private func configureLocationForIdleWakeIfNeeded() {
     guard shiftPhase == .idle, !vehicleStartArmed else { return }
     guard locationAuthorizationStatus == .authorizedAlways else { return }
+    if isWorkSessionActive, locationAccuracyAuthorization == .fullAccuracy {
+      beginPreTripCapture()
+      return
+    }
+    if idleGeofenceElevated { return }
     stopHighAccuracyLocationUpdates()
     endBackgroundLocationSession()
     setBackgroundTrackingEnabled(false)
@@ -2432,6 +2505,38 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     guard significantLocationWakeMonitoring else { return }
     wakeManager.stopMonitoringSignificantLocationChanges()
     significantLocationWakeMonitoring = false
+  }
+
+  private func holdLocationServiceSession() {
+    guard #available(iOS 18.0, *) else { return }
+    guard locationServiceSession == nil else { return }
+    let session = CLServiceSession(authorization: .always)
+    locationServiceSession = session
+    NativeAutoTrackDiagnostics.shared.record(
+      kind: "location.service-session",
+      title: "Location service session held",
+      detail: "Declared Always authorization so iOS keeps delivering background location events.",
+      deduplicateWithin: 60 * 60
+    )
+    Task { @MainActor [weak self] in
+      for try await diagnostic in session.diagnostics {
+        guard let self, self.locationServiceSession === session else { return }
+        if diagnostic.alwaysAuthorizationDenied || diagnostic.authorizationDenied {
+          NativeAutoTrackDiagnostics.shared.record(
+            kind: "location.service-session-denied",
+            title: "Background location not granted",
+            detail: "iOS reports Always location is unavailable, so automatic trips cannot start in the background.",
+            deduplicateWithin: 60 * 60
+          )
+        }
+      }
+    }
+  }
+
+  private func releaseLocationServiceSession() {
+    guard #available(iOS 18.0, *) else { return }
+    (locationServiceSession as? CLServiceSession)?.invalidate()
+    locationServiceSession = nil
   }
 
   private func beginBackgroundLocationSession() {
@@ -2617,7 +2722,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   }
 
   private var enhancedAutoTrackingEnabled: Bool {
-    guard let settings = store?.settings else { return true }
+    guard let settings = effectiveTrackingSettings else { return true }
     return settings.autoTrackTrips && settings.enhancedAutoTracking
   }
 
@@ -2742,7 +2847,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     // Skip near-zero noise (a driving reading that immediately went
     // stationary again without covering real distance).
     guard shiftMiles > 0.1 || shiftPoints.count > 2 else { return }
-    let vehicle = store.settings.defaultVehicle
+    let vehicle = liveShiftVehicle
     var trip = NativeTrip(
       source: .automatic,
       vehicle: vehicle,
@@ -2753,6 +2858,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       points: shiftPoints,
       mileageCorrections: shiftMileageCorrections.isEmpty ? nil : shiftMileageCorrections
     )
+    trip.category = shiftStartedDuringWork ? .business : .unreviewed
     trip.analysis = NativeTripAnalysisProjector.build(
       for: trip,
       source: .automatic,
@@ -2963,7 +3069,8 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       deadlines: deadlines,
       pendingVisits: pendingShiftVisits,
       startTrigger: shiftStartTrigger,
-      walkingDetectedDuringStop: walkingDetectedDuringStop
+      walkingDetectedDuringStop: walkingDetectedDuringStop,
+      startedDuringWork: shiftStartedDuringWork
     )
     let url = Self.shiftSnapshotFileURL
     let legacyKey = shiftSnapshotKey
@@ -3016,6 +3123,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     shiftPoints = snapshot.points
     shiftMiles = snapshot.miles
     shiftStartedAt = snapshot.startedAt
+    shiftStartedDuringWork = snapshot.startedDuringWork ?? false
     liveShiftVehicle = NativeVehicle(rawValue: snapshot.vehicleRaw) ?? .car
     shiftSawVehicleConnection = snapshot.sawVehicleConnection
     shiftArmedForHomeArrival = snapshot.armedForHomeArrival
@@ -3120,7 +3228,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
       title: "Automatic trip restored",
       detail: "Recovered \(shiftPoints.count) route points and \(String(format: "%.2f", shiftMiles)) mi after relaunch."
     )
-    guard let settings = store?.settings,
+    guard let settings = effectiveTrackingSettings,
           NativeAutoTrackPolicy.canContinueActiveShift(
             settings: settings,
             authorizationStatus: manager.authorizationStatus,

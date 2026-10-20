@@ -55,6 +55,7 @@ struct NativeRecordsView: View {
     case all
     case business
     case personal
+    case unreviewed
 
     var id: String { rawValue }
     var label: String {
@@ -62,6 +63,7 @@ struct NativeRecordsView: View {
       case .all: return "All"
       case .business: return "Business"
       case .personal: return "Personal"
+      case .unreviewed: return "Needs review"
       }
     }
   }
@@ -179,7 +181,8 @@ struct NativeRecordsView: View {
   // Same gating as filteredHistory: the trip-type control only has a
   // visible effect while filter == .journeys.
   private var summaryMilesCategory: NativeTripCategory {
-    filter == .journeys && tripCategoryFilter == .personal ? .personal : .business
+    if filter == .journeys, tripCategoryFilter == .unreviewed { return .unreviewed }
+    return filter == .journeys && tripCategoryFilter == .personal ? .personal : .business
   }
 
   private func summaryMiles(in history: [NativeHistoryItem]) -> Double {
@@ -212,7 +215,7 @@ struct NativeRecordsView: View {
 
         HStack(alignment: .top, spacing: 0) {
           summaryStat(
-            title: "\(summaryMilesCategory == .personal ? "Personal" : "Business") miles",
+            title: "\(summaryMilesCategory.label) miles",
             value: miles(summaryMiles(in: monthHistory))
           )
           Divider().frame(height: 46)
@@ -523,8 +526,7 @@ struct NativeRecordsView: View {
       // (see historyFilterBar) — it must not silently keep narrowing "All"
       // (or Income/Expense) after switching away from Trips with it set.
       if filter == .journeys, tripCategoryFilter != .all, case .trip(let trip) = item {
-        let wantsBusiness = tripCategoryFilter == .business
-        guard (trip.category == .business) == wantsBusiness else { return false }
+        guard trip.category.rawValue == tripCategoryFilter.rawValue else { return false }
       }
       guard let selectedMonth else { return true }
       return calendar.isDate(item.date, equalTo: selectedMonth, toGranularity: .month)
@@ -850,7 +852,9 @@ struct NativeHistoryRow: View {
     // Indigo for a business trip, gray for personal — kept distinct from
     // expense's red so the two don't read as the same color in a mixed
     // list (they used to both be amber, which was the actual complaint).
-    case .trip(let trip): return trip.category == .personal ? .gray : .indigo
+    case .trip(let trip):
+      if trip.category == .unreviewed { return .orange }
+      return trip.category == .personal ? .gray : .indigo
     case .record(let record):
       switch record.kind {
       case .income: return .green
@@ -874,7 +878,7 @@ struct NativeHistoryRow: View {
 
   private var subtitle: String {
     switch item {
-    case .trip(let trip): return "GPS - \(shortDate(trip.startedAt))"
+    case .trip(let trip): return "\(trip.category.label) · GPS - \(shortDate(trip.startedAt))"
     case .record(let record):
       if record.kind == .expense, let merchant = record.merchant, !merchant.isEmpty {
         return "\(merchant) - \(shortDate(record.date))"
@@ -894,7 +898,9 @@ struct NativeHistoryRow: View {
 
   private var detail: String? {
     switch item {
-    case .trip(let trip): return nativeMoney(trip.deduction, currencyCode: trip.displayCurrencyCode, whole: true)
+    case .trip(let trip):
+      if trip.category == .unreviewed { return "Review trip" }
+      return nativeMoney(trip.deduction, currencyCode: trip.displayCurrencyCode, whole: true)
     case .record(let record):
       if let deduction = record.deduction { return gbp(deduction, whole: true) }
       return record.period.label

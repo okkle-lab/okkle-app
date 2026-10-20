@@ -1179,7 +1179,8 @@ struct NativeInsightsView: View {
   // inputs changes rather than on every body evaluation.
   @State private var cachedShift: NativeShiftInsights?
   private var insightVisits: [NativeVisit] {
-    NativeShiftInsights.enrichedVisits(visits: autoTrack.visits, trips: store.businessTrips)
+    let input = NativeInsightInput(visits: autoTrack.visits, store: store)
+    return NativeShiftInsights.enrichedVisits(visits: input.visits, trips: input.trips)
   }
 
   private var shift: NativeShiftInsights {

@@ -395,6 +395,53 @@ struct NativeTripStartEvidence: Equatable {
   var headingIsConsistent = false
 }
 
+/// Recent precise fixes shared by every start path. Confirmation uses a sequence
+/// of fixes, elapsed time and displacement so one speed spike cannot start a trip.
+struct NativePreTripBuffer {
+  private(set) var locations: [CLLocation] = []
+
+  mutating func clear() { locations.removeAll() }
+
+  mutating func append(_ samples: [CLLocation], now: Date = Date()) {
+    locations.removeAll { now.timeIntervalSince($0.timestamp) > 180 }
+    for sample in samples.sorted(by: { $0.timestamp < $1.timestamp }) {
+      guard nativeTripLocationRejectionReason(sample, since: locations.last,
+        now: now, maximumAge: 180) == nil else { continue }
+      locations.append(sample)
+    }
+    if locations.count > 180 { locations.removeFirst(locations.count - 180) }
+  }
+
+  func confirmsMovement(vehicle: NativeVehicle) -> Bool {
+    let moving = movingLocations(vehicle: vehicle)
+    guard moving.count >= 3, let first = moving.first, let last = moving.last,
+          last.timestamp.timeIntervalSince(first.timestamp) >= 8 else { return false }
+    let threshold = vehicle.automaticTrackingThresholds
+    guard last.distance(from: first) >= max(threshold.vehicleStartDisplacementMeters,
+      first.horizontalAccuracy + last.horizontalAccuracy) else { return false }
+    return true
+  }
+
+  private func movingLocations(vehicle: NativeVehicle) -> [CLLocation] {
+    let speed = vehicle.automaticTrackingThresholds.startSpeedMetersPerSecond
+    return Array(locations.reversed().prefix { $0.speed >= speed }.reversed())
+  }
+
+  func tripStartLocations(vehicle: NativeVehicle) -> [CLLocation] {
+    let moving = movingLocations(vehicle: vehicle)
+    guard let first = moving.first,
+          let index = locations.firstIndex(where: { $0.timestamp == first.timestamp }) else {
+      guard let latest = locations.last else { return [] }
+      return locations.filter { latest.timestamp.timeIntervalSince($0.timestamp) <= 20 }
+    }
+    // Include the departure anchor, not several minutes of stationary waiting.
+    if index > 0, first.timestamp.timeIntervalSince(locations[index - 1].timestamp) <= 15 {
+      return Array(locations[(index - 1)...])
+    }
+    return moving
+  }
+}
+
 struct NativeTripStopEvidenceSnapshot: Equatable {
   var stationaryDuration: TimeInterval = 0
   var stationaryMotion = false

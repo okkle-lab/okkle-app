@@ -184,6 +184,9 @@ struct NativeTripView: View {
       .navigationTitle("")
       .navigationBarTitleDisplayMode(.large)
       .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          workSessionButton
+        }
         if !nativeUsesSidebarNavigation {
           ToolbarItem(placement: .topBarTrailing) {
             NativeProfileToolbarButton {
@@ -203,6 +206,22 @@ struct NativeTripView: View {
 
   private func usesCompactStartLayout(_ proxy: GeometryProxy) -> Bool {
     proxy.size.height < 560
+  }
+
+  private var workSessionButton: some View {
+    Button {
+      if autoTrack.isWorkSessionActive {
+        autoTrack.endWork()
+      } else {
+        store.settings.defaultVehicle = selectedVehicle
+        autoTrack.startWork()
+      }
+    } label: {
+      Label(autoTrack.isWorkSessionActive ? "End work" : "Start work", systemImage: "briefcase")
+    }
+    .disabled(autoTrack.locationAuthorizationStatus != .authorizedAlways ||
+      autoTrack.locationAccuracyAuthorization != .fullAccuracy)
+    .accessibilityHint("Keeps automatic tracking ready for up to 12 hours. Requires Always and Precise location access.")
   }
 
   private func regularStartLayout(_ proxy: GeometryProxy) -> some View {
@@ -519,6 +538,11 @@ struct NativeTripView: View {
       Spacer()
       Text(trackingVehicle.label)
         .font(.system(size: 13, weight: .semibold))
+      if autoTrack.isWorkSessionActive {
+        Button("End work") { autoTrack.endWork() }
+          .font(.system(size: 13, weight: .semibold))
+          .buttonStyle(.plain)
+      }
       Button {
         selectedTab = .insights
       } label: {

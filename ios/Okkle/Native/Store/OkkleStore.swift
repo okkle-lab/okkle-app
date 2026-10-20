@@ -398,7 +398,9 @@ final class OkkleStore: ObservableObject {
 
   func setTripCategory(_ trip: NativeTrip, to category: NativeTripCategory) {
     guard let index = trips.firstIndex(where: { $0.id == trip.id }) else { return }
-    trips[index].category = category
+    var updated = trips[index]
+    updated.category = category
+    updateTrip(updated)
   }
 
   func updateRecord(_ record: NativeRecord) {

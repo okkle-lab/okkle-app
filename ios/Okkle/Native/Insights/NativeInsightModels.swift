@@ -365,10 +365,14 @@ struct NativeInsightInput {
 
   @MainActor
   init(visits: [NativeVisit], store: OkkleStore, generatedAt: Date = Date()) {
-    self.visits = visits
+    let businessTrips = store.businessTrips
+    let businessIDs = Set(businessTrips.map(\.id))
+    self.visits = visits.filter { visit in
+      visit.tripID.map { businessIDs.contains($0) } ?? true
+    }
     settings = store.settings
     records = store.records
-    trips = store.trips
+    trips = businessTrips
     evidence = store.insightEvidence
     self.generatedAt = generatedAt
   }

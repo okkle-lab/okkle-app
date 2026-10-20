@@ -473,7 +473,7 @@ struct NativeAutoTrackSettingsView: View {
           ))
         }
       } footer: {
-        Text("On your working days Okkle starts tracking a trip automatically when it detects you driving, so you never forget. Turn it off to track every trip by hand.")
+        Text("On your working days Okkle detects driving and saves automatic trips as Needs review. Mark them Business or Personal, or delete unwanted trips. Tap Start work on the Trip tab to keep GPS ready for up to 12 hours and save those trips as Business, even outside your usual working days. This uses more battery; tap End work when you finish. Turn automatic tracking off to track trips by hand.")
       }
 
       if store.settings.autoTrackTrips, autoTrack.locationAuthorizationStatus != .authorizedAlways {

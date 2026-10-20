@@ -966,6 +966,59 @@ final class NativeAutoTrackCoordinatorTests: XCTestCase {
 }
 
 
+final class NativePreTripBufferTests: XCTestCase {
+  private let now = Date(timeIntervalSinceReferenceDate: 20_000)
+
+  private func fix(_ seconds: Double, meters: Double, speed: Double = 2.5, accuracy: Double = 5) -> CLLocation {
+    CLLocation(coordinate: CLLocationCoordinate2D(latitude: 51.5 + meters / 111_195, longitude: -0.12),
+      altitude: 0, horizontalAccuracy: accuracy, verticalAccuracy: 5,
+      course: 0, speed: speed, timestamp: now.addingTimeInterval(seconds))
+  }
+
+  func testSlowUrbanDrivingConfirmsAndPreservesDepartureAnchor() {
+    var buffer = NativePreTripBuffer()
+    buffer.append([fix(-25, meters: 0, speed: 0), fix(-20, meters: 0, speed: 0),
+      fix(-15, meters: 12.5), fix(-10, meters: 25), fix(0, meters: 50)], now: now)
+    XCTAssertTrue(buffer.confirmsMovement(vehicle: .car))
+    XCTAssertEqual(buffer.tripStartLocations(vehicle: .car).first?.timestamp, now.addingTimeInterval(-20))
+    XCTAssertEqual(buffer.tripStartLocations(vehicle: .car).count, 4)
+  }
+
+  func testWalkingAndSingleSpeedSpikeDoNotConfirm() {
+    var buffer = NativePreTripBuffer()
+    buffer.append([fix(-30, meters: 0, speed: 1.4), fix(-15, meters: 21, speed: 1.4),
+      fix(0, meters: 42, speed: 8)], now: now)
+    XCTAssertFalse(buffer.confirmsMovement(vehicle: .car))
+  }
+
+  func testStationaryDriftDoesNotConfirmDespiteReportedSpeed() {
+    var buffer = NativePreTripBuffer()
+    buffer.append([fix(-20, meters: 0), fix(-10, meters: 4), fix(0, meters: 8)], now: now)
+    XCTAssertFalse(buffer.confirmsMovement(vehicle: .car))
+  }
+
+  func testFastSamplingStillConfirmsSustainedMovement() {
+    var buffer = NativePreTripBuffer()
+    buffer.append((0...20).map { fix(Double($0 - 20), meters: Double($0) * 2.5) }, now: now)
+    XCTAssertTrue(buffer.confirmsMovement(vehicle: .car))
+  }
+
+  func testPoorAccuracyStaleAndDuplicateFixesAreRejectedAndBufferExpires() {
+    var buffer = NativePreTripBuffer()
+    let valid = fix(-10, meters: 0)
+    buffer.append([fix(-181, meters: 0), fix(-20, meters: 0, accuracy: 100), valid, valid], now: now)
+    XCTAssertEqual(buffer.locations.count, 1)
+    buffer.append([], now: now.addingTimeInterval(181))
+    XCTAssertTrue(buffer.locations.isEmpty)
+  }
+
+  func testReviewCategoryRoundTrips() throws {
+    let encoded = try JSONEncoder().encode(NativeTripCategory.unreviewed)
+    XCTAssertEqual(try JSONDecoder().decode(NativeTripCategory.self, from: encoded), .unreviewed)
+    XCTAssertEqual(NativeTripCategory.unreviewed.label, "Needs review")
+  }
+}
+
 final class NativeTrackingConfidenceTests: XCTestCase {
   func testStartRequiresDrivingEvidenceAndUsesVehicleSignalAsSupport() {
     XCTAssertFalse(NativeTrackingConfidenceEvaluator.startDecision(
@@ -1122,6 +1175,24 @@ final class NativeDeliveryEpisodeTests: XCTestCase {
 
 @MainActor
 final class NativeInsightArchitectureTests: XCTestCase {
+  func testUnreviewedTripsAreExcludedFromBusinessTotalsAndInsightInput() {
+    let store = OkkleStore()
+    store.records = []
+    let startedAt = Date()
+    let business = NativeTrip(vehicle: .car, miles: 10, deduction: 0, startedAt: startedAt,
+      endedAt: startedAt.addingTimeInterval(600), points: [])
+    var unreviewed = NativeTrip(vehicle: .car, miles: 20, deduction: 0, startedAt: startedAt,
+      endedAt: startedAt.addingTimeInterval(600), points: [])
+    unreviewed.category = .unreviewed
+    store.trips = [business, unreviewed]
+    XCTAssertEqual(store.businessTrips.map(\.id), [business.id])
+    XCTAssertEqual(store.yearMiles, 10, accuracy: 0.001)
+    let input = NativeInsightInput(visits: [], store: store)
+    XCTAssertEqual(input.trips.map(\.id), [business.id])
+    store.setTripCategory(unreviewed, to: .business)
+    XCTAssertEqual(store.yearMiles, 30, accuracy: 0.001)
+  }
+
   func testExplicitRecordProvenanceControlsRecommendationIncome() {
     var manual = NativeRecord(
       source: .manual,
@@ -1415,9 +1486,8 @@ final class NativeAutoTrackPolicyTests: XCTestCase {
     XCTAssertEqual(NativeVehicle.motorbike.automaticTrackingProfile, .motorized)
     XCTAssertEqual(NativeVehicle.bike.automaticTrackingProfile, .bicycle)
 
-    // Preserve the existing car behavior while making slower bicycle starts
-    // and shorter bicycle resumptions possible.
-    XCTAssertEqual(car.startSpeedMetersPerSecond, 6)
+    // Lower car start speed without changing the traffic-light stop checks.
+    XCTAssertEqual(car.startSpeedMetersPerSecond, 2.24)
     XCTAssertEqual(car.stationaryResumeDistanceMeters, 150)
     XCTAssertEqual(car.gpsStationaryConfirmationSeconds, 120)
     XCTAssertEqual(car.gpsStationaryRadiusMeters, 90)
