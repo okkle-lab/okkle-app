@@ -217,6 +217,7 @@ struct NativeOnboardingView: View {
   @State private var step: NativeOnboardingStep = .welcome
   @State private var name = ""
   @State private var vehicle: NativeVehicle = .car
+  @State private var vehicleNotice: NativeNoRateNotice?
   @State private var selectedPlatforms: Set<String> = ["Uber Eats"]
   @State private var customPlatformName = ""
   @State private var country: NativeTaxCountry = .deviceDefault
@@ -274,6 +275,18 @@ struct NativeOnboardingView: View {
     .onAppear {
       seedFromStore()
       checkForExistingICloudDataIfNeeded()
+    }
+    .alert(
+      vehicleNotice?.title ?? "",
+      isPresented: Binding(get: { vehicleNotice != nil }, set: { if !$0 { vehicleNotice = nil } }),
+      presenting: vehicleNotice
+    ) { notice in
+      Button("Got it", role: .cancel) {}
+      if notice.offersMotorbike {
+        Button("It's a throttle e-bike") { vehicle = .motorbike }
+      }
+    } message: { notice in
+      Text(notice.message)
     }
     .alert("iCloud sync", isPresented: Binding(
       get: { restoreMessage != nil },
@@ -394,11 +407,15 @@ struct NativeOnboardingView: View {
             // sets the actual rate, UK or US) comes right after this one.
             NativeOnboardingOptionButton(
               title: item.label,
-              subtitle: nil,
+              subtitle: item.note(for: country),
               symbol: item.symbol,
               selected: vehicle == item
             ) {
+              let changed = vehicle != item
               vehicle = item
+              if changed {
+                vehicleNotice = item.noRateNotice(country: country, expenseMethod: expenseMethod)
+              }
             }
           }
         }

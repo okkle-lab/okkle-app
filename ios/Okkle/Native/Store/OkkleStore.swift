@@ -814,13 +814,19 @@ final class OkkleStore: ObservableObject {
       // Actual-cost drivers claim their real fuel/insurance/servicing/repair
       // receipts instead of the mileage rate — the rate itself doesn't apply.
       guard settings.expenseMethod == .simplified else { return 0 }
+      // HMRC's simplified expenses cover cars, goods vehicles and motorcycles
+      // only (BIM75005) — a self-employed cyclist, including on a legal
+      // pedal-assist e-bike, claims actual costs instead. An e-bike that
+      // isn't pedal-assist legal is a motorcycle: pick Motorbike.
+      guard vehicle != .bike else { return 0 }
       return TaxCalculator.mileageDeduction(miles: miles, vehicle: vehicle, totalBefore: totalBefore, date: date)
     case .us:
-      // IRS standard mileage rate applies to cars, vans and motorcycles; there
-      // is no equivalent flat per-mile deduction for a bicycle.
+      // The IRS standard rate is defined for automobiles, including vans,
+      // pickups and panel trucks (Rev. Proc. 2010-51 §3.01). Motorcycles and
+      // bicycles have no standard rate.
       switch vehicle {
-      case .bike: return 0
-      case .car, .van, .motorbike: return USTaxCalculator.mileageDeduction(miles: miles, on: date)
+      case .bike, .motorbike: return 0
+      case .car, .van: return USTaxCalculator.mileageDeduction(miles: miles, on: date)
       }
     }
   }

@@ -693,6 +693,9 @@ struct NativeLogView: View {
       guard store.settings.expenseMethod == .simplified else {
         return "Actual costs claimed - no mileage rate applied."
       }
+      if vehicle == .bike {
+        return "No mileage rate for bicycles. Log charging and repairs as expenses."
+      }
       let band = vehicle.rateBand(on: date)
       let first = Int((band.first * 100).rounded())
       let after = Int((band.after * 100).rounded())
@@ -701,8 +704,10 @@ struct NativeLogView: View {
       }
       return "\(first)p first band, then \(after)p per mile."
     case .us:
-      guard vehicle != .bike else {
-        return "No IRS mileage rate for bicycles."
+      guard vehicle == .car || vehicle == .van else {
+        return vehicle == .bike
+          ? "No IRS mileage rate for bicycles."
+          : "The IRS standard rate only covers cars, vans and trucks."
       }
       let cents = Int((USTaxCalculator.standardMileageRate(on: date) * 100).rounded())
       return "\(cents)c per business mile (IRS standard rate)."

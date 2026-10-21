@@ -11,9 +11,22 @@ enum NativeVehicle: String, CaseIterable, Identifiable, Codable {
   var label: String {
     switch self {
     case .car: return "Car"
-    case .motorbike: return "Motorbike"
-    case .bike: return "E-bike / Bicycle"
+    case .motorbike: return "Motorbike / moped"
+    case .bike: return "Bicycle / e-bike"
     case .van: return "Van"
+    }
+  }
+
+  /// A short hint on how an electric bike is classed. A pedal-assist e-bike
+  /// (250W motor that cuts out at 15.5 mph, pedals must drive it) is a
+  /// bicycle in law; a faster or throttle-only one is a motorcycle or moped
+  /// (GOV.UK "Electric bike rules"; HMRC EIM31240).
+  func note(for country: NativeTaxCountry) -> String? {
+    guard country == .uk else { return nil }
+    switch self {
+    case .bike: return "Pedal-assist, up to 15.5 mph"
+    case .motorbike: return "Includes fast or throttle e-bikes"
+    case .car, .van: return nil
     }
   }
 
@@ -35,6 +48,45 @@ enum NativeVehicle: String, CaseIterable, Identifiable, Codable {
       return (0.24, 0.24)
     case .bike:
       return (0.20, 0.20)
+    }
+  }
+}
+
+/// A short pop-up shown when a driver picks a vehicle that earns no flat
+/// mileage rate, so a £0 deduction is never a surprise.
+struct NativeNoRateNotice: Equatable {
+  let title: String
+  let message: String
+  /// UK only: lets a rider with a throttle or fast e-bike switch to Motorbike.
+  let offersMotorbike: Bool
+}
+
+extension NativeVehicle {
+  func noRateNotice(country: NativeTaxCountry, expenseMethod: NativeExpenseMethod) -> NativeNoRateNotice? {
+    switch (country, self) {
+    case (.uk, .bike):
+      // Actual-cost claimants have no mileage rate for any vehicle, so a
+      // bicycle-specific warning would be noise.
+      guard expenseMethod == .simplified else { return nil }
+      return NativeNoRateNotice(
+        title: "No mileage rate for bicycles",
+        message: "HMRC's flat mileage rate doesn't cover bicycles or pedal-assist e-bikes. Log charging and repairs as expenses instead.\n\nA faster or throttle e-bike counts as a motorbike.",
+        offersMotorbike: true
+      )
+    case (.us, .bike):
+      return NativeNoRateNotice(
+        title: "No mileage rate for bicycles",
+        message: "The IRS has no mileage rate for bicycles. Log your costs as expenses instead.",
+        offersMotorbike: false
+      )
+    case (.us, .motorbike):
+      return NativeNoRateNotice(
+        title: "No mileage rate for motorbikes",
+        message: "The IRS standard rate only covers cars, vans and trucks. Log your costs as expenses instead.",
+        offersMotorbike: false
+      )
+    default:
+      return nil
     }
   }
 }

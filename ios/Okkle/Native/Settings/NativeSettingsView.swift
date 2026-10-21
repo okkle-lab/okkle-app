@@ -226,6 +226,7 @@ struct NativeSettingsProfileHeader: View {
 struct NativeProfileSettingsView: View {
   @EnvironmentObject private var store: OkkleStore
   @State private var pendingCountry: NativeTaxCountry?
+  @State private var vehicleNotice: NativeNoRateNotice?
 
   var body: some View {
     Form {
@@ -249,7 +250,16 @@ struct NativeProfileSettingsView: View {
 
         Picker("Default vehicle", selection: Binding(
           get: { store.settings.defaultVehicle },
-          set: { store.settings.defaultVehicle = $0 }
+          set: { newVehicle in
+            let changed = store.settings.defaultVehicle != newVehicle
+            store.settings.defaultVehicle = newVehicle
+            if changed {
+              vehicleNotice = newVehicle.noRateNotice(
+                country: store.settings.taxCountry,
+                expenseMethod: store.settings.expenseMethod
+              )
+            }
+          }
         )) {
           ForEach(NativeVehicle.allCases) { vehicle in
             Label(vehicle.label, systemImage: vehicle.symbol).tag(vehicle)
@@ -265,6 +275,18 @@ struct NativeProfileSettingsView: View {
     }
     .navigationTitle("Profile details")
     .navigationBarTitleDisplayMode(.inline)
+    .alert(
+      vehicleNotice?.title ?? "",
+      isPresented: Binding(get: { vehicleNotice != nil }, set: { if !$0 { vehicleNotice = nil } }),
+      presenting: vehicleNotice
+    ) { notice in
+      Button("Got it", role: .cancel) {}
+      if notice.offersMotorbike {
+        Button("It's a throttle e-bike") { store.settings.defaultVehicle = .motorbike }
+      }
+    } message: { notice in
+      Text(notice.message)
+    }
     .alert(
       "Switch to \(pendingCountry?.label ?? "")?",
       isPresented: Binding(get: { pendingCountry != nil }, set: { if !$0 { pendingCountry = nil } })

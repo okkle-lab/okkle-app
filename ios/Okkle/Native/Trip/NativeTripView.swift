@@ -34,6 +34,7 @@ struct NativeTripView: View {
   @ObservedObject private var autoTrack = NativeAutoTrackEngine.shared
   @Binding private var selectedTab: NativeTab
   @State private var selectedVehicle: NativeVehicle = .car
+  @State private var noRateNotice: NativeNoRateNotice?
   @State private var completedTrip: NativeTrip?
   @State private var infoCard = 0
   @State private var showProfile = false
@@ -125,6 +126,18 @@ struct NativeTripView: View {
       }
     } message: {
       Text("You've been in one place for a while. Stop now, keep tracking, or let Okkle auto-complete stopped manual trips next time.")
+    }
+    .alert(
+      noRateNotice?.title ?? "",
+      isPresented: Binding(get: { noRateNotice != nil }, set: { if !$0 { noRateNotice = nil } }),
+      presenting: noRateNotice
+    ) { notice in
+      Button("Got it", role: .cancel) {}
+      if notice.offersMotorbike {
+        Button("It's a throttle e-bike") { selectedVehicle = .motorbike }
+      }
+    } message: { notice in
+      Text(notice.message)
     }
     .onAppear {
       selectedVehicle = store.settings.defaultVehicle
@@ -286,10 +299,30 @@ struct NativeTripView: View {
   }
 
   private var vehicleSelector: some View {
+    VStack(spacing: 6) {
+      vehicleMenu
+      // Which electric bike belongs where is the one thing a rider can
+      // easily get wrong, so keep the hint visible rather than in the menu.
+      if let note = selectedVehicle.note(for: store.settings.taxCountry) {
+        Text(note)
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(.white.opacity(0.78))
+      }
+    }
+  }
+
+  private var vehicleMenu: some View {
     Menu {
       ForEach(NativeVehicle.allCases) { vehicle in
         Button {
+          let changed = selectedVehicle != vehicle
           selectedVehicle = vehicle
+          if changed {
+            noRateNotice = vehicle.noRateNotice(
+              country: store.settings.taxCountry,
+              expenseMethod: store.settings.expenseMethod
+            )
+          }
         } label: {
           Label(vehicle.label, systemImage: vehicle.symbol)
         }

@@ -115,7 +115,7 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
       // Car and van share one combined 10,000-mile band under HMRC's rules,
       // regardless of which of the two was actually driven for any given
       // entry — the label uses whichever the driver has set as default.
-      let rate = store.settings.defaultVehicle.rateBand(on: referenceDate)
+      let rate = NativeVehicle.car.rateBand(on: referenceDate)
       let firstBandMiles = min(carVanMiles, 10_000)
       let afterBandMiles = max(0, carVanMiles - 10_000)
       summaryRows.append(["Business - first 10,000 mi @ \(gbp(rate.first))/mi", miles(firstBandMiles), gbp(firstBandMiles * rate.first)])
@@ -124,10 +124,17 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
       }
     }
     for vehicle in [NativeVehicle.motorbike, .bike] {
-      let vehicleMiles = rows.filter { $0.vehicle == vehicle }.reduce(0.0) { $0 + $1.miles }
+      let vehicleRows = rows.filter { $0.vehicle == vehicle }
+      let vehicleMiles = vehicleRows.reduce(0.0) { $0 + $1.miles }
       guard vehicleMiles > 0 else { continue }
-      let rate = vehicle.rateBand(on: referenceDate).first
-      summaryRows.append(["Business - \(vehicle.label) @ \(gbp(rate))/mi", miles(vehicleMiles), gbp(vehicleMiles * rate)])
+      if vehicle == .bike {
+        // No simplified rate for bicycles: show the distance only, so this
+        // table agrees with the deduction total.
+        summaryRows.append(["Business - \(vehicle.label) (no flat rate)", miles(vehicleMiles), gbp(0)])
+      } else {
+        let rate = vehicle.rateBand(on: referenceDate).first
+        summaryRows.append(["Business - \(vehicle.label) @ \(gbp(rate))/mi", miles(vehicleMiles), gbp(vehicleRows.reduce(0.0) { $0 + $1.deduction })])
+      }
     }
 
     drawTable(
@@ -152,7 +159,10 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
       guard vehicleMiles > 0 else { continue }
       let deduction = vehicleRows.reduce(0.0) { $0 + $1.deduction }
       let effectiveRate = vehicleMiles > 0 ? deduction / vehicleMiles : 0
-      summaryRows.append(["Business - \(vehicle.label) @ \(gbp(effectiveRate))/mi", miles(vehicleMiles), gbp(deduction)])
+      let label = effectiveRate > 0
+        ? "Business - \(vehicle.label) @ \(gbp(effectiveRate))/mi"
+        : "Business - \(vehicle.label) (no standard rate)"
+      summaryRows.append([label, miles(vehicleMiles), gbp(deduction)])
     }
 
     drawTable(
