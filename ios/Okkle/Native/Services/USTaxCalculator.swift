@@ -192,3 +192,25 @@ enum USTaxCalculator {
     return max(0, tax)
   }
 }
+
+extension USTaxCalculator {
+  /// A US company (S-corp or C-corp). Company-level income tax isn't
+  /// estimated — S-corps pass profit through to the owner's return and the
+  /// owner's salary split drives the result — so this reports profit only and
+  /// leaves the tax to the accountant.
+  static func estimateCompany(turnover: Double, expenses: Double) -> NativeTaxPosition {
+    let profit = max(0, turnover - expenses)
+    return NativeTaxPosition(
+      turnover: turnover,
+      expenses: expenses,
+      deductionApplied: min(turnover, expenses),
+      businessProfit: profit,
+      profit: profit,
+      incomeTax: 0,
+      class4: 0,
+      totalDue: 0,
+      paymentOnAccount: 0,
+      usesTradingAllowance: false
+    )
+  }
+}

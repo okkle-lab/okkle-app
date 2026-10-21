@@ -15,7 +15,7 @@ struct NativeTaxDetailView: View {
         priorityBanner(savings: savings)
 
         NativeTaxOverviewStatsCard(
-          due: gbp(tax.totalDue),
+          due: store.taxDueText,
           saved: gbp(savings.taxSaved),
           profit: gbp(tax.profit),
           onTapDue: { detail = .bill },
@@ -44,7 +44,13 @@ struct NativeTaxDetailView: View {
         .presentationDragIndicator(.visible)
     }
     .sheet(isPresented: $showsDeadlines) {
-      NativeKeyTaxDatesSheet(country: store.settings.taxCountry, usState: store.settings.usState)
+      NativeKeyTaxDatesSheet(
+        country: store.settings.taxCountry,
+        usState: store.settings.usState,
+        status: store.settings.workStatus,
+        yearEndMonth: store.settings.companyYearEndMonth,
+        yearEndDay: store.settings.companyYearEndDay
+      )
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
@@ -65,7 +71,7 @@ struct NativeTaxDetailView: View {
     // standard rate has no tier, and actual-cost drivers don't use the
     // mileage rate at all.
     store.settings.taxCountry == .uk
-      && store.settings.expenseMethod == .simplified
+      && store.settings.usesFlatMileageRate
       && (store.settings.defaultVehicle == .car || store.settings.defaultVehicle == .van)
       && store.yearMiles > 0
       && store.yearMiles < 10_000
@@ -297,14 +303,31 @@ private struct NativeTaxBillBreakdown: View {
 
   var body: some View {
     let tax = store.taxPosition
+    let labels = store.taxPresentation
+    let isUKSelfEmployed = store.settings.taxCountry == .uk && store.settings.workStatus == .selfEmployed
     NativeGlassCard {
       VStack(spacing: 12) {
-        NativeTaxBreakdownHeader(title: "Set aside", value: gbp(tax.totalDue), symbol: "shield.lefthalf.filled")
-        NativeTaxDetailRow("Income tax", gbp(tax.incomeTax))
-        NativeTaxDetailRow("Class 4 NIC", gbp(tax.class4), info: NativeTaxTerm.class4NIC)
-        NativeTaxDetailRow("Payment on account", gbp(tax.paymentOnAccount), info: NativeTaxTerm.paymentOnAccount)
-        NativeTaxDetailRow("Taxable profit", gbp(tax.profit), info: NativeTaxTerm.taxableProfit)
-        NativeTaxDetailRow("Income tax band", store.settings.incomeBracket.label, info: NativeTaxTerm.incomeTaxBand)
+        NativeTaxBreakdownHeader(
+          title: labels.estimatesTax ? "Set aside" : labels.headline,
+          value: store.taxDueText,
+          symbol: "shield.lefthalf.filled"
+        )
+        if labels.estimatesTax {
+          NativeTaxDetailRow(labels.taxLabel, gbp(tax.incomeTax))
+          if let second = labels.secondLabel {
+            NativeTaxDetailRow(second, gbp(tax.class4), info: isUKSelfEmployed ? NativeTaxTerm.class4NIC : nil)
+          }
+          if tax.stateTax > 0 {
+            NativeTaxDetailRow("State income tax", gbp(tax.stateTax))
+          }
+          if let payment = labels.paymentLabel {
+            NativeTaxDetailRow(payment, gbp(tax.paymentOnAccount), info: isUKSelfEmployed ? NativeTaxTerm.paymentOnAccount : nil)
+          }
+        }
+        NativeTaxDetailRow(store.settings.workStatus == .company ? "Profit before tax" : "Taxable profit", gbp(tax.profit), info: NativeTaxTerm.taxableProfit)
+        if labels.showsIncomeBand {
+          NativeTaxDetailRow("Income tax band", store.settings.incomeBracket.label, info: NativeTaxTerm.incomeTaxBand)
+        }
       }
     }
   }
@@ -339,7 +362,9 @@ private struct NativeTaxYearBreakdown: View {
         NativeTaxDetailRow("Logged expenses", gbp(tax.expenses))
         NativeTaxDetailRow("Business profit", gbp(tax.businessProfit))
         NativeTaxDetailRow("Deduction applied", gbp(tax.deductionApplied), info: NativeTaxTerm.deductionApplied)
-        NativeTaxDetailRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used", info: NativeTaxTerm.tradingAllowance)
+        if store.taxPresentation.showsTradingAllowance {
+          NativeTaxDetailRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used", info: NativeTaxTerm.tradingAllowance)
+        }
       }
     }
   }
@@ -504,12 +529,14 @@ struct NativeTaxSummaryView: View {
     VStack(spacing: 14) {
       NativeGlassCard(cornerRadius: 32) {
         VStack(alignment: .leading, spacing: 14) {
-          Label("Estimated tax due", systemImage: "shield.lefthalf.filled")
+          Label(store.taxPresentation.headline, systemImage: "shield.lefthalf.filled")
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(OkkleColor.brandDark)
-          Text(gbp(tax.totalDue))
+          Text(store.taxDueText)
             .font(.system(size: 52, weight: .heavy, design: .rounded))
-          Text("Estimate only, not tax advice. Built from your logged earnings, expenses, mileage and selected tax band.")
+          Text(store.taxPresentation.estimatesTax
+            ? "Estimate only, not tax advice. Built from your logged earnings, expenses and mileage."
+            : "Your accountant prepares the company return. Okkle keeps your mileage and records.")
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(OkkleColor.muted)
         }
@@ -522,15 +549,25 @@ struct NativeTaxSummaryView: View {
 
       NativeGlassCard {
         VStack(spacing: 12) {
+          let labels = store.taxPresentation
           taxRow("Business profit", gbp(tax.businessProfit))
           taxRow("Deduction applied", gbp(tax.deductionApplied))
-          taxRow("Taxable profit", gbp(tax.profit))
-          taxRow("Income tax band", store.settings.incomeBracket.label)
-          taxRow("Other income", gbp(store.settings.otherIncome))
-          taxRow("Income tax", gbp(tax.incomeTax))
-          taxRow("Class 4 NIC", gbp(tax.class4))
-          taxRow("Payment on account", gbp(tax.paymentOnAccount))
-          taxRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
+          taxRow(store.settings.workStatus == .company ? "Profit before tax" : "Taxable profit", gbp(tax.profit))
+          if labels.showsIncomeBand {
+            taxRow("Income tax band", store.settings.incomeBracket.label)
+          }
+          if let other = labels.otherIncomeLabel {
+            taxRow(other, gbp(store.settings.otherIncome))
+          }
+          if labels.estimatesTax {
+            taxRow(labels.taxLabel, gbp(tax.incomeTax))
+            if let second = labels.secondLabel { taxRow(second, gbp(tax.class4)) }
+            if tax.stateTax > 0 { taxRow("State income tax", gbp(tax.stateTax)) }
+            if let payment = labels.paymentLabel { taxRow(payment, gbp(tax.paymentOnAccount)) }
+          }
+          if labels.showsTradingAllowance {
+            taxRow("Trading allowance", tax.usesTradingAllowance ? "Used" : "Not used")
+          }
         }
       }
 

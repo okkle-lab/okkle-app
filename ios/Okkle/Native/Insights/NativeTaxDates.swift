@@ -41,7 +41,16 @@ struct NativeTaxDeadline: Identifiable {
 /// ftb.ca.gov/pay/estimated-tax-payments.html. New York, Illinois,
 /// Pennsylvania and Georgia all use the same four dates and equal 25%
 /// split as the IRS, but still require their own separate voucher/payment.
-func nativeTaxDeadlines(for country: NativeTaxCountry, usState: NativeUSState = .california) -> [NativeTaxDeadline] {
+func nativeTaxDeadlines(
+  for country: NativeTaxCountry,
+  usState: NativeUSState = .california,
+  status: NativeWorkStatus = .selfEmployed,
+  companyYearEndMonth: Int = 3,
+  companyYearEndDay: Int = 31
+) -> [NativeTaxDeadline] {
+  if status == .company {
+    return nativeCompanyDeadlines(for: country, yearEndMonth: companyYearEndMonth, yearEndDay: companyYearEndDay)
+  }
   switch country {
   case .uk:
     return [
@@ -76,6 +85,49 @@ func nativeTaxDeadlines(for country: NativeTaxCountry, usState: NativeUSState = 
       break // No-income-tax states, and states Okkle doesn't yet model by name, get federal dates only.
     }
     return deadlines
+  }
+}
+
+/// Deadlines for a driver working through their own company.
+///
+/// UK limited company: all three depend on the accounting period end —
+/// Corporation Tax is due 9 months and 1 day after it, accounts go to
+/// Companies House within 9 months, and the CT600 return is due 12 months
+/// after. US: calendar-year S-corps file Form 1120-S by 15 March and C-corps
+/// Form 1120 by 15 April; the owner's personal return is also due 15 April.
+func nativeCompanyDeadlines(for country: NativeTaxCountry, yearEndMonth: Int = 3, yearEndDay: Int = 31) -> [NativeTaxDeadline] {
+  switch country {
+  case .uk:
+    let calendar = Calendar(identifier: .gregorian)
+    // A non-leap reference year keeps 29 Feb year-ends well defined.
+    let month = min(max(yearEndMonth, 1), 12)
+    let range = calendar.range(of: .day, in: .month, for: calendar.date(from: DateComponents(year: 2027, month: month, day: 1))!)!
+    let day = min(max(yearEndDay, 1), range.count)
+    let yearEnd = calendar.date(from: DateComponents(year: 2027, month: month, day: day))!
+    let accounts = calendar.date(byAdding: .month, value: 9, to: yearEnd)!
+    let payment = calendar.date(byAdding: .day, value: 1, to: accounts)!
+    let returnDue = calendar.date(byAdding: .month, value: 12, to: yearEnd)!
+    func deadline(_ title: String, _ date: Date, _ note: String, authority: String = "HMRC") -> NativeTaxDeadline {
+      NativeTaxDeadline(
+        title: title,
+        month: calendar.component(.month, from: date),
+        day: calendar.component(.day, from: date),
+        note: note,
+        authority: authority
+      )
+    }
+    return [
+      deadline("Pay Corporation Tax", payment, "9 months and 1 day after your accounting period ends."),
+      deadline("File company accounts", accounts, "To Companies House, 9 months after your accounting period ends.", authority: "Companies House"),
+      deadline("File Company Tax Return (CT600)", returnDue, "12 months after your accounting period ends."),
+      NativeTaxDeadline(title: "File your personal return & pay", month: 1, day: 31, note: "Only if HMRC requires one, for example for dividends.", authority: "HMRC"),
+    ]
+  case .us:
+    return [
+      NativeTaxDeadline(title: "S-corp return (Form 1120-S)", month: 3, day: 15, note: "Calendar-year S-corps. Extension via Form 7004.", authority: "IRS"),
+      NativeTaxDeadline(title: "C-corp return (Form 1120)", month: 4, day: 15, note: "Calendar-year C-corps. Tax is still due by this date.", authority: "IRS"),
+      NativeTaxDeadline(title: "Personal return (Form 1040)", month: 4, day: 15, note: "Your accountant will confirm any estimated payments.", authority: "IRS"),
+    ]
   }
 }
 
@@ -206,7 +258,13 @@ struct NativeKeyTaxDatesPanel: View {
       }
     }
     .sheet(isPresented: $showSheet) {
-      NativeKeyTaxDatesSheet(country: store.settings.taxCountry, usState: store.settings.usState)
+      NativeKeyTaxDatesSheet(
+        country: store.settings.taxCountry,
+        usState: store.settings.usState,
+        status: store.settings.workStatus,
+        yearEndMonth: store.settings.companyYearEndMonth,
+        yearEndDay: store.settings.companyYearEndDay
+      )
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
@@ -216,12 +274,28 @@ struct NativeKeyTaxDatesPanel: View {
 struct NativeKeyTaxDatesSheet: View {
   var country: NativeTaxCountry = .uk
   var usState: NativeUSState = .california
+  var status: NativeWorkStatus = .selfEmployed
+  var yearEndMonth = 3
+  var yearEndDay = 31
   @Environment(\.dismiss) private var dismiss
   @State private var alertMessage: String?
 
-  private var deadlines: [NativeTaxDeadline] { nativeTaxDeadlines(for: country, usState: usState) }
+  private var deadlines: [NativeTaxDeadline] {
+    nativeTaxDeadlines(
+      for: country,
+      usState: usState,
+      status: status,
+      companyYearEndMonth: yearEndMonth,
+      companyYearEndDay: yearEndDay
+    )
+  }
 
   private var recordsFootnote: String {
+    if status == .company {
+      return country == .uk
+        ? "Keep company records for at least 6 years from the end of each accounting period."
+        : "Keep your mileage log and reimbursement records for at least 3 years."
+    }
     switch country {
     case .uk:
       return "Keep your records for at least 5 years after the 31 January deadline. MTD for Income Tax adds quarterly updates once your income passes the threshold."

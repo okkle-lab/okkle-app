@@ -11,12 +11,19 @@ final class NativeSelfAssessmentPdfRenderer: NativePdfDocumentRenderer {
   private var country: NativeTaxCountry { store.settings.taxCountry }
 
   private var documentTitle: String {
-    country == .uk ? "Self Assessment Summary" : "Schedule C Summary"
+    if store.settings.workStatus == .company { return "Company Summary" }
+    return country == .uk ? "Self Assessment Summary" : "Schedule C Summary"
   }
 
   init(store: OkkleStore) {
     self.store = store
-    super.init(footerText: store.settings.taxCountry == .uk ? "Okkle Self Assessment summary" : "Okkle Schedule C summary")
+    let footer: String
+    if store.settings.workStatus == .company {
+      footer = "Okkle company summary"
+    } else {
+      footer = store.settings.taxCountry == .uk ? "Okkle Self Assessment summary" : "Okkle Schedule C summary"
+    }
+    super.init(footerText: footer)
   }
 
   func render() -> Data {
@@ -62,7 +69,15 @@ final class NativeSelfAssessmentPdfRenderer: NativePdfDocumentRenderer {
     drawKeyValue("Turnover (income)", gbp(tax.turnover))
     drawKeyValue("Logged expenses", gbp(tax.expenses))
     drawKeyValue("Deduction applied", gbp(tax.deductionApplied))
-    drawKeyValue("Taxable profit", gbp(tax.profit), highlighted: true)
+    drawKeyValue(store.settings.workStatus == .company ? "Profit before tax" : "Taxable profit", gbp(tax.profit), highlighted: true)
+    if store.settings.workStatus == .company {
+      if country == .uk {
+        drawKeyValue("Estimated Corporation Tax", gbp(tax.totalDue), highlighted: true)
+      }
+      drawKeyValue("Business miles", miles(store.yearMiles))
+      drawKeyValue("Mileage reimbursed", gbp(store.yearMileageDeduction))
+      return
+    }
     switch country {
     case .uk:
       drawKeyValue("Income tax band", store.settings.incomeBracket.label)

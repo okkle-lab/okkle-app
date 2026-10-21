@@ -690,8 +690,16 @@ struct NativeLogView: View {
   private func mileageRateDescription(for vehicle: NativeVehicle) -> String {
     switch store.settings.taxCountry {
     case .uk:
-      guard store.settings.expenseMethod == .simplified else {
+      guard store.settings.usesFlatMileageRate else {
         return "Actual costs claimed - no mileage rate applied."
+      }
+      if let reason = NativeMileageRules.noRateReason(
+        vehicle: vehicle,
+        country: .uk,
+        status: store.settings.workStatus,
+        expenseMethod: store.settings.expenseMethod
+      ) {
+        return reason
       }
       let band = vehicle.rateBand(on: date)
       let first = Int((band.first * 100).rounded())
@@ -701,8 +709,13 @@ struct NativeLogView: View {
       }
       return "\(first)p first band, then \(after)p per mile."
     case .us:
-      guard vehicle != .bike else {
-        return "No IRS mileage rate for bicycles."
+      if let reason = NativeMileageRules.noRateReason(
+        vehicle: vehicle,
+        country: .us,
+        status: store.settings.workStatus,
+        expenseMethod: store.settings.expenseMethod
+      ) {
+        return reason
       }
       let cents = Int((USTaxCalculator.standardMileageRate(on: date) * 100).rounded())
       return "\(cents)c per business mile (IRS standard rate)."

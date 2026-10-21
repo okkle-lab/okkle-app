@@ -42,18 +42,26 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
   private var mileageReportSubtitle: String {
     switch country {
     case .uk:
-      return store.settings.expenseMethod == .simplified
+      if store.settings.workStatus == .company {
+        return "Business mileage log — approved mileage rates paid by the company"
+      }
+      return store.settings.usesFlatMileageRate
         ? "HMRC simplified-rate mileage log for Self Assessment"
         : "Business mileage log — vehicle costs claimed as actual expenses"
     case .us:
-      return "IRS standard mileage rate log for Schedule C"
+      return store.settings.workStatus == .company
+        ? "IRS standard mileage rate log for company reimbursement"
+        : "IRS standard mileage rate log for Schedule C"
     }
   }
 
   private var mileageReportExplainer: String {
     switch country {
     case .uk:
-      return store.settings.expenseMethod == .simplified
+      if store.settings.workStatus == .company {
+        return "Mileage the company pays at HMRC's approved mileage rates — figures are generated on-device from records logged in Okkle."
+      }
+      return store.settings.usesFlatMileageRate
         ? "Mileage claimed using HMRC's simplified expenses flat rate — figures are generated on-device from records logged in Okkle."
         : "This log evidences business mileage. Vehicle costs are claimed from expense records rather than a mileage rate — figures are generated on-device from records logged in Okkle."
     case .us:
@@ -88,10 +96,10 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
 
   private func drawSummary() {
     drawSectionTitle("Summary")
-    switch (country, store.settings.expenseMethod) {
-    case (.uk, .simplified):
+    switch (country, store.settings.usesFlatMileageRate) {
+    case (.uk, true):
       drawUkSimplifiedSummaryRows()
-    case (.uk, .actualCost):
+    case (.uk, false):
       drawWrapped(
         "Vehicle costs are claimed as actual expenses on this account, so no mileage rate applies here — see the expense records in the accountant pack for the costs claimed.",
         font: .systemFont(ofSize: 10.5, weight: .regular),
@@ -115,7 +123,7 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
       // Car and van share one combined 10,000-mile band under HMRC's rules,
       // regardless of which of the two was actually driven for any given
       // entry — the label uses whichever the driver has set as default.
-      let rate = store.settings.defaultVehicle.rateBand(on: referenceDate)
+      let rate = NativeVehicle.car.rateBand(on: referenceDate)
       let firstBandMiles = min(carVanMiles, 10_000)
       let afterBandMiles = max(0, carVanMiles - 10_000)
       summaryRows.append(["Business - first 10,000 mi @ \(gbp(rate.first))/mi", miles(firstBandMiles), gbp(firstBandMiles * rate.first)])
@@ -124,10 +132,24 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
       }
     }
     for vehicle in [NativeVehicle.motorbike, .bike] {
-      let vehicleMiles = rows.filter { $0.vehicle == vehicle }.reduce(0.0) { $0 + $1.miles }
+      let vehicleRows = rows.filter { $0.vehicle == vehicle }
+      let vehicleMiles = vehicleRows.reduce(0.0) { $0 + $1.miles }
       guard vehicleMiles > 0 else { continue }
-      let rate = vehicle.rateBand(on: referenceDate).first
-      summaryRows.append(["Business - \(vehicle.label) @ \(gbp(rate))/mi", miles(vehicleMiles), gbp(vehicleMiles * rate)])
+      // Read the amount from the rows themselves so this table can never
+      // disagree with the deduction total — a self-employed cyclist has no
+      // flat rate, so the row shows distance only.
+      let amount = vehicleRows.reduce(0.0) { $0 + $1.deduction }
+      if NativeMileageRules.noRateReason(
+        vehicle: vehicle,
+        country: .uk,
+        status: store.settings.workStatus,
+        expenseMethod: store.settings.expenseMethod
+      ) != nil {
+        summaryRows.append(["Business - \(vehicle.label) (no flat rate)", miles(vehicleMiles), gbp(0)])
+      } else {
+        let rate = vehicle.rateBand(on: referenceDate).first
+        summaryRows.append(["Business - \(vehicle.label) @ \(gbp(rate))/mi", miles(vehicleMiles), gbp(amount)])
+      }
     }
 
     drawTable(
@@ -152,7 +174,10 @@ final class NativeMileageReportPdfRenderer: NativePdfDocumentRenderer {
       guard vehicleMiles > 0 else { continue }
       let deduction = vehicleRows.reduce(0.0) { $0 + $1.deduction }
       let effectiveRate = vehicleMiles > 0 ? deduction / vehicleMiles : 0
-      summaryRows.append(["Business - \(vehicle.label) @ \(gbp(effectiveRate))/mi", miles(vehicleMiles), gbp(deduction)])
+      let label = effectiveRate > 0
+        ? "Business - \(vehicle.label) @ \(gbp(effectiveRate))/mi"
+        : "Business - \(vehicle.label) (no standard rate)"
+      summaryRows.append([label, miles(vehicleMiles), gbp(deduction)])
     }
 
     drawTable(

@@ -334,3 +334,249 @@ final class NativeWorkingHoursTests: XCTestCase {
     XCTAssertEqual(decoded.workEndMinute, 20 * 60)
   }
 }
+
+// MARK: - Work status (self-employed vs company, UK and US)
+
+final class NativeWorkStatusRulesTests: XCTestCase {
+  private var calendar: Calendar = {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Europe/London")!
+    return calendar
+  }()
+
+  /// After 6 April 2026, so the 55p car rate applies.
+  private var date: Date {
+    calendar.date(from: DateComponents(year: 2026, month: 10, day: 20, hour: 12))!
+  }
+
+  private func deduction(
+    _ country: NativeTaxCountry,
+    _ status: NativeWorkStatus,
+    _ vehicle: NativeVehicle,
+    miles: Double = 1_000,
+    before: Double = 0,
+    method: NativeExpenseMethod = .simplified
+  ) -> Double {
+    NativeMileageRules.deduction(
+      miles: miles, vehicle: vehicle, totalBefore: before, date: date,
+      country: country, status: status, expenseMethod: method
+    )
+  }
+
+  // MARK: Mileage
+
+  func testUKSelfEmployedCarVanAndMotorbikeUseSimplifiedRates() {
+    XCTAssertEqual(deduction(.uk, .selfEmployed, .car), 550, accuracy: 0.001)
+    XCTAssertEqual(deduction(.uk, .selfEmployed, .van), 550, accuracy: 0.001)
+    XCTAssertEqual(deduction(.uk, .selfEmployed, .motorbike), 240, accuracy: 0.001)
+  }
+
+  func testUKSelfEmployedRateDropsAfterTenThousandMiles() {
+    XCTAssertEqual(deduction(.uk, .selfEmployed, .car, miles: 1_000, before: 9_500), 400, accuracy: 0.001)
+  }
+
+  func testUKSelfEmployedBicycleHasNoFlatRate() {
+    XCTAssertEqual(deduction(.uk, .selfEmployed, .bike), 0)
+  }
+
+  func testUKSelfEmployedActualCostsHasNoFlatRate() {
+    XCTAssertEqual(deduction(.uk, .selfEmployed, .car, method: .actualCost), 0)
+  }
+
+  func testUKCompanyPaysApprovedRatesIncludingBicycles() {
+    XCTAssertEqual(deduction(.uk, .company, .car), 550, accuracy: 0.001)
+    XCTAssertEqual(deduction(.uk, .company, .motorbike), 240, accuracy: 0.001)
+    XCTAssertEqual(deduction(.uk, .company, .bike), 200, accuracy: 0.001)
+  }
+
+  func testUKCompanyIgnoresTheSoleTraderExpenseMethod() {
+    XCTAssertEqual(deduction(.uk, .company, .car, method: .actualCost), 550, accuracy: 0.001)
+  }
+
+  func testUKCompanyRateDropsAfterTenThousandMiles() {
+    XCTAssertEqual(deduction(.uk, .company, .car, miles: 1_000, before: 9_500), 400, accuracy: 0.001)
+  }
+
+  /// Rev. Proc. 2010-51 §3.01 defines the standard rate for "automobiles
+  /// (including vans, pickups, or panel trucks)" — motorcycles and bicycles
+  /// have no standard rate.
+  func testUSStandardRateCoversCarsAndVansOnly() {
+    for status in NativeWorkStatus.allCases {
+      XCTAssertEqual(deduction(.us, status, .car), 760, accuracy: 0.001)
+      XCTAssertEqual(deduction(.us, status, .van), 760, accuracy: 0.001)
+      XCTAssertEqual(deduction(.us, status, .motorbike), 0)
+      XCTAssertEqual(deduction(.us, status, .bike), 0)
+    }
+  }
+
+  func testFlatRateAvailability() {
+    XCTAssertTrue(NativeMileageRules.usesFlatRate(country: .uk, status: .selfEmployed, expenseMethod: .simplified))
+    XCTAssertFalse(NativeMileageRules.usesFlatRate(country: .uk, status: .selfEmployed, expenseMethod: .actualCost))
+    XCTAssertTrue(NativeMileageRules.usesFlatRate(country: .uk, status: .company, expenseMethod: .actualCost))
+    XCTAssertTrue(NativeMileageRules.usesFlatRate(country: .us, status: .selfEmployed, expenseMethod: .actualCost))
+    XCTAssertTrue(NativeMileageRules.usesFlatRate(country: .us, status: .company, expenseMethod: .simplified))
+  }
+
+  func testNoRateReasonOnlyForBicyclesWithoutARate() {
+    XCTAssertNotNil(NativeMileageRules.noRateReason(vehicle: .bike, country: .uk, status: .selfEmployed, expenseMethod: .simplified))
+    XCTAssertNil(NativeMileageRules.noRateReason(vehicle: .bike, country: .uk, status: .company, expenseMethod: .simplified))
+    XCTAssertNotNil(NativeMileageRules.noRateReason(vehicle: .bike, country: .us, status: .selfEmployed, expenseMethod: .simplified))
+    XCTAssertNotNil(NativeMileageRules.noRateReason(vehicle: .bike, country: .us, status: .company, expenseMethod: .simplified))
+    XCTAssertNotNil(NativeMileageRules.noRateReason(vehicle: .motorbike, country: .us, status: .selfEmployed, expenseMethod: .simplified))
+    XCTAssertNotNil(NativeMileageRules.noRateReason(vehicle: .motorbike, country: .us, status: .company, expenseMethod: .simplified))
+    XCTAssertNil(NativeMileageRules.noRateReason(vehicle: .motorbike, country: .uk, status: .selfEmployed, expenseMethod: .simplified))
+    XCTAssertNil(NativeMileageRules.noRateReason(vehicle: .car, country: .uk, status: .selfEmployed, expenseMethod: .simplified))
+    XCTAssertNil(NativeMileageRules.noRateReason(vehicle: .van, country: .us, status: .company, expenseMethod: .simplified))
+  }
+
+  @MainActor
+  func testStoreAppliesTheSelectedStatus() {
+    let store = OkkleStore()
+    store.settings.taxCountry = .uk
+    store.settings.workStatus = .selfEmployed
+    XCTAssertEqual(store.calcDeduction(miles: 100, vehicle: .bike, date: date), 0)
+    store.settings.workStatus = .company
+    XCTAssertEqual(store.calcDeduction(miles: 100, vehicle: .bike, date: date), 20, accuracy: 0.001)
+    store.settings.taxCountry = .us
+    XCTAssertEqual(store.calcDeduction(miles: 100, vehicle: .bike, date: date), 0)
+    XCTAssertEqual(store.calcDeduction(miles: 100, vehicle: .car, date: date), 76, accuracy: 0.001)
+  }
+
+  // MARK: Corporation tax
+
+  func testCorporationTaxBandsAndMarginalRelief() {
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: -5_000), 0)
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: 0), 0)
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: 40_000), 7_600, accuracy: 0.001)
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: 50_000), 9_500, accuracy: 0.001)
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: 100_000), 22_750, accuracy: 0.001)
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: 250_000), 62_500, accuracy: 0.001)
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: 300_000), 75_000, accuracy: 0.001)
+  }
+
+  func testCorporationTaxIsContinuousAcrossBandEdges() {
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: 50_000.01), 9_500.0026, accuracy: 0.01)
+    XCTAssertEqual(TaxCalculator.corporationTax(profit: 249_999.99), 62_499.9976, accuracy: 0.01)
+  }
+
+  func testUKCompanyEstimateHasNoSoleTraderTax() {
+    let position = TaxCalculator.estimateCompany(turnover: 60_000, expenses: 10_000)
+    XCTAssertEqual(position.profit, 50_000, accuracy: 0.001)
+    XCTAssertEqual(position.totalDue, 9_500, accuracy: 0.001)
+    XCTAssertEqual(position.class4, 0)
+    XCTAssertEqual(position.paymentOnAccount, 0)
+    XCTAssertFalse(position.usesTradingAllowance)
+  }
+
+  func testUKCompanyLossPaysNoTax() {
+    let position = TaxCalculator.estimateCompany(turnover: 5_000, expenses: 9_000)
+    XCTAssertEqual(position.profit, 0)
+    XCTAssertEqual(position.totalDue, 0)
+  }
+
+  func testUSCompanyEstimatesProfitButNotTax() {
+    let position = USTaxCalculator.estimateCompany(turnover: 80_000, expenses: 20_000)
+    XCTAssertEqual(position.profit, 60_000, accuracy: 0.001)
+    XCTAssertEqual(position.totalDue, 0)
+  }
+
+  @MainActor
+  func testStoreEstimateFollowsStatus() {
+    let store = OkkleStore()
+    store.settings.taxCountry = .uk
+    store.settings.workStatus = .company
+    XCTAssertTrue(store.taxPresentation.estimatesTax)
+    store.settings.taxCountry = .us
+    XCTAssertFalse(store.taxPresentation.estimatesTax)
+    XCTAssertEqual(store.taxDueText, "Not estimated")
+  }
+
+  // MARK: Presentation
+
+  func testTaxPresentationLinesPerCountryAndStatus() {
+    let ukSE = NativeTaxPresentation(country: .uk, status: .selfEmployed)
+    XCTAssertEqual(ukSE.secondLabel, "Class 4 NIC")
+    XCTAssertEqual(ukSE.paymentLabel, "Payment on account")
+    XCTAssertTrue(ukSE.showsTradingAllowance)
+
+    let ukCo = NativeTaxPresentation(country: .uk, status: .company)
+    XCTAssertEqual(ukCo.taxLabel, "Corporation tax")
+    XCTAssertNil(ukCo.secondLabel)
+    XCTAssertNil(ukCo.paymentLabel)
+    XCTAssertFalse(ukCo.showsTradingAllowance)
+    XCTAssertFalse(ukCo.showsIncomeBand)
+
+    let usSE = NativeTaxPresentation(country: .us, status: .selfEmployed)
+    XCTAssertEqual(usSE.secondLabel, "Self-employment tax")
+    XCTAssertFalse(usSE.showsTradingAllowance)
+
+    XCTAssertFalse(NativeTaxPresentation(country: .us, status: .company).estimatesTax)
+  }
+
+  // MARK: Deadlines
+
+  private func dates(_ deadlines: [NativeTaxDeadline]) -> [String: String] {
+    Dictionary(uniqueKeysWithValues: deadlines.map { ($0.title, "\($0.day)/\($0.month)") })
+  }
+
+  func testUKCompanyDeadlinesFollowTheAccountingYearEnd() {
+    let marchEnd = dates(nativeTaxDeadlines(for: .uk, status: .company, companyYearEndMonth: 3, companyYearEndDay: 31))
+    XCTAssertEqual(marchEnd["Pay Corporation Tax"], "1/1")
+    XCTAssertEqual(marchEnd["File company accounts"], "31/12")
+    XCTAssertEqual(marchEnd["File Company Tax Return (CT600)"], "31/3")
+
+    let decemberEnd = dates(nativeTaxDeadlines(for: .uk, status: .company, companyYearEndMonth: 12, companyYearEndDay: 31))
+    XCTAssertEqual(decemberEnd["Pay Corporation Tax"], "1/10")
+    XCTAssertEqual(decemberEnd["File company accounts"], "30/9")
+    XCTAssertEqual(decemberEnd["File Company Tax Return (CT600)"], "31/12")
+  }
+
+  func testUKCompanyDeadlinesHandleAShortMonthYearEnd() {
+    let february = dates(nativeTaxDeadlines(for: .uk, status: .company, companyYearEndMonth: 2, companyYearEndDay: 29))
+    XCTAssertEqual(february["File company accounts"], "28/11")
+    XCTAssertEqual(february["Pay Corporation Tax"], "29/11")
+  }
+
+  func testCompanyDeadlinesDropSoleTraderObligations() {
+    let titles = nativeTaxDeadlines(for: .uk, status: .company).map(\.title)
+    XCTAssertFalse(titles.contains { $0.contains("Self Assessment") || $0.contains("MTD") })
+    let usTitles = nativeTaxDeadlines(for: .us, status: .company).map(\.title)
+    XCTAssertFalse(usTitles.contains { $0.contains("1040-ES") })
+    XCTAssertEqual(dates(nativeTaxDeadlines(for: .us, status: .company))["S-corp return (Form 1120-S)"], "15/3")
+  }
+
+  func testSelfEmployedDeadlinesAreUnchangedByDefault() {
+    XCTAssertTrue(nativeTaxDeadlines(for: .uk).map(\.title).contains("File your return & pay your tax"))
+    XCTAssertTrue(nativeTaxDeadlines(for: .us).map(\.title).contains { $0.contains("1040-ES") })
+  }
+
+  // MARK: Settings
+
+  func testOldSettingsDecodeAsSelfEmployedWithMarchYearEnd() throws {
+    let decoded = try JSONDecoder().decode(NativeSettings.self, from: Data("{}".utf8))
+    XCTAssertEqual(decoded.workStatus, .selfEmployed)
+    XCTAssertEqual(decoded.companyYearEndMonth, 3)
+    XCTAssertEqual(decoded.companyYearEndDay, 31)
+  }
+
+  func testWorkStatusSurvivesEncodingAndDecoding() throws {
+    var settings = NativeSettings()
+    settings.workStatus = .company
+    settings.companyYearEndMonth = 12
+    let restored = try JSONDecoder().decode(NativeSettings.self, from: JSONEncoder().encode(settings))
+    XCTAssertEqual(restored.workStatus, .company)
+    XCTAssertEqual(restored.companyYearEndMonth, 12)
+  }
+
+  @MainActor
+  func testOnboardingSavesTheChosenStatus() {
+    let store = OkkleStore()
+    store.completeOnboarding(
+      name: "Sam", defaultVehicle: .bike, platforms: ["Uber Eats"],
+      taxCountry: .uk, region: .ruk, expenseMethod: .simplified, usState: .california,
+      incomeBracket: .basic, workStatus: .company,
+      autoTrackTrips: false, enhancedAutoTracking: false, workingDays: []
+    )
+    XCTAssertEqual(store.settings.workStatus, .company)
+  }
+}

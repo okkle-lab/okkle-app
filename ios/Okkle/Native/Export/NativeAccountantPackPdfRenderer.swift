@@ -23,9 +23,13 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
       beginPage()
       drawCover()
       drawBasis()
-      switch country {
-      case .uk: drawSelfAssessment()
-      case .us: drawUsTaxSummary()
+      if store.settings.workStatus == .company {
+        drawCompanySummary()
+      } else {
+        switch country {
+        case .uk: drawSelfAssessment()
+        case .us: drawUsTaxSummary()
+        }
       }
       drawIncome()
       drawMileage()
@@ -66,11 +70,16 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
   private var mileageMethodLine: String {
     switch country {
     case .uk:
-      return store.settings.expenseMethod == .simplified
+      if store.settings.workStatus == .company {
+        return "Approved mileage rates paid by the company"
+      }
+      return store.settings.usesFlatMileageRate
         ? "Simplified mileage using HMRC flat rates"
         : "Actual vehicle costs claimed — no mileage rate applied"
     case .us:
-      return "IRS standard mileage rate"
+      return store.settings.workStatus == .company
+        ? "IRS standard mileage rate, company reimbursement"
+        : "IRS standard mileage rate"
     }
   }
 
@@ -88,11 +97,12 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
 
     let clientName = store.settings.name.isEmpty ? "Courier" : store.settings.name
     let business = clean(store.settings.accountantBusinessDescription)
-    let businessLine = business.isEmpty ? "Sole trader delivery records" : "Sole trader (\(business))"
+    let kind = businessKindLabel
+    let businessLine = business.isEmpty ? "\(kind) delivery records" : "\(kind) (\(business))"
     drawWrapped("\(clientName) - \(businessLine)", font: .systemFont(ofSize: 12, weight: .medium), color: ink, spacingAfter: 18)
 
     var coverRows: [(String, String)] = []
-    if country == .uk {
+    if country == .uk, store.settings.workStatus == .selfEmployed {
       let utr = clean(store.settings.accountantUTR)
       let niNumber = clean(store.settings.accountantNINumber)
       let address = clean(store.settings.accountantAddress).replacingOccurrences(of: "\n", with: ", ")
@@ -106,6 +116,8 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
       ("Prepared", nativeLongDate(Date(), country: country))
     ])
     switch country {
+    case .uk where store.settings.workStatus == .company:
+      coverRows.append(("Accounting period end", "\(store.settings.companyYearEndDay) \(Calendar.current.monthSymbols[max(0, min(11, store.settings.companyYearEndMonth - 1))])"))
     case .uk:
       coverRows.append(("Tax region", store.settings.region.label))
       coverRows.append(("Income tax band", incomeBracketLine))
@@ -127,13 +139,49 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     drawKeyValue("Accounting basis", "Cash basis")
     drawKeyValue("Mileage method", mileageMethodLine)
     drawKeyValue("Records source", "Tracked trips and manual entries logged in Okkle")
-    if country == .uk {
-      drawKeyValue("Income tax band", incomeBracketLine)
+    if store.settings.workStatus == .selfEmployed {
+      if country == .uk {
+        drawKeyValue("Income tax band", incomeBracketLine)
+      }
+      drawKeyValue(country == .uk ? "Other income" : "Other W-2 wages", gbp(store.settings.otherIncome))
     }
-    drawKeyValue(country == .uk ? "Other income" : "Other W-2 wages", gbp(store.settings.otherIncome))
     drawKeyValue("Income entries", "\(incomeRecords.count)")
     drawKeyValue("Expense entries", "\(expenseRecords.count) (\(expenseRecords.filter { $0.receiptImageData != nil }.count) with receipts)")
     drawKeyValue("Mileage entries", "\(yearTrips.count) tracked trips, \(manualMileageRecords.count) manual entries")
+  }
+
+  private var businessKindLabel: String {
+    switch (store.settings.workStatus, country) {
+    case (.company, .uk): return "Limited company"
+    case (.company, .us): return "Company"
+    case (.selfEmployed, .uk): return "Sole trader"
+    case (.selfEmployed, .us): return "Self-employed"
+    }
+  }
+
+  private func drawCompanySummary() {
+    let tax = store.taxPosition
+    drawSectionTitle("Company summary")
+    drawKeyValue("Turnover", gbp(tax.turnover))
+    drawKeyValue("Expenses, including mileage paid to the director", gbp(tax.deductionApplied))
+    drawKeyValue("Profit before tax", gbp(tax.profit), highlighted: true)
+    if country == .uk {
+      drawKeyValue("Estimated Corporation Tax", gbp(tax.totalDue), highlighted: true)
+      drawWrapped(
+        "Assumes no associated companies and a 12-month period. Director salary and dividends are not included.",
+        font: .systemFont(ofSize: 10.5, weight: .regular),
+        color: muted,
+        spacingAfter: 8
+      )
+    } else {
+      drawWrapped(
+        "Company income tax is not estimated here. Your accountant prepares the S-corp or C-corp return.",
+        font: .systemFont(ofSize: 10.5, weight: .regular),
+        color: muted,
+        spacingAfter: 8
+      )
+    }
+    drawKeyValue("Mileage reimbursed to owner", gbp(store.yearMileageDeduction))
   }
 
   private func drawSelfAssessment() {
@@ -224,7 +272,7 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     // against a running total of zero, so the rows below would silently
     // stop summing to the "Mileage deduction" total once combined car/van
     // mileage crosses the 10,000-mile HMRC simplified-rate threshold.
-    let usesActualCost = country == .uk && store.settings.expenseMethod == .actualCost
+    let usesActualCost = country == .uk && !store.settings.usesFlatMileageRate
     drawWrapped(
       usesActualCost
         ? "Actual-cost driver: this log evidences business mileage, but vehicle costs are claimed from the expense records below rather than a mileage rate."
@@ -253,7 +301,7 @@ final class NativeAccountantPackPdfRenderer: NativePdfDocumentRenderer {
     // mileage rate both bundle fuel/insurance/repairs into the per-mile
     // figure — so it only drops out for a UK actual-cost driver, who claims
     // these receipts directly instead.
-    let usesFlatMileageRate = country != .uk || store.settings.expenseMethod == .simplified
+    let usesFlatMileageRate = store.settings.usesFlatMileageRate
     let reviewItems = usesFlatMileageRate ? expenseRecords.filter(nativeNeedsAccountantReview) : []
     let regularItems = usesFlatMileageRate ? expenseRecords.filter { !nativeNeedsAccountantReview($0) } : expenseRecords
     drawExpenseTable(regularItems, emptyMessage: "No expense records logged for this tax year.")

@@ -563,6 +563,7 @@ final class OkkleStore: ObservableObject {
                           expenseMethod: NativeExpenseMethod = .simplified,
                           usState: NativeUSState = .california,
                           incomeBracket: NativeIncomeBracket,
+                          workStatus: NativeWorkStatus = .selfEmployed,
                           autoTrackTrips: Bool,
                           enhancedAutoTracking: Bool,
                           workingDays: [Int]) {
@@ -581,6 +582,7 @@ final class OkkleStore: ObservableObject {
     updated.expenseMethodLocked = expenseMethod == .simplified
     updated.usState = usState
     updated.incomeBracket = incomeBracket
+    updated.workStatus = workStatus
     updated.autoTrackTrips = autoTrackTrips
     updated.enhancedAutoTracking = autoTrackTrips && enhancedAutoTracking
     updated.workingDays = workingDays.isEmpty ? Array(0...6) : workingDays
@@ -716,6 +718,12 @@ final class OkkleStore: ObservableObject {
   /// the driver's chosen jurisdiction so every figure in the app (bill, saved,
   /// counterfactuals) runs through the same country-correct math.
   private func estimateTax(turnover: Double, expenses: Double) -> NativeTaxPosition {
+    if settings.workStatus == .company {
+      switch settings.taxCountry {
+      case .uk: return TaxCalculator.estimateCompany(turnover: turnover, expenses: expenses)
+      case .us: return USTaxCalculator.estimateCompany(turnover: turnover, expenses: expenses)
+      }
+    }
     switch settings.taxCountry {
     case .uk:
       return TaxCalculator.estimate(
@@ -809,20 +817,15 @@ final class OkkleStore: ObservableObject {
   }
 
   func calcDeduction(miles: Double, vehicle: NativeVehicle, totalBefore: Double = 0, date: Date = Date()) -> Double {
-    switch settings.taxCountry {
-    case .uk:
-      // Actual-cost drivers claim their real fuel/insurance/servicing/repair
-      // receipts instead of the mileage rate — the rate itself doesn't apply.
-      guard settings.expenseMethod == .simplified else { return 0 }
-      return TaxCalculator.mileageDeduction(miles: miles, vehicle: vehicle, totalBefore: totalBefore, date: date)
-    case .us:
-      // IRS standard mileage rate applies to cars, vans and motorcycles; there
-      // is no equivalent flat per-mile deduction for a bicycle.
-      switch vehicle {
-      case .bike: return 0
-      case .car, .van, .motorbike: return USTaxCalculator.mileageDeduction(miles: miles, on: date)
-      }
-    }
+    NativeMileageRules.deduction(
+      miles: miles,
+      vehicle: vehicle,
+      totalBefore: totalBefore,
+      date: date,
+      country: settings.taxCountry,
+      status: settings.workStatus,
+      expenseMethod: settings.expenseMethod
+    )
   }
 
   private func decodeBackupSnapshot(from data: Data) throws -> NativeSnapshot {

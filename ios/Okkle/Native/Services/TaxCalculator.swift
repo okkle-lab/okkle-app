@@ -141,3 +141,177 @@ enum TaxCalculator {
     return main * 0.06 + upper * 0.02
   }
 }
+
+// MARK: - Work status (self-employed vs company)
+
+/// Which flat mileage rate applies to a driver, by country and work status.
+///
+/// UK self-employed: HMRC simplified expenses covers cars, goods vehicles and
+/// motorcycles only (GOV.UK, BIM75005) — there is no flat rate for bicycles, so
+/// a self-employed cyclist claims actual costs. UK company: the company pays
+/// the director Approved Mileage Allowance Payments (EIM31240), which do
+/// include 20p for cycles. US: the IRS standard rate is defined for
+/// "automobiles (including vans, pickups, or panel trucks)" only (Rev. Proc.
+/// 2010-51 §3.01), so motorcycles and bicycles have no standard rate. A US
+/// company reimburses at the same rate through an accountable plan.
+enum NativeMileageRules {
+  static func deduction(
+    miles: Double,
+    vehicle: NativeVehicle,
+    totalBefore: Double = 0,
+    date: Date,
+    country: NativeTaxCountry,
+    status: NativeWorkStatus,
+    expenseMethod: NativeExpenseMethod
+  ) -> Double {
+    switch (country, status) {
+    case (.uk, .selfEmployed):
+      // Actual-cost drivers claim real receipts, and bicycles aren't covered
+      // by the simplified rates at all.
+      guard expenseMethod == .simplified, vehicle != .bike else { return 0 }
+      return TaxCalculator.mileageDeduction(miles: miles, vehicle: vehicle, totalBefore: totalBefore, date: date)
+    case (.uk, .company):
+      // The expense method is a sole-trader choice; company mileage is always
+      // paid at the approved rates.
+      return TaxCalculator.mileageDeduction(miles: miles, vehicle: vehicle, totalBefore: totalBefore, date: date)
+    case (.us, _):
+      guard vehicle == .car || vehicle == .van else { return 0 }
+      return USTaxCalculator.mileageDeduction(miles: miles, on: date)
+    }
+  }
+
+  /// Whether a flat per-mile rate applies to this driver at all (as opposed to
+  /// claiming actual costs).
+  static func usesFlatRate(country: NativeTaxCountry, status: NativeWorkStatus, expenseMethod: NativeExpenseMethod) -> Bool {
+    switch (country, status) {
+    case (.uk, .selfEmployed): return expenseMethod == .simplified
+    case (.uk, .company), (.us, _): return true
+    }
+  }
+
+  /// Short plain-English reason a vehicle earns no mileage deduction, or nil
+  /// when it does.
+  static func noRateReason(
+    vehicle: NativeVehicle,
+    country: NativeTaxCountry,
+    status: NativeWorkStatus,
+    expenseMethod: NativeExpenseMethod
+  ) -> String? {
+    switch (country, status, vehicle) {
+    case (.uk, .selfEmployed, .bike):
+      return "No mileage rate for bicycles when self-employed. Claim actual costs instead."
+    case (.us, _, .bike):
+      return "The IRS has no mileage rate for bicycles."
+    case (.us, _, .motorbike):
+      return "The IRS standard rate only covers cars, vans and trucks. Claim actual costs instead."
+    default:
+      return nil
+    }
+  }
+}
+
+extension NativeSettings {
+  var usesFlatMileageRate: Bool {
+    NativeMileageRules.usesFlatRate(country: taxCountry, status: workStatus, expenseMethod: expenseMethod)
+  }
+}
+
+extension TaxCalculator {
+  /// UK corporation tax: 19% up to £50,000 of profit, 25% from £250,000, and
+  /// marginal relief (3/200 of the gap below £250,000) in between. Assumes no
+  /// associated companies and a 12-month accounting period.
+  static func corporationTax(profit: Double) -> Double {
+    guard profit > 0 else { return 0 }
+    let smallLimit = 50_000.0
+    let mainLimit = 250_000.0
+    if profit <= smallLimit { return profit * 0.19 }
+    if profit >= mainLimit { return profit * 0.25 }
+    return profit * 0.25 - (mainLimit - profit) * 3 / 200
+  }
+
+  /// A limited company's position: corporation tax on profit after expenses
+  /// (including mileage the company pays the director). Salary and dividends
+  /// the director takes are not modelled.
+  static func estimateCompany(turnover: Double, expenses: Double) -> NativeTaxPosition {
+    let profit = max(0, turnover - expenses)
+    let tax = corporationTax(profit: profit)
+    return NativeTaxPosition(
+      turnover: turnover,
+      expenses: expenses,
+      deductionApplied: min(turnover, expenses),
+      businessProfit: profit,
+      profit: profit,
+      incomeTax: tax,
+      class4: 0,
+      totalDue: tax,
+      paymentOnAccount: 0,
+      usesTradingAllowance: false
+    )
+  }
+}
+
+/// What the Reports screens call each tax line, and which lines apply, for a
+/// given country and work status.
+struct NativeTaxPresentation: Equatable {
+  var estimatesTax: Bool
+  var headline: String
+  var taxLabel: String
+  var secondLabel: String?
+  var paymentLabel: String?
+  var otherIncomeLabel: String?
+  var showsTradingAllowance: Bool
+  var showsIncomeBand: Bool
+
+  init(country: NativeTaxCountry, status: NativeWorkStatus) {
+    switch (country, status) {
+    case (.uk, .selfEmployed):
+      estimatesTax = true
+      headline = "Estimated tax due"
+      taxLabel = "Income tax"
+      secondLabel = "Class 4 NIC"
+      paymentLabel = "Payment on account"
+      otherIncomeLabel = "Other income"
+      showsTradingAllowance = true
+      showsIncomeBand = true
+    case (.uk, .company):
+      estimatesTax = true
+      headline = "Estimated Corporation Tax"
+      taxLabel = "Corporation tax"
+      secondLabel = nil
+      paymentLabel = nil
+      otherIncomeLabel = nil
+      showsTradingAllowance = false
+      showsIncomeBand = false
+    case (.us, .selfEmployed):
+      estimatesTax = true
+      headline = "Estimated tax due"
+      taxLabel = "Federal income tax"
+      secondLabel = "Self-employment tax"
+      paymentLabel = "Quarterly set-aside"
+      otherIncomeLabel = "W-2 wages"
+      showsTradingAllowance = false
+      showsIncomeBand = false
+    case (.us, .company):
+      estimatesTax = false
+      headline = "Company tax not estimated"
+      taxLabel = "Company tax"
+      secondLabel = nil
+      paymentLabel = nil
+      otherIncomeLabel = nil
+      showsTradingAllowance = false
+      showsIncomeBand = false
+    }
+  }
+}
+
+extension OkkleStore {
+  var taxPresentation: NativeTaxPresentation {
+    NativeTaxPresentation(country: settings.taxCountry, status: settings.workStatus)
+  }
+
+  /// "Due" as shown on the Reports screen: the figure, or a plain word when
+  /// the app doesn't estimate tax for this setup.
+  var taxDueText: String {
+    taxPresentation.estimatesTax ? gbp(taxPosition.totalDue) : "Not estimated"
+  }
+}

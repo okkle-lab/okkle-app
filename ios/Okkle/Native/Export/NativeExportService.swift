@@ -290,6 +290,14 @@ func nativeSelfAssessmentCsv(store: OkkleStore) -> String {
     ["Deduction applied", nativeDecimal(tax.deductionApplied)],
     ["Taxable profit", nativeDecimal(tax.profit)]
   ]
+  if store.settings.workStatus == .company {
+    if country == .uk {
+      rows.append(["Estimated Corporation Tax", nativeDecimal(tax.totalDue)])
+    }
+    rows.append(["Business miles", nativeDecimal(store.yearMiles)])
+    rows.append(["Mileage reimbursed", nativeDecimal(store.yearMileageDeduction)])
+    return rows.map { $0.map(nativeCsvField).joined(separator: ",") }.joined(separator: "\n")
+  }
   switch country {
   case .uk:
     rows.append(["Income tax band", store.settings.incomeBracket.label])
@@ -356,10 +364,10 @@ func nativeMileageCsv(store: OkkleStore) -> String {
   // the exported total always matches the tax-year figure shown in Reports.
   let country = store.settings.taxCountry
   let basis: String
-  switch (country, store.settings.expenseMethod) {
-  case (.uk, .simplified): basis = "HMRC simplified"
-  case (.uk, .actualCost): basis = "Actual cost (no mileage rate)"
-  case (.us, _): basis = "IRS standard mileage"
+  switch (country, store.settings.usesFlatMileageRate) {
+  case (.uk, true): basis = store.settings.workStatus == .company ? "HMRC approved mileage rates (company)" : "HMRC simplified"
+  case (.uk, false): basis = "Actual cost (no mileage rate)"
+  case (.us, _): basis = store.settings.workStatus == .company ? "IRS standard mileage (company reimbursement)" : "IRS standard mileage"
   }
   let header = "Date,Vehicle,Source,Miles,Basis,Deduction \(country.currencyCode),From,To"
   let rows = store.yearMileageLogRows.map { row in

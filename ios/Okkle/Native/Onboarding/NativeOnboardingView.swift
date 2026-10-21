@@ -225,6 +225,7 @@ struct NativeOnboardingView: View {
   @State private var showsSimplifiedLockConfirm = false
   @State private var usState: NativeUSState = .california
   @State private var incomeBracket: NativeIncomeBracket = .basic
+  @State private var workStatus: NativeWorkStatus = .selfEmployed
   @State private var autoTrackTrips = true
   @State private var enhancedAutoTracking = true
   @State private var workingDays: [Int] = Array(0...6)
@@ -567,7 +568,28 @@ struct NativeOnboardingView: View {
           in: RoundedRectangle(cornerRadius: 22, style: .continuous)
         )
 
+        Divider().padding(.top, 4)
+
+        VStack(alignment: .leading, spacing: 10) {
+          Text("How do you work?")
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(OkkleColor.ink)
+
+          ForEach(NativeWorkStatus.allCases) { status in
+            NativeOnboardingOptionButton(
+              title: status.label(for: country),
+              subtitle: status.subtitle(for: country),
+              symbol: status.symbol,
+              selected: workStatus == status
+            ) {
+              workStatus = status
+            }
+          }
+        }
+
         switch country {
+        case .uk where workStatus == .company:
+          EmptyView()
         case .uk:
           Divider().padding(.top, 4)
 
@@ -924,6 +946,7 @@ struct NativeOnboardingView: View {
     country = store.settings.hasCompletedOnboarding ? store.settings.taxCountry : .deviceDefault
     region = store.settings.region
     expenseMethod = store.settings.expenseMethod
+    workStatus = store.settings.workStatus
     usState = store.settings.usState
     incomeBracket = store.settings.incomeBracket
     autoTrackTrips = store.settings.autoTrackTrips
@@ -1107,7 +1130,7 @@ struct NativeOnboardingView: View {
           var next = NativeOnboardingStep(rawValue: step.rawValue + 1) else { return }
     // The income-tax-band step is UK-only (basic/higher rate); the US engine
     // works from actual profit and wages instead.
-    if next == .incomeBracket, country == .us,
+    if next == .incomeBracket, country == .us || workStatus == .company,
        let skipped = NativeOnboardingStep(rawValue: next.rawValue + 1) {
       next = skipped
     }
@@ -1123,7 +1146,7 @@ struct NativeOnboardingView: View {
 
   private func goBack() {
     guard var previous = NativeOnboardingStep(rawValue: step.rawValue - 1) else { return }
-    if previous == .incomeBracket, country == .us,
+    if previous == .incomeBracket, country == .us || workStatus == .company,
        let skipped = NativeOnboardingStep(rawValue: previous.rawValue - 1) {
       previous = skipped
     }
@@ -1147,6 +1170,7 @@ struct NativeOnboardingView: View {
       expenseMethod: expenseMethod,
       usState: usState,
       incomeBracket: incomeBracket,
+      workStatus: workStatus,
       // Saved as chosen even before Always access is granted; the engine
       // waits for permission and Settings shows how to allow it.
       autoTrackTrips: autoTrackTrips,

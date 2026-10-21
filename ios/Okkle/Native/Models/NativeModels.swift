@@ -229,6 +229,41 @@ enum NativeRegion: String, CaseIterable, Identifiable, Codable {
   }
 }
 
+/// How the driver is set up for tax. Changes which mileage rates, tax
+/// estimate and deadlines apply — in both the UK and the US.
+enum NativeWorkStatus: String, CaseIterable, Identifiable, Codable {
+  /// Gig worker / sole trader: UK Self Assessment, US Schedule C.
+  case selfEmployed
+  /// Works through their own company: UK limited company director, US
+  /// S-corp or C-corp owner. The company reimburses mileage.
+  case company
+
+  var id: String { rawValue }
+
+  func label(for country: NativeTaxCountry) -> String {
+    switch self {
+    case .selfEmployed: return "Self-employed"
+    case .company: return country == .uk ? "Limited company" : "S-corp / C-corp"
+    }
+  }
+
+  func subtitle(for country: NativeTaxCountry) -> String {
+    switch self {
+    case .selfEmployed:
+      return country == .uk ? "Sole trader, Self Assessment" : "Gig worker, Schedule C"
+    case .company:
+      return country == .uk ? "Your company pays you mileage" : "Your company reimburses mileage"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .selfEmployed: return "person.fill"
+    case .company: return "building.2.fill"
+    }
+  }
+}
+
 /// The tax jurisdiction the estimate runs under. `region` (rUK/Scotland) still
 /// applies within the UK; `usState` applies within the US. Everything tax-side
 /// — the tax-year window, the mileage rate, the calculation itself and the
@@ -931,6 +966,13 @@ struct NativeSettings: Codable, Equatable {
   // business use. Set the moment the driver chooses Simplified (onboarding or
   // Settings); never set for Actual cost, which stays switchable.
   var expenseMethodLocked: Bool = false
+  // Self-employed gig worker or company. Defaults to self-employed so every
+  // existing snapshot behaves exactly as before.
+  var workStatus: NativeWorkStatus = .selfEmployed
+  // UK limited companies: the accounting period end, which sets the
+  // corporation tax and Companies House deadlines.
+  var companyYearEndMonth = 3
+  var companyYearEndDay = 31
   // US state for the state-income-tax layer (ignored when taxCountry == .uk).
   var usState: NativeUSState = .california
   // Flat state rate (as a fraction, e.g. 0.05 = 5%) used only when usState is
@@ -996,6 +1038,9 @@ struct NativeSettings: Codable, Equatable {
     case region
     case expenseMethod
     case expenseMethodLocked
+    case workStatus
+    case companyYearEndMonth
+    case companyYearEndDay
     case usState
     case usOtherStateRate
     case incomeBracket
@@ -1034,6 +1079,9 @@ struct NativeSettings: Codable, Equatable {
     region = try container.decodeIfPresent(NativeRegion.self, forKey: .region) ?? .ruk
     expenseMethod = try container.decodeIfPresent(NativeExpenseMethod.self, forKey: .expenseMethod) ?? .simplified
     expenseMethodLocked = try container.decodeIfPresent(Bool.self, forKey: .expenseMethodLocked) ?? false
+    workStatus = try container.decodeIfPresent(NativeWorkStatus.self, forKey: .workStatus) ?? .selfEmployed
+    companyYearEndMonth = try container.decodeIfPresent(Int.self, forKey: .companyYearEndMonth) ?? 3
+    companyYearEndDay = try container.decodeIfPresent(Int.self, forKey: .companyYearEndDay) ?? 31
     usState = try container.decodeIfPresent(NativeUSState.self, forKey: .usState) ?? .california
     usOtherStateRate = try container.decodeIfPresent(Double.self, forKey: .usOtherStateRate) ?? 0
     incomeBracket = try container.decodeIfPresent(NativeIncomeBracket.self, forKey: .incomeBracket) ?? .basic

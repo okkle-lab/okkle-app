@@ -294,13 +294,19 @@ struct NativeTaxSettingsView: View {
 
   var body: some View {
     Form {
-      switch store.settings.taxCountry {
-      case .uk:
+      workStatusSection
+      switch (store.settings.taxCountry, store.settings.workStatus) {
+      case (.uk, .selfEmployed):
         ukTaxSection
         ukExpenseMethodSection
         ukAccountantSection
-      case .us:
+      case (.uk, .company):
+        ukCompanySection
+        ukAccountantSection
+      case (.us, .selfEmployed):
         usTaxSection
+      case (.us, .company):
+        EmptyView()
       }
     }
     .navigationTitle("Tax profile")
@@ -320,6 +326,63 @@ struct NativeTaxSettingsView: View {
       Button("Switch") { store.settings.expenseMethod = .actualCost }
     } message: {
       Text("Your mileage deduction will stop applying — instead, your logged fuel, insurance, servicing and repair expenses will count toward your tax estimate.")
+    }
+  }
+
+  @ViewBuilder private var workStatusSection: some View {
+    Section {
+      Picker("Work status", selection: Binding(
+        get: { store.settings.workStatus },
+        set: { store.settings.workStatus = $0 }
+      )) {
+        ForEach(NativeWorkStatus.allCases) { status in
+          Text(status.label(for: store.settings.taxCountry)).tag(status)
+        }
+      }
+      .pickerStyle(.segmented)
+    } footer: {
+      switch (store.settings.taxCountry, store.settings.workStatus) {
+      case (.uk, .selfEmployed):
+        EmptyView()
+      case (.uk, .company):
+        Text("Company tax is estimated at 19–25%. Salary and dividends aren't included.")
+      case (.us, .selfEmployed):
+        EmptyView()
+      case (.us, .company):
+        Text("Company tax isn't estimated. Mileage is reimbursed at the IRS rate.")
+      }
+    }
+  }
+
+  @ViewBuilder private var ukCompanySection: some View {
+    Section {
+      HStack {
+        Text("Accounting year end")
+        Spacer()
+        Picker("Day", selection: Binding(
+          get: { min(store.settings.companyYearEndDay, daysInYearEndMonth) },
+          set: { store.settings.companyYearEndDay = $0 }
+        )) {
+          ForEach(1...daysInYearEndMonth, id: \.self) { Text("\($0)").tag($0) }
+        }
+        .labelsHidden()
+        Picker("Month", selection: Binding(
+          get: { store.settings.companyYearEndMonth },
+          set: { store.settings.companyYearEndMonth = $0 }
+        )) {
+          ForEach(1...12, id: \.self) { Text(Calendar.current.monthSymbols[$0 - 1]).tag($0) }
+        }
+        .labelsHidden()
+      }
+    }
+  }
+
+  /// Days in the chosen year-end month (29 Feb allowed).
+  private var daysInYearEndMonth: Int {
+    switch store.settings.companyYearEndMonth {
+    case 2: return 29
+    case 4, 6, 9, 11: return 30
+    default: return 31
     }
   }
 
@@ -380,17 +443,19 @@ struct NativeTaxSettingsView: View {
 
   @ViewBuilder private var ukAccountantSection: some View {
     Section {
-      NativeNumberDoneTextField(text: Binding(
-        get: { store.settings.accountantUTR },
-        set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
-      .frame(height: 34)
+      if store.settings.workStatus == .selfEmployed {
+        NativeNumberDoneTextField(text: Binding(
+          get: { store.settings.accountantUTR },
+          set: { store.settings.accountantUTR = $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        ), placeholder: "10-digit HMRC reference", keyboardType: .numberPad)
+        .frame(height: 34)
 
-      TextField("QQ 12 34 56 C", text: Binding(
-        get: { store.settings.accountantNINumber },
-        set: { store.settings.accountantNINumber = $0.uppercased() }
-      ))
-      .textInputAutocapitalization(.characters)
+        TextField("QQ 12 34 56 C", text: Binding(
+          get: { store.settings.accountantNINumber },
+          set: { store.settings.accountantNINumber = $0.uppercased() }
+        ))
+        .textInputAutocapitalization(.characters)
+      }
 
       TextField("Home or business address", text: Binding(
         get: { store.settings.accountantAddress },
