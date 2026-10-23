@@ -440,7 +440,7 @@ struct NativePreTripBuffer {
   func confirmsMovement(vehicle: NativeVehicle) -> Bool {
     let moving = movingLocations(vehicle: vehicle)
     guard moving.count >= 3, let first = moving.first, let last = moving.last,
-          last.timestamp.timeIntervalSince(first.timestamp) >= 8 else { return false }
+          last.timestamp.timeIntervalSince(first.timestamp) >= 6 else { return false }
     let threshold = vehicle.automaticTrackingThresholds
     guard last.distance(from: first) >= max(threshold.vehicleStartDisplacementMeters,
       first.horizontalAccuracy + last.horizontalAccuracy) else { return false }

@@ -319,7 +319,11 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
   private let idleDepartureRegionIdentifier = "uk.okkle.native.idle-departure"
   // Region exits get markedly less reliable below ~100m without firing any
   // sooner, so keep a margin above that.
-  private let idleDepartureRegionRadius: CLLocationDistance = 150
+  /// Close to the smallest radius iOS monitors reliably, so the exit fires
+  /// soon after pulling away. Cycling keeps a wider ring to ignore walking.
+  private var idleDepartureRegionRadius: CLLocationDistance {
+    effectiveTrackingSettings?.defaultVehicle.automaticTrackingProfile == .bicycle ? 150 : 100
+  }
   // Where the car was last parked, from a precise fix (trip end, a precise
   // idle fix, or a Core Location visit). Used to reconstruct the distance
   // driven before automatic detection confirms a trip.
@@ -1499,6 +1503,7 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     vehicleArmLocations = []
     pendingDepartureAnchor = idleDepartureAnchor
     idleDepartureAnchor = nil
+    idleWakeLocation = nil
     disarmIdleDepartureRegion()
     if idleGeofenceElevated {
       idleGeofenceElevated = false
@@ -1686,6 +1691,10 @@ final class NativeAutoTrackEngine: NSObject, ObservableObject, CLLocationManager
     // precise departure anchor the next trip can have.
     pendingDepartureAnchor = nil
     if let parked = shiftLastLocation { updateIdleDepartureAnchor(with: parked) }
+    // The idle geofence is re-armed at `idleWakeLocation`; left over from
+    // before the trip it would sit at the journey's origin, kilometres from
+    // the parked car, and never fire for the next departure.
+    idleWakeLocation = shiftLastLocation
     shiftPoints = []
     shiftMiles = 0
     shiftStartedAt = nil
